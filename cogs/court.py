@@ -159,7 +159,46 @@ class Court(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.active_sessions = {}
-        self.court_category_id = 1388268039773884588
+        # Legacy default (single-server). Prefer per-guild `court_category_id` in DB settings.
+        self.court_category_id = 0
+
+    async def _get_or_create_court_category(
+        self, guild: discord.Guild
+    ) -> Optional[discord.CategoryChannel]:
+        """Resolve the court category for this guild (stored in DB settings)."""
+        try:
+            settings = await self.bot.db.get_settings(guild.id)
+        except Exception:
+            settings = {}
+
+        category_id = settings.get("court_category_id") or None
+        if category_id:
+            ch = guild.get_channel(int(category_id))
+            if isinstance(ch, discord.CategoryChannel):
+                return ch
+
+        # Try common names before creating.
+        for name in ["⚖️ Court", "court", "Court", "court-cases", "Court Cases"]:
+            found = discord.utils.get(guild.categories, name=name)
+            if isinstance(found, discord.CategoryChannel):
+                settings["court_category_id"] = found.id
+                try:
+                    await self.bot.db.update_settings(guild.id, settings)
+                except Exception:
+                    pass
+                return found
+
+        try:
+            created = await guild.create_category("⚖️ Court", reason="ModBot: court system setup")
+        except Exception:
+            return None
+
+        settings["court_category_id"] = created.id
+        try:
+            await self.bot.db.update_settings(guild.id, settings)
+        except Exception:
+            pass
+        return created
     
     async def cog_load(self):
         """Initialize database tables"""
@@ -267,8 +306,8 @@ class Court(commands.Cog):
                         ephemeral=True
                     )
             
-            # Get category
-            category = interaction.guild.get_channel(self.court_category_id)
+            # Get category (per-guild, auto-created if needed)
+            category = await self._get_or_create_court_category(interaction.guild)
             if not category:
                 return await interaction.followup.send(
                     embed=ModEmbed.error("Setup Error", "Court category not found. Contact an admin."),

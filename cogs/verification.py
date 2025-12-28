@@ -41,6 +41,25 @@ def _generate_captcha() -> str:
     return "".join(secrets.choice(CAPTCHA_ALPHABET) for _ in range(CAPTCHA_LENGTH))
 
 
+def _brand_assets(guild: Optional[discord.Guild]) -> tuple[Optional[str], Optional[str]]:
+    logo_url = (getattr(Config, "SERVER_LOGO_URL", "") or "").strip() or None
+    banner_url = (getattr(Config, "SERVER_BANNER_URL", "") or "").strip() or None
+
+    if not logo_url and guild and getattr(guild, "icon", None):
+        try:
+            logo_url = str(guild.icon.url)
+        except Exception:
+            logo_url = None
+
+    if not banner_url and guild and getattr(guild, "banner", None):
+        try:
+            banner_url = str(guild.banner.url)
+        except Exception:
+            banner_url = None
+
+    return logo_url, banner_url
+
+
 class CaptchaModal(discord.ui.Modal, title="Verification Captcha"):
     captcha = discord.ui.TextInput(
         label="Enter the captcha",
@@ -132,10 +151,11 @@ class CaptchaView(discord.ui.View):
 
 
 class VerificationPanelLayout(discord.ui.LayoutView):
-    def __init__(self, cog: "Verification"):
+    def __init__(self, cog: "Verification", *, guild: Optional[discord.Guild] = None):
         super().__init__(timeout=None)
         self._cog = cog
 
+        logo_url, banner_url = _brand_assets(guild)
         container = branded_panel_container(
             title="Server Verification",
             description=(
@@ -146,8 +166,8 @@ class VerificationPanelLayout(discord.ui.LayoutView):
                 "3) Receive the **verified** role\n\n"
                 "Need help? Press **Tutorial**."
             ),
-            banner_url=getattr(Config, "SERVER_BANNER_URL", None),
-            logo_url=getattr(Config, "SERVER_LOGO_URL", None),
+            banner_url=banner_url,
+            logo_url=logo_url,
             accent_color=getattr(Config, "COLOR_BRAND", 0x5865F2),
             banner_separated=True,
         )
@@ -310,14 +330,15 @@ class Verification(commands.Cog):
     async def _send_voice_verify_dm(self, *, guild: discord.Guild, member: discord.Member) -> None:
         layout = discord.ui.LayoutView(timeout=15 * 60)
 
+        logo_url, banner_url = _brand_assets(guild)
         container = branded_panel_container(
             title="Voice Verification Required",
             description=(
                 f"You tried to join a voice channel in **{guild.name}**.\n\n"
                 "Complete verification to be moved into the voice channel you selected."
             ),
-            banner_url=getattr(Config, "SERVER_BANNER_URL", None),
-            logo_url=getattr(Config, "SERVER_LOGO_URL", None),
+            banner_url=banner_url,
+            logo_url=logo_url,
             accent_color=getattr(Config, "COLOR_BRAND", 0x5865F2),
             banner_separated=True,
         )
@@ -455,8 +476,9 @@ class Verification(commands.Cog):
             ),
             color=Config.COLOR_INFO,
         )
-        if getattr(Config, "SERVER_LOGO_URL", None):
-            embed.set_thumbnail(url=Config.SERVER_LOGO_URL)
+        logo_url, _ = _brand_assets(guild)
+        if logo_url:
+            embed.set_thumbnail(url=logo_url)
 
         await interaction.response.send_message(
             embed=embed,
@@ -572,7 +594,7 @@ class Verification(commands.Cog):
 
         try:
             # Send a Components v2 panel so buttons appear inside the card.
-            await channel.send(view=VerificationPanelLayout(self))
+            await channel.send(view=VerificationPanelLayout(self, guild=interaction.guild))
         except Exception as e:
             await interaction.response.send_message(
                 embed=ModEmbed.error("Failed", f"Could not post panel: {e}"),

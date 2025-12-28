@@ -29,7 +29,8 @@ TUTORIAL_VIDEO_URL = "https://cdn.discordapp.com/attachments/1430639019582034013
 ADD_EMOJI_TUTORIAL_GIF_URL = "https://s7.ezgif.com/tmp/ezgif-78fb32957f0983d1.gif"
 ADD_EMOJI_TUTORIAL_GIF_FILENAME = "addemoji_tutorial.gif"
 ADD_EMOJI_TUTORIAL_GIF_PATH = Path(__file__).resolve().parents[1] / "assets" / ADD_EMOJI_TUTORIAL_GIF_FILENAME
-EMOJI_COMMAND_CHANNEL_ID = 1454265143792763054
+# Legacy single-server fallback. Prefer per-guild `emoji_command_channel` in DB settings.
+EMOJI_COMMAND_CHANNEL_ID = 0
 
 _TUTORIAL_VIDEO_BYTES: Optional[bytes] = None
 _TUTORIAL_VIDEO_LOCK = asyncio.Lock()
@@ -1472,6 +1473,7 @@ class Moderation(commands.Cog):
     @app_commands.command(name="glock", description="🔒 Only the Glock role can talk in the channel")
     @app_commands.describe(
         channel="Channel to glock (current channel if not specified)",
+        role="Role allowed to talk (defaults to a configured Glock role)",
         all="Apply to all text channels in the server",
         reason="Reason for glock",
     )
@@ -1480,6 +1482,7 @@ class Moderation(commands.Cog):
         self,
         interaction: discord.Interaction,
         channel: Optional[discord.TextChannel] = None,
+        role: Optional[discord.Role] = None,
         all: bool = False,
         reason: str = "No reason provided",
     ):
@@ -1490,13 +1493,28 @@ class Moderation(commands.Cog):
                 ephemeral=True,
             )
 
-        glock_role_id = 1448478745953435741
-        glock_role = interaction.guild.get_role(glock_role_id)
+        settings = await self.bot.db.get_settings(interaction.guild.id)
+        configured_role_id = settings.get("glock_role_id") or settings.get("glock_role")
+        glock_role = (
+            role
+            or (interaction.guild.get_role(int(configured_role_id)) if configured_role_id else None)
+            or discord.utils.get(interaction.guild.roles, name="Glock")
+        )
         if glock_role is None:
             return await interaction.response.send_message(
-                embed=ModEmbed.error("Missing Role", f"Role `{glock_role_id}` not found in this server."),
+                embed=ModEmbed.error(
+                    "Missing Role",
+                    "No glock role is configured for this server. Create a role named `Glock`, or pass `role:`.",
+                ),
                 ephemeral=True,
             )
+
+        if role is None and (not configured_role_id) and glock_role is not None:
+            settings["glock_role_id"] = glock_role.id
+            try:
+                await self.bot.db.update_settings(interaction.guild.id, settings)
+            except Exception:
+                pass
 
         async def _apply(ch: discord.TextChannel) -> bool:
             try:
@@ -1558,6 +1576,7 @@ class Moderation(commands.Cog):
     @app_commands.command(name="gunlock", description="🔓 Remove Glock-role-only channel restriction")
     @app_commands.describe(
         channel="Channel to gunlock (current channel if not specified)",
+        role="Role that was allowed to talk (defaults to a configured Glock role)",
         all="Apply to all text channels in the server",
         reason="Reason for gunlock",
     )
@@ -1566,6 +1585,7 @@ class Moderation(commands.Cog):
         self,
         interaction: discord.Interaction,
         channel: Optional[discord.TextChannel] = None,
+        role: Optional[discord.Role] = None,
         all: bool = False,
         reason: str = "No reason provided",
     ):
@@ -1576,11 +1596,19 @@ class Moderation(commands.Cog):
                 ephemeral=True,
             )
 
-        glock_role_id = 1448478745953435741
-        glock_role = interaction.guild.get_role(glock_role_id)
+        settings = await self.bot.db.get_settings(interaction.guild.id)
+        configured_role_id = settings.get("glock_role_id") or settings.get("glock_role")
+        glock_role = (
+            role
+            or (interaction.guild.get_role(int(configured_role_id)) if configured_role_id else None)
+            or discord.utils.get(interaction.guild.roles, name="Glock")
+        )
         if glock_role is None:
             return await interaction.response.send_message(
-                embed=ModEmbed.error("Missing Role", f"Role `{glock_role_id}` not found in this server."),
+                embed=ModEmbed.error(
+                    "Missing Role",
+                    "No glock role is configured for this server. Create a role named `Glock`, or pass `role:`.",
+                ),
                 ephemeral=True,
             )
 
@@ -1811,7 +1839,7 @@ class Moderation(commands.Cog):
             description=f"This channel has been nuked by {interaction.user.mention}.",
             color=Colors.ERROR
         )
-        embed.set_image(url="https://media.giphy.com/media/HhTXt43pk1I1W/giphy.gif")
+        embed.set_image(url="https://media1.tenor.com/m/OMQvHj3-AsMAAAAd/kaboom-boom.gif")
         
         await new_channel.send(embed=embed)
 
@@ -2541,11 +2569,18 @@ class Moderation(commands.Cog):
                 ephemeral=True,
             )
 
-        if interaction.channel_id != EMOJI_COMMAND_CHANNEL_ID:
+        settings = await self.bot.db.get_settings(interaction.guild.id)
+        restricted_channel_id = (
+            settings.get("emoji_command_channel")
+            or settings.get("emoji_command_channel_id")
+            or (EMOJI_COMMAND_CHANNEL_ID or None)
+        )
+
+        if restricted_channel_id and interaction.channel_id != int(restricted_channel_id):
             return await interaction.response.send_message(
                 embed=ModEmbed.error(
                     "Wrong Channel",
-                    f"Use emoji commands in <#{EMOJI_COMMAND_CHANNEL_ID}>.",
+                    f"Use emoji commands in <#{int(restricted_channel_id)}>.",
                 ),
                 ephemeral=True,
             )
@@ -2984,8 +3019,14 @@ class Moderation(commands.Cog):
         member: discord.Member,
         channel: discord.abc.Messageable,
     ) -> None:
-        server_name = getattr(Config, "WELCOME_SERVER_NAME", "The Supreme People")
-        system_name = getattr(Config, "WELCOME_SYSTEM_NAME", "Welcome System")
+        settings = await self.bot.db.get_settings(member.guild.id)
+        server_name = (settings.get("welcome_server_name") or getattr(Config, "WELCOME_SERVER_NAME", "") or "").strip()
+        if not server_name:
+            server_name = member.guild.name
+
+        system_name = (settings.get("welcome_system_name") or getattr(Config, "WELCOME_SYSTEM_NAME", "Welcome System") or "").strip()
+        if not system_name:
+            system_name = "Welcome System"
         accent = getattr(Config, "EMBED_ACCENT_COLOR", getattr(Config, "COLOR_EMBED", 0x5865F2))
         card_accent = getattr(Config, "WELCOME_CARD_ACCENT_COLOR", accent)
 
@@ -3030,14 +3071,15 @@ class Moderation(commands.Cog):
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
         """Send a branded welcome card to the configured welcome channel."""
-        channel_id = getattr(Config, "WELCOME_CHANNEL_ID", 1454276301623005336)
+        settings = await self.bot.db.get_settings(member.guild.id)
+        channel_id = settings.get("welcome_channel")
         if not channel_id:
             return
 
         if member.bot:
             return
 
-        channel = self.bot.get_channel(int(channel_id))
+        channel = member.guild.get_channel(int(channel_id)) or self.bot.get_channel(int(channel_id))
         if channel is None:
             try:
                 channel = await self.bot.fetch_channel(int(channel_id))
@@ -3123,7 +3165,8 @@ class Moderation(commands.Cog):
 
         dest = channel
         if dest is None:
-            channel_id = getattr(Config, "WELCOME_CHANNEL_ID", None)
+            settings = await self.bot.db.get_settings(interaction.guild.id)
+            channel_id = settings.get("welcome_channel")
             if channel_id:
                 resolved = interaction.guild.get_channel(int(channel_id))
                 if isinstance(resolved, discord.TextChannel):

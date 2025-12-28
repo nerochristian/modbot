@@ -246,6 +246,7 @@ class ModBot(commands.Bot):
         
         # Cog list
         cogs = [
+            "cogs.help",
             "cogs.setup",
             "cogs.verification",
             "cogs.moderation",

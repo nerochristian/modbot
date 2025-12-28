@@ -96,10 +96,11 @@ class AppealForm(discord.ui.Modal, title="Ban/Mute Appeal Form"):
         max_length=500
     )
     
-    def __init__(self, cog, user: discord.User):
+    def __init__(self, cog, user: discord.User, guild_id: int):
         super().__init__()
         self.cog = cog
         self.user = user
+        self.guild_id = int(guild_id)
     
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -113,7 +114,9 @@ class AppealForm(discord.ui.Modal, title="Ban/Mute Appeal Form"):
             "additional_info": str(self.additional_info) if self.additional_info.value else "None provided"
         }
         
-        success = await self.cog.create_modmail_thread(self.user, "appeal", data, priority="high")
+        success = await self.cog.create_modmail_thread(
+            self.user, "appeal", data, priority="high", guild_id=self.guild_id
+        )
         
         if success:
             embed = discord.Embed(
@@ -178,10 +181,11 @@ class SupportForm(discord.ui.Modal, title="Support Request Form"):
         max_length=20
     )
     
-    def __init__(self, cog, user: discord.User):
+    def __init__(self, cog, user: discord.User, guild_id: int):
         super().__init__()
         self.cog = cog
         self.user = user
+        self.guild_id = int(guild_id)
     
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -205,7 +209,9 @@ class SupportForm(discord.ui.Modal, title="Support Request Form"):
             "priority": priority
         }
         
-        success = await self.cog.create_modmail_thread(self.user, "support", data, priority=priority)
+        success = await self.cog.create_modmail_thread(
+            self.user, "support", data, priority=priority, guild_id=self.guild_id
+        )
         
         if success:
             embed = discord.Embed(
@@ -270,10 +276,11 @@ class ReportForm(discord.ui.Modal, title="User Report Form"):
         max_length=200
     )
     
-    def __init__(self, cog, user: discord.User):
+    def __init__(self, cog, user: discord.User, guild_id: int):
         super().__init__()
         self.cog = cog
         self.user = user
+        self.guild_id = int(guild_id)
     
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -287,7 +294,9 @@ class ReportForm(discord.ui.Modal, title="User Report Form"):
             "witnesses": str(self.witnesses) if self.witnesses.value else "None listed"
         }
         
-        success = await self.cog.create_modmail_thread(self.user, "report", data, priority="high")
+        success = await self.cog.create_modmail_thread(
+            self.user, "report", data, priority="high", guild_id=self.guild_id
+        )
         
         if success:
             embed = discord.Embed(
@@ -352,10 +361,11 @@ class FeedbackForm(discord.ui.Modal, title="Feedback & Suggestions"):
         max_length=2
     )
     
-    def __init__(self, cog, user: discord.User):
+    def __init__(self, cog, user: discord.User, guild_id: int):
         super().__init__()
         self.cog = cog
         self.user = user
+        self.guild_id = int(guild_id)
     
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -378,7 +388,9 @@ class FeedbackForm(discord.ui.Modal, title="Feedback & Suggestions"):
             "rating": rating_value
         }
         
-        success = await self.cog.create_modmail_thread(self.user, "feedback", data, priority="low")
+        success = await self.cog.create_modmail_thread(
+            self.user, "feedback", data, priority="low", guild_id=self.guild_id
+        )
         
         if success:
             embed = discord.Embed(
@@ -443,10 +455,11 @@ class PartnershipForm(discord.ui.Modal, title="Partnership Request"):
         max_length=100
     )
     
-    def __init__(self, cog, user: discord.User):
+    def __init__(self, cog, user: discord.User, guild_id: int):
         super().__init__()
         self.cog = cog
         self.user = user
+        self.guild_id = int(guild_id)
     
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
@@ -460,7 +473,9 @@ class PartnershipForm(discord.ui.Modal, title="Partnership Request"):
             "invite_link": str(self.invite_link) if self.invite_link.value else "Not provided"
         }
         
-        success = await self.cog.create_modmail_thread(self.user, "partnership", data, priority="normal")
+        success = await self.cog.create_modmail_thread(
+            self.user, "partnership", data, priority="normal", guild_id=self.guild_id
+        )
         
         if success:
             embed = discord.Embed(
@@ -489,10 +504,11 @@ class PartnershipForm(discord.ui.Modal, title="Partnership Request"):
 class ModmailCategorySelect(discord.ui.LayoutView):
     """Category selection menu for modmail"""
     
-    def __init__(self, cog, user: discord.User, timeout: int = 180):
+    def __init__(self, cog, user: discord.User, guild_id: int, timeout: int = 180):
         super().__init__(timeout=timeout)
         self.cog = cog
         self.user = user
+        self.guild_id = int(guild_id)
 
         appeal_button = discord.ui.Button(
             label="Ban/Mute Appeal",
@@ -579,7 +595,7 @@ class ModmailCategorySelect(discord.ui.LayoutView):
             await interaction.response.send_message("This menu is not for you!", ephemeral=True)
             return
         
-        await interaction.response.send_modal(AppealForm(self.cog, self.user))
+        await interaction.response.send_modal(AppealForm(self.cog, self.user, self.guild_id))
         self.stop()
     
     async def support_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -587,7 +603,7 @@ class ModmailCategorySelect(discord.ui.LayoutView):
             await interaction.response.send_message("This menu is not for you!", ephemeral=True)
             return
         
-        await interaction.response.send_modal(SupportForm(self.cog, self.user))
+        await interaction.response.send_modal(SupportForm(self.cog, self.user, self.guild_id))
         self.stop()
     
     async def report_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -595,7 +611,7 @@ class ModmailCategorySelect(discord.ui.LayoutView):
             await interaction.response.send_message("This menu is not for you!", ephemeral=True)
             return
         
-        await interaction.response.send_modal(ReportForm(self.cog, self.user))
+        await interaction.response.send_modal(ReportForm(self.cog, self.user, self.guild_id))
         self.stop()
     
     async def feedback_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -603,7 +619,7 @@ class ModmailCategorySelect(discord.ui.LayoutView):
             await interaction.response.send_message("This menu is not for you!", ephemeral=True)
             return
         
-        await interaction.response.send_modal(FeedbackForm(self.cog, self.user))
+        await interaction.response.send_modal(FeedbackForm(self.cog, self.user, self.guild_id))
         self.stop()
     
     async def partnership_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -611,7 +627,7 @@ class ModmailCategorySelect(discord.ui.LayoutView):
             await interaction.response.send_message("This menu is not for you!", ephemeral=True)
             return
         
-        await interaction.response.send_modal(PartnershipForm(self.cog, self.user))
+        await interaction.response.send_modal(PartnershipForm(self.cog, self.user, self.guild_id))
         self.stop()
     
     async def other_button(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -622,7 +638,9 @@ class ModmailCategorySelect(discord.ui.LayoutView):
         await interaction.response.defer()
         
         data = {"category": "other"}
-        success = await self.cog.create_modmail_thread(self.user, "other", data, priority="normal")
+        success = await self.cog.create_modmail_thread(
+            self.user, "other", data, priority="normal", guild_id=self.guild_id
+        )
         
         if success:
             await interaction.followup.send(
@@ -647,14 +665,148 @@ class ModmailCategorySelect(discord.ui.LayoutView):
         self.stop()
 
 
-class BrandedModmailPanel(discord.ui.LayoutView):
-    def __init__(self, cog, user: discord.User, timeout: int = 180):
+class ModmailGuildSelectView(discord.ui.View):
+    def __init__(self, cog, user: discord.User, guilds: List[discord.Guild], timeout: int = 180):
         super().__init__(timeout=timeout)
         self.cog = cog
         self.user = user
 
+        guilds = list(guilds)[:25]
+        options: list[discord.SelectOption] = []
+        for g in guilds:
+            label = (g.name or "Server")[:100]
+            options.append(discord.SelectOption(label=label, value=str(g.id)))
+
+        self._select = discord.ui.Select(
+            placeholder="Select which server to contact...",
+            min_values=1,
+            max_values=1,
+            options=options,
+            custom_id="modmail_guild_select",
+        )
+
+        async def _select_cb(interaction: discord.Interaction):
+            await self._on_select(interaction)
+
+        self._select.callback = _select_cb
+        self.add_item(self._select)
+
+    async def _on_select(self, interaction: discord.Interaction) -> None:
+        if interaction.user.id != self.user.id:
+            await interaction.response.send_message("This menu is not for you!", ephemeral=True)
+            return
+
+        raw = (self._select.values[0] if self._select.values else "").strip()
+        try:
+            guild_id = int(raw)
+        except Exception:
+            await interaction.response.send_message(
+                embed=ModEmbed.error("Invalid Selection", "Could not read the selected server."),
+                ephemeral=True,
+            )
+            return
+
+        self._select.disabled = True
+        try:
+            if interaction.message:
+                await interaction.message.edit(view=self)
+        except Exception:
+            pass
+
+        panel = BrandedModmailPanel(self.cog, self.user, guild_id=guild_id)
+        await interaction.response.send_message(view=panel)
+        self.stop()
+
+
+class ModmailActiveThreadSelectView(discord.ui.View):
+    def __init__(self, cog: "Modmail", user: discord.User, channel_ids: List[int], timeout: int = 180):
+        super().__init__(timeout=timeout)
+        self.cog = cog
+        self.user = user
+
+        options: list[discord.SelectOption] = []
+        for cid in list(channel_ids)[:25]:
+            thread = cog.active_threads.get(int(cid)) or {}
+            guild_id = int(thread.get("guild_id") or 0)
+            guild = cog.bot.get_guild(guild_id) if guild_id else None
+            label = ((guild.name if guild else "Server") or "Server")[:100]
+            category = (thread.get("category") or "").strip()
+            description = f"{category.capitalize()}" if category else "Open thread"
+            options.append(discord.SelectOption(label=label, value=str(int(cid)), description=description[:100]))
+
+        self._select = discord.ui.Select(
+            placeholder="Select a server thread…",
+            min_values=1,
+            max_values=1,
+            options=options or [discord.SelectOption(label="No threads found", value="0")],
+            custom_id="modmail_active_thread_select",
+        )
+
+        async def _select_cb(interaction: discord.Interaction):
+            await self._on_select(interaction)
+
+        self._select.callback = _select_cb
+        self.add_item(self._select)
+
+    async def _on_select(self, interaction: discord.Interaction) -> None:
+        if interaction.user.id != self.user.id:
+            await interaction.response.send_message("This menu is not for you!", ephemeral=True)
+            return
+
+        raw = (self._select.values[0] if self._select.values else "").strip()
+        try:
+            channel_id = int(raw)
+        except Exception:
+            channel_id = 0
+
+        if not channel_id or channel_id not in self.cog.active_threads:
+            await interaction.response.send_message(
+                embed=ModEmbed.error("Not Found", "That thread no longer exists. Send `.modmail` again."),
+                ephemeral=True,
+            )
+            return
+
+        self.cog.user_last_thread[self.user.id] = channel_id
+        thread = self.cog.active_threads.get(channel_id) or {}
+        guild_id = int(thread.get("guild_id") or 0)
+        guild = self.cog.bot.get_guild(guild_id) if guild_id else None
+        guild_name = guild.name if guild else "that server"
+
+        self._select.disabled = True
+        try:
+            if interaction.message:
+                await interaction.message.edit(view=self)
+        except Exception:
+            pass
+
+        await interaction.response.send_message(
+            embed=ModEmbed.success("Selected", f"Your next messages will be sent to **{guild_name}** staff."),
+        )
+        self.stop()
+
+
+class BrandedModmailPanel(discord.ui.LayoutView):
+    def __init__(self, cog, user: discord.User, guild_id: int, timeout: int = 180):
+        super().__init__(timeout=timeout)
+        self.cog = cog
+        self.user = user
+        self.guild_id = int(guild_id)
+
+        guild = cog.bot.get_guild(self.guild_id)
         logo_url = (Config.SERVER_LOGO_URL or "").strip() or None
         banner_url = (Config.SERVER_BANNER_URL or "").strip() or None
+
+        if not logo_url and guild and getattr(guild, "icon", None):
+            try:
+                logo_url = str(guild.icon.url)
+            except Exception:
+                logo_url = None
+
+        if not banner_url and guild and getattr(guild, "banner", None):
+            try:
+                banner_url = str(guild.banner.url)
+            except Exception:
+                banner_url = None
 
         select = discord.ui.Select(
             placeholder="Select a modmail category...",
@@ -719,7 +871,9 @@ class BrandedModmailPanel(discord.ui.LayoutView):
         if choice == "other":
             await interaction.response.defer()
             data = {"category": "other"}
-            success = await self.cog.create_modmail_thread(self.user, "other", data, priority="normal")
+            success = await self.cog.create_modmail_thread(
+                self.user, "other", data, priority="normal", guild_id=self.guild_id
+            )
             if success:
                 await interaction.followup.send(
                     embed=discord.Embed(
@@ -737,15 +891,15 @@ class BrandedModmailPanel(discord.ui.LayoutView):
 
         modal = None
         if choice == "appeal":
-            modal = AppealForm(self.cog, self.user)
+            modal = AppealForm(self.cog, self.user, self.guild_id)
         elif choice == "support":
-            modal = SupportForm(self.cog, self.user)
+            modal = SupportForm(self.cog, self.user, self.guild_id)
         elif choice == "report":
-            modal = ReportForm(self.cog, self.user)
+            modal = ReportForm(self.cog, self.user, self.guild_id)
         elif choice == "feedback":
-            modal = FeedbackForm(self.cog, self.user)
+            modal = FeedbackForm(self.cog, self.user, self.guild_id)
         elif choice == "partnership":
-            modal = PartnershipForm(self.cog, self.user)
+            modal = PartnershipForm(self.cog, self.user, self.guild_id)
 
         if modal is None:
             await interaction.response.send_message(
@@ -1045,7 +1199,10 @@ class Modmail(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.active_threads: Dict[int, Dict] = {}  # channel_id -> thread_data
-        self.user_threads: Dict[int, int] = {}  # user_id -> channel_id
+        # Multi-guild: a user can have multiple open threads (one per guild).
+        self.user_threads: Dict[int, set[int]] = {}  # user_id -> {channel_id}
+        # The thread to route DM messages to when multiple are open.
+        self.user_last_thread: Dict[int, int] = {}  # user_id -> channel_id
         self._threads_loaded = False
         
         # Statistics (loaded from DB)
@@ -1080,14 +1237,15 @@ class Modmail(commands.Cog):
         self._threads_loaded = True
         logger.info("📬 Restoring modmail threads from database...")
         
-        guild = await self.get_modmail_guild()
-        if not guild:
+        guilds = list(self.bot.guilds)
+        if not guilds:
             logger.warning("⚠️ Modmail guild not configured - system will activate when bot receives DMs")
             return
 
         # Ensure schema exists before loading threads (avoids first-boot races).
         try:
-            await self.bot.db.init_guild(guild.id)
+            for g in guilds:
+                await self.bot.db.init_guild(g.id)
         except Exception as e:
             logger.warning(f"⚠️ Modmail DB init failed (will retry on demand): {e}")
         
@@ -1096,18 +1254,21 @@ class Modmail(commands.Cog):
             async with self.bot.db.get_connection() as db:
                 cursor = await db.execute(
                     """
-                    SELECT channel_id, user_id, category, priority, opened_at,
+                    SELECT guild_id, channel_id, user_id, category, priority, opened_at,
                            claimed_by, message_count, id
                     FROM modmail_threads
-                    WHERE guild_id = ? AND status = 'open'
-                    """,
-                    (guild.id,)
+                    WHERE status = 'open'
+                    """
                 )
                 rows = await cursor.fetchall()
                 
                 for row in rows:
-                    channel_id, user_id, category, priority, opened_at, claimed_by, msg_count, thread_id = row
-                    
+                    guild_id, channel_id, user_id, category, priority, opened_at, claimed_by, msg_count, thread_id = row
+
+                    guild = self.bot.get_guild(int(guild_id))
+                    if not guild:
+                        continue
+                     
                     # Check if channel still exists
                     channel = guild.get_channel(channel_id)
                     if not channel:
@@ -1118,6 +1279,7 @@ class Modmail(commands.Cog):
                     
                     # Restore thread data to memory
                     self.active_threads[channel_id] = {
+                        "guild_id": int(guild_id),
                         "user_id": user_id,
                         "category": category,
                         "priority": priority,
@@ -1128,7 +1290,17 @@ class Modmail(commands.Cog):
                         "last_message_at": opened_at,
                         "reminder_sent": False
                     }
-                    self.user_threads[user_id] = channel_id
+                    self.user_threads.setdefault(user_id, set()).add(channel_id)
+                    existing = self.user_last_thread.get(user_id)
+                    if existing is None:
+                        self.user_last_thread[user_id] = channel_id
+                    else:
+                        try:
+                            existing_tid = int(self.active_threads.get(existing, {}).get("thread_id") or 0)
+                            if int(thread_id or 0) >= existing_tid:
+                                self.user_last_thread[user_id] = channel_id
+                        except Exception:
+                            self.user_last_thread[user_id] = channel_id
                     self.stats["total_threads"] += 1
                     logger.info(f"✅ Restored thread: {channel.name} (User: {user_id})")
             
@@ -1138,27 +1310,72 @@ class Modmail(commands.Cog):
     
     # ==================== HELPER METHODS ====================
     async def get_modmail_guild(self) -> Optional[discord.Guild]:
-        """Get the modmail guild from config or use first guild"""
+        """Get the configured modmail guild (legacy single-guild mode)."""
         if hasattr(Config, 'MODMAIL_GUILD_ID') and Config.MODMAIL_GUILD_ID:
             guild = self.bot.get_guild(Config.MODMAIL_GUILD_ID)
             if guild:
                 return guild
-        
-        # Fallback: use the first guild
-        return self.bot.guilds[0] if self.bot.guilds else None
-    
+
+        if len(self.bot.guilds) == 1:
+            return self.bot.guilds[0]
+
+        return None
+
+    async def get_user_modmail_guilds(self, user: discord.User) -> List[discord.Guild]:
+        """Return guilds where modmail is configured and the user is a member."""
+        configured: list[discord.Guild] = []
+
+        for guild in list(self.bot.guilds):
+            try:
+                settings = await self.bot.db.get_settings(guild.id)
+            except Exception:
+                settings = {}
+
+            if not settings.get("modmail_category_id") and not settings.get("setup_complete"):
+                continue
+
+            member = guild.get_member(user.id)
+            if member is None:
+                try:
+                    await guild.fetch_member(user.id)
+                    member = True  # type: ignore[assignment]
+                except Exception:
+                    member = None  # type: ignore[assignment]
+
+            if not member:
+                continue
+
+            configured.append(guild)
+
+        return configured
+
     async def get_modmail_category(self, guild: discord.Guild) -> Optional[discord.CategoryChannel]:
         """Get or create modmail category"""
-        category_id = getattr(Config, 'MODMAIL_CATEGORY_ID', None)
+        settings = await self.bot.db.get_settings(guild.id)
+        category_id = settings.get("modmail_category_id") or getattr(Config, 'MODMAIL_CATEGORY_ID', None)
         if category_id:
-            category = guild.get_channel(category_id)
-            if category:
+            category = guild.get_channel(int(category_id))
+            if isinstance(category, discord.CategoryChannel):
+                if settings.get("modmail_category_id") != category.id:
+                    settings["modmail_category_id"] = category.id
+                    await self.bot.db.update_settings(guild.id, settings)
                 return category
         
+        existing = discord.utils.find(
+            lambda c: "modmail" in (c.name or "").lower(),
+            guild.categories,
+        )
+        if isinstance(existing, discord.CategoryChannel):
+            settings["modmail_category_id"] = existing.id
+            await self.bot.db.update_settings(guild.id, settings)
+            return existing
+
         # Create category if not found
         try:
             category = await guild.create_category("📬 Modmail")
-            logger.info(f"Created modmail category: {category.id}")
+            settings["modmail_category_id"] = category.id
+            await self.bot.db.update_settings(guild.id, settings)
+            logger.info(f"Created modmail category: {category.id} (Guild: {guild.id})")
             return category
         except Exception as e:
             logger.error(f"Failed to create modmail category: {e}")
@@ -1166,16 +1383,32 @@ class Modmail(commands.Cog):
     
     async def get_log_channel(self, guild: discord.Guild) -> Optional[discord.TextChannel]:
         """Get modmail log channel"""
-        log_channel_id = getattr(Config, 'MODMAIL_LOG_CHANNEL', None)
+        settings = await self.bot.db.get_settings(guild.id)
+        log_channel_id = settings.get("modmail_log_channel") or getattr(Config, "MODMAIL_LOG_CHANNEL", None)
         if log_channel_id:
-            return guild.get_channel(log_channel_id)
+            channel = guild.get_channel(int(log_channel_id))
+            if isinstance(channel, discord.TextChannel):
+                return channel
+
+        existing = discord.utils.get(guild.text_channels, name="modmail-logs")
+        if isinstance(existing, discord.TextChannel):
+            settings["modmail_log_channel"] = existing.id
+            await self.bot.db.update_settings(guild.id, settings)
+            return existing
         return None
     
     async def get_staff_role(self, guild: discord.Guild) -> Optional[discord.Role]:
         """Get staff role for modmail"""
-        staff_role_id = getattr(Config, 'MODMAIL_STAFF_ROLE', None)
+        settings = await self.bot.db.get_settings(guild.id)
+        staff_role_id = (
+            settings.get("staff_role")
+            or settings.get("mod_role")
+            or settings.get("senior_mod_role")
+            or settings.get("admin_role")
+            or getattr(Config, "MODMAIL_STAFF_ROLE", None)
+        )
         if staff_role_id:
-            return guild.get_role(staff_role_id)
+            return guild.get_role(int(staff_role_id))
         return None
     
     # ==================== DATABASE UPDATE METHODS ====================
@@ -1221,10 +1454,22 @@ class Modmail(commands.Cog):
         user: discord.User,
         category: str,
         data: Dict,
-        priority: str = "normal"
+        priority: str = "normal",
+        guild_id: Optional[int] = None,
     ) -> bool:
         """Create a new modmail thread"""
-        guild = await self.get_modmail_guild()
+        guild: Optional[discord.Guild] = None
+        if guild_id:
+            guild = self.bot.get_guild(int(guild_id))
+
+        if not guild:
+            guild = await self.get_modmail_guild()
+
+        if not guild:
+            guilds = await self.get_user_modmail_guilds(user)
+            if len(guilds) == 1:
+                guild = guilds[0]
+
         if not guild:
             logger.error("Modmail guild not found")
             return False
@@ -1246,13 +1491,22 @@ class Modmail(commands.Cog):
             logger.error(f"Error checking if user is blocked: {e}")
             # Continue anyway if DB check fails
         
-        # Check if user already has an active thread
-        if user.id in self.user_threads:
+        # Check if user already has an active thread in this guild (users can have one per guild).
+        existing_channels = list(self.user_threads.get(user.id, set()) or [])
+        existing_for_guild: Optional[int] = None
+        for cid in existing_channels:
+            thread = self.active_threads.get(int(cid)) or {}
+            if int(thread.get("guild_id") or 0) == int(guild.id):
+                existing_for_guild = int(cid)
+                break
+
+        if existing_for_guild is not None:
+            self.user_last_thread[user.id] = existing_for_guild
             try:
                 await user.send(
                     embed=ModEmbed.info(
                         "Active Thread Exists",
-                        "You already have an active modmail thread. Your messages here will be forwarded to staff."
+                        "You already have an active modmail thread for this server. Your messages here will be forwarded to staff.",
                     )
                 )
             except discord.Forbidden:
@@ -1311,6 +1565,7 @@ class Modmail(commands.Cog):
             # Store in memory
             now = datetime.now(timezone.utc).isoformat()
             self.active_threads[channel.id] = {
+                "guild_id": guild.id,
                 "user_id": user.id,
                 "category": category,
                 "priority": priority,
@@ -1321,7 +1576,8 @@ class Modmail(commands.Cog):
                 "thread_id": thread_id,
                 "reminder_sent": False
             }
-            self.user_threads[user.id] = channel.id
+            self.user_threads.setdefault(user.id, set()).add(channel.id)
+            self.user_last_thread[user.id] = channel.id
             self.stats["total_threads"] += 1
             
             # Send thread info to staff channel
@@ -1409,16 +1665,34 @@ class Modmail(commands.Cog):
     
     async def forward_user_message(self, user: discord.User, message: discord.Message) -> None:
         """Forward user message to staff channel"""
-        if user.id not in self.user_threads:
+        channel_ids = set(self.user_threads.get(user.id, set()) or set())
+        if not channel_ids:
             return
-        
-        channel_id = self.user_threads[user.id]
-        guild = await self.get_modmail_guild()
-        if not guild:
-            return
-        
-        channel = guild.get_channel(channel_id)
-        if not channel or not isinstance(channel, discord.TextChannel):
+
+        channel_id = self.user_last_thread.get(user.id)
+        if channel_id not in channel_ids:
+            if len(channel_ids) == 1:
+                channel_id = next(iter(channel_ids))
+                self.user_last_thread[user.id] = channel_id
+            else:
+                try:
+                    await user.send(
+                        embed=ModEmbed.info(
+                            "Multiple Threads",
+                            "You have multiple open modmail threads. Send `.modmail` to choose which server to message.",
+                        )
+                    )
+                except discord.Forbidden:
+                    pass
+                return
+        channel = self.bot.get_channel(channel_id)
+        if channel is None:
+            try:
+                channel = await self.bot.fetch_channel(channel_id)
+            except Exception:
+                channel = None
+
+        if not isinstance(channel, discord.TextChannel):
             logger.warning(f"Channel {channel_id} not found for user {user.id}")
             return
         
@@ -1431,6 +1705,7 @@ class Modmail(commands.Cog):
         thread_data["last_message_at"] = now
         thread_data["message_count"] += 1
         thread_data["reminder_sent"] = False
+        self.user_last_thread[user.id] = channel_id
         
         # Store message in database
         try:
@@ -1635,7 +1910,18 @@ class Modmail(commands.Cog):
             
             # Cleanup memory
             self.active_threads.pop(channel.id, None)
-            self.user_threads.pop(user_id, None)
+            channels = set(self.user_threads.get(user_id, set()) or set())
+            channels.discard(channel.id)
+            if channels:
+                self.user_threads[user_id] = channels
+            else:
+                self.user_threads.pop(user_id, None)
+
+            if self.user_last_thread.get(user_id) == channel.id:
+                if channels:
+                    self.user_last_thread[user_id] = next(iter(channels))
+                else:
+                    self.user_last_thread.pop(user_id, None)
             self.stats["threads_closed"] += 1
             
             # Delete channel after short delay
@@ -1767,23 +2053,78 @@ class Modmail(commands.Cog):
         if not message.guild:
             user = message.author
             
-            # Check for .modmail command
-            if message.content.lower().strip() == ".modmail":
-                # Check if user already has active thread
-                if user.id in self.user_threads:
+            content = (message.content or "").strip()
+            lowered = content.lower()
+
+            open_menu = False
+            if lowered == ".modmail":
+                open_threads = sorted(list(self.user_threads.get(user.id, set()) or set()))
+                if len(open_threads) == 1:
+                    self.user_last_thread[user.id] = open_threads[0]
                     try:
                         await user.send(
                             embed=ModEmbed.info(
                                 "Active Thread Exists",
-                                "You already have an active modmail thread. Your messages here will be forwarded to staff."
+                                "You already have an active modmail thread. Your messages here will be forwarded to staff.\n\n"
+                                "To start a new thread for another server, send `.modmail new`.",
                             )
                         )
                     except discord.Forbidden:
                         pass
                     return
-                
+
+                if len(open_threads) > 1:
+                    try:
+                        await user.send(
+                            embed=ModEmbed.info(
+                                "Choose Active Thread",
+                                "Select which server's staff you want to message. Your next messages will route to that thread.\n\n"
+                                "To start a new thread, send `.modmail new`.",
+                            ),
+                            view=ModmailActiveThreadSelectView(self, user, open_threads),
+                        )
+                    except discord.Forbidden:
+                        logger.warning(f"Cannot send DM to user {user.id}")
+                    return
+
+                open_menu = True
+
+            if lowered == ".modmail new":
+                open_menu = True
+
+            if open_menu:
                 # Send category selection menu
-                view = BrandedModmailPanel(self, user)
+                target_guild = await self.get_modmail_guild()
+                if not target_guild:
+                    guilds = await self.get_user_modmail_guilds(user)
+                    if not guilds:
+                        try:
+                            await user.send(
+                                embed=ModEmbed.error(
+                                    "Not Configured",
+                                    "Modmail is not set up on any server. Ask an admin to run `/setup`.",
+                                )
+                            )
+                        except discord.Forbidden:
+                            pass
+                        return
+
+                    if len(guilds) > 1:
+                        try:
+                            await user.send(
+                                embed=ModEmbed.info(
+                                    "Choose Server",
+                                    "Select which server you want to contact staff for.",
+                                ),
+                                view=ModmailGuildSelectView(self, user, guilds),
+                            )
+                        except discord.Forbidden:
+                            logger.warning(f"Cannot send DM to user {user.id}")
+                        return
+
+                    target_guild = guilds[0]
+
+                view = BrandedModmailPanel(self, user, guild_id=target_guild.id)
                 embed = discord.Embed(
                     title="📬 Modmail System",
                     description=(
@@ -1977,7 +2318,7 @@ class Modmail(commands.Cog):
     @app_commands.describe(user="User to block", reason="Reason for block")
     async def modmail_block(self, interaction: discord.Interaction, user: discord.User, reason: str = "No reason provided"):
         """Block user from modmail"""
-        guild = await self.get_modmail_guild()
+        guild = interaction.guild
         if not guild:
             return await interaction.response.send_message(
                 embed=ModEmbed.error("Error", "Modmail guild not found."),
@@ -2030,7 +2371,7 @@ class Modmail(commands.Cog):
     @app_commands.describe(user="User to unblock")
     async def modmail_unblock(self, interaction: discord.Interaction, user: discord.User):
         """Unblock user from modmail"""
-        guild = await self.get_modmail_guild()
+        guild = interaction.guild
         if not guild:
             return await interaction.response.send_message(
                 embed=ModEmbed.error("Error", "Modmail guild not found."),
@@ -2077,7 +2418,7 @@ class Modmail(commands.Cog):
     @modmail_group.command(name="stats", description="View modmail statistics")
     async def modmail_stats(self, interaction: discord.Interaction):
         """Show modmail stats"""
-        guild = await self.get_modmail_guild()
+        guild = interaction.guild
         blocked_count = 0
         
         if guild:
@@ -2182,19 +2523,31 @@ class Modmail(commands.Cog):
                     
                     inactive_duration = current_time - last_message
                     
-                    guild = await self.get_modmail_guild()
-                    if not guild:
-                        continue
-                    
-                    channel = guild.get_channel(channel_id)
+                    channel = self.bot.get_channel(channel_id)
+                    if channel is None:
+                        try:
+                            channel = await self.bot.fetch_channel(channel_id)
+                        except Exception:
+                            channel = None
                     user_id = thread_data["user_id"]
                     user = self.bot.get_user(user_id)
                     
-                    if not channel:
+                    if not isinstance(channel, discord.TextChannel):
                         # Channel deleted, clean up
                         logger.warning(f"Channel {channel_id} not found, cleaning up")
                         self.active_threads.pop(channel_id, None)
-                        self.user_threads.pop(user_id, None)
+                        channels = set(self.user_threads.get(user_id, set()) or set())
+                        channels.discard(channel_id)
+                        if channels:
+                            self.user_threads[user_id] = channels
+                        else:
+                            self.user_threads.pop(user_id, None)
+
+                        if self.user_last_thread.get(user_id) == channel_id:
+                            if channels:
+                                self.user_last_thread[user_id] = next(iter(channels))
+                            else:
+                                self.user_last_thread.pop(user_id, None)
                         continue
                     
                     if not user:

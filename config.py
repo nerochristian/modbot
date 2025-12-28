@@ -45,20 +45,22 @@ class Config:
     LOG_EMBED_TARGET_LINES = int(os.getenv("LOG_EMBED_TARGET_LINES", "24"))
 
     # Welcome system
-    WELCOME_CHANNEL_ID = int(os.getenv("WELCOME_CHANNEL_ID", "1454276301623005336"))
-    WELCOME_SERVER_NAME = os.getenv("WELCOME_SERVER_NAME", "The Supreme People")
-    WELCOME_SYSTEM_NAME = os.getenv("WELCOME_SYSTEM_NAME", "Supreme Council")
+    # NOTE: In multi-server mode, per-guild settings in the database should be preferred.
+    # These env vars act as a global fallback only.
+    WELCOME_CHANNEL_ID = int(os.getenv("WELCOME_CHANNEL_ID", "0"))
+    WELCOME_SERVER_NAME = os.getenv("WELCOME_SERVER_NAME", "")
+    WELCOME_SYSTEM_NAME = os.getenv("WELCOME_SYSTEM_NAME", "Welcome System")
     # Welcome card accent (border/pill); set to a hex like `#D9D1B2`
     WELCOME_CARD_ACCENT_COLOR = _parse_hex_color(os.getenv("WELCOME_CARD_ACCENT_COLOR"), 0xD9D1B2)
 
     # Branding (Components v2 panels)
     SERVER_LOGO_URL = os.getenv(
         "SERVER_LOGO_URL",
-        "https://cdn.discordapp.com/icons/1388268039195201677/21d33244f4779190ff1395121d9fb69a.png?size=1024",
+        "",
     )
     SERVER_BANNER_URL = os.getenv(
         "SERVER_BANNER_URL",
-        "https://cdn.discordapp.com/attachments/1430639019582034013/1454273701716693053/unbranded.jpg?ex=69507d6d&is=694f2bed&hm=13f8884818beaa821b2bd9dea27ef2bb205c5045d71d2b71a3453e6c458e2f46&",
+        "",
     )
 
     # Verification

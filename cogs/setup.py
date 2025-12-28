@@ -7,6 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import asyncio
+from typing import Optional
 
 from utils.embeds import ModEmbed
 from utils.checks import get_owner_ids, is_admin
@@ -24,9 +25,15 @@ class Setup(commands.Cog):
     )
     @app_commands.describe(
         verify="Force everyone to re-verify (removes roles and applies unverified role)",
+        welcome_channel="Existing welcome channel to use (optional)",
     )
     @is_admin()
-    async def setup(self, interaction: discord.Interaction, verify: bool = False):
+    async def setup(
+        self,
+        interaction: discord.Interaction,
+        verify: bool = False,
+        welcome_channel: Optional[discord.TextChannel] = None,
+    ):
         """Complete server setup for the moderation bot"""
         await interaction.response.defer()
 
@@ -619,6 +626,49 @@ class Setup(commands.Cog):
             settings["ticket_category"] = ticket_category.id
             created_channels.append("✅ 🎫 Support Tickets Category (already exists)")
 
+        # ==================== WELCOME CHANNEL ====================
+        # Store a per-guild welcome channel so the bot can run server-wide without relying on env vars.
+        resolved_welcome_channel: Optional[discord.TextChannel] = None
+        if (
+            welcome_channel
+            and getattr(welcome_channel, "guild", None)
+            and welcome_channel.guild.id == guild.id
+        ):
+            resolved_welcome_channel = welcome_channel
+
+        existing_welcome_id = settings.get("welcome_channel")
+        if not resolved_welcome_channel and existing_welcome_id:
+            ch = guild.get_channel(int(existing_welcome_id))
+            if isinstance(ch, discord.TextChannel):
+                resolved_welcome_channel = ch
+
+        if not resolved_welcome_channel:
+            config_welcome_id = getattr(Config, "WELCOME_CHANNEL_ID", None)
+            if config_welcome_id:
+                ch = guild.get_channel(int(config_welcome_id))
+                if isinstance(ch, discord.TextChannel) and ch.guild.id == guild.id:
+                    resolved_welcome_channel = ch
+
+        if not resolved_welcome_channel:
+            resolved_welcome_channel = discord.utils.get(guild.text_channels, name="welcome")
+
+        if not resolved_welcome_channel:
+            try:
+                resolved_welcome_channel = await guild.create_text_channel(
+                    "welcome",
+                    topic="Welcome messages and getting started",
+                    reason="ModBot Setup: welcome channel",
+                )
+                created_channels.append(f"ƒo. {resolved_welcome_channel.mention}")
+            except Exception as e:
+                errors.append(f"Failed to create #welcome: {type(e).__name__}")
+                resolved_welcome_channel = None
+        else:
+            created_channels.append(f"ƒo. {resolved_welcome_channel.mention} (already exists)")
+
+        if resolved_welcome_channel:
+            settings["welcome_channel"] = resolved_welcome_channel.id
+
         # ==================== MUTED ROLE PERMISSIONS ====================
         if settings.get("muted_role"):
             muted_role = guild.get_role(settings["muted_role"])
@@ -1153,8 +1203,14 @@ class Setup(commands.Cog):
                         errors.append(f"ƒs Л,? Could not set #unverified-chat permissions: {e}")
 
                 # Restrict unverified users to only: welcome, verify, unverified-chat
-                welcome_channel_id = int(getattr(Config, "WELCOME_CHANNEL_ID", 1454276301623005336))
-                allowed_channel_ids: set[int] = {welcome_channel_id}
+                welcome_channel_id = int(
+                    settings.get("welcome_channel")
+                    or getattr(Config, "WELCOME_CHANNEL_ID", 0)
+                    or 0
+                )
+                allowed_channel_ids: set[int] = set()
+                if welcome_channel_id:
+                    allowed_channel_ids.add(welcome_channel_id)
                 if verify_channel:
                     allowed_channel_ids.add(verify_channel.id)
                 if unverified_chat:
@@ -1165,7 +1221,7 @@ class Setup(commands.Cog):
                 # Deny at category-level first (more reliable with synced permissions).
                 category_denied = 0
                 category_failed = 0
-                welcome_channel = guild.get_channel(welcome_channel_id)
+                welcome_channel = guild.get_channel(welcome_channel_id) if welcome_channel_id else None
                 skip_category_ids: set[int] = set()
                 if isinstance(welcome_channel, discord.TextChannel) and welcome_channel.category_id:
                     skip_category_ids.add(int(welcome_channel.category_id))
@@ -1297,6 +1353,7 @@ class Setup(commands.Cog):
             errors.append(f"ƒ?O Verification setup failed: {e}")
 
         # ==================== SAVE SETTINGS ====================
+        settings["setup_complete"] = True
         await self.bot.db.update_settings(guild.id, settings)
 
         # ==================== SUMMARY EMBED ====================
