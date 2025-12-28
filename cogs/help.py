@@ -116,12 +116,28 @@ class HelpView(discord.ui.View):
         self.pages: list[discord.Embed] = [self._build_overview_embed()]
         self.page_idx: int = 0
 
+        # Important: our repo uses a Components v2 wrapper that converts classic Views
+        # into v2 ActionRows. ActionRows can only contain 5 children, so we must put
+        # the dropdown and 5 nav buttons into separate rows.
+        try:
+            self.first_button.row = 1
+            self.prev_button.row = 1
+            self.page_counter.row = 1
+            self.next_button.row = 1
+            self.last_button.row = 1
+        except Exception:
+            pass
+
         self._select = discord.ui.Select(
             placeholder="Choose a help category…",
             options=self._build_category_options(),
             min_values=1,
             max_values=1,
         )
+        try:
+            self._select.row = 0
+        except Exception:
+            pass
         self._select.callback = self._on_category_selected  # type: ignore[assignment]
         self.add_item(self._select)
 
@@ -322,4 +338,3 @@ class Help(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Help(bot))
-
