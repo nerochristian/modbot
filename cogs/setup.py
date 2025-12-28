@@ -1201,31 +1201,9 @@ class Setup(commands.Cog):
 
                 # Reset member roles: everyone -> unverified (owners bypass)
                 if verify:
-                    bypass_ids = set(get_owner_ids())
-                    if guild.owner_id:
-                        bypass_ids.add(int(guild.owner_id))
-
                     updated_members = 0
-                    bypassed_members = 0
                     for idx, member in enumerate(list(guild.members)):
                         if member.bot:
-                            continue
-
-                        if member.id in bypass_ids:
-                            bypassed_members += 1
-                            try:
-                                if unverified_role in member.roles:
-                                    await member.remove_roles(
-                                        unverified_role,
-                                        reason="ModBot Setup: owner bypass",
-                                    )
-                                if verified_role not in member.roles:
-                                    await member.add_roles(
-                                        verified_role,
-                                        reason="ModBot Setup: owner bypass",
-                                    )
-                            except Exception:
-                                pass
                             continue
 
                         managed_roles = [r for r in member.roles if getattr(r, "managed", False)]
@@ -1254,10 +1232,6 @@ class Setup(commands.Cog):
                     if updated_members:
                         created_roles.append(
                             f"ƒo. Reset roles for {updated_members} members → unverified"
-                        )
-                    if bypassed_members:
-                        created_roles.append(
-                            f"ƒo. Verified {bypassed_members} bypass member(s)"
                         )
                 else:
                     created_roles.append("ƒo. Skipped global role reset (verify=false)")

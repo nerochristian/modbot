@@ -225,12 +225,6 @@ class Verification(commands.Cog):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    def _bypass_ids(self, guild: discord.Guild) -> set[int]:
-        out = set(get_owner_ids())
-        if guild.owner_id:
-            out.add(int(guild.owner_id))
-        return out
-
     async def _resolve_guild_member(
         self, interaction: discord.Interaction, *, guild_id: int
     ) -> tuple[Optional[discord.Guild], Optional[discord.Member]]:
@@ -379,29 +373,6 @@ class Verification(commands.Cog):
                 ),
                 ephemeral=ephemeral,
             )
-            return
-
-        if is_bot_owner_id(member.id) or member.id in self._bypass_ids(guild):
-            try:
-                if unverified_role in member.roles:
-                    await member.remove_roles(unverified_role, reason="Verification bypass")
-                if verified_role not in member.roles:
-                    await member.add_roles(verified_role, reason="Verification bypass")
-                await interaction.response.send_message(
-                    embed=ModEmbed.success("Bypassed", "You are bypassed and have been verified."),
-                    ephemeral=ephemeral,
-                )
-                await self._log_verify_event(
-                    guild,
-                    member=member,
-                    outcome="bypassed",
-                    detail="Owner/server-owner bypass",
-                )
-            except Exception as e:
-                await interaction.response.send_message(
-                    embed=ModEmbed.error("Failed", f"Could not apply roles: {e}"),
-                    ephemeral=ephemeral,
-                )
             return
 
         if verified_role in member.roles and unverified_role not in member.roles:
@@ -565,8 +536,6 @@ class Verification(commands.Cog):
         try:
             if member.bot:
                 return
-            if is_bot_owner_id(member.id) or member.id in self._bypass_ids(member.guild):
-                return
 
             unverified_role, _ = await self._get_roles(member.guild)
             if not unverified_role:
@@ -624,9 +593,6 @@ class Verification(commands.Cog):
 
             unverified_role, verified_role = await self._get_roles(member.guild)
             if not unverified_role or not verified_role:
-                return
-
-            if is_bot_owner_id(member.id) or member.id in self._bypass_ids(member.guild):
                 return
 
             # Only gate unverified users.
