@@ -2512,18 +2512,18 @@ class Moderation(commands.Cog):
 
     @app_commands.command(
         name="emoji",
-        description="Emoji tools (add, stealall, tutorial)",
+        description="Emoji tools (add, steal, tutorial)",
     )
     @app_commands.describe(
         action="What you want to do",
         name="Emoji name (for add)",
         url="Direct URL to the image (png/jpg/gif) (for add)",
-        emojis="Paste one or more custom emojis to steal (for stealall)",
+        emojis="Paste one or more custom emojis to steal (for steal)",
     )
     @app_commands.choices(
         action=[
             app_commands.Choice(name="add", value="add"),
-            app_commands.Choice(name="stealall", value="stealall"),
+            app_commands.Choice(name="steal", value="steal"),
             app_commands.Choice(name="tutorial", value="tutorial"),
         ]
     )
@@ -2598,26 +2598,7 @@ class Moderation(commands.Cog):
                 )
             return
 
-        if action_value == "stealall":
-            # Admin-only (server admin or configured admin role).
-            allowed = bool(
-                interaction.user.guild_permissions.administrator
-                or is_bot_owner_id(interaction.user.id)
-            )
-            if not allowed:
-                try:
-                    settings = await self.bot.db.get_settings(interaction.guild.id)
-                    admin_roles = set(int(x) for x in (settings.get("admin_roles", []) or []) if x)
-                    allowed = bool(admin_roles and any(r.id in admin_roles for r in interaction.user.roles))
-                except Exception:
-                    allowed = False
-
-            if not allowed:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Missing Permissions", "Administrator required."),
-                    ephemeral=True,
-                )
-
+        if action_value == "steal":
             if not emojis:
                 return await interaction.response.send_message(
                     embed=ModEmbed.error(
@@ -2626,8 +2607,6 @@ class Moderation(commands.Cog):
                     ),
                     ephemeral=True,
                 )
-
-            import re
 
             matches = list(re.finditer(r"<(a?):([A-Za-z0-9_]+):(\d+)>", emojis))
             if not matches:
@@ -2639,48 +2618,73 @@ class Moderation(commands.Cog):
                     ephemeral=True,
                 )
 
+            log_channel = await self._get_emoji_log_channel(interaction.guild)
+            if not log_channel:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error(
+                        "Not Configured",
+                        "Emoji logs channel not set. Run `/setup` to create `#emoji-logs`.",
+                    ),
+                    ephemeral=True,
+                )
+
             await interaction.response.defer(thinking=True, ephemeral=True)
 
-            added: list[str] = []
+            submitted: list[str] = []
+            skipped: list[str] = []
             failed: list[str] = []
+
+            existing_names = {e.name for e in interaction.guild.emojis}
+            seen_names: set[str] = set()
+
+            override_name = None
+            if name and len(matches) == 1:
+                override_name = self._sanitize_emoji_name(name)
+
             for m in matches[:25]:
                 try:
                     animated = bool(m.group(1))
                     emoji_name = m.group(2)
                     emoji_id = m.group(3)
-                    desired_name = self._sanitize_emoji_name(name or emoji_name)
+                    desired_name = self._sanitize_emoji_name(override_name or emoji_name)
                     emoji_url = f"https://cdn.discordapp.com/emojis/{emoji_id}.{'gif' if animated else 'png'}"
 
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(emoji_url) as response:
-                            if response.status != 200:
-                                failed.append(f"{emoji_name} (fetch)")
-                                continue
-                            emoji_bytes = await response.read()
+                    if desired_name in existing_names:
+                        skipped.append(f"{emoji_name} (already exists)")
+                        continue
+                    if desired_name in seen_names:
+                        skipped.append(f"{emoji_name} (duplicate name)")
+                        continue
+                    seen_names.add(desired_name)
 
-                    new_emoji = await interaction.guild.create_custom_emoji(
-                        name=desired_name,
-                        image=emoji_bytes,
-                        reason=f"Stolen by {interaction.user}",
+                    view = EmojiApprovalView(
+                        self,
+                        requester_id=interaction.user.id,
+                        emoji_name=desired_name,
+                        emoji_url=emoji_url,
                     )
-                    added.append(str(new_emoji))
+                    msg = await log_channel.send(view=view)
+                    view.message = msg
+                    submitted.append(f"`:{desired_name}:`")
                 except Exception as e:
                     failed.append(f"{m.group(2)} ({type(e).__name__})")
 
             msg = ""
-            if added:
-                msg += f"Added: {' '.join(added[:20])}"
+            if submitted:
+                msg += f"Submitted {len(submitted)} request(s) to {log_channel.mention} for admin approval."
+            if skipped:
+                msg += ("\n" if msg else "") + f"Skipped: {', '.join(skipped[:10])}"
             if failed:
                 msg += ("\n" if msg else "") + f"Failed: {', '.join(failed[:10])}"
 
             return await interaction.followup.send(
-                embed=ModEmbed.success("Stealall Complete", msg or "No emojis processed."),
+                embed=ModEmbed.success("steal Submitted", msg or "No emojis processed."),
                 ephemeral=True,
             )
 
         if action_value != "add":
             return await interaction.response.send_message(
-                embed=ModEmbed.error("Invalid Action", "Use one of: add, stealall, tutorial."),
+                embed=ModEmbed.error("Invalid Action", "Use one of: add, steal, tutorial."),
                 ephemeral=True,
             )
 
