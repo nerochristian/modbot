@@ -22,8 +22,11 @@ class Setup(commands.Cog):
         name="setup",
         description="🛡️ Set up the moderation bot - creates channels, roles, and configurations",
     )
+    @app_commands.describe(
+        verify="Force everyone to re-verify (removes roles and applies unverified role)",
+    )
     @is_admin()
-    async def setup(self, interaction: discord.Interaction):
+    async def setup(self, interaction: discord.Interaction, verify: bool = False):
         """Complete server setup for the moderation bot"""
         await interaction.response.defer()
 
@@ -826,6 +829,67 @@ class Setup(commands.Cog):
                 if unverified_chat:
                     settings["unverified_chat_channel"] = unverified_chat.id
 
+                # Waiting voice channel for verification gating
+                waiting_voice = discord.utils.get(guild.voice_channels, name="waiting-verify")
+                waiting_overwrites: dict[discord.abc.Snowflake, discord.PermissionOverwrite] = {
+                    guild.default_role: discord.PermissionOverwrite(view_channel=False, connect=False),
+                    unverified_role: discord.PermissionOverwrite(
+                        view_channel=True,
+                        connect=True,
+                        speak=True,
+                        use_voice_activation=True,
+                    ),
+                    guild.me: discord.PermissionOverwrite(
+                        view_channel=True,
+                        connect=True,
+                        speak=True,
+                        move_members=True,
+                        manage_channels=True,
+                    ),
+                }
+                for key in [
+                    "admin_role",
+                    "supervisor_role",
+                    "senior_mod_role",
+                    "mod_role",
+                    "staff_role",
+                ]:
+                    rid = settings.get(key)
+                    role = guild.get_role(rid) if rid else None
+                    if role:
+                        waiting_overwrites[role] = discord.PermissionOverwrite(
+                            view_channel=True,
+                            connect=True,
+                            speak=True,
+                            move_members=True,
+                        )
+
+                if not waiting_voice:
+                    try:
+                        waiting_voice = await guild.create_voice_channel(
+                            "waiting-verify",
+                            category=verify_category,
+                            overwrites=waiting_overwrites,
+                            reason="ModBot Setup: verification waiting voice channel",
+                        )
+                        created_channels.append(f"✅ {waiting_voice.mention}")
+                    except Exception as e:
+                        waiting_voice = None
+                        errors.append(f"❌ Failed to create waiting-verify voice channel: {e}")
+                else:
+                    try:
+                        await waiting_voice.edit(
+                            category=verify_category,
+                            overwrites=waiting_overwrites,
+                            reason="ModBot Setup: update waiting-verify permissions",
+                        )
+                    except Exception:
+                        pass
+                    created_channels.append(f"✅ {waiting_voice.mention} (already exists)")
+
+                if waiting_voice:
+                    settings["waiting_verify_voice_channel"] = waiting_voice.id
+
                 # Lock down the verification category so only unverified + staff can see it.
                 if verify_category:
                     try:
@@ -1136,64 +1200,67 @@ class Setup(commands.Cog):
                     errors.append(msg)
 
                 # Reset member roles: everyone -> unverified (owners bypass)
-                bypass_ids = set(get_owner_ids())
-                if guild.owner_id:
-                    bypass_ids.add(int(guild.owner_id))
+                if verify:
+                    bypass_ids = set(get_owner_ids())
+                    if guild.owner_id:
+                        bypass_ids.add(int(guild.owner_id))
 
-                updated_members = 0
-                bypassed_members = 0
-                for idx, member in enumerate(list(guild.members)):
-                    if member.bot:
-                        continue
+                    updated_members = 0
+                    bypassed_members = 0
+                    for idx, member in enumerate(list(guild.members)):
+                        if member.bot:
+                            continue
 
-                    if member.id in bypass_ids:
-                        bypassed_members += 1
+                        if member.id in bypass_ids:
+                            bypassed_members += 1
+                            try:
+                                if unverified_role in member.roles:
+                                    await member.remove_roles(
+                                        unverified_role,
+                                        reason="ModBot Setup: owner bypass",
+                                    )
+                                if verified_role not in member.roles:
+                                    await member.add_roles(
+                                        verified_role,
+                                        reason="ModBot Setup: owner bypass",
+                                    )
+                            except Exception:
+                                pass
+                            continue
+
+                        managed_roles = [r for r in member.roles if getattr(r, "managed", False)]
+                        desired_roles = [r for r in managed_roles if r != guild.default_role] + [
+                            unverified_role
+                        ]
+                        current_roles = [r for r in member.roles if r != guild.default_role]
+
+                        if {r.id for r in current_roles} == {r.id for r in desired_roles}:
+                            continue
+
                         try:
-                            if unverified_role in member.roles:
-                                await member.remove_roles(
-                                    unverified_role,
-                                    reason="ModBot Setup: owner bypass",
-                                )
-                            if verified_role not in member.roles:
-                                await member.add_roles(
-                                    verified_role,
-                                    reason="ModBot Setup: owner bypass",
-                                )
-                        except Exception:
-                            pass
-                        continue
+                            await member.edit(
+                                roles=desired_roles,
+                                reason="ModBot Setup: enforce verification (unverified)",
+                            )
+                            updated_members += 1
+                        except Exception as e:
+                            errors.append(
+                                f"ƒs Л,? Could not reset roles for {member} ({member.id}): {type(e).__name__}"
+                            )
 
-                    managed_roles = [r for r in member.roles if getattr(r, "managed", False)]
-                    desired_roles = [r for r in managed_roles if r != guild.default_role] + [
-                        unverified_role
-                    ]
-                    current_roles = [r for r in member.roles if r != guild.default_role]
+                        if idx and idx % 10 == 0:
+                            await asyncio.sleep(1)
 
-                    if {r.id for r in current_roles} == {r.id for r in desired_roles}:
-                        continue
-
-                    try:
-                        await member.edit(
-                            roles=desired_roles,
-                            reason="ModBot Setup: enforce verification (unverified)",
+                    if updated_members:
+                        created_roles.append(
+                            f"ƒo. Reset roles for {updated_members} members → unverified"
                         )
-                        updated_members += 1
-                    except Exception as e:
-                        errors.append(
-                            f"ƒs Л,? Could not reset roles for {member} ({member.id}): {type(e).__name__}"
+                    if bypassed_members:
+                        created_roles.append(
+                            f"ƒo. Verified {bypassed_members} bypass member(s)"
                         )
-
-                    if idx and idx % 10 == 0:
-                        await asyncio.sleep(1)
-
-                if updated_members:
-                    created_roles.append(
-                        f"ƒo. Reset roles for {updated_members} members → unverified"
-                    )
-                if bypassed_members:
-                    created_roles.append(
-                        f"ƒo. Verified {bypassed_members} bypass member(s)"
-                    )
+                else:
+                    created_roles.append("ƒo. Skipped global role reset (verify=false)")
         except Exception as e:
             errors.append(f"ƒ?O Verification setup failed: {e}")
 

@@ -254,7 +254,7 @@ class AddEmojiTutorialView(discord.ui.View):
     async def tutorial(self, interaction: discord.Interaction, _: discord.ui.Button):
         if interaction.user.id != self._requester_id:
             return await interaction.response.send_message(
-                embed=ModEmbed.error("Not For You", "Only the person who ran `/addemoji` can use this button."),
+                embed=ModEmbed.error("Not For You", "Only the person who ran `/emoji` can use this button."),
                 ephemeral=True,
             )
 
@@ -2511,18 +2511,29 @@ class Moderation(commands.Cog):
         return None
 
     @app_commands.command(
-        name="addemoji",
-        description="Request an emoji to be added (admin approval required)",
+        name="emoji",
+        description="Emoji tools (add, stealall, tutorial)",
     )
     @app_commands.describe(
-        name="Name for the emoji (letters/numbers/underscores)",
-        url="Direct URL to the image (png/jpg/gif)",
+        action="What you want to do",
+        name="Emoji name (for add)",
+        url="Direct URL to the image (png/jpg/gif) (for add)",
+        emojis="Paste one or more custom emojis to steal (for stealall)",
     )
-    async def addemoji(
+    @app_commands.choices(
+        action=[
+            app_commands.Choice(name="add", value="add"),
+            app_commands.Choice(name="stealall", value="stealall"),
+            app_commands.Choice(name="tutorial", value="tutorial"),
+        ]
+    )
+    async def emoji(
         self,
         interaction: discord.Interaction,
+        action: app_commands.Choice[str],
         name: Optional[str] = None,
         url: Optional[str] = None,
+        emojis: Optional[str] = None,
     ):
         if not interaction.guild:
             return await interaction.response.send_message(
@@ -2539,8 +2550,10 @@ class Moderation(commands.Cog):
                 ephemeral=True,
             )
 
-        # If no data is provided, show the tutorial (ephemeral embed + tutorial button).
-        if not name or not url:
+        action_value = (action.value or "").lower().strip()
+
+        # Tutorial (or "add" missing args) shows the same help panel.
+        if action_value == "tutorial" or (action_value == "add" and (not name or not url)):
             await interaction.response.defer(thinking=True, ephemeral=True)
 
             steps = (
@@ -2552,13 +2565,13 @@ class Moderation(commands.Cog):
                 "• Only letters, numbers, and underscores.\n"
                 "• Example: `cool_cat`, `pepe_laugh`.\n\n"
                 "**Step 3: Submit the request**\n"
-                "• Run: `/addemoji name:<name> url:<direct_url>`\n\n"
+                "• Run: `/emoji action:add name:<name> url:<direct_url>`\n\n"
                 "**Step 4: Wait for approval**\n"
                 "• An admin will approve/reject in `#emoji-logs`.\n\n"
             )
 
             embed = discord.Embed(
-                title="/addemoji Tutorial",
+                title="/emoji Tutorial",
                 description=steps,
                 color=Colors.EMBED,
                 timestamp=datetime.now(timezone.utc),
@@ -2584,6 +2597,92 @@ class Moderation(commands.Cog):
                     ephemeral=True,
                 )
             return
+
+        if action_value == "stealall":
+            # Admin-only (server admin or configured admin role).
+            allowed = bool(
+                interaction.user.guild_permissions.administrator
+                or is_bot_owner_id(interaction.user.id)
+            )
+            if not allowed:
+                try:
+                    settings = await self.bot.db.get_settings(interaction.guild.id)
+                    admin_roles = set(int(x) for x in (settings.get("admin_roles", []) or []) if x)
+                    allowed = bool(admin_roles and any(r.id in admin_roles for r in interaction.user.roles))
+                except Exception:
+                    allowed = False
+
+            if not allowed:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Missing Permissions", "Administrator required."),
+                    ephemeral=True,
+                )
+
+            if not emojis:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error(
+                        "Missing Emojis",
+                        "Paste one or more custom emojis like `<:name:id>` into the `emojis` field.",
+                    ),
+                    ephemeral=True,
+                )
+
+            import re
+
+            matches = list(re.finditer(r"<(a?):([A-Za-z0-9_]+):(\d+)>", emojis))
+            if not matches:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error(
+                        "No Custom Emojis Found",
+                        "Paste emojis like `<:name:id>` or `<a:name:id>`.",
+                    ),
+                    ephemeral=True,
+                )
+
+            await interaction.response.defer(thinking=True, ephemeral=True)
+
+            added: list[str] = []
+            failed: list[str] = []
+            for m in matches[:25]:
+                try:
+                    animated = bool(m.group(1))
+                    emoji_name = m.group(2)
+                    emoji_id = m.group(3)
+                    desired_name = self._sanitize_emoji_name(name or emoji_name)
+                    emoji_url = f"https://cdn.discordapp.com/emojis/{emoji_id}.{'gif' if animated else 'png'}"
+
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(emoji_url) as response:
+                            if response.status != 200:
+                                failed.append(f"{emoji_name} (fetch)")
+                                continue
+                            emoji_bytes = await response.read()
+
+                    new_emoji = await interaction.guild.create_custom_emoji(
+                        name=desired_name,
+                        image=emoji_bytes,
+                        reason=f"Stolen by {interaction.user}",
+                    )
+                    added.append(str(new_emoji))
+                except Exception as e:
+                    failed.append(f"{m.group(2)} ({type(e).__name__})")
+
+            msg = ""
+            if added:
+                msg += f"Added: {' '.join(added[:20])}"
+            if failed:
+                msg += ("\n" if msg else "") + f"Failed: {', '.join(failed[:10])}"
+
+            return await interaction.followup.send(
+                embed=ModEmbed.success("Stealall Complete", msg or "No emojis processed."),
+                ephemeral=True,
+            )
+
+        if action_value != "add":
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Invalid Action", "Use one of: add, stealall, tutorial."),
+                ephemeral=True,
+            )
 
         assert name is not None
         assert url is not None
@@ -2653,122 +2752,6 @@ class Moderation(commands.Cog):
             embed=ModEmbed.success('Submitted', f'Your request was sent to {log_channel.mention} for admin approval.'),
             ephemeral=True,
         )
-
-    @app_commands.command(name='stealemoji', description='?? Add an emoji from another server')
-    @app_commands.describe(emoji='The custom emoji to steal', name='Name for the emoji (optional)')
-    @is_admin()
-    async def stealemoji(self, interaction: discord.Interaction, emoji: str, name: Optional[str] = None):
-        if not interaction.guild:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Server Only", "Use this command in a server."),
-                ephemeral=True,
-            )
-
-        if interaction.channel_id != EMOJI_COMMAND_CHANNEL_ID:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error(
-                    "Wrong Channel",
-                    f"Use emoji commands in <#{EMOJI_COMMAND_CHANNEL_ID}>.",
-                ),
-                ephemeral=True,
-            )
-
-        if not (emoji.startswith('<') and emoji.endswith('>')):
-            return await interaction.response.send_message(
-                embed=ModEmbed.error('Invalid Emoji', 'Please provide a custom emoji (not a Unicode emoji).'),
-                ephemeral=True,
-            )
-
-        try:
-            animated = emoji.startswith('<a:')
-            emoji_name = emoji.split(':')[1]
-            emoji_id = emoji.split(':')[2][:-1]
-
-            if not name:
-                name = emoji_name
-
-            emoji_url = f"https://cdn.discordapp.com/emojis/{emoji_id}.{'gif' if animated else 'png'}"
-
-            async with aiohttp.ClientSession() as session:
-                async with session.get(emoji_url) as response:
-                    if response.status != 200:
-                        return await interaction.response.send_message(
-                            embed=ModEmbed.error('Failed', 'Could not fetch emoji image.'),
-                            ephemeral=True,
-                        )
-                    emoji_bytes = await response.read()
-
-            new_emoji = await interaction.guild.create_custom_emoji(
-                name=name,
-                image=emoji_bytes,
-                reason=f"Stolen by {interaction.user}",
-            )
-
-            embed = ModEmbed.success('Emoji Stolen', f'Successfully added {new_emoji} as `:{new_emoji.name}:`')
-            await interaction.response.send_message(embed=embed)
-
-        except Exception as e:
-            await interaction.response.send_message(
-                embed=ModEmbed.error('Failed', f'Could not steal emoji: {str(e)}'),
-                ephemeral=True,
-            )
-
-    @app_commands.command(name="deleteemoji", description="🗑️ Delete a server emoji")
-    @app_commands.describe(emoji="The emoji to delete")
-    @is_admin()
-    async def deleteemoji(self, interaction: discord.Interaction, emoji: str):
-        if not interaction.guild:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Server Only", "Use this command in a server."),
-                ephemeral=True,
-            )
-
-        if interaction.channel_id != EMOJI_COMMAND_CHANNEL_ID:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error(
-                    "Wrong Channel",
-                    f"Use emoji commands in <#{EMOJI_COMMAND_CHANNEL_ID}>.",
-                ),
-                ephemeral=True,
-            )
-
-        """Delete a custom emoji from the server"""
-        if not (emoji.startswith("<") and emoji.endswith(">")):
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Invalid Emoji", "Please provide a custom emoji."),
-                ephemeral=True,
-            )
-
-        try:
-            emoji_id = int(emoji.split(":")[2][:-1])
-            emoji_obj = await interaction.guild.fetch_emoji(emoji_id)
-
-            await emoji_obj.delete(reason=f"Deleted by {interaction.user}")
-
-            embed = ModEmbed.success(
-                "Emoji Deleted", f"Successfully deleted `:{emoji_obj.name}:`"
-            )
-
-            await interaction.response.send_message(embed=embed)
-
-        except ValueError:
-            await interaction.response.send_message(
-                embed=ModEmbed.error("Invalid Emoji", "Could not parse emoji ID."),
-                ephemeral=True,
-            )
-        except discord.NotFound:
-            await interaction.response.send_message(
-                embed=ModEmbed.error("Not Found", "Emoji not found in this server."),
-                ephemeral=True,
-            )
-        except discord.Forbidden:
-            await interaction.response.send_message(
-                embed=ModEmbed.error(
-                    "Failed", "I don't have permission to delete emojis."
-                ),
-                ephemeral=True,
-            )
-
 
     # ==================== MODERATION HISTORY ====================
 
