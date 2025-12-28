@@ -10,14 +10,14 @@ import asyncio
 import secrets
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Optional
+from typing import Optional, Literal
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from config import Config
-from utils.checks import get_owner_ids, is_admin, is_bot_owner_id
+from utils.checks import is_admin
 from utils.embeds import ModEmbed
 from utils.components_v2 import branded_panel_container
 
@@ -25,6 +25,7 @@ from utils.components_v2 import branded_panel_container
 CAPTCHA_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 CAPTCHA_LENGTH = 5
 CAPTCHA_TTL_SECONDS = 5 * 60
+CaptchaPurpose = Literal["server", "voice"]
 
 
 @dataclass(frozen=True)
@@ -49,35 +50,53 @@ class CaptchaModal(discord.ui.Modal, title="Verification Captcha"):
         required=True,
     )
 
-    def __init__(self, cog: "Verification", *, guild_id: int, user_id: int):
+    def __init__(
+        self,
+        cog: "Verification",
+        *,
+        guild_id: int,
+        user_id: int,
+        purpose: CaptchaPurpose,
+    ):
         super().__init__(timeout=60)
         self._cog = cog
         self._guild_id = guild_id
         self._user_id = user_id
+        self._purpose = purpose
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         await self._cog._handle_captcha_submit(
             interaction,
             guild_id=self._guild_id,
             user_id=self._user_id,
+            purpose=self._purpose,
             attempt=str(self.captcha.value or "").strip(),
         )
 
 
 class CaptchaView(discord.ui.View):
-    def __init__(self, cog: "Verification", *, guild_id: int, user_id: int):
+    def __init__(
+        self,
+        cog: "Verification",
+        *,
+        guild_id: int,
+        user_id: int,
+        purpose: CaptchaPurpose,
+    ):
         super().__init__(timeout=180)
         self._cog = cog
         self._guild_id = guild_id
         self._user_id = user_id
+        self._purpose = purpose
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user and interaction.user.id == self._user_id:
             return True
         try:
+            ephemeral = interaction.guild is not None
             await interaction.response.send_message(
                 embed=ModEmbed.error("Not For You", "Start your own verification from the panel."),
-                ephemeral=True,
+                ephemeral=ephemeral,
             )
         except Exception:
             pass
@@ -90,7 +109,12 @@ class CaptchaView(discord.ui.View):
     )
     async def submit(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         await interaction.response.send_modal(
-            CaptchaModal(self._cog, guild_id=self._guild_id, user_id=self._user_id)
+            CaptchaModal(
+                self._cog,
+                guild_id=self._guild_id,
+                user_id=self._user_id,
+                purpose=self._purpose,
+            )
         )
 
     @discord.ui.button(
@@ -99,7 +123,12 @@ class CaptchaView(discord.ui.View):
         custom_id="verification:captcha_new",
     )
     async def new(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
-        await self._cog._start_captcha(interaction, regenerate=True, guild_id=self._guild_id)
+        await self._cog._start_captcha(
+            interaction,
+            regenerate=True,
+            guild_id=self._guild_id,
+            purpose=self._purpose,
+        )
 
 
 class VerificationPanelLayout(discord.ui.LayoutView):
@@ -132,7 +161,7 @@ class VerificationPanelLayout(discord.ui.LayoutView):
         )
 
         async def _start(interaction: discord.Interaction) -> None:
-            await self._cog._start_captcha(interaction, regenerate=True)
+            await self._cog._start_captcha(interaction, regenerate=True, purpose="server")
 
         start_button.callback = _start
 
@@ -166,8 +195,9 @@ class VerificationPanelLayout(discord.ui.LayoutView):
 class Verification(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self._pending: dict[tuple[int, int], CaptchaEntry] = {}
+        self._pending: dict[tuple[int, int, CaptchaPurpose], CaptchaEntry] = {}
         self._voice_targets: dict[tuple[int, int], int] = {}
+        self._voice_allow_once: dict[tuple[int, int], int] = {}
         # Persistent components (so old panels keep working after restarts).
         self.bot.add_view(VerificationPanelLayout(self))
 
@@ -223,7 +253,7 @@ class Verification(commands.Cog):
             ),
             color=Config.COLOR_INFO,
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, ephemeral=interaction.guild is not None)
 
     async def _resolve_guild_member(
         self, interaction: discord.Interaction, *, guild_id: int
@@ -255,6 +285,8 @@ class Verification(commands.Cog):
             self._voice_targets.pop(key, None)
             return
         try:
+            # Allow this specific target move without re-triggering gating.
+            self._voice_allow_once[key] = int(target_id)
             await member.move_to(target, reason="Voice verification complete")
             self._voice_targets.pop(key, None)
         except Exception:
@@ -271,7 +303,7 @@ class Verification(commands.Cog):
         except Exception:
             return None
 
-    async def _send_voice_verify_dm(self, *, guild: discord.Guild, member: discord.Member, target_id: int) -> None:
+    async def _send_voice_verify_dm(self, *, guild: discord.Guild, member: discord.Member) -> None:
         layout = discord.ui.LayoutView(timeout=15 * 60)
 
         container = branded_panel_container(
@@ -295,10 +327,15 @@ class Verification(commands.Cog):
             if interaction.user.id != member.id:
                 await interaction.response.send_message(
                     embed=ModEmbed.error("Not For You", "This verification is for someone else."),
-                    ephemeral=True,
+                    ephemeral=interaction.guild is not None,
                 )
                 return
-            await self._start_captcha(interaction, regenerate=True, guild_id=guild.id)
+            await self._start_captcha(
+                interaction,
+                regenerate=True,
+                guild_id=guild.id,
+                purpose="voice",
+            )
 
         start_button.callback = _start
 
@@ -311,7 +348,7 @@ class Verification(commands.Cog):
             if interaction.user.id != member.id:
                 await interaction.response.send_message(
                     embed=ModEmbed.error("Not For You", "This verification is for someone else."),
-                    ephemeral=True,
+                    ephemeral=interaction.guild is not None,
                 )
                 return
             await self._send_tutorial(interaction)
@@ -345,12 +382,13 @@ class Verification(commands.Cog):
         *,
         regenerate: bool,
         guild_id: Optional[int] = None,
+        purpose: CaptchaPurpose = "server",
     ) -> None:
         target_guild_id = int(guild_id or (interaction.guild.id if interaction.guild else 0))
         if not target_guild_id:
             await interaction.response.send_message(
                 embed=ModEmbed.error("Guild Only", "Verification can only be used for a server."),
-                ephemeral=True,
+                ephemeral=interaction.guild is not None,
             )
             return
 
@@ -358,7 +396,7 @@ class Verification(commands.Cog):
         if not guild or not member:
             await interaction.response.send_message(
                 embed=ModEmbed.error("Not Found", "Could not resolve your server membership."),
-                ephemeral=True,
+                ephemeral=interaction.guild is not None,
             )
             return
 
@@ -375,24 +413,25 @@ class Verification(commands.Cog):
             )
             return
 
-        if verified_role in member.roles and unverified_role not in member.roles:
-            await interaction.response.send_message(
-                embed=ModEmbed.success("Already Verified", "You already have access."),
-                ephemeral=ephemeral,
-            )
-            return
+        if purpose == "server":
+            if verified_role in member.roles and unverified_role not in member.roles:
+                await interaction.response.send_message(
+                    embed=ModEmbed.success("Already Verified", "You already have access."),
+                    ephemeral=ephemeral,
+                )
+                return
 
-        if unverified_role not in member.roles:
-            await interaction.response.send_message(
-                embed=ModEmbed.error(
-                    "No Unverified Role",
-                    "You don't have the `unverified` role. Ask a staff member to run `/setup` again.",
-                ),
-                ephemeral=ephemeral,
-            )
-            return
+            if unverified_role not in member.roles:
+                await interaction.response.send_message(
+                    embed=ModEmbed.error(
+                        "No Unverified Role",
+                        "You don't have the `unverified` role. Ask a staff member to run `/setup` again.",
+                    ),
+                    ephemeral=ephemeral,
+                )
+                return
 
-        key = (guild.id, member.id)
+        key = (guild.id, member.id, purpose)
         existing = self._pending.get(key)
         if regenerate or not existing or existing.expired():
             code = _generate_captcha()
@@ -417,7 +456,7 @@ class Verification(commands.Cog):
 
         await interaction.response.send_message(
             embed=embed,
-            view=CaptchaView(self, guild_id=guild.id, user_id=member.id),
+            view=CaptchaView(self, guild_id=guild.id, user_id=member.id, purpose=purpose),
             ephemeral=ephemeral,
         )
 
@@ -427,12 +466,13 @@ class Verification(commands.Cog):
         *,
         guild_id: int,
         user_id: int,
+        purpose: CaptchaPurpose,
         attempt: str,
     ) -> None:
         if interaction.user.id != user_id:
             await interaction.response.send_message(
                 embed=ModEmbed.error("Not For You", "Start your own verification from the panel."),
-                ephemeral=True,
+                ephemeral=interaction.guild is not None,
             )
             return
 
@@ -454,7 +494,7 @@ class Verification(commands.Cog):
             )
             return
 
-        key = (guild_id, user_id)
+        key = (guild_id, user_id, purpose)
         entry = self._pending.get(key)
         if not entry or entry.expired():
             await interaction.response.send_message(
@@ -470,28 +510,37 @@ class Verification(commands.Cog):
             )
             return
 
-        try:
-            await member.add_roles(verified_role, reason="Verification captcha passed")
-            if unverified_role in member.roles:
-                await member.remove_roles(unverified_role, reason="Verification complete")
-        except Exception as e:
-            await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", f"Could not update your roles: {e}"),
-                ephemeral=ephemeral,
-            )
-            return
-        finally:
+        if purpose == "server":
+            try:
+                await member.add_roles(verified_role, reason="Verification captcha passed")
+                if unverified_role in member.roles:
+                    await member.remove_roles(unverified_role, reason="Verification complete")
+            except Exception as e:
+                await interaction.response.send_message(
+                    embed=ModEmbed.error("Failed", f"Could not update your roles: {e}"),
+                    ephemeral=ephemeral,
+                )
+                return
+            finally:
+                self._pending.pop(key, None)
+        else:
             self._pending.pop(key, None)
 
         await self._log_verify_event(
             guild,
             member=member,
             outcome="verified",
-            detail="Captcha passed",
+            detail="Captcha passed" if purpose == "server" else "Voice captcha passed",
         )
-        await self._maybe_move_to_voice_target(guild, member)
+        if purpose == "voice":
+            await self._maybe_move_to_voice_target(guild, member)
         await interaction.response.send_message(
-            embed=ModEmbed.success("Verified", "Verification complete. Welcome!"),
+            embed=ModEmbed.success(
+                "Verified",
+                "Verification complete. Welcome!"
+                if purpose == "server"
+                else "Voice verification complete. Moving you now...",
+            ),
             ephemeral=ephemeral,
         )
 
@@ -550,6 +599,12 @@ class Verification(commands.Cog):
         keys = [k for k in self._pending.keys() if k[0] == guild.id]
         for k in keys:
             self._pending.pop(k, None)
+        voice_keys = [k for k in self._voice_targets.keys() if k[0] == guild.id]
+        for k in voice_keys:
+            self._voice_targets.pop(k, None)
+        allow_keys = [k for k in self._voice_allow_once.keys() if k[0] == guild.id]
+        for k in allow_keys:
+            self._voice_allow_once.pop(k, None)
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
@@ -579,9 +634,11 @@ class Verification(commands.Cog):
         try:
             if member.bot or not member.guild:
                 return
+            key = (member.guild.id, member.id)
             if after.channel is None:
                 # cleanup when leaving voice
-                self._voice_targets.pop((member.guild.id, member.id), None)
+                self._voice_targets.pop(key, None)
+                self._voice_allow_once.pop(key, None)
                 return
 
             waiting = await self._get_waiting_voice_channel(member.guild)
@@ -591,25 +648,24 @@ class Verification(commands.Cog):
             if after.channel.id == waiting.id:
                 return
 
-            unverified_role, verified_role = await self._get_roles(member.guild)
-            if not unverified_role or not verified_role:
+            # Only act on actual channel changes (join or move).
+            if before.channel and before.channel.id == after.channel.id:
                 return
 
-            # Only gate unverified users.
-            if verified_role in member.roles and unverified_role not in member.roles:
-                return
-
-            if unverified_role not in member.roles:
+            # Skip once when we just moved them into the target after passing captcha.
+            allowed_target = self._voice_allow_once.get(key)
+            if allowed_target and int(allowed_target) == int(after.channel.id):
+                self._voice_allow_once.pop(key, None)
                 return
 
             # Move to waiting and DM verification.
             target = after.channel
-            self._voice_targets[(member.guild.id, member.id)] = target.id
+            self._voice_targets[key] = target.id
             try:
                 await member.move_to(waiting, reason="Voice verification required")
             except Exception:
                 return
-            await self._send_voice_verify_dm(guild=member.guild, member=member, target_id=target.id)
+            await self._send_voice_verify_dm(guild=member.guild, member=member)
         except Exception:
             return
 

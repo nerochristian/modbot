@@ -830,15 +830,62 @@ class Setup(commands.Cog):
                     settings["unverified_chat_channel"] = unverified_chat.id
 
                 # Waiting voice channel for verification gating
+                voice_verify_category = discord.utils.get(guild.categories, name="Voice Verification")
+                try:
+                    voice_verify_overwrites: dict[
+                        discord.abc.Snowflake, discord.PermissionOverwrite
+                    ] = {
+                        guild.default_role: discord.PermissionOverwrite(view_channel=True),
+                        unverified_role: discord.PermissionOverwrite(view_channel=True),
+                        verified_role: discord.PermissionOverwrite(view_channel=True),
+                        guild.me: discord.PermissionOverwrite(
+                            view_channel=True,
+                            manage_channels=True,
+                            move_members=True,
+                            connect=True,
+                            speak=True,
+                        ),
+                    }
+                    for key in [
+                        "admin_role",
+                        "supervisor_role",
+                        "senior_mod_role",
+                        "mod_role",
+                        "staff_role",
+                    ]:
+                        rid = settings.get(key)
+                        role = guild.get_role(rid) if rid else None
+                        if role:
+                            voice_verify_overwrites[role] = discord.PermissionOverwrite(
+                                view_channel=True,
+                                connect=True,
+                                speak=True,
+                                move_members=True,
+                            )
+
+                    if not voice_verify_category:
+                        voice_verify_category = await guild.create_category(
+                            "Voice Verification",
+                            overwrites=voice_verify_overwrites,
+                            reason="ModBot Setup: voice verification category",
+                        )
+                        created_channels.append("✅ Voice Verification Category")
+                    else:
+                        await voice_verify_category.edit(
+                            overwrites=voice_verify_overwrites,
+                            reason="ModBot Setup: update voice verification category",
+                        )
+
+                    settings["voice_verification_category"] = voice_verify_category.id
+                except Exception as e:
+                    errors.append(f"⚠️ Failed to configure Voice Verification category: {e}")
+                    voice_verify_category = voice_verify_category or None
+
                 waiting_voice = discord.utils.get(guild.voice_channels, name="waiting-verify")
                 waiting_overwrites: dict[discord.abc.Snowflake, discord.PermissionOverwrite] = {
-                    guild.default_role: discord.PermissionOverwrite(view_channel=False, connect=False),
-                    unverified_role: discord.PermissionOverwrite(
-                        view_channel=True,
-                        connect=True,
-                        speak=True,
-                        use_voice_activation=True,
-                    ),
+                    guild.default_role: discord.PermissionOverwrite(view_channel=True, connect=True, speak=False),
+                    unverified_role: discord.PermissionOverwrite(view_channel=True, connect=True, speak=False),
+                    verified_role: discord.PermissionOverwrite(view_channel=True, connect=True, speak=False),
                     guild.me: discord.PermissionOverwrite(
                         view_channel=True,
                         connect=True,
@@ -868,7 +915,7 @@ class Setup(commands.Cog):
                     try:
                         waiting_voice = await guild.create_voice_channel(
                             "waiting-verify",
-                            category=verify_category,
+                            category=voice_verify_category,
                             overwrites=waiting_overwrites,
                             reason="ModBot Setup: verification waiting voice channel",
                         )
@@ -879,7 +926,7 @@ class Setup(commands.Cog):
                 else:
                     try:
                         await waiting_voice.edit(
-                            category=verify_category,
+                            category=voice_verify_category,
                             overwrites=waiting_overwrites,
                             reason="ModBot Setup: update waiting-verify permissions",
                         )
@@ -1112,6 +1159,8 @@ class Setup(commands.Cog):
                     allowed_channel_ids.add(verify_channel.id)
                 if unverified_chat:
                     allowed_channel_ids.add(unverified_chat.id)
+                if waiting_voice:
+                    allowed_channel_ids.add(waiting_voice.id)
 
                 # Deny at category-level first (more reliable with synced permissions).
                 category_denied = 0
@@ -1122,6 +1171,8 @@ class Setup(commands.Cog):
                     skip_category_ids.add(int(welcome_channel.category_id))
                 if verify_category:
                     skip_category_ids.add(int(verify_category.id))
+                if voice_verify_category:
+                    skip_category_ids.add(int(voice_verify_category.id))
 
                 for cat in guild.categories:
                     if cat.id in skip_category_ids:
@@ -1154,6 +1205,13 @@ class Setup(commands.Cog):
                                     send_messages=False,
                                     read_message_history=True,
                                     reason="ModBot Setup: allow unverified to see welcome",
+                                )
+                            elif waiting_voice and ch.id == waiting_voice.id:
+                                await ch.set_permissions(
+                                    unverified_role,
+                                    view_channel=True,
+                                    connect=True,
+                                    reason="ModBot Setup: allow unverified to use waiting-verify voice",
                                 )
                             elif verify_channel and ch.id == verify_channel.id:
                                 # already set above
