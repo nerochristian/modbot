@@ -826,8 +826,9 @@ class Court(commands.Cog):
                 content = content.replace(f'&lt;@{member.id}&gt;', f'<span style="background: #5865f240; color: #dee0fc; padding: 0 2px; border-radius: 3px;">@{member.display_name}</span>')
             
             bot_tag = '<span class="bot-tag">BOT</span>' if msg.author.bot else ''
+            no_content_html = '<em style="color: #72767d;">No content</em>'
             
-            html += f'<div class="{message_class}"><span class="timestamp-hover">{timestamp_hover}</span><div class="avatar"><img src="{avatar_url}" alt="{msg.author.display_name}"></div><div class="message-header"><span class="username">{msg.author.display_name}</span>{bot_tag}<span class="timestamp">{timestamp_str}</span></div><div class="message-content">{content or "<em style=\"color: #72767d;\">No content</em>"}</div>'
+            html += f'<div class="{message_class}"><span class="timestamp-hover">{timestamp_hover}</span><div class="avatar"><img src="{avatar_url}" alt="{msg.author.display_name}"></div><div class="message-header"><span class="username">{msg.author.display_name}</span>{bot_tag}<span class="timestamp">{timestamp_str}</span></div><div class="message-content">{content or no_content_html}</div>'
             
             for embed in msg.embeds:
                 embed_color = f"#{embed.color.value:06x}" if embed.color else "#5865f2"
