@@ -198,6 +198,9 @@ class Verification(commands.Cog):
         self._pending: dict[tuple[int, int, CaptchaPurpose], CaptchaEntry] = {}
         self._voice_targets: dict[tuple[int, int], int] = {}
         self._voice_allow_once: dict[tuple[int, int], int] = {}
+        # Tracks whether the user has passed the voice captcha in their current voice session.
+        # Cleared when they disconnect from voice.
+        self._voice_session_verified: set[tuple[int, int]] = set()
         # Persistent components (so old panels keep working after restarts).
         self.bot.add_view(VerificationPanelLayout(self))
 
@@ -287,6 +290,7 @@ class Verification(commands.Cog):
         try:
             # Allow this specific target move without re-triggering gating.
             self._voice_allow_once[key] = int(target_id)
+            self._voice_session_verified.add(key)
             await member.move_to(target, reason="Voice verification complete")
             self._voice_targets.pop(key, None)
         except Exception:
@@ -533,6 +537,7 @@ class Verification(commands.Cog):
             detail="Captcha passed" if purpose == "server" else "Voice captcha passed",
         )
         if purpose == "voice":
+            self._voice_session_verified.add((guild.id, member.id))
             await self._maybe_move_to_voice_target(guild, member)
         await interaction.response.send_message(
             embed=ModEmbed.success(
@@ -605,6 +610,9 @@ class Verification(commands.Cog):
         allow_keys = [k for k in self._voice_allow_once.keys() if k[0] == guild.id]
         for k in allow_keys:
             self._voice_allow_once.pop(k, None)
+        session_keys = [k for k in self._voice_session_verified if k[0] == guild.id]
+        for k in session_keys:
+            self._voice_session_verified.discard(k)
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
@@ -639,13 +647,11 @@ class Verification(commands.Cog):
                 # cleanup when leaving voice
                 self._voice_targets.pop(key, None)
                 self._voice_allow_once.pop(key, None)
+                self._voice_session_verified.discard(key)
                 return
 
             waiting = await self._get_waiting_voice_channel(member.guild)
             if not waiting:
-                return
-
-            if after.channel.id == waiting.id:
                 return
 
             # Only act on actual channel changes (join or move).
@@ -656,6 +662,17 @@ class Verification(commands.Cog):
             allowed_target = self._voice_allow_once.get(key)
             if allowed_target and int(allowed_target) == int(after.channel.id):
                 self._voice_allow_once.pop(key, None)
+                return
+
+            # If they enter the waiting room manually, allow it and DM them the prompt.
+            if after.channel.id == waiting.id:
+                if before.channel is None:
+                    await self._send_voice_verify_dm(guild=member.guild, member=member)
+                return
+
+            # If they already passed voice captcha in this voice session and are just switching VCs,
+            # don't require re-verification.
+            if key in self._voice_session_verified:
                 return
 
             # Move to waiting and DM verification.
