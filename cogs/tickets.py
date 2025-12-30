@@ -394,7 +394,194 @@ class Tickets(commands.Cog):
         self.bot.add_view(TicketCloseButton())
         self.bot.add_view(TicketPanelView(self))
     
-    ticket_group = app_commands.Group(name="ticket", description="Ticket management commands")
+    # ==================== CONSOLIDATED /ticket COMMAND ====================
+    
+    @app_commands.command(name="ticket", description="🎫 Ticket management commands")
+    @app_commands.describe(
+        action="The action to perform",
+        category="Ticket category (for create)",
+        reason="Reason (for close)",
+        user="Target user (for add/remove)",
+        name="New name (for rename)",
+    )
+    async def ticket(
+        self,
+        interaction: discord.Interaction,
+        action: Literal["create", "close", "add", "remove", "rename", "transcript"],
+        category: Optional[Literal['general', 'report', 'appeal', 'other']] = None,
+        reason: Optional[str] = None,
+        user: Optional[discord.Member] = None,
+        name: Optional[str] = None,
+    ):
+        if action == "create":
+            await interaction.response.send_modal(
+                TicketDetailsModal(self, category=str(category or "general"))
+            )
+        elif action == "close":
+            await self._ticket_close(interaction, reason)
+        elif action == "add":
+            await self._ticket_add(interaction, user)
+        elif action == "remove":
+            await self._ticket_remove(interaction, user)
+        elif action == "rename":
+            await self._ticket_rename(interaction, name)
+        elif action == "transcript":
+            await self._ticket_transcript(interaction)
+
+    async def _ticket_close(self, interaction: discord.Interaction, reason: Optional[str]):
+        ticket = await self.bot.db.get_ticket(interaction.channel.id)
+        
+        if not ticket:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
+                ephemeral=True
+            )
+        
+        reason = reason or "No reason provided"
+        await interaction.response.send_message(
+            embed=ModEmbed.warning("Closing Ticket", f"This ticket will be closed in 5 seconds...\n**Reason:** {reason}")
+        )
+        
+        await asyncio.sleep(5)
+        
+        # Generate transcript
+        transcript = []
+        async for message in interaction.channel.history(limit=500, oldest_first=True):
+            transcript.append(f"[{message.created_at.strftime('%Y-%m-%d %H:%M')}] {message.author}: {message.content}")
+        
+        transcript_text = "\n".join(transcript)
+        await self.bot.db.close_ticket(interaction.channel.id)
+        
+        # Send transcript to log channel
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        if settings.get('ticket_log_channel'):
+            log_channel = interaction.guild.get_channel(settings['ticket_log_channel'])
+            if log_channel:
+                embed = discord.Embed(
+                    title=f"🎫 Ticket #{ticket['ticket_number']} Closed",
+                    color=Config.COLOR_INFO,
+                    timestamp=datetime.utcnow()
+                )
+                creator = interaction.guild.get_member(ticket['user_id'])
+                embed.add_field(name="Created By", value=creator.mention if creator else f"ID: {ticket['user_id']}", inline=True)
+                embed.add_field(name="Closed By", value=interaction.user.mention, inline=True)
+                embed.add_field(name="Reason", value=reason, inline=False)
+                
+                file = discord.File(io.StringIO(transcript_text), filename=f"ticket-{ticket['ticket_number']}.txt")
+                await send_log_embed(log_channel, embed, file=file)
+        
+        await interaction.channel.delete(reason=f"Ticket closed by {interaction.user}: {reason}")
+
+    async def _ticket_add(self, interaction: discord.Interaction, user: Optional[discord.Member]):
+        # Check mod permission
+        if not interaction.user.guild_permissions.manage_messages:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", "You need mod permissions for this action."),
+                ephemeral=True
+            )
+
+        if not user:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Missing Argument", "Please specify a `user` to add."),
+                ephemeral=True
+            )
+
+        ticket = await self.bot.db.get_ticket(interaction.channel.id)
+        
+        if not ticket:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
+                ephemeral=True
+            )
+        
+        await interaction.channel.set_permissions(
+            user,
+            view_channel=True,
+            send_messages=True,
+            attach_files=True
+        )
+        
+        embed = ModEmbed.success("User Added", f"{user.mention} has been added to this ticket.")
+        await interaction.response.send_message(embed=embed)
+
+    async def _ticket_remove(self, interaction: discord.Interaction, user: Optional[discord.Member]):
+        # Check mod permission
+        if not interaction.user.guild_permissions.manage_messages:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", "You need mod permissions for this action."),
+                ephemeral=True
+            )
+
+        if not user:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Missing Argument", "Please specify a `user` to remove."),
+                ephemeral=True
+            )
+
+        ticket = await self.bot.db.get_ticket(interaction.channel.id)
+        
+        if not ticket:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
+                ephemeral=True
+            )
+        
+        if user.id == ticket['user_id']:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Cannot Remove", "You cannot remove the ticket creator."),
+                ephemeral=True
+            )
+        
+        await interaction.channel.set_permissions(user, overwrite=None)
+        
+        embed = ModEmbed.success("User Removed", f"{user.mention} has been removed from this ticket.")
+        await interaction.response.send_message(embed=embed)
+
+    async def _ticket_rename(self, interaction: discord.Interaction, name: Optional[str]):
+        # Check mod permission
+        if not interaction.user.guild_permissions.manage_messages:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", "You need mod permissions for this action."),
+                ephemeral=True
+            )
+
+        if not name:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Missing Argument", "Please specify a `name` for the ticket."),
+                ephemeral=True
+            )
+
+        ticket = await self.bot.db.get_ticket(interaction.channel.id)
+        
+        if not ticket:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
+                ephemeral=True
+            )
+        
+        await interaction.channel.edit(name=name)
+        embed = ModEmbed.success("Ticket Renamed", f"Ticket renamed to **{name}**")
+        await interaction.response.send_message(embed=embed)
+
+    async def _ticket_transcript(self, interaction: discord.Interaction):
+        # Check mod permission
+        if not interaction.user.guild_permissions.manage_messages:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", "You need mod permissions for this action."),
+                ephemeral=True
+            )
+
+        await interaction.response.defer()
+        
+        transcript = []
+        async for message in interaction.channel.history(limit=500, oldest_first=True):
+            transcript.append(f"[{message.created_at.strftime('%Y-%m-%d %H:%M')}] {message.author}: {message.content}")
+        
+        transcript_text = "\n".join(transcript)
+        file = discord.File(io.StringIO(transcript_text), filename=f"transcript-{interaction.channel.name}.txt")
+        
+        embed = ModEmbed.success("Transcript Generated", "Here is the transcript of this ticket.")
+        await interaction.followup.send(embed=embed, file=file)
 
     async def _create_ticket_from_panel(self, interaction: discord.Interaction, *, category: str, details: str) -> None:
         settings = await self.bot.db.get_settings(interaction.guild_id)
@@ -588,135 +775,6 @@ class Tickets(commands.Cog):
         except Exception:
             pass
     
-    @ticket_group.command(name="create", description="Create a support ticket")
-    @app_commands.describe(category="Ticket category")
-    async def ticket_create(self, interaction: discord.Interaction, 
-                            category: Optional[Literal['general', 'report', 'appeal', 'other']] = 'general'):
-        await interaction.response.send_modal(
-            TicketDetailsModal(self, category=str(category or "general"))
-        )
-    
-    @ticket_group. command(name="close", description="Close the current ticket")
-    @app_commands.describe(reason="Reason for closing")
-    async def ticket_close(self, interaction: discord.Interaction, reason: Optional[str] = "No reason provided"):
-        ticket = await self.bot.db.get_ticket(interaction.channel. id)
-        
-        if not ticket:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
-                ephemeral=True
-            )
-        
-        await interaction.response.send_message(
-            embed=ModEmbed.warning("Closing Ticket", f"This ticket will be closed in 5 seconds.. .\n**Reason:** {reason}")
-        )
-        
-        import asyncio
-        await asyncio. sleep(5)
-        
-        # Generate transcript
-        transcript = []
-        async for message in interaction.channel.history(limit=500, oldest_first=True):
-            transcript.append(f"[{message.created_at.strftime('%Y-%m-%d %H:%M')}] {message.author}: {message.content}")
-        
-        transcript_text = "\n".join(transcript)
-        await self.bot.db.close_ticket(interaction.channel.id)
-        
-        # Send transcript to log channel
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        if settings.get('ticket_log_channel'):
-            log_channel = interaction.guild.get_channel(settings['ticket_log_channel'])
-            if log_channel:
-                embed = discord. Embed(
-                    title=f"🎫 Ticket #{ticket['ticket_number']} Closed",
-                    color=Config.COLOR_INFO,
-                    timestamp=datetime.utcnow()
-                )
-                creator = interaction.guild.get_member(ticket['user_id'])
-                embed.add_field(name="Created By", value=creator.mention if creator else f"ID: {ticket['user_id']}", inline=True)
-                embed.add_field(name="Closed By", value=interaction.user.mention, inline=True)
-                embed.add_field(name="Reason", value=reason, inline=False)
-                
-                file = discord.File(io.StringIO(transcript_text), filename=f"ticket-{ticket['ticket_number']}.txt")
-                await send_log_embed(log_channel, embed, file=file)
-        
-        await interaction. channel.delete(reason=f"Ticket closed by {interaction.user}:  {reason}")
-    
-    @ticket_group.command(name="add", description="Add a user to the ticket")
-    @app_commands.describe(user="User to add")
-    @is_mod()
-    async def ticket_add(self, interaction: discord.Interaction, user: discord. Member):
-        ticket = await self.bot.db.get_ticket(interaction.channel.id)
-        
-        if not ticket: 
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
-                ephemeral=True
-            )
-        
-        await interaction.channel.set_permissions(
-            user,
-            view_channel=True,
-            send_messages=True,
-            attach_files=True
-        )
-        
-        embed = ModEmbed.success("User Added", f"{user.mention} has been added to this ticket.")
-        await interaction.response.send_message(embed=embed)
-    
-    @ticket_group.command(name="remove", description="Remove a user from the ticket")
-    @app_commands.describe(user="User to remove")
-    @is_mod()
-    async def ticket_remove(self, interaction: discord.Interaction, user: discord.Member):
-        ticket = await self.bot.db. get_ticket(interaction.channel. id)
-        
-        if not ticket:
-            return await interaction. response.send_message(
-                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
-                ephemeral=True
-            )
-        
-        if user.id == ticket['user_id']:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Cannot Remove", "You cannot remove the ticket creator."),
-                ephemeral=True
-            )
-        
-        await interaction.channel.set_permissions(user, overwrite=None)
-        
-        embed = ModEmbed.success("User Removed", f"{user. mention} has been removed from this ticket.")
-        await interaction.response. send_message(embed=embed)
-    
-    @ticket_group.command(name="rename", description="Rename the ticket")
-    @app_commands.describe(name="New name for the ticket")
-    @is_mod()
-    async def ticket_rename(self, interaction: discord.Interaction, name: str):
-        ticket = await self.bot.db.get_ticket(interaction.channel.id)
-        
-        if not ticket: 
-            return await interaction.response. send_message(
-                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
-                ephemeral=True
-            )
-        
-        await interaction.channel.edit(name=name)
-        embed = ModEmbed.success("Ticket Renamed", f"Ticket renamed to **{name}**")
-        await interaction.response.send_message(embed=embed)
-    
-    @ticket_group. command(name="transcript", description="Generate a transcript of this ticket")
-    @is_mod()
-    async def ticket_transcript(self, interaction: discord.Interaction):
-        await interaction.response.defer()
-        
-        transcript = []
-        async for message in interaction.channel.history(limit=500, oldest_first=True):
-            transcript.append(f"[{message.created_at. strftime('%Y-%m-%d %H:%M')}] {message.author}: {message.content}")
-        
-        transcript_text = "\n".join(transcript)
-        file = discord.File(io.StringIO(transcript_text), filename=f"transcript-{interaction.channel.name}.txt")
-        
-        embed = ModEmbed.success("Transcript Generated", "Here is the transcript of this ticket.")
-        await interaction.followup. send(embed=embed, file=file)
     
     @app_commands.command(name="ticketpanel", description="Create a ticket panel embed")
     @is_mod()

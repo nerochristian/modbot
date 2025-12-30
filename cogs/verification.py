@@ -577,57 +577,6 @@ class Verification(commands.Cog):
         )
 
     @app_commands.command(
-        name="vcverification",
-        description="Toggle voice channel verification (on/off)",
-    )
-    @app_commands.describe(state="Turn voice verification on or off")
-    @is_admin()
-    async def vcverification(self, interaction: discord.Interaction, state: Literal["on", "off"]) -> None:
-        if not interaction.guild:
-            await interaction.response.send_message(
-                embed=ModEmbed.error("Guild Only", "Use this command in a server."),
-                ephemeral=True,
-            )
-            return
-
-        enable = state == "on"
-        if enable:
-            waiting = await self._get_waiting_voice_channel(interaction.guild)
-            if not waiting:
-                await interaction.response.send_message(
-                    embed=ModEmbed.error(
-                        "Not Configured",
-                        "Missing the `waiting-verify` voice channel. Run `/setup` first.",
-                    ),
-                    ephemeral=True,
-                )
-                return
-
-        settings = await self.bot.db.get_settings(interaction.guild.id)
-        settings["voice_verification_enabled"] = enable
-        await self.bot.db.update_settings(interaction.guild.id, settings)
-
-        if not enable:
-            gid = interaction.guild.id
-            voice_pending = [k for k in self._pending.keys() if k[0] == gid and k[2] == "voice"]
-            for k in voice_pending:
-                self._pending.pop(k, None)
-            for k in [k for k in self._voice_targets.keys() if k[0] == gid]:
-                self._voice_targets.pop(k, None)
-            for k in [k for k in self._voice_allow_once.keys() if k[0] == gid]:
-                self._voice_allow_once.pop(k, None)
-            for k in [k for k in self._voice_session_verified if k[0] == gid]:
-                self._voice_session_verified.discard(k)
-
-        await interaction.response.send_message(
-            embed=ModEmbed.success(
-                "Updated",
-                f"Voice verification is now **{state}**.",
-            ),
-            ephemeral=True,
-        )
-
-    @app_commands.command(
         name="verifypanel",
         description="Post the verification panel to the verify channel",
     )
