@@ -216,13 +216,23 @@ class Setup(commands.Cog):
                 except Exception:
                     pass
 
-        # Try to place "." directly under the Moderator role (best-effort).
+        # Try to place "." directly under the lowest moderation role (best-effort).
+        # Check all mod roles and find the lowest one in the hierarchy.
         if dot_role and guild.me:
             try:
+                # Find the lowest moderation role in the hierarchy
                 anchor_role: discord.Role | None = None
-                mod_role_id = settings.get("mod_role")
-                if mod_role_id:
-                    anchor_role = guild.get_role(mod_role_id)
+                mod_role_keys = ["trial_mod_role", "mod_role", "senior_mod_role", "supervisor_role", "admin_role"]
+                
+                for key in mod_role_keys:
+                    role_id = settings.get(key)
+                    if role_id:
+                        role = guild.get_role(role_id)
+                        if role:
+                            # Find the lowest positioned mod role (smallest position number above 0)
+                            if anchor_role is None or role.position < anchor_role.position:
+                                anchor_role = role
+                
                 if not anchor_role:
                     anchor_role = interaction.user.top_role
 
@@ -236,7 +246,7 @@ class Setup(commands.Cog):
                 )
                 if new_position != desired:
                     errors.append(
-                        "⚠️ Could not position '.' under Moderator role. Move the bot's role above Moderator and re-run `/setup`."
+                        "⚠️ Could not position '.' under Moderation role. Move the bot's role above the mod roles and re-run `/setup`."
                     )
             except Exception:
                 pass
