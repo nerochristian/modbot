@@ -273,6 +273,7 @@ class ModBot(commands.Bot):
             "cogs.aimoderation",
             "cogs.modmail",
             "cogs.blacklist",
+            "cogs.forum_moderation",
             "cogs.prefix_commands",
         ]
         
@@ -458,12 +459,7 @@ class ModBot(commands.Bot):
                 prefix = "!"
             
             if message.content.startswith(prefix) or message.content.startswith(f"<@{self.user.id}>") or message.content.startswith(f"<@!{self.user.id}>"):
-                embed = discord.Embed(
-                    title="🚫 Blacklisted",
-                    description="You are blacklisted from using this bot.",
-                    color=0xFF0000
-                )
-                await message.channel.send(f"{message.author.mention}", embed=embed)
+                await message.channel.send(f"{message.author.mention} 🚫 **Blacklisted** - You are blacklisted from using this bot.")
                 return
         
         self.messages_seen += 1
@@ -471,23 +467,21 @@ class ModBot(commands.Bot):
     
     async def on_interaction(self, interaction: discord.Interaction):
         """Handle interactions - check blacklist for slash commands"""
+        # Only check application commands
         if interaction.type != discord.InteractionType.application_command:
             return
         
+        # Block blacklisted users
         if interaction.user.id in self.blacklist_cache:
-            embed = discord.Embed(
-                title="🚫 Blacklisted",
-                description="You are blacklisted from using this bot.",
-                color=0xFF0000
-            )
             try:
                 await interaction.response.send_message(
-                    content=f"{interaction.user.mention}",
-                    embed=embed,
+                    f"{interaction.user.mention} 🚫 **Blacklisted** - You are blacklisted from using this bot.",
                     ephemeral=False
                 )
             except discord.errors.InteractionResponded:
                 pass
+            # CRITICAL: Return here to prevent command execution
+            return
     
     async def on_command(self, ctx: commands.Context):
         """Track command usage"""
