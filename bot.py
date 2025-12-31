@@ -274,7 +274,6 @@ class ModBot(commands.Bot):
             "cogs.modmail",
             "cogs.blacklist",
             "cogs.prefix_commands",
-            "cogs.prefix_help",
         ]
         
         loaded: list[str] = []
