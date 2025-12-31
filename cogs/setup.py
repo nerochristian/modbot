@@ -163,14 +163,16 @@ class Setup(commands.Cog):
               try:
                   existing = discord.utils.get(guild.roles, name=cfg["name"])
                   if existing:
-                      # Ensure verification roles are locked down even if they already exist.
-                      if cfg.get("setting_key") in {"unverified_role", "verified_role"}:
+                      # For ALL non-staff roles (muted, quarantine, verified, unverified), 
+                      # enforce they have NO dangerous permissions
+                      non_staff_roles = {"muted_role", "quarantine_role", "unverified_role", "verified_role"}
+                      if cfg.get("setting_key") in non_staff_roles:
                           try:
                               await existing.edit(
-                                  permissions=cfg["permissions"],
+                                  permissions=discord.Permissions.none(),  # ALWAYS reset to no perms
                                   color=cfg["color"],
                                   hoist=cfg["hoist"],
-                                  reason="ModBot Setup: enforce verification role defaults",
+                                  reason="ModBot Setup: enforce non-staff roles have no permissions",
                               )
                           except Exception:
                               pass

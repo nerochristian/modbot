@@ -258,11 +258,33 @@ class PrefixCommands(commands.Cog):
     @commands.has_permissions(manage_roles=True)
     async def role_cmd(self, ctx, member: discord.Member, role: discord.Role):
         """Add or remove a role from a user"""
+        # Security checks
+        if role >= ctx.author.top_role and ctx.author.id != ctx.guild.owner_id:
+            return await ctx.send(embed=ModEmbed.error("Permission Denied", "You cannot manage a role equal to or higher than your highest role."))
+        
+        if role >= ctx.guild.me.top_role:
+            return await ctx.send(embed=ModEmbed.error("Bot Error", "I cannot manage this role as it's higher than or equal to my highest role."))
+        
+        if role.managed:
+            return await ctx.send(embed=ModEmbed.error("Managed Role", "This role is managed by an integration and cannot be manually assigned."))
+        
+        # Protect dangerous roles from being assigned by non-admins
+        if (role.permissions.administrator or role.permissions.manage_guild or role.permissions.manage_roles) and not ctx.author.guild_permissions.administrator:
+            return await ctx.send(embed=ModEmbed.error("Permission Denied", "Only administrators can assign roles with dangerous permissions."))
+        
+        # Can't modify server owner's roles unless you're the owner
+        if member.id == ctx.guild.owner_id and ctx.author.id != ctx.guild.owner_id and not is_bot_owner_id(ctx.author.id):
+            return await ctx.send(embed=ModEmbed.error("Permission Denied", "You cannot modify the server owner's roles."))
+        
+        # Can't modify someone with higher role than you
+        if member.top_role >= ctx.author.top_role and member.id != ctx.author.id and ctx.author.id != ctx.guild.owner_id:
+            return await ctx.send(embed=ModEmbed.error("Permission Denied", "You cannot modify roles for someone with equal or higher role."))
+        
         if role in member.roles:
-            await member.remove_roles(role)
+            await member.remove_roles(role, reason=f"Removed by {ctx.author}")
             await ctx.send(embed=ModEmbed.success("🎭 Role Removed", f"Removed {role.mention} from {member.mention}."))
         else:
-            await member.add_roles(role)
+            await member.add_roles(role, reason=f"Added by {ctx.author}")
             await ctx.send(embed=ModEmbed.success("🎭 Role Added", f"Added {role.mention} to {member.mention}."))
 
     # ═══════════════════════════════════════════════════════════════
@@ -339,7 +361,7 @@ class PrefixCommands(commands.Cog):
     @commands.command(name="ping")
     async def ping_cmd(self, ctx):
         """Check bot latency"""
-        await ctx.send(embed=ModEmbed.info("🏓 Pong!", f"Latency: {round(self.bot.latency * 1000)}ms"))
+        await ctx.send(f"🏓 Pong! {round(self.bot.latency * 1000)}ms")
 
     @commands.command(name="uptime")
     async def uptime_cmd(self, ctx):

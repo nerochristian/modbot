@@ -485,37 +485,154 @@ class HelpView(discord.ui.View):
 # =============================================================================
 
 class QuickWarnModal(discord.ui.Modal, title="⚠️ Quick Warn"):
-    user_input = discord.ui.TextInput(label="User ID or @mention", placeholder="e.g. 123456789 or username", required=True)
+    user_input = discord.ui.TextInput(label="User ID", placeholder="e.g. 123456789", required=True)
     reason = discord.ui.TextInput(label="Reason", placeholder="Why are you warning them?", style=discord.TextStyle.paragraph, required=True, max_length=500)
     
-    async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.send_message(f"⚠️ Use `/warn` with:\n**User:** `{self.user_input.value}`\n**Reason:** {self.reason.value}", ephemeral=True)
-
-class QuickMuteModal(discord.ui.Modal, title="🔇 Quick Mute"):
-    user_input = discord.ui.TextInput(label="User ID or @mention", placeholder="e.g. 123456789", required=True)
-    duration = discord.ui.TextInput(label="Duration", placeholder="e.g. 1h, 30m, 1d, 7d", required=True, max_length=10)
-    reason = discord.ui.TextInput(label="Reason", placeholder="Why are you muting them?", style=discord.TextStyle.paragraph, required=False, max_length=500)
+    def __init__(self, bot):
+        super().__init__()
+        self.bot = bot
     
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.send_message(f"🔇 Use `/mute` with:\n**User:** `{self.user_input.value}`\n**Duration:** `{self.duration.value}`\n**Reason:** {self.reason.value or 'N/A'}", ephemeral=True)
+        try:
+            user_id = int(self.user_input.value.strip().replace("<@", "").replace(">", "").replace("!", ""))
+            member = interaction.guild.get_member(user_id)
+            if not member:
+                return await interaction.response.send_message("❌ User not found in this server.", ephemeral=True)
+            
+            # Get moderation cog and use its logic
+            mod_cog = self.bot.get_cog("Moderation")
+            if mod_cog:
+                await mod_cog._warn_logic(interaction, member, self.reason.value)
+            else:
+                await interaction.response.send_message(f"⚠️ Warned {member.mention} for: {self.reason.value}", ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message("❌ Invalid user ID.", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
+
+class QuickMuteModal(discord.ui.Modal, title="🔇 Quick Mute"):
+    user_input = discord.ui.TextInput(label="User ID", placeholder="e.g. 123456789", required=True)
+    duration = discord.ui.TextInput(label="Duration", placeholder="e.g. 1h, 30m, 1d", required=True, max_length=10)
+    reason = discord.ui.TextInput(label="Reason", placeholder="Why are you muting them?", style=discord.TextStyle.paragraph, required=False, max_length=500)
+    
+    def __init__(self, bot):
+        super().__init__()
+        self.bot = bot
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            user_id = int(self.user_input.value.strip().replace("<@", "").replace(">", "").replace("!", ""))
+            member = interaction.guild.get_member(user_id)
+            if not member:
+                return await interaction.response.send_message("❌ User not found in this server.", ephemeral=True)
+            
+            # Get moderation cog and use its logic
+            mod_cog = self.bot.get_cog("Moderation")
+            if mod_cog:
+                await mod_cog._mute_logic(interaction, member, self.duration.value, self.reason.value or "No reason provided")
+            else:
+                await interaction.response.send_message(f"🔇 Muted {member.mention} for {self.duration.value}", ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message("❌ Invalid user ID.", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
 
 class QuickBanModal(discord.ui.Modal, title="🔨 Quick Ban"):
-    user_input = discord.ui.TextInput(label="User ID or @mention", placeholder="e.g. 123456789", required=True)
+    user_input = discord.ui.TextInput(label="User ID", placeholder="e.g. 123456789", required=True)
     reason = discord.ui.TextInput(label="Reason", placeholder="Ban reason", style=discord.TextStyle.paragraph, required=True, max_length=500)
     delete_days = discord.ui.TextInput(label="Delete Messages (days)", placeholder="0-7", required=False, max_length=1, default="1")
     
+    def __init__(self, bot):
+        super().__init__()
+        self.bot = bot
+    
     async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.send_message(f"🔨 Use `/ban` with:\n**User:** `{self.user_input.value}`\n**Reason:** {self.reason.value}\n**Delete Days:** {self.delete_days.value or '1'}", ephemeral=True)
+        try:
+            user_id = int(self.user_input.value.strip().replace("<@", "").replace(">", "").replace("!", ""))
+            member = interaction.guild.get_member(user_id)
+            if not member:
+                return await interaction.response.send_message("❌ User not found in this server.", ephemeral=True)
+            
+            days = int(self.delete_days.value or "1")
+            days = max(0, min(7, days))
+            
+            # Get moderation cog and use its logic
+            mod_cog = self.bot.get_cog("Moderation")
+            if mod_cog:
+                await mod_cog._ban_logic(interaction, member, self.reason.value, days)
+            else:
+                await interaction.guild.ban(member, delete_message_seconds=days * 86400, reason=self.reason.value)
+                await interaction.response.send_message(f"🔨 Banned {member.mention}", ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message("❌ Invalid user ID.", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
 
 class QuickPurgeModal(discord.ui.Modal, title="🗑️ Quick Purge"):
     amount = discord.ui.TextInput(label="Number of Messages", placeholder="1-100", required=True, max_length=3)
-    user_filter = discord.ui.TextInput(label="Filter by User (optional)", placeholder="User ID to filter (leave blank for all)", required=False)
     
     async def on_submit(self, interaction: discord.Interaction):
         try:
             num = min(100, max(1, int(self.amount.value)))
-            await interaction.channel.purge(limit=num)
-            await interaction.response.send_message(f"🗑️ Deleted up to **{num}** messages!", ephemeral=True)
+            await interaction.response.defer(ephemeral=True)
+            deleted = await interaction.channel.purge(limit=num)
+            await interaction.followup.send(f"🗑️ Deleted **{len(deleted)}** messages!", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
+
+
+class QuickKickModal(discord.ui.Modal, title="👢 Quick Kick"):
+    user_input = discord.ui.TextInput(label="User ID", placeholder="e.g. 123456789", required=True)
+    reason = discord.ui.TextInput(label="Reason", placeholder="Why are you kicking them?", style=discord.TextStyle.paragraph, required=True, max_length=500)
+    
+    def __init__(self, bot):
+        super().__init__()
+        self.bot = bot
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            user_id = int(self.user_input.value.strip().replace("<@", "").replace(">", "").replace("!", ""))
+            member = interaction.guild.get_member(user_id)
+            if not member:
+                return await interaction.response.send_message("❌ User not found in this server.", ephemeral=True)
+            
+            # Get moderation cog and use its logic
+            mod_cog = self.bot.get_cog("Moderation")
+            if mod_cog:
+                await mod_cog._kick_logic(interaction, member, self.reason.value)
+            else:
+                await interaction.guild.kick(member, reason=self.reason.value)
+                await interaction.response.send_message(f"👢 Kicked {member.mention}", ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message("❌ Invalid user ID.", ephemeral=True)
+        except Exception as e:
+            await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
+
+
+class QuickUnmuteModal(discord.ui.Modal, title="🔊 Quick Unmute"):
+    user_input = discord.ui.TextInput(label="User ID", placeholder="e.g. 123456789", required=True)
+    reason = discord.ui.TextInput(label="Reason (optional)", placeholder="Why are you unmuting them?", required=False, max_length=500)
+    
+    def __init__(self, bot):
+        super().__init__()
+        self.bot = bot
+    
+    async def on_submit(self, interaction: discord.Interaction):
+        try:
+            user_id = int(self.user_input.value.strip().replace("<@", "").replace(">", "").replace("!", ""))
+            member = interaction.guild.get_member(user_id)
+            if not member:
+                return await interaction.response.send_message("❌ User not found in this server.", ephemeral=True)
+            
+            # Get moderation cog and use its logic
+            mod_cog = self.bot.get_cog("Moderation")
+            if mod_cog:
+                await mod_cog._unmute_logic(interaction, member, self.reason.value or "No reason provided")
+            else:
+                await member.timeout(None, reason=self.reason.value or "Unmuted via panel")
+                await interaction.response.send_message(f"🔊 Unmuted {member.mention}", ephemeral=True)
+        except ValueError:
+            await interaction.response.send_message("❌ Invalid user ID.", ephemeral=True)
         except Exception as e:
             await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
 
@@ -569,21 +686,19 @@ class ModPanelView(discord.ui.View):
     # ═══════════ ROW 0: QUICK MOD ACTIONS ═══════════
     @discord.ui.button(label="Warn", style=discord.ButtonStyle.secondary, emoji="⚠️", row=0)
     async def quick_warn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(QuickWarnModal())
+        await interaction.response.send_modal(QuickWarnModal(self.bot))
 
     @discord.ui.button(label="Mute", style=discord.ButtonStyle.secondary, emoji="🔇", row=0)
     async def quick_mute(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(QuickMuteModal())
+        await interaction.response.send_modal(QuickMuteModal(self.bot))
 
     @discord.ui.button(label="Kick", style=discord.ButtonStyle.danger, emoji="👢", row=0)
     async def quick_kick(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(title="👢 Kick User", description="Use `/kick @user [reason]` to kick a member.", color=0xFF6B6B)
-        embed.add_field(name="Example", value="`/kick @troublemaker Breaking rules`")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_modal(QuickKickModal(self.bot))
 
     @discord.ui.button(label="Ban", style=discord.ButtonStyle.danger, emoji="🔨", row=0)
     async def quick_ban(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(QuickBanModal())
+        await interaction.response.send_modal(QuickBanModal(self.bot))
 
     # ═══════════ ROW 1: CHANNEL TOOLS ═══════════
     @discord.ui.button(label="Purge", style=discord.ButtonStyle.primary, emoji="🗑️", row=1)
@@ -592,19 +707,20 @@ class ModPanelView(discord.ui.View):
 
     @discord.ui.button(label="Lock", style=discord.ButtonStyle.secondary, emoji="🔒", row=1)
     async def quick_lock(self, interaction: discord.Interaction, button: discord.ui.Button):
+        overwrites = interaction.channel.overwrites_for(interaction.guild.default_role)
+        is_locked = overwrites.send_messages is False
+        
         try:
-            await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False)
-            await interaction.response.send_message("🔒 Channel locked!", ephemeral=True)
-            await interaction.channel.send(embed=discord.Embed(title="🔒 Channel Locked", description=f"Locked by {interaction.user.mention}", color=0xFF6B6B))
-        except Exception as e:
-            await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
-
-    @discord.ui.button(label="Unlock", style=discord.ButtonStyle.success, emoji="🔓", row=1)
-    async def quick_unlock(self, interaction: discord.Interaction, button: discord.ui.Button):
-        try:
-            await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=None)
-            await interaction.response.send_message("🔓 Channel unlocked!", ephemeral=True)
-            await interaction.channel.send(embed=discord.Embed(title="🔓 Channel Unlocked", description=f"Unlocked by {interaction.user.mention}", color=0x00FF00))
+            if is_locked:
+                # Unlock
+                await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=None)
+                await interaction.response.send_message("🔓 Channel unlocked!", ephemeral=True)
+                await interaction.channel.send(embed=discord.Embed(title="🔓 Channel Unlocked", description=f"Unlocked by {interaction.user.mention}", color=0x00FF00))
+            else:
+                # Lock
+                await interaction.channel.set_permissions(interaction.guild.default_role, send_messages=False)
+                await interaction.response.send_message("🔒 Channel locked!", ephemeral=True)
+                await interaction.channel.send(embed=discord.Embed(title="🔒 Channel Locked", description=f"Locked by {interaction.user.mention}", color=0xFF6B6B))
         except Exception as e:
             await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
 
@@ -613,6 +729,10 @@ class ModPanelView(discord.ui.View):
         embed = discord.Embed(title="🐌 Slowmode Options", description="Select a slowmode duration:", color=Config.COLOR_INFO)
         view = SlowmodeSelectView(self.author_id)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @discord.ui.button(label="Unmute", style=discord.ButtonStyle.success, emoji="🔊", row=1)
+    async def quick_unmute(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(QuickUnmuteModal(self.bot))
 
     # ═══════════ ROW 2: INFO & STATS ═══════════
     @discord.ui.button(label="Server Stats", style=discord.ButtonStyle.primary, emoji="📊", row=2)
@@ -634,8 +754,27 @@ class ModPanelView(discord.ui.View):
     @discord.ui.button(label="My Stats", style=discord.ButtonStyle.secondary, emoji="📈", row=2)
     async def my_stats(self, interaction: discord.Interaction, button: discord.ui.Button):
         embed = discord.Embed(title=f"📈 Your Mod Stats", color=Config.COLOR_INFO)
-        embed.description = "Use `/modstats` to see detailed statistics of your moderation actions."
-        embed.add_field(name="Commands", value="`/history @user`\n`/cases @user`\n`/modlog`", inline=False)
+        
+        # Try to fetch real stats from database
+        if self.bot and hasattr(self.bot, 'db'):
+            try:
+                cases = await self.bot.db.get_cases_by_mod(interaction.guild_id, interaction.user.id)
+                total = len(cases)
+                warns = len([c for c in cases if c.get('type') == 'warn'])
+                mutes = len([c for c in cases if c.get('type') in ('mute', 'timeout')])
+                kicks = len([c for c in cases if c.get('type') == 'kick'])
+                bans = len([c for c in cases if c.get('type') == 'ban'])
+                
+                embed.add_field(name="📋 Total Actions", value=f"**{total}**", inline=True)
+                embed.add_field(name="⚠️ Warns", value=f"**{warns}**", inline=True)
+                embed.add_field(name="🔇 Mutes", value=f"**{mutes}**", inline=True)
+                embed.add_field(name="👢 Kicks", value=f"**{kicks}**", inline=True)
+                embed.add_field(name="🔨 Bans", value=f"**{bans}**", inline=True)
+            except:
+                embed.description = "Could not fetch stats from database."
+        else:
+            embed.description = "Database not available."
+        
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(label="Commands", style=discord.ButtonStyle.secondary, emoji="📖", row=2)
@@ -685,7 +824,7 @@ class SlowmodeSelectView(discord.ui.View):
 # =============================================================================
 
 class AdminPanelView(discord.ui.View):
-    """Ultra-improved admin panel with quick configuration actions"""
+    """Admin panel with smart toggle buttons that execute actions directly"""
     
     def __init__(self, author_id: int, bot=None):
         super().__init__(timeout=600)
@@ -698,160 +837,165 @@ class AdminPanelView(discord.ui.View):
             return False
         return True
 
+    async def _get_settings(self, guild_id: int) -> dict:
+        """Get guild settings from database"""
+        if self.bot and hasattr(self.bot, 'db'):
+            return await self.bot.db.get_settings(guild_id)
+        return {}
+
+    async def _update_setting(self, guild_id: int, key: str, value) -> None:
+        """Update a guild setting"""
+        if self.bot and hasattr(self.bot, 'db'):
+            settings = await self.bot.db.get_settings(guild_id)
+            settings[key] = value
+            await self.bot.db.update_settings(guild_id, settings)
+
     def _build_embed(self) -> discord.Embed:
         embed = discord.Embed(
             title="⚙️ Admin Control Panel",
             description=(
                 "**Welcome, Administrator!**\n"
-                "Configure your server with the buttons below.\n\n"
-                "🔧 **Quick Config** - Instant settings changes\n"
-                "📖 **Info Buttons** - Learn about features"
+                "Click buttons to **toggle settings** or **execute actions**.\n\n"
+                "🟢 Green = Enable/On • 🔴 Red = Disable/Destructive"
             ),
             color=Config.COLOR_ADMIN,
             timestamp=datetime.now(timezone.utc)
         )
         
         embed.add_field(
-            name="🛠️ Configuration (Row 1)",
-            value="• **Setup** - Setup wizard\n• **AutoMod** - Auto moderation\n• **Logs** - Logging config\n• **Roles** - Role setup",
+            name="🛠️ Row 1: Configuration",
+            value="• **AutoMod** - Toggle auto-moderation\n• **AI Mod** - Toggle AI moderation\n• **Logging** - Toggle message logging",
             inline=True
         )
         embed.add_field(
-            name="🎛️ Quick Actions (Row 2)",
-            value="• **Lockdown** - Lock server\n• **AI Mod** - Toggle AI\n• **Tickets** - Ticket system\n• **Welcome** - Welcome msgs",
+            name="🎛️ Row 2: Server Actions",
+            value="• **Lockdown** - Lock/unlock all channels\n• **Tickets** - Toggle ticket system",
             inline=True
-        )
-        embed.add_field(
-            name="📊 Server Info (Row 3)",
-            value="• **Settings** - View config\n• **Audit** - Recent activity\n• **Commands** - All admin cmds",
-            inline=False
         )
         
-        embed.set_footer(text="⚙️ Admin-level actions • Be careful with server-wide changes")
+        embed.set_footer(text="⚙️ Admin Panel • Click to toggle settings")
         return embed
 
-    # ═══════════ ROW 0: CONFIGURATION ═══════════
-    @discord.ui.button(label="Setup", style=discord.ButtonStyle.primary, emoji="⚙️", row=0)
-    async def setup_wizard(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(title="⚙️ Quick Setup Guide", color=Config.COLOR_INFO)
-        embed.description = "Run `/setup` for the interactive wizard, or set individually:"
-        embed.add_field(name="Essential Commands", value=(
-            "`/setlog` - Set mod log channel\n"
-            "`/setmod` - Set moderator role\n"
-            "`/setadmin` - Set admin role\n"
-            "`/setwelcome` - Set welcome channel"
-        ), inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
+    # ═══════════ ROW 0: TOGGLES ═══════════
     @discord.ui.button(label="AutoMod", style=discord.ButtonStyle.secondary, emoji="🤖", row=0)
-    async def automod_config(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(title="🤖 AutoMod Configuration", color=Config.COLOR_INFO)
-        embed.add_field(name="Toggle Features", value=(
-            "`/automod enable` / `disable`\n"
-            "`/automod spam` - Anti-spam (threshold)\n"
-            "`/automod caps` - Caps filter (%)\n"
-            "`/automod links` - Block links\n"
-            "`/automod invites` - Block invites"
-        ), inline=False)
-        embed.add_field(name="Punishments", value=(
-            "`/automod punishment` - Set action (warn/mute/kick/ban)"
-        ), inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    async def toggle_automod(self, interaction: discord.Interaction, button: discord.ui.Button):
+        settings = await self._get_settings(interaction.guild_id)
+        current = settings.get("automod_enabled", False)
+        new_value = not current
+        await self._update_setting(interaction.guild_id, "automod_enabled", new_value)
+        
+        status = "🟢 **Enabled**" if new_value else "🔴 **Disabled**"
+        await interaction.response.send_message(f"🤖 AutoMod is now {status}", ephemeral=True)
+
+    @discord.ui.button(label="AI Mod", style=discord.ButtonStyle.secondary, emoji="🧠", row=0)
+    async def toggle_aimod(self, interaction: discord.Interaction, button: discord.ui.Button):
+        settings = await self._get_settings(interaction.guild_id)
+        current = settings.get("aimod_enabled", True)
+        new_value = not current
+        await self._update_setting(interaction.guild_id, "aimod_enabled", new_value)
+        
+        status = "🟢 **Enabled**" if new_value else "🔴 **Disabled**"
+        await interaction.response.send_message(f"🧠 AI Moderation is now {status}", ephemeral=True)
 
     @discord.ui.button(label="Logging", style=discord.ButtonStyle.secondary, emoji="📋", row=0)
-    async def logging_config(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(title="📋 Logging Configuration", color=Config.COLOR_INFO)
-        embed.add_field(name="Log Channels", value=(
-            "`/setlog mod` - Moderation logs\n"
-            "`/setlog voice` - Voice activity\n"
-            "`/setlog joins` - Member joins/leaves\n"
-            "`/setlog messages` - Message edits/deletes"
-        ), inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    async def toggle_logging(self, interaction: discord.Interaction, button: discord.ui.Button):
+        settings = await self._get_settings(interaction.guild_id)
+        current = settings.get("logging_enabled", True)
+        new_value = not current
+        await self._update_setting(interaction.guild_id, "logging_enabled", new_value)
+        
+        status = "🟢 **Enabled**" if new_value else "🔴 **Disabled**"
+        await interaction.response.send_message(f"📋 Logging is now {status}", ephemeral=True)
 
-    @discord.ui.button(label="Roles", style=discord.ButtonStyle.secondary, emoji="🎭", row=0)
-    async def roles_config(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(title="🎭 Role Management", color=Config.COLOR_INFO)
-        embed.add_field(name="Staff Roles", value=(
-            "`/setmod` - Moderator role\n"
-            "`/setadmin` - Admin role\n"
-            "`/setseniormod` - Senior mod role"
-        ), inline=True)
-        embed.add_field(name="Auto Roles", value=(
-            "`/autorole set` - Join role\n"
-            "`/autorole verify` - Verify role\n"
-            "`/voicerole` - VC roles"
-        ), inline=True)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    @discord.ui.button(label="Tickets", style=discord.ButtonStyle.secondary, emoji="🎫", row=0)
+    async def toggle_tickets(self, interaction: discord.Interaction, button: discord.ui.Button):
+        settings = await self._get_settings(interaction.guild_id)
+        current = settings.get("tickets_enabled", False)
+        new_value = not current
+        await self._update_setting(interaction.guild_id, "tickets_enabled", new_value)
+        
+        status = "🟢 **Enabled**" if new_value else "🔴 **Disabled**"
+        await interaction.response.send_message(f"🎫 Ticket System is now {status}", ephemeral=True)
 
-    # ═══════════ ROW 1: QUICK ACTIONS ═══════════
+    # ═══════════ ROW 1: SERVER ACTIONS ═══════════
     @discord.ui.button(label="Server Lockdown", style=discord.ButtonStyle.danger, emoji="🔐", row=1)
     async def server_lockdown(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(
-            title="🔐 Server Lockdown",
-            description="**Warning:** This will lock ALL text channels!\n\nUse `/lockdown` to activate or `/unlockdown` to deactivate.",
-            color=0xFF0000
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
+        
+        # Check if server is locked by looking at @everyone perms
+        guild = interaction.guild
+        default_role = guild.default_role
+        
+        # Count locked channels to determine state
+        locked_count = 0
+        total_text = 0
+        for channel in guild.text_channels:
+            if channel.permissions_for(guild.me).manage_channels:
+                total_text += 1
+                overwrites = channel.overwrites_for(default_role)
+                if overwrites.send_messages is False:
+                    locked_count += 1
+        
+        # If more than half are locked, we unlock. Otherwise, lock.
+        if locked_count > total_text // 2:
+            # UNLOCK
+            unlocked = 0
+            for channel in guild.text_channels:
+                try:
+                    await channel.set_permissions(default_role, send_messages=None, reason=f"Server unlocked by {interaction.user}")
+                    unlocked += 1
+                except:
+                    pass
+            await interaction.followup.send(f"🔓 **Server Unlocked!** Restored {unlocked} channels.", ephemeral=True)
+        else:
+            # LOCK
+            locked = 0
+            for channel in guild.text_channels:
+                try:
+                    await channel.set_permissions(default_role, send_messages=False, reason=f"Server lockdown by {interaction.user}")
+                    locked += 1
+                except:
+                    pass
+            await interaction.followup.send(f"🔐 **Server Locked!** Locked {locked} channels.", ephemeral=True)
 
-    @discord.ui.button(label="AI Moderation", style=discord.ButtonStyle.success, emoji="🧠", row=1)
-    async def ai_mod_toggle(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(title="🧠 AI Moderation", color=Config.COLOR_INFO)
-        embed.description = "AI-powered natural language moderation.\n\nMention the bot + command (e.g. `@bot mute user for spam`)"
-        embed.add_field(name="Commands", value=(
-            "`/aimod enable` - Turn on\n"
-            "`/aimod disable` - Turn off\n"
-            "`/aimod channel` - Set command channel\n"
-            "`/aimod confirm` - Require confirmations"
-        ), inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @discord.ui.button(label="Tickets", style=discord.ButtonStyle.secondary, emoji="🎫", row=1)
-    async def tickets_config(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(title="🎫 Ticket System", color=Config.COLOR_INFO)
-        embed.add_field(name="Setup", value=(
-            "`/ticketpanel` - Create ticket panel\n"
-            "`/ticket category` - Set ticket category\n"
-            "`/ticket staff` - Set support role"
-        ), inline=False)
-        embed.add_field(name="Management", value=(
-            "`/ticket close` - Close ticket\n"
-            "`/ticket add` - Add user\n"
-            "`/ticket transcript` - Generate log"
-        ), inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    @discord.ui.button(label="Anti-Raid", style=discord.ButtonStyle.secondary, emoji="🛡️", row=1)
+    async def toggle_antiraid(self, interaction: discord.Interaction, button: discord.ui.Button):
+        settings = await self._get_settings(interaction.guild_id)
+        current = settings.get("antiraid_enabled", False)
+        new_value = not current
+        await self._update_setting(interaction.guild_id, "antiraid_enabled", new_value)
+        
+        status = "🟢 **Enabled**" if new_value else "🔴 **Disabled**"
+        await interaction.response.send_message(f"🛡️ Anti-Raid is now {status}", ephemeral=True)
 
     @discord.ui.button(label="Welcome", style=discord.ButtonStyle.secondary, emoji="👋", row=1)
-    async def welcome_config(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(title="👋 Welcome System", color=Config.COLOR_INFO)
-        embed.add_field(name="Setup", value=(
-            "`/setwelcome` - Set welcome channel\n"
-            "`/welcome message` - Custom message\n"
-            "`/welcome card` - Enable/disable cards\n"
-            "`/autorole` - Auto-assign role on join"
-        ), inline=False)
+    async def toggle_welcome(self, interaction: discord.Interaction, button: discord.ui.Button):
+        settings = await self._get_settings(interaction.guild_id)
+        current = settings.get("welcome_enabled", False)
+        new_value = not current
+        await self._update_setting(interaction.guild_id, "welcome_enabled", new_value)
+        
+        status = "🟢 **Enabled**" if new_value else "🔴 **Disabled**"
+        await interaction.response.send_message(f"👋 Welcome Messages are now {status}", ephemeral=True)
+
+    @discord.ui.button(label="View Status", style=discord.ButtonStyle.primary, emoji="📊", row=1)
+    async def view_status(self, interaction: discord.Interaction, button: discord.ui.Button):
+        settings = await self._get_settings(interaction.guild_id)
+        
+        def status(key, default=False):
+            return "🟢 On" if settings.get(key, default) else "🔴 Off"
+        
+        embed = discord.Embed(title="📊 Current Settings", color=Config.COLOR_INFO)
+        embed.add_field(name="🤖 AutoMod", value=status("automod_enabled"), inline=True)
+        embed.add_field(name="🧠 AI Mod", value=status("aimod_enabled", True), inline=True)
+        embed.add_field(name="📋 Logging", value=status("logging_enabled", True), inline=True)
+        embed.add_field(name="🎫 Tickets", value=status("tickets_enabled"), inline=True)
+        embed.add_field(name="🛡️ Anti-Raid", value=status("antiraid_enabled"), inline=True)
+        embed.add_field(name="👋 Welcome", value=status("welcome_enabled"), inline=True)
+        
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    # ═══════════ ROW 2: INFO & STATS ═══════════
-    @discord.ui.button(label="View Settings", style=discord.ButtonStyle.primary, emoji="📊", row=2)
-    async def view_settings(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(title="📊 Current Server Settings", color=Config.COLOR_INFO)
-        embed.description = "Use `/settings` to view all bot settings for this server."
-        embed.add_field(name="Quick Info", value=(
-            f"**Server:** {interaction.guild.name}\n"
-            f"**Members:** {interaction.guild.member_count}\n"
-            f"**Channels:** {len(interaction.guild.channels)}"
-        ), inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @discord.ui.button(label="All Commands", style=discord.ButtonStyle.secondary, emoji="📖", row=2)
-    async def all_commands(self, interaction: discord.Interaction, button: discord.ui.Button):
-        embed = discord.Embed(title="📖 All Admin Commands", color=Config.COLOR_INFO)
-        for section, cmds in ADMIN_COMMANDS.items():
-            value = "\n".join([f"{cmd} — {desc}" for cmd, desc in cmds])
-            embed.add_field(name=f"📌 {section}", value=value, inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
+    # ═══════════ ROW 2: CLOSE ═══════════
     @discord.ui.button(label="Close", style=discord.ButtonStyle.danger, emoji="✖️", row=2)
     async def close_panel(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.message.delete()

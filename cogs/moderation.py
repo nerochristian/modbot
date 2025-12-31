@@ -2419,6 +2419,32 @@ class Moderation(commands.Cog):
         role: discord.Role
     ):
         """Give a role to all server members"""
+        # Security checks
+        if role >= interaction.guild.me.top_role:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Bot Error", "I cannot manage this role as it's higher than or equal to my highest role."),
+                ephemeral=True
+            )
+        
+        if role >= interaction.user.top_role and interaction.user.id != interaction.guild.owner_id and not is_bot_owner_id(interaction.user.id):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", "You cannot assign a role higher than or equal to your highest role."),
+                ephemeral=True
+            )
+        
+        if role.managed:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Managed Role", "This role is managed by an integration and cannot be manually assigned."),
+                ephemeral=True
+            )
+        
+        # Block mass-assigning dangerous roles
+        if role.permissions.administrator or role.permissions.manage_guild or role.permissions.manage_roles or role.permissions.ban_members or role.permissions.kick_members:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Dangerous Role", "You cannot mass-assign roles with Administrator, Manage Server, Manage Roles, Ban, or Kick permissions."),
+                ephemeral=True
+            )
+        
         await interaction.response.defer()
         
         success = []
@@ -2431,7 +2457,7 @@ class Moderation(commands.Cog):
                 continue
             
             try:
-                await member.add_roles(role)
+                await member.add_roles(role, reason=f"Mass role assignment by {interaction.user}")
                 success.append(member.mention)
             except (discord.Forbidden, discord.HTTPException):
                 failed.append(member.mention)
