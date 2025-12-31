@@ -6,7 +6,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from datetime import datetime
-from typing import Optional, Literal
+from typing import Optional, Literal, Union
 from utils.embeds import ModEmbed
 from utils.checks import is_mod, is_admin, is_bot_owner_id
 from config import Config
@@ -20,6 +20,7 @@ class Voice(commands.Cog):
     @app_commands.describe(
         action="The action to perform",
         user="The user to target (required for most actions)",
+        user_id="User ID for unban (if user left server)",
         channel="Target voice channel (for move/moveall)",
         from_channel="Source channel (for moveall)",
         reason="Reason for the action",
@@ -31,6 +32,7 @@ class Voice(commands.Cog):
         interaction: discord.Interaction, 
         action: Literal["mute", "unmute", "deafen", "undeafen", "kick", "move", "moveall", "ban", "unban", "verification"],
         user: Optional[discord.Member] = None,
+        user_id: Optional[str] = None,
         channel: Optional[discord.VoiceChannel] = None,
         from_channel: Optional[discord.VoiceChannel] = None,
         reason: Optional[str] = "No reason provided",
@@ -98,141 +100,194 @@ class Voice(commands.Cog):
         elif action == "ban":
             await self._ban(interaction, user, reason)
         elif action == "unban":
-            await self._unban(interaction, user)
+            # Unban can work with either user or user_id
+            if user is None and user_id is None:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Missing Argument", "Please specify either `user` or `user_id` for unban."),
+                    ephemeral=True
+                )
+            await self._unban(interaction, user, user_id)
 
-    async def _mute(self, interaction: discord.Interaction, user: discord.Member, reason: str):
+    async def _respond(self, source, embed=None, content=None, ephemeral=False, view=None):
+        if isinstance(source, discord.Interaction):
+            if source.response.is_done():
+                return await source.followup.send(content=content, embed=embed, ephemeral=ephemeral, view=view)
+            else:
+                return await source.response.send_message(content=content, embed=embed, ephemeral=ephemeral, view=view)
+        else:
+            return await source.send(content=content, embed=embed, view=view)
+
+    async def _mute(self, source, user: discord.Member, reason: str):
+        author = source.user if isinstance(source, discord.Interaction) else source.author
         if not user.voice:
-            return await interaction.response.send_message(
+            return await self._respond(
+                source,
                 embed=ModEmbed.error("Not in Voice", f"{user.mention} is not in a voice channel."),
                 ephemeral=True
             )
         
-        await user.edit(mute=True, reason=f"{interaction.user}: {reason}")
+        try:
+            await user.edit(mute=True, reason=f"{author}: {reason}")
+        except discord.Forbidden:
+             return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to mute members."), ephemeral=True)
+
         embed = ModEmbed.success("Voice Muted", f"{user.mention} has been server muted.\n**Reason:** {reason}")
-        await interaction.response.send_message(embed=embed)
+        await self._respond(source, embed=embed)
     
-    async def _unmute(self, interaction: discord.Interaction, user: discord.Member):
+    async def _unmute(self, source, user: discord.Member):
+        author = source.user if isinstance(source, discord.Interaction) else source.author
         if not user.voice:
-            return await interaction.response.send_message(
+            return await self._respond(
+                source,
                 embed=ModEmbed.error("Not in Voice", f"{user.mention} is not in a voice channel."),
                 ephemeral=True
             )
         
-        await user.edit(mute=False, reason=f"Unmuted by {interaction.user}")
+        try:
+            await user.edit(mute=False, reason=f"Unmuted by {author}")
+        except discord.Forbidden:
+             return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to mute members."), ephemeral=True)
+
         embed = ModEmbed.success("Voice Unmuted", f"{user.mention} has been server unmuted.")
-        await interaction.response.send_message(embed=embed)
+        await self._respond(source, embed=embed)
     
-    async def _deafen(self, interaction: discord.Interaction, user: discord.Member, reason: str):
+    async def _deafen(self, source, user: discord.Member, reason: str):
+        author = source.user if isinstance(source, discord.Interaction) else source.author
         if not user.voice:
-            return await interaction.response.send_message(
+            return await self._respond(
+                source,
                 embed=ModEmbed.error("Not in Voice", f"{user.mention} is not in a voice channel."),
                 ephemeral=True
             )
-        
-        await user.edit(deafen=True, reason=f"{interaction.user}: {reason}")
+            
+        try:
+            await user.edit(deafen=True, reason=f"{author}: {reason}")
+        except discord.Forbidden:
+             return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to deafen members."), ephemeral=True)
+
         embed = ModEmbed.success("Voice Deafened", f"{user.mention} has been server deafened.\n**Reason:** {reason}")
-        await interaction.response.send_message(embed=embed)
+        await self._respond(source, embed=embed)
     
-    async def _undeafen(self, interaction: discord.Interaction, user: discord.Member):
+    async def _undeafen(self, source, user: discord.Member):
+        author = source.user if isinstance(source, discord.Interaction) else source.author
         if not user.voice:
-            return await interaction.response.send_message(
+            return await self._respond(
+                source,
                 embed=ModEmbed.error("Not in Voice", f"{user.mention} is not in a voice channel."),
                 ephemeral=True
             )
         
-        await user.edit(deafen=False, reason=f"Undeafened by {interaction.user}")
+        try:
+            await user.edit(deafen=False, reason=f"Undeafened by {author}")
+        except discord.Forbidden:
+             return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to deafen members."), ephemeral=True)
+
         embed = ModEmbed.success("Voice Undeafened", f"{user.mention} has been server undeafened.")
-        await interaction.response.send_message(embed=embed)
+        await self._respond(source, embed=embed)
     
-    async def _kick(self, interaction: discord.Interaction, user: discord.Member, reason: str):
+    async def _kick(self, source, user: discord.Member, reason: str):
+        author = source.user if isinstance(source, discord.Interaction) else source.author
         if not user.voice:
-            return await interaction.response.send_message(
+            return await self._respond(
+                source,
                 embed=ModEmbed.error("Not in Voice", f"{user.mention} is not in a voice channel."),
                 ephemeral=True
             )
         
         channel_name = user.voice.channel.name
-        await user.move_to(None, reason=f"{interaction.user}: {reason}")
+        try:
+            await user.move_to(None, reason=f"{author}: {reason}")
+        except discord.Forbidden:
+             return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to disconnect members."), ephemeral=True)
         
         embed = ModEmbed.success("Disconnected from Voice", 
                                  f"{user.mention} has been disconnected from **{channel_name}**.\n**Reason:** {reason}")
-        await interaction.response.send_message(embed=embed)
+        await self._respond(source, embed=embed)
     
-    async def _move(self, interaction: discord.Interaction, user: discord.Member, channel: discord.VoiceChannel):
+    async def _move(self, source, user: discord.Member, channel: discord.VoiceChannel):
+        author = source.user if isinstance(source, discord.Interaction) else source.author
         if not user.voice:
-            return await interaction.response.send_message(
+            return await self._respond(
+                source,
                 embed=ModEmbed.error("Not in Voice", f"{user.mention} is not in a voice channel."),
                 ephemeral=True
             )
         
         old_channel = user.voice.channel.name
-        await user.move_to(channel, reason=f"Moved by {interaction.user}")
+        try:
+            await user.move_to(channel, reason=f"Moved by {author}")
+        except discord.Forbidden:
+             return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to move members."), ephemeral=True)
         
         embed = ModEmbed.success("User Moved", 
                                  f"{user.mention} has been moved from **{old_channel}** to **{channel.name}**")
-        await interaction.response.send_message(embed=embed)
+        await self._respond(source, embed=embed)
     
-    async def _moveall(self, interaction: discord.Interaction, from_channel: discord.VoiceChannel,
+    async def _moveall(self, source, from_channel: discord.VoiceChannel,
                        to_channel: discord.VoiceChannel):
         if not from_channel.members:
-            return await interaction.response.send_message(
+            return await self._respond(
+                source,
                 embed=ModEmbed.error("Empty Channel", f"{from_channel.mention} has no members."),
                 ephemeral=True
             )
         
-        await interaction.response.defer()
+        if isinstance(source, discord.Interaction):
+            await source.response.defer()
         
+        author = source.user if isinstance(source, discord.Interaction) else source.author
+
         count = 0
         for member in from_channel.members:
-            if is_bot_owner_id(member.id) and not is_bot_owner_id(interaction.user.id):
+            if is_bot_owner_id(member.id) and not is_bot_owner_id(author.id):
                 continue
             try:
-                await member.move_to(to_channel, reason=f"Mass move by {interaction.user}")
+                await member.move_to(to_channel, reason=f"Mass move by {author}")
                 count += 1
             except:
                 pass
         
         embed = ModEmbed.success("Users Moved", 
                                  f"Moved **{count}** users from {from_channel.mention} to {to_channel.mention}")
-        await interaction.followup.send(embed=embed)
+        await self._respond(source, embed=embed)
 
-    async def _ban(self, interaction: discord.Interaction, user: discord.Member, reason: str):
-        if not interaction.guild:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Guild Only", "This command can only be used in a server."),
-                ephemeral=True
-            )
+    async def _ban(self, source, user: discord.Member, reason: str):
+        if not source.guild:
+            return await self._respond(source, embed=ModEmbed.error("Guild Only", "This command can only be used in a server."), ephemeral=True)
 
-        await interaction.response.defer()
+        if isinstance(source, discord.Interaction):
+            await source.response.defer()
+
+        author = source.user if isinstance(source, discord.Interaction) else source.author
 
         # Disconnect user from voice if currently connected
         if user.voice:
             try:
-                await user.move_to(None, reason=f"Voice banned by {interaction.user}: {reason}")
+                await user.move_to(None, reason=f"Voice banned by {author}: {reason}")
             except:
                 pass
 
         # Apply voice ban to all voice channels in the server
         failed = 0
         success = 0
-        for channel in interaction.guild.voice_channels:
+        for channel in source.guild.voice_channels:
             try:
                 await channel.set_permissions(
                     user,
                     connect=False,
-                    reason=f"Voice banned by {interaction.user}: {reason}"
+                    reason=f"Voice banned by {author}: {reason}"
                 )
                 success += 1
             except:
                 failed += 1
 
         # Also apply to stage channels
-        for channel in interaction.guild.stage_channels:
+        for channel in source.guild.stage_channels:
             try:
                 await channel.set_permissions(
                     user,
                     connect=False,
-                    reason=f"Voice banned by {interaction.user}: {reason}"
+                    reason=f"Voice banned by {author}: {reason}"
                 )
                 success += 1
             except:
@@ -241,9 +296,9 @@ class Voice(commands.Cog):
         # Log to moderation cases if available
         try:
             await self.bot.db.create_case(
-                interaction.guild.id,
+                source.guild.id,
                 user.id,
-                interaction.user.id,
+                author.id,
                 "vcban",
                 reason
             )
@@ -261,114 +316,157 @@ class Voice(commands.Cog):
                 "Voice Banned",
                 f"{user.mention} has been voice banned from all **{success}** voice channels.\n**Reason:** {reason}"
             )
-        await interaction.followup.send(embed=embed)
+        await self._respond(source, embed=embed)
 
-    async def _unban(self, interaction: discord.Interaction, user: discord.Member):
-        if not interaction.guild:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Guild Only", "This command can only be used in a server."),
+    async def _unban(self, source, user: Optional[discord.Member], user_id: Optional[str]):
+        if not source.guild:
+            return await self._respond(source, embed=ModEmbed.error("Guild Only", "This command can only be used in a server."), ephemeral=True)
+
+        if isinstance(source, discord.Interaction):
+            await source.response.defer()
+            
+        author = source.user if isinstance(source, discord.Interaction) else source.author
+
+        # Determine target - either from user object or user_id
+        target_user = None
+        target_id = None
+        
+        if user:
+            target_user = user
+            target_id = user.id
+        elif user_id:
+            try:
+                target_id = int(user_id)
+                # Try to fetch the user object (works even if they left)
+                try:
+                    target_user = await self.bot.fetch_user(target_id)
+                except:
+                    # User doesn't exist, but we can still use ID to remove permissions
+                    target_user = await self.bot.get_or_fetch_member(source.guild, target_id)
+            except ValueError:
+                return await self._respond(
+                    source,
+                    embed=ModEmbed.error("Invalid ID", "Please provide a valid user ID."),
+                    ephemeral=True
+                )
+
+        if not target_id:
+            return await self._respond(
+                source,
+                embed=ModEmbed.error("Error", "Could not determine target user."),
                 ephemeral=True
             )
 
-        await interaction.response.defer()
-
         # Remove voice ban overwrites from all voice channels
         removed = 0
-        for channel in interaction.guild.voice_channels:
+        for channel in source.guild.voice_channels:
             try:
-                overwrites = channel.overwrites_for(user)
-                if overwrites.connect is False:
+                # Get the permission overwrite for this user
+                if target_user:
+                    overwrites = channel.overwrites_for(target_user)
+                else:
+                    # Fallback: check if there's an overwrite by ID
+                    overwrites = channel.overwrites.get(discord.Object(id=target_id))
+                    if not overwrites:
+                        continue
+                
+                # Only remove if connect is explicitly set to False
+                if overwrites and overwrites.connect is False:
                     await channel.set_permissions(
-                        user,
+                        target_user if target_user else discord.Object(id=target_id),
                         overwrite=None,
-                        reason=f"Voice unbanned by {interaction.user}"
+                        reason=f"Voice unbanned by {author}"
                     )
                     removed += 1
-            except:
+            except Exception as e:
                 pass
 
         # Also check stage channels
-        for channel in interaction.guild.stage_channels:
+        for channel in source.guild.stage_channels:
             try:
-                overwrites = channel.overwrites_for(user)
-                if overwrites.connect is False:
+                if target_user:
+                    overwrites = channel.overwrites_for(target_user)
+                else:
+                    overwrites = channel.overwrites.get(discord.Object(id=target_id))
+                    if not overwrites:
+                        continue
+                
+                if overwrites and overwrites.connect is False:
                     await channel.set_permissions(
-                        user,
+                        target_user if target_user else discord.Object(id=target_id),
                         overwrite=None,
-                        reason=f"Voice unbanned by {interaction.user}"
+                        reason=f"Voice unbanned by {author}"
                     )
                     removed += 1
-            except:
+            except Exception as e:
                 pass
 
         # Log to moderation cases if available
         try:
             await self.bot.db.create_case(
-                interaction.guild.id,
-                user.id,
-                interaction.user.id,
+                source.guild.id,
+                target_id,
+                author.id,
                 "vcunban",
                 "Voice ban removed"
             )
         except:
             pass
 
+        user_mention = target_user.mention if target_user else f"User ID: {target_id}"
+        
         if removed > 0:
             embed = ModEmbed.success(
                 "Voice Unbanned",
-                f"{user.mention} has been voice unbanned. Removed restrictions from **{removed}** channels."
+                f"{user_mention} has been voice unbanned. Removed restrictions from **{removed}** channels."
             )
         else:
             embed = ModEmbed.info(
                 "No Ban Found",
-                f"{user.mention} did not have any voice channel restrictions to remove."
+                f"{user_mention} did not have any voice channel restrictions to remove."
             )
-        await interaction.followup.send(embed=embed)
+        await self._respond(source, embed=embed)
 
-    async def _verification(self, interaction: discord.Interaction, state: Literal["on", "off"]):
-        if not interaction.guild:
-            await interaction.response.send_message(
-                embed=ModEmbed.error("Guild Only", "Use this command in a server."),
-                ephemeral=True,
-            )
-            return
+    async def _verification(self, source, state: Literal["on", "off"]):
+        if not source.guild:
+            return await self._respond(source, embed=ModEmbed.error("Guild Only", "Use this command in a server."), ephemeral=True)
 
         enable = state == "on"
         
         if enable:
             # Check if waiting room is configured
-            settings = await self.bot.db.get_settings(interaction.guild.id)
+            settings = await self.bot.db.get_settings(source.guild.id)
             waiting_id = settings.get("waiting_verify_voice_channel")
             if not waiting_id:
-                await interaction.response.send_message(
+                return await self._respond(
+                    source,
                     embed=ModEmbed.error(
                         "Not Configured",
                         "Missing the `waiting-verify` voice channel. Run `/setup` first.",
                     ),
                     ephemeral=True,
                 )
-                return
             
-            waiting = interaction.guild.get_channel(int(waiting_id))
+            waiting = source.guild.get_channel(int(waiting_id))
             if not isinstance(waiting, discord.VoiceChannel):
-                await interaction.response.send_message(
+                return await self._respond(
+                    source,
                     embed=ModEmbed.error(
                         "Not Configured",
                         "The waiting-verify channel is invalid. Run `/setup` again.",
                     ),
                     ephemeral=True,
                 )
-                return
 
-        settings = await self.bot.db.get_settings(interaction.guild.id)
+        settings = await self.bot.db.get_settings(source.guild.id)
         settings["voice_verification_enabled"] = enable
-        await self.bot.db.update_settings(interaction.guild.id, settings)
+        await self.bot.db.update_settings(source.guild.id, settings)
 
         # If disabling, clear any voice verification state from the Verification cog
         if not enable:
             verification_cog = self.bot.get_cog("Verification")
             if verification_cog:
-                gid = interaction.guild.id
+                gid = source.guild.id
                 # Clear pending voice captchas
                 voice_pending = [k for k in verification_cog._pending.keys() if k[0] == gid and k[2] == "voice"]
                 for k in voice_pending:
@@ -383,13 +481,81 @@ class Voice(commands.Cog):
                 for k in [k for k in verification_cog._voice_session_verified if k[0] == gid]:
                     verification_cog._voice_session_verified.discard(k)
 
-        await interaction.response.send_message(
+        await self._respond(
+            source,
             embed=ModEmbed.success(
                 "Updated",
                 f"Voice verification is now **{state}**.",
             ),
             ephemeral=True,
         )
+
+
+    @commands.command(name="vcmute")
+    @is_mod()
+    async def vcmute(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
+        """Mute a user in voice"""
+        await self._mute(ctx, user, reason)
+
+    @commands.command(name="vcunmute")
+    @is_mod()
+    async def vcunmute(self, ctx: commands.Context, user: discord.Member):
+        """Unmute a user in voice"""
+        await self._unmute(ctx, user)
+
+    @commands.command(name="vcdeafen")
+    @is_mod()
+    async def vcdeafen(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
+        """Deafen a user in voice"""
+        await self._deafen(ctx, user, reason)
+
+    @commands.command(name="vcundeafen")
+    @is_mod()
+    async def vcundeafen(self, ctx: commands.Context, user: discord.Member):
+        """Undeafen a user in voice"""
+        await self._undeafen(ctx, user)
+
+    @commands.command(name="vckick")
+    @is_mod()
+    async def vckick(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
+        """Kick a user from voice channel"""
+        await self._kick(ctx, user, reason)
+
+    @commands.command(name="vcmove")
+    @is_mod()
+    async def vcmove(self, ctx: commands.Context, user: discord.Member, channel: discord.VoiceChannel):
+        """Move a user to another voice channel"""
+        await self._move(ctx, user, channel)
+
+    @commands.command(name="vcmoveall")
+    @is_mod()
+    async def vcmoveall(self, ctx: commands.Context, from_channel: discord.VoiceChannel, to_channel: discord.VoiceChannel):
+        """Move all users from one channel to another"""
+        await self._moveall(ctx, from_channel, to_channel)
+
+    @commands.command(name="vcban")
+    @is_mod()
+    async def vcban(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
+        """Ban a user from all voice channels"""
+        await self._ban(ctx, user, reason)
+
+    @commands.command(name="vcunban")
+    @is_mod()
+    async def vcunban(self, ctx: commands.Context, user: Union[discord.Member, discord.User, str]):
+        """Unban a user from voice channels"""
+        user_obj = None
+        user_id = None
+        if isinstance(user, (discord.Member, discord.User)):
+            user_obj = user
+        else:
+            user_id = str(user)
+        await self._unban(ctx, user_obj, user_id)
+
+    @commands.command(name="vcverify")
+    @is_admin()
+    async def vcverify(self, ctx: commands.Context, state: Literal["on", "off"]):
+        """Enable/disable voice verification requirement"""
+        await self._verification(ctx, state)
 
 
 async def setup(bot):

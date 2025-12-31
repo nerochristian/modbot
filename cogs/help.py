@@ -43,9 +43,13 @@ def _walk_slash_commands(tree: app_commands.CommandTree) -> list[app_commands.Co
     return cmds
 
 
-def _category_for_command(cmd: app_commands.Command | app_commands.Group) -> str:
-    binding = getattr(cmd, "binding", None)
-    cog_name = getattr(binding, "__cog_name__", None)
+def _category_for_command(cmd: app_commands.Command | app_commands.Group | commands.Command) -> str:
+    if isinstance(cmd, (app_commands.Command, app_commands.Group)):
+        binding = getattr(cmd, "binding", None)
+        cog_name = getattr(binding, "__cog_name__", None)
+    else:
+        cog_name = cmd.cog_name
+
     if cog_name:
         if cog_name.upper() == cog_name and len(cog_name) <= 4:
             return cog_name
@@ -55,8 +59,10 @@ def _category_for_command(cmd: app_commands.Command | app_commands.Group) -> str
     return "Core"
 
 
-def _format_slash_invocation(cmd: app_commands.Command | app_commands.Group) -> str:
-    return f"/{cmd.qualified_name}"
+def _format_invocation(cmd: app_commands.Command | app_commands.Group | commands.Command) -> str:
+    if isinstance(cmd, (app_commands.Command, app_commands.Group)):
+        return f"/{cmd.qualified_name}"
+    return f",{cmd.qualified_name}"
 
 
 def _chunked(items: list, *, size: int) -> Iterable[list]:
@@ -64,36 +70,56 @@ def _chunked(items: list, *, size: int) -> Iterable[list]:
         yield items[i : i + size]
 
 
-def _usage_line(cmd: app_commands.Command) -> str:
-    parts = [_format_slash_invocation(cmd)]
-    for p in cmd.parameters:
-        if p.required:
-            parts.append(f"<{p.name}>")
-        else:
-            parts.append(f"[{p.name}]")
+def _usage_line(cmd: app_commands.Command | commands.Command) -> str:
+    parts = [_format_invocation(cmd)]
+    
+    if isinstance(cmd, (app_commands.Command, app_commands.Group)):
+        for p in cmd.parameters:
+            if p.required:
+                parts.append(f"<{p.name}>")
+            else:
+                parts.append(f"[{p.name}]")
+    else:
+        # Prefix command
+        for name, param in cmd.clean_params.items():
+            if param.default is param.empty:
+                parts.append(f"<{name}>")
+            else:
+                parts.append(f"[{name}]")
+                
     return " ".join(parts)
 
 
-def _parameter_lines(cmd: app_commands.Command) -> str:
-    if not cmd.parameters:
-        return "No parameters."
+def _parameter_lines(cmd: app_commands.Command | commands.Command) -> str:
     lines: list[str] = []
-    for p in cmd.parameters:
-        desc = (p.description or "No description").strip()
-        required = "required" if p.required else "optional"
-        lines.append(f"• `{p.name}` ({required}) — {desc}")
+    
+    if isinstance(cmd, (app_commands.Command, app_commands.Group)):
+        if not cmd.parameters:
+            return "No parameters."
+        for p in cmd.parameters:
+            desc = (p.description or "No description").strip()
+            required = "required" if p.required else "optional"
+            lines.append(f"• `{p.name}` ({required}) — {desc}")
+    else:
+        # Prefix command
+        if not cmd.clean_params:
+            return "No parameters."
+        for name, param in cmd.clean_params.items():
+            required = "required" if param.default is param.empty else "optional"
+            lines.append(f"• `{name}` ({required})")
+            
     return "\n".join(lines)
 
 
 @dataclass(frozen=True)
 class _HelpIndex:
-    categories: dict[str, list[app_commands.Command | app_commands.Group]]
-    by_name: dict[str, app_commands.Command | app_commands.Group]
+    categories: dict[str, list[app_commands.Command | app_commands.Group | commands.Command]]
+    by_name: dict[str, app_commands.Command | app_commands.Group | commands.Command]
 
     @staticmethod
     def build(bot: commands.Bot) -> "_HelpIndex":
-        categories: dict[str, list[app_commands.Command | app_commands.Group]] = {}
-        by_name: dict[str, app_commands.Command | app_commands.Group] = {}
+        categories: dict[str, list[app_commands.Command | app_commands.Group | commands.Command]] = {}
+        by_name: dict[str, app_commands.Command | app_commands.Group | commands.Command] = {}
 
         for cmd in _walk_slash_commands(bot.tree):
             if getattr(cmd, "name", None) in ("help", "modpanel", "adminpanel", "ownerpanel"):
@@ -102,6 +128,26 @@ class _HelpIndex:
             category = _category_for_command(cmd)
             categories.setdefault(category, []).append(cmd)
             by_name[_normalize_command_name(cmd.qualified_name)] = cmd
+
+        # Index prefix commands
+        for cmd in bot.commands:
+            if cmd.hidden:
+                continue
+            
+            # If a slash command with same name exists, we might want to skip or merge?
+            # For now, let's index them all. If names collide, last write wins in by_name 
+            # but categories list appends.
+            # To avoid duplicates in list, we could check.
+            
+            # Simple deduplication by qualified name within category? 
+            # But they are different objects.
+            
+            category = _category_for_command(cmd)
+            categories.setdefault(category, []).append(cmd)
+            by_name[_normalize_command_name(cmd.qualified_name)] = cmd
+            
+            for alias in cmd.aliases:
+                by_name[_normalize_command_name(alias)] = cmd
 
         for cat in categories:
             categories[cat].sort(key=lambda c: c.qualified_name)
@@ -324,7 +370,7 @@ class HelpView(discord.ui.View):
             desc = (getattr(cmd, "description", None) or "No description").strip()
             if len(desc) > 50:
                 desc = desc[:47] + "..."
-            lines.append(f"`{_format_slash_invocation(cmd)}` — {desc}")
+            lines.append(f"`{_format_invocation(cmd)}` — {desc}")
 
         pages: list[discord.Embed] = []
         chunks = list(_chunked(lines, size=10)) or [[]]
@@ -756,7 +802,7 @@ class Help(commands.Cog):
     def _build_details_embed(self, cmd: app_commands.Command | app_commands.Group) -> discord.Embed:
         category = _category_for_command(cmd)
         emoji = get_category_icon(category)
-        title = f"{emoji} {_format_slash_invocation(cmd)}"
+        title = f"{emoji} {_format_invocation(cmd)}"
         desc = (getattr(cmd, "description", None) or "No description").strip()
 
         embed = discord.Embed(
@@ -772,12 +818,35 @@ class Help(commands.Cog):
         else:
             embed.add_field(
                 name="Usage",
-                value=f"`{_format_slash_invocation(cmd)}` (command group with subcommands)",
+                value=f"`{_format_invocation(cmd)}` (command group with subcommands)",
                 inline=False,
             )
 
         embed.set_footer(text="Use /help to browse all commands")
         return embed
+
+    @commands.command(name="help", help="Browse commands and get detailed help")
+    async def help_prefix(self, ctx: commands.Context, *, command: Optional[str] = None):
+        """Text-based help command"""
+        index = _HelpIndex.build(self.bot)
+
+        if command:
+            key = _normalize_command_name(command)
+            cmd = index.by_name.get(key)
+            if not cmd:
+                # Try partial match
+                matches = [n for n in index.by_name.keys() if key in n]
+                if matches:
+                    suggestions = ", ".join([f"`{m}`" for m in matches[:5]])
+                    await ctx.send(f"Command `{command}` not found. Did you mean: {suggestions}?", delete_after=15)
+                else:
+                    await ctx.send(f"Command `{command}` not found. Try `,help` to browse categories.", delete_after=15)
+                return
+            await ctx.send(embed=self._build_details_embed(cmd))
+            return
+
+        view = HelpView(bot=self.bot, author_id=ctx.author.id, index=index)
+        view.message = await ctx.send(embed=view.pages[0], view=view)
 
     @app_commands.command(name="help", description="📚 Browse commands and get detailed help")
     @app_commands.describe(command="Specific command to view (example: ban, warn, vc)")

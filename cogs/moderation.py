@@ -5,13 +5,14 @@ Comprehensive moderation toolkit with hierarchy checks, logging, and database in
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Literal
 import asyncio
 import aiohttp
 import re
 import io
+import json
 import logging
 from urllib.parse import urlparse
 from pathlib import Path
@@ -293,6 +294,217 @@ class Moderation(commands.Cog):
         self.bot = bot
         self._hierarchy_cache = {}
 
+    async def cog_load(self):
+        """Initialize database table for quarantines"""
+        try:
+            # Create quarantines table if it doesn't exist
+            async with self.bot.db.get_connection() as conn:
+                await conn.execute("""
+                    CREATE TABLE IF NOT EXISTS quarantines (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        guild_id INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        moderator_id INTEGER NOT NULL,
+                        roles_backup TEXT NOT NULL,
+                        started_at TEXT NOT NULL,
+                        expires_at TEXT,
+                        reason TEXT,
+                        active INTEGER DEFAULT 1
+                    )
+                """)
+                await conn.commit()
+            
+            # Start background task
+            if not self.check_quarantine_expiry.is_running():
+                self.check_quarantine_expiry.start()
+            
+            logger.info("Quarantine system initialized")
+        except Exception as e:
+            logger.error(f"Failed to initialize quarantine system: {e}")
+
+    async def cog_unload(self):
+        """Cleanup when cog is unloaded"""
+        if self.check_quarantine_expiry.is_running():
+            self.check_quarantine_expiry.cancel()
+
+    @tasks.loop(minutes=1)
+    async def check_quarantine_expiry(self):
+        """Background task to check for expired quarantines"""
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            
+            async with self.bot.db.get_connection() as conn:
+                # Get all expired quarantines
+                async with conn.execute("""
+                    SELECT id, guild_id, user_id, roles_backup, moderator_id
+                    FROM quarantines
+                    WHERE active = 1 AND expires_at IS NOT NULL AND expires_at <= ?
+                """, (now,)) as cursor:
+                    expired = await cursor.fetchall()
+            
+                for quarantine in expired:
+                    q_id, guild_id, user_id, roles_json, mod_id = quarantine
+                    
+                    try:
+                        # Get guild and member
+                        guild = self.bot.get_guild(guild_id)
+                        if not guild:
+                            continue
+                        
+                        member = guild.get_member(user_id)
+                        if not member:
+                            # User left - just mark as inactive
+                            await conn.execute(
+                                "UPDATE quarantines SET active = 0 WHERE id = ?", (q_id,)
+                            )
+                            await conn.commit()
+                            continue
+                        
+                        # Restore roles
+                        role_ids = json.loads(roles_json)
+                        await self._restore_roles(member, role_ids)
+                        
+                        # Remove quarantine role
+                        settings = await self.bot.db.get_settings(guild_id)
+                        quar_role_id = settings.get('quarantine_role')
+                        if quar_role_id:
+                            quar_role = guild.get_role(quar_role_id)
+                            if quar_role and quar_role in member.roles:
+                                try:
+                                    await member.remove_roles(quar_role, reason="Quarantine expired")
+                                except:
+                                    pass
+                        
+                        # Mark as inactive
+                        await conn.execute(
+                            "UPDATE quarantines SET active = 0 WHERE id = ?", (q_id,)
+                        )
+                        await conn.commit()
+                        
+                        # Log action
+                        embed = discord.Embed(
+                            title="🔓 Quarantine Expired",
+                            description=f"{member.mention}'s quarantine has automatically expired.",
+                            color=Colors.SUCCESS,
+                            timestamp=datetime.now(timezone.utc)
+                        )
+                        embed.add_field(name="User", value=f"{member.mention} (`{user_id}`)", inline=True)
+                        await self.log_action(guild, embed)
+                        
+                        # DM user
+                        dm_embed = discord.Embed(
+                            title=f"🔓 Quarantine Lifted in {guild.name}",
+                            description="Your temporary quarantine has expired and your roles have been restored.",
+                            color=Colors.SUCCESS
+                        )
+                        await self.dm_user(member, dm_embed)
+                        
+                    except Exception as e:
+                        logger.error(f"Error processing expired quarantine {q_id}: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Error in quarantine expiry check: {e}")
+
+    @check_quarantine_expiry.before_loop
+    async def before_quarantine_check(self):
+        """Wait until bot is ready before starting the task"""
+        await self.bot.wait_until_ready()
+
+    # ==================== QUARANTINE HELPER METHODS ====================
+
+    async def _backup_roles(self, user: discord.Member) -> list[int]:
+        """Backup user roles (excluding @everyone and quarantine role)"""
+        settings = await self.bot.db.get_settings(user.guild.id)
+        quarantine_role_id = settings.get('quarantine_role')
+        
+        role_ids = []
+        for role in user.roles:
+            # Skip @everyone and quarantine role
+            if role.id == user.guild.id or role.id == quarantine_role_id:
+                continue
+            role_ids.append(role.id)
+        
+        return role_ids
+
+    async def _restore_roles(self, user: discord.Member, role_ids: list[int]) -> tuple[int, int]:
+        """Restore roles to user, returns (restored_count, failed_count)"""
+        restored = 0
+        failed = 0
+        roles_to_add = []
+        
+        # Get bot member for hierarchy check
+        bot_member = user.guild.me
+        if not bot_member:
+            try:
+                bot_member = user.guild.get_member(self.bot.user.id)
+            except:
+                pass
+        
+        for role_id in role_ids:
+            role = user.guild.get_role(role_id)
+            if not role:
+                failed += 1
+                continue
+                
+            # Skip if user already has role
+            if role in user.roles:
+                continue
+
+            # Check hierarchy
+            if bot_member and bot_member.top_role <= role:
+                logger.warning(f"Cannot restore role {role.name} to {user}: role higher than bot.")
+                failed += 1
+                continue
+                
+            roles_to_add.append(role)
+        
+        if roles_to_add:
+            try:
+                # Batch add for efficiency (1 API call)
+                await user.add_roles(*roles_to_add, reason="Quarantine lifted")
+                restored = len(roles_to_add)
+            except Exception as e:
+                logger.error(f"Failed to batch restore roles for {user}: {e}")
+                # Fallback to one-by-one on error
+                for role in roles_to_add:
+                    try:
+                        await user.add_roles(role, reason="Quarantine lifted (fallback)")
+                        restored += 1
+                    except Exception as inner_e:
+                        logger.error(f"Failed to restore specific role {role.id}: {inner_e}")
+                        failed += 1
+                        
+        return restored, failed
+
+    async def _get_active_quarantine(self, guild_id: int, user_id: int) -> Optional[dict]:
+        """Get active quarantine record from database"""
+        try:
+            async with self.bot.db.get_connection() as conn:
+                async with conn.execute("""
+                    SELECT id, guild_id, user_id, moderator_id, roles_backup, started_at, expires_at, reason
+                    FROM quarantines
+                    WHERE guild_id = ? AND user_id = ? AND active = 1
+                """, (guild_id, user_id)) as cursor:
+                    row = await cursor.fetchone()
+                
+            if not row:
+                return None
+            
+            return {
+                'id': row[0],
+                'guild_id': row[1],
+                'user_id': row[2],
+                'moderator_id': row[3],
+                'roles_backup': row[4],
+                'started_at': row[5],
+                'expires_at': row[6],
+                'reason': row[7]
+            }
+        except Exception as e:
+            logger.error(f"Error getting quarantine: {e}")
+            return None
+
+
     # ==================== UTILITY METHODS ====================
 
     async def get_user_level(self, guild_id: int, member: discord.Member) -> int:
@@ -509,29 +721,618 @@ class Moderation(commands.Cog):
 
     async def _respond(
         self,
-        interaction: discord.Interaction,
+        source: discord.Interaction | commands.Context,
         *,
         content: Optional[str] = None,
         embed: Optional[discord.Embed] = None,
         ephemeral: bool = False,
     ):
-        """Send a response or followup depending on whether the interaction is already acknowledged."""
+        """Send a response or followup depending on whether the interaction/context is already acknowledged."""
         try:
-            if interaction.response.is_done():
-                return await interaction.followup.send(
+            if isinstance(source, discord.Interaction):
+                if source.response.is_done():
+                    return await source.followup.send(
+                        content=content, embed=embed, ephemeral=ephemeral
+                    )
+                return await source.response.send_message(
                     content=content, embed=embed, ephemeral=ephemeral
                 )
-            return await interaction.response.send_message(
-                content=content, embed=embed, ephemeral=ephemeral
-            )
+            else:
+                # Context
+                return await source.reply(content=content, embed=embed)
         except discord.HTTPException:
             # Fallback when the interaction state changed mid-execution.
+            if isinstance(source, discord.Interaction):
+                try:
+                    return await source.followup.send(
+                        content=content, embed=embed, ephemeral=ephemeral
+                    )
+                except Exception:
+                    pass
+
+    async def _kick_logic(self, source, user: discord.Member, reason: str):
+        guild = source.guild
+        moderator = source.user if isinstance(source, discord.Interaction) else source.author
+        
+        can_mod, error = await self.can_moderate(guild.id, moderator, user)
+        if not can_mod:
+            return await self._respond(source, embed=ModEmbed.error("Cannot Kick", error), ephemeral=True)
+            
+        can_bot, bot_error = await self.can_bot_moderate(user, moderator=moderator)
+        if not can_bot:
+            return await self._respond(source, embed=ModEmbed.error("Bot Permission Error", bot_error), ephemeral=True)
+            
+        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Kick", reason)
+        
+        dm_embed = discord.Embed(title=f"👢 Kicked from {guild.name}", description=f"**Reason:** {reason}", color=Colors.ERROR)
+        await self.dm_user(user, dm_embed)
+        
+        try:
+            await user.kick(reason=f"{moderator}: {reason}")
+        except Exception as e:
+            return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not kick: {e}"), ephemeral=True)
+            
+        embed = await self.create_mod_embed(title="👢 User Kicked", user=user, moderator=moderator, reason=reason, color=Colors.ERROR, case_num=case_num)
+        await self._respond(source, embed=embed)
+        await self.log_action(guild, embed)
+
+    async def _ban_logic(self, source, user: discord.Member, reason: str, delete_days: int = 1):
+        guild = source.guild
+        moderator = source.user if isinstance(source, discord.Interaction) else source.author
+        
+        can_mod, error = await self.can_moderate(guild.id, moderator, user)
+        if not can_mod:
+            return await self._respond(source, embed=ModEmbed.error("Cannot Ban", error), ephemeral=True)
+            
+        can_bot, bot_error = await self.can_bot_moderate(user, moderator=moderator)
+        if not can_bot:
+            return await self._respond(source, embed=ModEmbed.error("Bot Permission Error", bot_error), ephemeral=True)
+            
+        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Ban", reason)
+        
+        dm_embed = discord.Embed(title=f"🔨 Banned from {guild.name}", description=f"**Reason:** {reason}\n\nYou have been permanently banned.", color=Colors.DARK_RED)
+        await self.dm_user(user, dm_embed)
+        
+        try:
+            await user.ban(reason=f"{moderator}: {reason}", delete_message_days=delete_days)
+        except Exception as e:
+            return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not ban: {e}"), ephemeral=True)
+            
+        embed = await self.create_mod_embed(title="🔨 User Banned", user=user, moderator=moderator, reason=reason, color=Colors.DARK_RED, case_num=case_num, extra_fields={"Messages Deleted": f"{delete_days} day(s)"})
+        await self._respond(source, embed=embed)
+        await self.log_action(guild, embed)
+        
+    async def _mute_logic(self, source, user: discord.Member, duration: str, reason: str):
+        guild = source.guild
+        moderator = source.user if isinstance(source, discord.Interaction) else source.author
+        
+        can_mod, error = await self.can_moderate(guild.id, moderator, user)
+        if not can_mod:
+            return await self._respond(source, embed=ModEmbed.error("Cannot Mute", error), ephemeral=True)
+            
+        can_bot, bot_error = await self.can_bot_moderate(user, moderator=moderator)
+        if not can_bot:
+            return await self._respond(source, embed=ModEmbed.error("Bot Permission Error", bot_error), ephemeral=True)
+
+        bot_member = guild.me
+        if not bot_member.guild_permissions.moderate_members:
+            return await self._respond(source, embed=ModEmbed.error("Bot Missing Permissions", "I need **Timeout Members** permission."), ephemeral=True)
+        
+        parsed = parse_time(duration)
+        if not parsed:
+            return await self._respond(source, embed=ModEmbed.error("Invalid Duration", "Use format like `10m`, `1h`, `1d`"), ephemeral=True)
+        
+        delta, human_duration = parsed
+        if delta.total_seconds() > 28 * 24 * 60 * 60:
+            return await self._respond(source, embed=ModEmbed.error("Duration Too Long", "Max 28 days."), ephemeral=True)
+        
+        try:
+            await user.timeout(delta, reason=f"{moderator}: {reason}")
+        except Exception as e:
+            return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not timeout: {e}"), ephemeral=True)
+
+        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Mute", reason, human_duration)
+        
+        embed = await self.create_mod_embed(title="🔇 User Muted", user=user, moderator=moderator, reason=reason, color=Colors.WARNING, case_num=case_num, extra_fields={"Duration": human_duration})
+        await self._respond(source, embed=embed)
+        await self.log_action(guild, embed)
+        
+        dm_embed = discord.Embed(title=f"🔇 Muted in {guild.name}", description=f"**Reason:** {reason}\n**Duration:** {human_duration}", color=Colors.WARNING)
+        await self.dm_user(user, dm_embed)
+
+    async def _unmute_logic(self, source, user: discord.Member, reason: str):
+        guild = source.guild
+        moderator = source.user if isinstance(source, discord.Interaction) else source.author
+        
+        if not user.is_timed_out():
+            return await self._respond(source, embed=ModEmbed.error("Not Muted", "User is not muted."), ephemeral=True)
+            
+        bot_member = guild.me
+        if not bot_member.guild_permissions.moderate_members:
+            return await self._respond(source, embed=ModEmbed.error("Bot Missing Permissions", "I need **Timeout Members** permission."), ephemeral=True)
+
+        try:
+            await user.timeout(None, reason=f"{moderator}: {reason}")
+        except Exception as e:
+            return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not unmute: {e}"), ephemeral=True)
+            
+        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Unmute", reason)
+        
+        embed = await self.create_mod_embed(title="🔊 User Unmuted", user=user, moderator=moderator, reason=reason, color=Colors.SUCCESS, case_num=case_num)
+        await self._respond(source, embed=embed)
+        await self.log_action(guild, embed)
+
+    async def _unban_logic(self, source, user_id: int, reason: str):
+        guild = source.guild
+        moderator = source.user if isinstance(source, discord.Interaction) else source.author
+        
+        try:
+            user = await self.bot.fetch_user(user_id)
+        except:
+             return await self._respond(source, embed=ModEmbed.error("Invalid User", "User not found."), ephemeral=True)
+
+        try:
+            await guild.unban(user, reason=f"{moderator}: {reason}")
+        except discord.NotFound:
+             return await self._respond(source, embed=ModEmbed.error("Not Banned", "User is not banned."), ephemeral=True)
+        except Exception as e:
+             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not unban: {e}"), ephemeral=True)
+             
+        await self.bot.db.remove_tempban(guild.id, user.id)
+        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Unban", reason)
+        
+        embed = await self.create_mod_embed(title="🔓 User Unbanned", user=user, moderator=moderator, reason=reason, color=Colors.SUCCESS, case_num=case_num)
+        await self._respond(source, embed=embed)
+        await self.log_action(guild, embed)
+        
+    async def _softban_logic(self, source, user: discord.Member, reason: str):
+        guild = source.guild
+        moderator = source.user if isinstance(source, discord.Interaction) else source.author
+        
+        can_mod, error = await self.can_moderate(guild.id, moderator, user)
+        if not can_mod:
+            return await self._respond(source, embed=ModEmbed.error("Cannot Softban", error), ephemeral=True)
+            
+        can_bot, bot_error = await self.can_bot_moderate(user)
+        if not can_bot:
+            return await self._respond(source, embed=ModEmbed.error("Bot Permission Error", bot_error), ephemeral=True)
+            
+        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Softban", reason)
+        
+        dm_embed = discord.Embed(title=f"🧹 Softbanned from {guild.name}", description=f"**Reason:** {reason}\n\nYou can rejoin the server.", color=Colors.ERROR)
+        await self.dm_user(user, dm_embed)
+        
+        try:
+            await user.ban(reason=f"[SOFTBAN] {reason}", delete_message_days=7)
+            await guild.unban(user, reason="Softban - immediate unban")
+        except Exception as e:
+            return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not softban: {e}"), ephemeral=True)
+            
+        embed = await self.create_mod_embed(title="🧹 User Softbanned", user=user, moderator=moderator, reason=reason, color=Colors.ERROR, case_num=case_num)
+        embed.set_footer(text=f"Case #{case_num} | 7 days of messages deleted")
+        await self._respond(source, embed=embed)
+        await self.log_action(guild, embed)
+        
+    async def _tempban_logic(self, source, user: discord.Member, duration: str, reason: str):
+        guild = source.guild
+        moderator = source.user if isinstance(source, discord.Interaction) else source.author
+        
+        can_mod, error = await self.can_moderate(guild.id, moderator, user)
+        if not can_mod:
+            return await self._respond(source, embed=ModEmbed.error("Cannot Tempban", error), ephemeral=True)
+            
+        can_bot, bot_error = await self.can_bot_moderate(user, moderator=moderator)
+        if not can_bot:
+            return await self._respond(source, embed=ModEmbed.error("Bot Permission Error", bot_error), ephemeral=True)
+        
+        parsed = parse_time(duration)
+        if not parsed:
+            return await self._respond(source, embed=ModEmbed.error("Invalid Duration", "Use format like `1d`, `7d`, `30d`"), ephemeral=True)
+        
+        delta, human_duration = parsed
+        expires_at = datetime.now(timezone.utc) + delta
+        
+        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Tempban", reason, human_duration)
+        await self.bot.db.add_tempban(guild.id, user.id, moderator.id, reason, expires_at)
+        
+        dm_embed = discord.Embed(title=f"⏰ Temporarily Banned from {guild.name}", description=f"**Reason:** {reason}\n**Duration:** {human_duration}\n**Expires:** <t:{int(expires_at.timestamp())}:F>", color=Colors.DARK_RED)
+        await self.dm_user(user, dm_embed)
+        
+        try:
+            await user.ban(reason=f"[TEMPBAN] {moderator}: {reason} ({human_duration})", delete_message_days=1)
+        except Exception as e:
+            return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not tempban: {e}"), ephemeral=True)
+            
+        embed = await self.create_mod_embed(title="⏰ User Temporarily Banned", user=user, moderator=moderator, reason=reason, color=Colors.DARK_RED, case_num=case_num, extra_fields={"Duration": human_duration, "Expires": f"<t:{int(expires_at.timestamp())}:R>"})
+        await self._respond(source, embed=embed)
+        await self.log_action(guild, embed)
+
+    async def _warn_logic(self, source, user: discord.Member, reason: str):
+        author = source.user if isinstance(source, discord.Interaction) else source.author
+        can_mod, error = await self.can_moderate(source.guild.id, author, user)
+        if not can_mod:
+            return await self._respond(source, embed=ModEmbed.error("Cannot Warn", error), ephemeral=True)
+        
+        # Add to database
+        await self.bot.db.add_warning(source.guild.id, user.id, author.id, reason)
+        warnings = await self.bot.db.get_warnings(source.guild.id, user.id)
+        case_num = await self.bot.db.create_case(
+            source.guild.id, user.id, author.id, "Warn", reason
+        )
+        
+        # Create embed
+        embed = await self.create_mod_embed(
+            title="⚠️ User Warned",
+            user=user,
+            moderator=author,
+            reason=reason,
+            color=Colors.WARNING,
+            case_num=case_num,
+            extra_fields={"Total Warnings": str(len(warnings))}
+        )
+        
+        await self._respond(source, embed=embed)
+        await self.log_action(source.guild, embed)
+        
+        # DM user
+        dm_embed = discord.Embed(
+            title=f"⚠️ Warning in {source.guild.name}",
+            description=f"**Reason:** {reason}\n**Total Warnings:** {len(warnings)}",
+            color=Colors.WARNING
+        )
+        await self.dm_user(user, dm_embed)
+
+    async def _warnings_logic(self, source, user: discord.Member):
+        warnings = await self.bot.db.get_warnings(source.guild.id, user.id)
+        
+        if not warnings:
+            return await self._respond(source, embed=ModEmbed.info("No Warnings", f"{user.mention} has no warnings."), ephemeral=True)
+        
+        embed = discord.Embed(
+            title=f"⚠️ Warnings for {user.display_name}",
+            description=f"Total: **{len(warnings)}** warning(s)",
+            color=Colors.WARNING,
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.set_thumbnail(url=user.display_avatar.url)
+        
+        for warn in warnings[:10]:  # Limit to 10 most recent
+            moderator = source.guild.get_member(warn['moderator_id'])
+            mod_display = moderator.display_name if moderator else f"ID: {warn['moderator_id']}"
+            timestamp = warn.get('created_at', 'Unknown time')
+            
+            embed.add_field(
+                name=f"Warning #{warn['id']}",
+                value=f"**Reason:** {warn['reason'][:100]}\n**By:** {mod_display}\n**When:** {timestamp}",
+                inline=False
+            )
+        
+        if len(warnings) > 10:
+            embed.set_footer(text=f"Showing 10 of {len(warnings)} warnings")
+        
+        await self._respond(source, embed=embed)
+
+    async def _delwarn_logic(self, source, warning_id: int):
+        success = await self.bot.db.delete_warning(source.guild.id, warning_id)
+        
+        if success:
+            embed = ModEmbed.success("Warning Deleted", f"Warning `#{warning_id}` has been removed.")
+        else:
+            embed = ModEmbed.error("Not Found", f"Warning `#{warning_id}` does not exist.")
+        
+        await self._respond(source, embed=embed, ephemeral=True)
+
+    async def _clearwarnings_logic(self, source, user: discord.Member, reason: str):
+        count = await self.bot.db.clear_warnings(source.guild.id, user.id)
+        
+        embed = ModEmbed.success(
+            "Warnings Cleared",
+            f"Cleared **{count}** warning(s) from {user.mention}.\n**Reason:** {reason}"
+        )
+        
+        await self._respond(source, embed=embed)
+        await self.log_action(source.guild, embed)
+
+    async def _lock_logic(self, source, channel: discord.TextChannel = None, reason: str = "No reason provided"):
+        author = source.user if isinstance(source, discord.Interaction) else source.author
+        channel = channel or (source.channel if isinstance(source, discord.Interaction) else source.channel)
+        
+        try:
+            await channel.set_permissions(
+                source.guild.default_role,
+                send_messages=False,
+                reason=f"{author}: {reason}"
+            )
+        except discord.Forbidden:
+            return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to edit channel permissions."), ephemeral=True)
+        
+        embed = discord.Embed(
+            title="🔒 Channel Locked",
+            description=f"{channel.mention} has been locked.",
+            color=Colors.ERROR
+        )
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.add_field(name="Moderator", value=author.mention, inline=False)
+        
+        await self._respond(source, embed=embed)
+        
+        if channel != (source.channel if isinstance(source, discord.Interaction) else source.channel):
+             lock_notice = discord.Embed(
+                title="🔒 Channel Locked",
+                description=f"Locked by {author.mention}\n**Reason:** {reason}",
+                color=Colors.ERROR
+            )
+             await channel.send(embed=lock_notice)
+
+    async def _unlock_logic(self, source, channel: discord.TextChannel = None, reason: str = "No reason provided"):
+        author = source.user if isinstance(source, discord.Interaction) else source.author
+        channel = channel or (source.channel if isinstance(source, discord.Interaction) else source.channel)
+        
+        try:
+            await channel.set_permissions(
+                source.guild.default_role,
+                send_messages=None,
+                reason=f"{author}: {reason}"
+            )
+        except discord.Forbidden:
+             return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to edit channel permissions."), ephemeral=True)
+        
+        embed = discord.Embed(
+            title="🔓 Channel Unlocked",
+            description=f"{channel.mention} has been unlocked.",
+            color=Colors.SUCCESS
+        )
+        embed.add_field(name="Moderator", value=author.mention, inline=False)
+        
+        await self._respond(source, embed=embed)
+
+    async def _slowmode_logic(self, source, seconds: int, channel: discord.TextChannel = None):
+        channel = channel or (source.channel if isinstance(source, discord.Interaction) else source.channel)
+        try:
+            await channel.edit(slowmode_delay=seconds)
+        except discord.Forbidden:
+             return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to edit this channel."), ephemeral=True)
+        
+        if seconds == 0:
+            embed = ModEmbed.success("Slowmode Disabled", f"Slowmode has been disabled in {channel.mention}.")
+        else:
+            embed = ModEmbed.success("Slowmode Enabled", f"Slowmode set to **{seconds}s** in {channel.mention}.")
+        
+        await self._respond(source, embed=embed)
+
+    async def _lockdown_logic(self, source, reason: str = "Server lockdown"):
+        author = source.user if isinstance(source, discord.Interaction) else source.author
+        if isinstance(source, discord.Interaction):
+            await source.response.defer()
+        
+        locked = []
+        failed = []
+        
+        for channel in source.guild.text_channels:
             try:
-                return await interaction.followup.send(
-                    content=content, embed=embed, ephemeral=ephemeral
+                await channel.set_permissions(
+                    source.guild.default_role,
+                    send_messages=False,
+                    reason=f"[LOCKDOWN] {reason}"
                 )
-            except Exception:
-                return None
+                locked.append(channel.mention)
+            except (discord.Forbidden, discord.HTTPException):
+                failed.append(channel.mention)
+        
+        embed = discord.Embed(
+            title="🚨 Server Lockdown Initiated",
+            description=f"Locked **{len(locked)}** channels.",
+            color=Colors.DARK_RED,
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.add_field(name="Moderator", value=author.mention, inline=False)
+        
+        if failed:
+            embed.add_field(
+                name=f"❌ Failed ({len(failed)})",
+                value=", ".join(failed[:10]) + (f" ...and {len(failed) - 10} more" if len(failed) > 10 else ""),
+                inline=False
+            )
+        
+        await self._respond(source, embed=embed)
+        await self.log_action(source.guild, embed)
+
+    async def _unlockdown_logic(self, source, reason: str = "Lockdown lifted"):
+        author = source.user if isinstance(source, discord.Interaction) else source.author
+        if isinstance(source, discord.Interaction):
+            await source.response.defer()
+            
+        unlocked = []
+        failed = []
+        
+        for channel in source.guild.text_channels:
+            try:
+                await channel.set_permissions(
+                    source.guild.default_role,
+                    send_messages=None,
+                    reason=f"[UNLOCKDOWN] {reason}"
+                )
+                unlocked.append(channel.mention)
+            except (discord.Forbidden, discord.HTTPException):
+                failed.append(channel.mention)
+        
+        embed = discord.Embed(
+            title="✅ Lockdown Lifted",
+            description=f"Unlocked **{len(unlocked)}** channels.",
+            color=Colors.SUCCESS,
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+        embed.add_field(name="Moderator", value=author.mention, inline=False)
+        
+        if failed:
+            embed.add_field(
+                name=f"❌ Failed ({len(failed)})",
+                value=", ".join(failed[:10]) + (f" ...and {len(failed) - 10} more" if len(failed) > 10 else ""),
+                inline=False
+            )
+        
+        await self._respond(source, embed=embed)
+        await self.log_action(source.guild, embed)
+
+    async def _nuke_logic(self, source, channel: discord.TextChannel = None):
+        channel = channel or (source.channel if isinstance(source, discord.Interaction) else source.channel)
+        user = source.user if isinstance(source, discord.Interaction) else source.author
+
+        try:
+            position = channel.position
+            new_channel = await channel.clone(reason=f"Nuked by {user}")
+            await new_channel.edit(position=position)
+            await channel.delete(reason=f"Nuked by {user}")
+        except discord.Forbidden:
+             return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to clone/delete channels."), ephemeral=True)
+        
+        embed = discord.Embed(
+            title="💥 Channel Nuked",
+            description=f"This channel has been nuked by {user.mention}.",
+            color=Colors.ERROR
+        )
+        embed.set_image(url="https://media1.tenor.com/m/OMQvHj3-AsMAAAAd/kaboom-boom.gif")
+        
+        await new_channel.send(embed=embed)
+
+    async def _purge_logic(self, source, amount: int, user: discord.Member = None, check=None):
+        if isinstance(source, discord.Interaction):
+            await source.response.defer(ephemeral=True)
+            channel = source.channel
+        else:
+            try:
+                await source.message.delete()
+            except:
+                pass
+            channel = source.channel
+
+        try:
+            if check:
+                deleted = await channel.purge(limit=amount, check=check)
+            elif user:
+                deleted = await channel.purge(limit=amount, check=lambda m: m.author.id == user.id)
+            else:
+                deleted = await channel.purge(limit=amount)
+        except discord.Forbidden:
+             return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to delete messages."), ephemeral=True)
+        except discord.HTTPException as e:
+             return await self._respond(source, embed=ModEmbed.error("Failed", f"An error occurred: {str(e)}"), ephemeral=True)
+        
+        msg = f"Deleted **{len(deleted)}** message(s)."
+        if user:
+            msg += f" from {user.mention}"
+        
+        embed = ModEmbed.success("Messages Purged", msg)
+        await self._respond(source, embed=embed, ephemeral=True)
+
+    async def _quarantine_logic(self, source, user: discord.Member, duration_str: str = None, reason: str = "No reason provided"):
+        author = source.user if isinstance(source, discord.Interaction) else source.author
+        
+        can_mod, error = await self.can_moderate(source.guild.id, author, user)
+        if not can_mod:
+             return await self._respond(source, embed=ModEmbed.error("Cannot Quarantine", error), ephemeral=True)
+             
+        can_bot, bot_error = await self.can_bot_moderate(user, moderator=author)
+        if not can_bot:
+             return await self._respond(source, embed=ModEmbed.error("Bot Permission Error", bot_error), ephemeral=True)
+
+        settings = await self.bot.db.get_settings(source.guild.id)
+        quarantine_role_id = settings.get("quarantine_role_id")
+        
+        if not quarantine_role_id:
+             return await self._respond(source, embed=ModEmbed.error("Not Configured", "Quarantine role is not set."), ephemeral=True)
+             
+        quarantine_role = source.guild.get_role(int(quarantine_role_id))
+        if not quarantine_role:
+             return await self._respond(source, embed=ModEmbed.error("Configuration Error", "Quarantine role not found."), ephemeral=True)
+
+        # Calculate duration
+        expires_at = None
+        human_duration = "Indefinite"
+        if duration_str:
+            parsed = parse_time(duration_str)
+            if parsed:
+                delta, human_duration = parsed
+                expires_at = datetime.now(timezone.utc) + delta
+
+        # Backup roles
+        restored, failed = await self._backup_roles(user)
+        
+        # Apply quarantine
+        try:
+            await user.edit(roles=[quarantine_role], reason=f"[QUARANTINE] {author}: {reason}")
+        except discord.Forbidden:
+             return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to edit roles."), ephemeral=True)
+
+        # DB
+        await self.bot.db.add_quarantine(
+            source.guild.id,
+            user.id,
+            author.id,
+            reason,
+            expires_at
+        )
+        
+        embed = discord.Embed(
+            title="☣️ User Quarantined",
+            description=f"{user.mention} has been quarantined.",
+            color=Colors.DARK_RED
+        )
+        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.add_field(name="Duration", value=human_duration, inline=True)
+        if expires_at:
+             embed.add_field(name="Expires", value=f"<t:{int(expires_at.timestamp())}:R>", inline=True)
+        
+        embed.add_field(name="Roles Removed", value=str(restored), inline=True)
+        
+        await self._respond(source, embed=embed)
+        await self.log_action(source.guild, embed)
+        
+        # DM
+        dm_embed = discord.Embed(
+            title=f"☣️ Quarantined in {source.guild.name}",
+            description=f"**Reason:** {reason}\n**Duration:** {human_duration}",
+            color=Colors.DARK_RED
+        )
+        await self.dm_user(user, dm_embed)
+
+    async def _unquarantine_logic(self, source, user: discord.Member, reason: str = "Quarantine lifted"):
+        author = source.user if isinstance(source, discord.Interaction) else source.author
+        
+        active = await self._get_active_quarantine(source.guild.id, user.id)
+        if not active:
+             return await self._respond(source, embed=ModEmbed.error("Not Quarantined", "This user is not quarantined."), ephemeral=True)
+
+        # Restore roles
+        restored, failed = await self._restore_roles(user, active['roles'])
+        
+        # Remove quarantine role
+        settings = await self.bot.db.get_settings(source.guild.id)
+        quarantine_role_id = settings.get("quarantine_role_id")
+        if quarantine_role_id:
+            role = source.guild.get_role(int(quarantine_role_id))
+            if role and role in user.roles:
+                try:
+                    await user.remove_roles(role, reason=f"[UNQUARANTINE] {author}: {reason}")
+                except:
+                    pass
+
+        # DB update
+        await self.bot.db.remove_quarantine(source.guild.id, user.id)
+        
+        embed = discord.Embed(
+            title="✅ User Unquarantined",
+            description=f"{user.mention} has been released from quarantine.",
+            color=Colors.SUCCESS
+        )
+        embed.add_field(name="Restored Roles", value=f"{restored} (Failed: {failed})", inline=False)
+        embed.add_field(name="Reason", value=reason, inline=False)
+        
+        await self._respond(source, embed=embed)
+        await self.log_action(source.guild, embed)
 
     async def _is_bot_owner(self, user: discord.abc.User) -> bool:
         """Return True when a user should be treated as the bot owner."""
@@ -646,92 +1447,39 @@ class Moderation(commands.Cog):
         reason: str = "No reason provided"
     ):
         """Warn a user and track in database"""
-        can_mod, error = await self.can_moderate(interaction.guild_id, interaction.user, user)
-        if not can_mod:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Cannot Warn", error),
-                ephemeral=True
-            )
-        
-        # Add to database
-        await self.bot.db.add_warning(interaction.guild_id, user.id, interaction.user.id, reason)
-        warnings = await self.bot.db.get_warnings(interaction.guild_id, user.id)
-        case_num = await self.bot.db.create_case(
-            interaction.guild_id, user.id, interaction.user.id, "Warn", reason
-        )
-        
-        # Create embed
-        embed = await self.create_mod_embed(
-            title="⚠️ User Warned",
-            user=user,
-            moderator=interaction.user,
-            reason=reason,
-            color=Colors.WARNING,
-            case_num=case_num,
-            extra_fields={"Total Warnings": str(len(warnings))}
-        )
-        
-        await interaction.response.send_message(embed=embed)
-        await self.log_action(interaction.guild, embed)
-        
-        # DM user
-        dm_embed = discord.Embed(
-            title=f"⚠️ Warning in {interaction.guild.name}",
-            description=f"**Reason:** {reason}\n**Total Warnings:** {len(warnings)}",
-            color=Colors.WARNING
-        )
-        await self.dm_user(user, dm_embed)
+        await self._warn_logic(interaction, user, reason)
+
+    @commands.command(name="warn")
+    @is_mod()
+    async def warn_prefix(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
+        """Warn a user"""
+        await self._warn_logic(ctx, user, reason)
 
     @app_commands.command(name="warnings", description="📋 View all warnings for a user")
     @app_commands.describe(user="User to check")
     @is_mod()
     async def warnings(self, interaction: discord.Interaction, user: discord.Member):
         """Display all warnings for a user"""
-        warnings = await self.bot.db.get_warnings(interaction.guild_id, user.id)
-        
-        if not warnings:
-            return await interaction.response.send_message(
-                embed=ModEmbed.info("No Warnings", f"{user.mention} has no warnings."),
-                ephemeral=True
-            )
-        
-        embed = discord.Embed(
-            title=f"⚠️ Warnings for {user.display_name}",
-            description=f"Total: **{len(warnings)}** warning(s)",
-            color=Colors.WARNING,
-            timestamp=datetime.now(timezone.utc)
-        )
-        embed.set_thumbnail(url=user.display_avatar.url)
-        
-        for warn in warnings[:10]:  # Limit to 10 most recent
-            moderator = interaction.guild.get_member(warn['moderator_id'])
-            mod_display = moderator.display_name if moderator else f"ID: {warn['moderator_id']}"
-            timestamp = warn.get('created_at', 'Unknown time')
-            
-            embed.add_field(
-                name=f"Warning #{warn['id']}",
-                value=f"**Reason:** {warn['reason'][:100]}\n**By:** {mod_display}\n**When:** {timestamp}",
-                inline=False
-            )
-        
-        if len(warnings) > 10:
-            embed.set_footer(text=f"Showing 10 of {len(warnings)} warnings")
-        
-        await interaction.response.send_message(embed=embed)
+        await self._warnings_logic(interaction, user)
+
+    @commands.command(name="warnings")
+    @is_mod()
+    async def warnings_prefix(self, ctx: commands.Context, user: discord.Member):
+        """View warnings for a user"""
+        await self._warnings_logic(ctx, user)
 
     @app_commands.command(name="delwarn", description="🗑️ Delete a specific warning")
     @app_commands.describe(warning_id="ID of the warning to delete")
     @is_mod()
     async def delwarn(self, interaction: discord.Interaction, warning_id: int):
         """Remove a warning from the database"""
-        success = await self.bot.db.delete_warning(interaction.guild_id, warning_id)
-        
-        if success:
-            embed = ModEmbed.success("Warning Deleted", f"Warning `#{warning_id}` has been removed.")
-        else:
-            embed = ModEmbed.error("Not Found", f"Warning `#{warning_id}` does not exist.")
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await self._delwarn_logic(interaction, warning_id)
+
+    @commands.command(name="delwarn")
+    @is_mod()
+    async def delwarn_prefix(self, ctx: commands.Context, warning_id: int):
+        """Delete a specific warning"""
+        await self._delwarn_logic(ctx, warning_id)
 
     @app_commands.command(name="clearwarnings", description="🧹 Clear all warnings for a user")
     @app_commands.describe(
@@ -746,15 +1494,13 @@ class Moderation(commands.Cog):
         reason: str = "No reason provided"
     ):
         """Clear all warnings for a user"""
-        count = await self.bot.db.clear_warnings(interaction.guild_id, user.id)
-        
-        embed = ModEmbed.success(
-            "Warnings Cleared",
-            f"Cleared **{count}** warning(s) from {user.mention}.\n**Reason:** {reason}"
-        )
-        
-        await interaction.response.send_message(embed=embed)
-        await self.log_action(interaction.guild, embed)
+        await self._clearwarnings_logic(interaction, user, reason)
+
+    @commands.command(name="clearwarnings")
+    @is_senior_mod()
+    async def clearwarnings_prefix(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
+        """Clear all warnings for a user"""
+        await self._clearwarnings_logic(ctx, user, reason)
 
     # ==================== KICK & BAN COMMANDS ====================
 
@@ -771,57 +1517,13 @@ class Moderation(commands.Cog):
         reason: str = "No reason provided"
     ):
         """Kick a user from the server"""
-        can_mod, error = await self.can_moderate(interaction.guild_id, interaction.user, user)
-        if not can_mod:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Cannot Kick", error),
-                ephemeral=True
-            )
-        
-        can_bot, bot_error = await self.can_bot_moderate(user, moderator=interaction.user)
-        if not can_bot:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Bot Permission Error", bot_error),
-                ephemeral=True
-            )
-        
-        case_num = await self.bot.db.create_case(
-            interaction.guild_id, user.id, interaction.user.id, "Kick", reason
-        )
-        
-        # DM before kick
-        dm_embed = discord.Embed(
-            title=f"👢 Kicked from {interaction.guild.name}",
-            description=f"**Reason:** {reason}",
-            color=Colors.ERROR
-        )
-        await self.dm_user(user, dm_embed)
-        
-        # Perform kick
-        try:
-            await user.kick(reason=f"{interaction.user}: {reason}")
-        except discord.Forbidden:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", "I don't have permission to kick this user."),
-                ephemeral=True
-            )
-        except discord.HTTPException as e:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", f"An error occurred: {str(e)}"),
-                ephemeral=True
-            )
-        
-        embed = await self.create_mod_embed(
-            title="👢 User Kicked",
-            user=user,
-            moderator=interaction.user,
-            reason=reason,
-            color=Colors.ERROR,
-            case_num=case_num
-        )
-        
-        await interaction.response.send_message(embed=embed)
-        await self.log_action(interaction.guild, embed)
+        await self._kick_logic(interaction, user, reason)
+
+    @commands.command(name="kick")
+    @is_mod()
+    async def kick_prefix(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
+        """Kick a user"""
+        await self._kick_logic(ctx, user, reason)
 
     @app_commands.command(name="ban", description="🔨 Ban a user from the server")
     @app_commands.describe(
@@ -838,61 +1540,13 @@ class Moderation(commands.Cog):
         delete_days: app_commands.Range[int, 0, 7] = 1
     ):
         """Permanently ban a user"""
-        can_mod, error = await self.can_moderate(interaction.guild_id, interaction.user, user)
-        if not can_mod:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Cannot Ban", error),
-                ephemeral=True
-            )
-        
-        can_bot, bot_error = await self.can_bot_moderate(user, moderator=interaction.user)
-        if not can_bot:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Bot Permission Error", bot_error),
-                ephemeral=True
-            )
-        
-        case_num = await self.bot.db.create_case(
-            interaction.guild_id, user.id, interaction.user.id, "Ban", reason
-        )
-        
-        # DM before ban
-        dm_embed = discord.Embed(
-            title=f"🔨 Banned from {interaction.guild.name}",
-            description=f"**Reason:** {reason}\n\nYou have been permanently banned.",
-            color=Colors.DARK_RED
-        )
-        await self.dm_user(user, dm_embed)
-        
-        # Execute ban
-        try:
-            await user.ban(
-                reason=f"{interaction.user}: {reason}",
-                delete_message_days=delete_days
-            )
-        except discord.Forbidden:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", "I don't have permission to ban this user."),
-                ephemeral=True
-            )
-        except discord.HTTPException as e:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", f"An error occurred: {str(e)}"),
-                ephemeral=True
-            )
-        
-        embed = await self.create_mod_embed(
-            title="🔨 User Banned",
-            user=user,
-            moderator=interaction.user,
-            reason=reason,
-            color=Colors.DARK_RED,
-            case_num=case_num,
-            extra_fields={"Messages Deleted": f"{delete_days} day(s)"}
-        )
-        
-        await interaction.response.send_message(embed=embed)
-        await self.log_action(interaction.guild, embed)
+        await self._ban_logic(interaction, user, reason, delete_days)
+
+    @commands.command(name="ban")
+    @is_senior_mod()
+    async def ban_prefix(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
+        """Ban a user"""
+        await self._ban_logic(ctx, user, reason)
 
     @app_commands.command(name="tempban", description="⏰ Temporarily ban a user")
     @app_commands.describe(
@@ -909,80 +1563,13 @@ class Moderation(commands.Cog):
         reason: str = "No reason provided"
     ):
         """Temporarily ban a user with automatic unban"""
-        can_mod, error = await self.can_moderate(interaction.guild_id, interaction.user, user)
-        if not can_mod:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Cannot Tempban", error),
-                ephemeral=True
-            )
-        
-        can_bot, bot_error = await self.can_bot_moderate(user, moderator=interaction.user)
-        if not can_bot:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Bot Permission Error", bot_error),
-                ephemeral=True
-            )
-        
-        # Parse duration
-        parsed = parse_time(duration)
-        if not parsed:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Invalid Duration", "Use format like `1d`, `7d`, `30d`"),
-                ephemeral=True
-            )
-        
-        delta, human_duration = parsed
-        expires_at = datetime.now(timezone.utc) + delta
-        
-        case_num = await self.bot.db.create_case(
-            interaction.guild_id, user.id, interaction.user.id,
-            "Tempban", reason, human_duration
-        )
-        
-        await self.bot.db.add_tempban(
-            interaction.guild_id, user.id, interaction.user.id, reason, expires_at
-        )
-        
-        # DM user
-        dm_embed = discord.Embed(
-            title=f"⏰ Temporarily Banned from {interaction.guild.name}",
-            description=f"**Reason:** {reason}\n**Duration:** {human_duration}\n**Expires:** <t:{int(expires_at.timestamp())}:F>",
-            color=Colors.DARK_RED
-        )
-        await self.dm_user(user, dm_embed)
-        
-        # Execute ban
-        try:
-            await user.ban(
-                reason=f"[TEMPBAN] {interaction.user}: {reason} ({human_duration})",
-                delete_message_days=1
-            )
-        except discord.Forbidden:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", "I don't have permission to ban this user."),
-                ephemeral=True
-            )
-        except discord.HTTPException as e:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", f"An error occurred: {str(e)}"),
-                ephemeral=True
-            )
-        
-        embed = await self.create_mod_embed(
-            title="⏰ User Temporarily Banned",
-            user=user,
-            moderator=interaction.user,
-            reason=reason,
-            color=Colors.DARK_RED,
-            case_num=case_num,
-            extra_fields={
-                "Duration": human_duration,
-                "Expires": f"<t:{int(expires_at.timestamp())}:R>"
-            }
-        )
-        
-        await interaction.response.send_message(embed=embed)
-        await self.log_action(interaction.guild, embed)
+        await self._tempban_logic(interaction, user, duration, reason)
+
+    @commands.command(name="tempban")
+    @is_senior_mod()
+    async def tempban_prefix(self, ctx: commands.Context, user: discord.Member, duration: str, *, reason: str = "No reason provided"):
+        """Temporarily ban a user"""
+        await self._tempban_logic(ctx, user, duration, reason)
 
     @app_commands.command(name="unban", description="🔓 Unban a user")
     @app_commands.describe(
@@ -998,49 +1585,20 @@ class Moderation(commands.Cog):
     ):
         """Unban a previously banned user"""
         try:
-            user = await self.bot.fetch_user(int(user_id))
-        except (ValueError, discord.NotFound):
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Invalid User", "Could not find a user with that ID."),
-                ephemeral=True
-            )
-        
+            uid = int(user_id)
+        except ValueError:
+            return await self._respond(interaction, embed=ModEmbed.error("Invalid ID", "User ID must be an integer."), ephemeral=True)
+        await self._unban_logic(interaction, uid, reason)
+
+    @commands.command(name="unban")
+    @is_senior_mod()
+    async def unban_prefix(self, ctx: commands.Context, user_id: str, *, reason: str = "No reason provided"):
+        """Unban a user"""
         try:
-            await interaction.guild.unban(user, reason=f"{interaction.user}: {reason}")
-        except discord.NotFound:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Not Banned", "This user is not currently banned."),
-                ephemeral=True
-            )
-        except discord.Forbidden:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", "I don't have permission to unban users."),
-                ephemeral=True
-            )
-        except discord.HTTPException as e:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", f"An error occurred: {str(e)}"),
-                ephemeral=True
-            )
-        
-        # Remove from tempban list if exists
-        await self.bot.db.remove_tempban(interaction.guild_id, user.id)
-        
-        case_num = await self.bot.db.create_case(
-            interaction.guild_id, user.id, interaction.user.id, "Unban", reason
-        )
-        
-        embed = await self.create_mod_embed(
-            title="🔓 User Unbanned",
-            user=user,
-            moderator=interaction.user,
-            reason=reason,
-            color=Colors.SUCCESS,
-            case_num=case_num
-        )
-        
-        await interaction.response.send_message(embed=embed)
-        await self.log_action(interaction.guild, embed)
+            uid = int(user_id)
+        except ValueError:
+             return await self._respond(ctx, embed=ModEmbed.error("Invalid ID", "User ID must be an integer."))
+        await self._unban_logic(ctx, uid, reason)
 
     @app_commands.command(name="softban", description="🧹 Softban (ban + immediate unban to delete messages)")
     @app_commands.describe(
@@ -1055,59 +1613,13 @@ class Moderation(commands.Cog):
         reason: str = "No reason provided"
     ):
         """Ban and immediately unban to delete messages"""
-        can_mod, error = await self.can_moderate(interaction.guild_id, interaction.user, user)
-        if not can_mod:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Cannot Softban", error),
-                ephemeral=True
-            )
-        
-        can_bot, bot_error = await self.can_bot_moderate(user)
-        if not can_bot:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Bot Permission Error", bot_error),
-                ephemeral=True
-            )
-        
-        case_num = await self.bot.db.create_case(
-            interaction.guild_id, user.id, interaction.user.id, "Softban", reason
-        )
-        
-        # DM user
-        dm_embed = discord.Embed(
-            title=f"🧹 Softbanned from {interaction.guild.name}",
-            description=f"**Reason:** {reason}\n\nYou can rejoin the server.",
-            color=Colors.ERROR
-        )
-        await self.dm_user(user, dm_embed)
-        
-        # Execute softban
-        try:
-            await user.ban(reason=f"[SOFTBAN] {reason}", delete_message_days=7)
-            await interaction.guild.unban(user, reason="Softban - immediate unban")
-        except discord.Forbidden:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", "I don't have permission to ban this user."),
-                ephemeral=True
-            )
-        except discord.HTTPException as e:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", f"An error occurred: {str(e)}"),
-                ephemeral=True
-            )
-        
-        embed = await self.create_mod_embed(
-            title="🧹 User Softbanned",
-            user=user,
-            moderator=interaction.user,
-            reason=reason,
-            color=Colors.ERROR,
-            case_num=case_num
-        )
-        
-        embed.set_footer(text=f"Case #{case_num} | 7 days of messages deleted")
-        await interaction.response.send_message(embed=embed)
-        await self.log_action(interaction.guild, embed)
+        await self._softban_logic(interaction, user, reason)
+
+    @commands.command(name="softban")
+    @is_senior_mod()
+    async def softban_prefix(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
+        """Softban a user"""
+        await self._softban_logic(ctx, user, reason)
 
     @app_commands.command(name="massban", description="🔨 Ban multiple users at once")
     @app_commands.describe(
@@ -1227,100 +1739,13 @@ class Moderation(commands.Cog):
         reason: str = "No reason provided"
     ):
         """Timeout (mute) a user"""
-        can_mod, error = await self.can_moderate(interaction.guild_id, interaction.user, user)
-        if not can_mod:
-            return await self._respond(
-                interaction,
-                embed=ModEmbed.error("Cannot Mute", error),
-                ephemeral=True
-            )
-        
-        can_bot, bot_error = await self.can_bot_moderate(user, moderator=interaction.user)
-        if not can_bot:
-            return await self._respond(
-                interaction,
-                embed=ModEmbed.error("Bot Permission Error", bot_error),
-                ephemeral=True
-            )
+        await self._mute_logic(interaction, user, duration, reason)
 
-        bot_member = interaction.guild.me if interaction.guild else None
-        if not bot_member or not bot_member.guild_permissions.moderate_members:
-            return await self._respond(
-                interaction,
-                embed=ModEmbed.error(
-                    "Bot Missing Permissions",
-                    "I need the **Timeout Members** permission to mute (timeout) users.",
-                ),
-                ephemeral=True,
-            )
-        
-        # Parse duration
-        parsed = parse_time(duration)
-        if not parsed:
-            return await self._respond(
-                interaction,
-                embed=ModEmbed.error("Invalid Duration", "Use format like `10m`, `1h`, `1d`"),
-                ephemeral=True
-            )
-        
-        delta, human_duration = parsed
-        
-        # Discord timeout max = 28 days
-        if delta.total_seconds() > 28 * 24 * 60 * 60:
-            return await self._respond(
-                interaction,
-                embed=ModEmbed.error("Duration Too Long", "Maximum timeout is 28 days."),
-                ephemeral=True
-            )
-        
-        # Execute timeout
-        try:
-            await user.timeout(delta, reason=f"{interaction.user}: {reason}")
-        except discord.Forbidden:
-            return await self._respond(
-                interaction,
-                embed=ModEmbed.error(
-                    "Failed",
-                    "I couldn't timeout this user. Make sure I have **Timeout Members** permission and my role is above the target.",
-                ),
-                ephemeral=True,
-            )
-        except discord.HTTPException as e:
-            return await self._respond(
-                interaction,
-                embed=ModEmbed.error("Failed", f"An error occurred: {str(e)}"),
-                ephemeral=True
-            )
-
-        case_num = await self.bot.db.create_case(
-            interaction.guild_id,
-            user.id,
-            interaction.user.id,
-            "Mute",
-            reason,
-            human_duration,
-        )
-        
-        embed = await self.create_mod_embed(
-            title="🔇 User Muted",
-            user=user,
-            moderator=interaction.user,
-            reason=reason,
-            color=Colors.WARNING,
-            case_num=case_num,
-            extra_fields={"Duration": human_duration}
-        )
-        
-        await self._respond(interaction, embed=embed)
-        await self.log_action(interaction.guild, embed)
-        
-        # DM user
-        dm_embed = discord.Embed(
-            title=f"🔇 Muted in {interaction.guild.name}",
-            description=f"**Reason:** {reason}\n**Duration:** {human_duration}",
-            color=Colors.WARNING
-        )
-        await self.dm_user(user, dm_embed)
+    @commands.command(name="mute")
+    @is_mod()
+    async def mute_prefix(self, ctx: commands.Context, user: discord.Member, duration: str = "1h", *, reason: str = "No reason provided"):
+        """Timeout (mute) a user"""
+        await self._mute_logic(ctx, user, duration, reason)
 
     @app_commands.command(name="unmute", description="🔊 Remove timeout from a user")
     @app_commands.describe(
@@ -1335,57 +1760,13 @@ class Moderation(commands.Cog):
         reason: str = "No reason provided"
     ):
         """Remove timeout from a user"""
-        if not user.is_timed_out():
-            return await self._respond(
-                interaction,
-                embed=ModEmbed.error("Not Muted", f"{user.mention} is not currently muted."),
-                ephemeral=True
-            )
+        await self._unmute_logic(interaction, user, reason)
 
-        bot_member = interaction.guild.me if interaction.guild else None
-        if not bot_member or not bot_member.guild_permissions.moderate_members:
-            return await self._respond(
-                interaction,
-                embed=ModEmbed.error(
-                    "Bot Missing Permissions",
-                    "I need the **Timeout Members** permission to unmute (remove timeouts).",
-                ),
-                ephemeral=True,
-            )
-        
-        try:
-            await user.timeout(None, reason=f"{interaction.user}: {reason}")
-        except discord.Forbidden:
-            return await self._respond(
-                interaction,
-                embed=ModEmbed.error(
-                    "Failed",
-                    "I couldn't unmute this user. Make sure I have **Timeout Members** permission and my role is above the target.",
-                ),
-                ephemeral=True,
-            )
-        except discord.HTTPException as e:
-            return await self._respond(
-                interaction,
-                embed=ModEmbed.error("Failed", f"An error occurred: {str(e)}"),
-                ephemeral=True
-            )
-
-        case_num = await self.bot.db.create_case(
-            interaction.guild_id, user.id, interaction.user.id, "Unmute", reason
-        )
-        
-        embed = await self.create_mod_embed(
-            title="🔊 User Unmuted",
-            user=user,
-            moderator=interaction.user,
-            reason=reason,
-            color=Colors.SUCCESS,
-            case_num=case_num
-        )
-        
-        await self._respond(interaction, embed=embed)
-        await self.log_action(interaction.guild, embed)
+    @commands.command(name="unmute")
+    @is_mod()
+    async def unmute_prefix(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
+        """Remove timeout from a user"""
+        await self._unmute_logic(ctx, user, reason)
 
     # ==================== CHANNEL MANAGEMENT ====================
 
@@ -1402,37 +1783,13 @@ class Moderation(commands.Cog):
         reason: str = "No reason provided"
     ):
         """Lock a channel (prevent @everyone from sending messages)"""
-        channel = channel or interaction.channel
-        
-        try:
-            await channel.set_permissions(
-                interaction.guild.default_role,
-                send_messages=False,
-                reason=f"{interaction.user}: {reason}"
-            )
-        except discord.Forbidden:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", "I don't have permission to edit channel permissions."),
-                ephemeral=True
-            )
-        
-        embed = discord.Embed(
-            title="🔒 Channel Locked",
-            description=f"{channel.mention} has been locked.",
-            color=Colors.ERROR
-        )
-        embed.add_field(name="Reason", value=reason, inline=False)
-        embed.add_field(name="Moderator", value=interaction.user.mention, inline=False)
-        
-        await interaction.response.send_message(embed=embed)
-        
-        if channel != interaction.channel:
-            lock_notice = discord.Embed(
-                title="🔒 Channel Locked",
-                description=f"Locked by {interaction.user.mention}\n**Reason:** {reason}",
-                color=Colors.ERROR
-            )
-            await channel.send(embed=lock_notice)
+        await self._lock_logic(interaction, channel, reason)
+
+    @commands.command(name="lock")
+    @is_mod()
+    async def lock_prefix(self, ctx: commands.Context, channel: Optional[discord.TextChannel] = None, *, reason: str = "No reason provided"):
+        """Lock a channel"""
+        await self._lock_logic(ctx, channel, reason)
 
     @app_commands.command(name="unlock", description="🔓 Unlock a channel")
     @app_commands.describe(
@@ -1447,28 +1804,13 @@ class Moderation(commands.Cog):
         reason: str = "No reason provided"
     ):
         """Unlock a channel"""
-        channel = channel or interaction.channel
-        
-        try:
-            await channel.set_permissions(
-                interaction.guild.default_role,
-                send_messages=None,
-                reason=f"{interaction.user}: {reason}"
-            )
-        except discord.Forbidden:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", "I don't have permission to edit channel permissions."),
-                ephemeral=True
-            )
-        
-        embed = discord.Embed(
-            title="🔓 Channel Unlocked",
-            description=f"{channel.mention} has been unlocked.",
-            color=Colors.SUCCESS
-        )
-        embed.add_field(name="Moderator", value=interaction.user.mention, inline=False)
-        
-        await interaction.response.send_message(embed=embed)
+        await self._unlock_logic(interaction, channel, reason)
+
+    @commands.command(name="unlock")
+    @is_mod()
+    async def unlock_prefix(self, ctx: commands.Context, channel: Optional[discord.TextChannel] = None, *, reason: str = "No reason provided"):
+        """Unlock a channel"""
+        await self._unlock_logic(ctx, channel, reason)
 
     @app_commands.command(name="glock", description="🔒 Only the Glock role can talk in the channel")
     @app_commands.describe(
@@ -1696,28 +2038,15 @@ class Moderation(commands.Cog):
         channel: Optional[discord.TextChannel] = None
     ):
         """Set slowmode delay for a channel"""
-        channel = channel or interaction.channel
-        
-        try:
-            await channel.edit(slowmode_delay=seconds)
-        except discord.Forbidden:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", "I don't have permission to edit this channel."),
-                ephemeral=True
-            )
-        
-        if seconds == 0:
-            embed = ModEmbed.success(
-                "Slowmode Disabled",
-                f"Slowmode has been disabled in {channel.mention}."
-            )
-        else:
-            embed = ModEmbed.success(
-                "Slowmode Enabled",
-                f"Slowmode set to **{seconds}s** in {channel.mention}."
-            )
-        
-        await interaction.response.send_message(embed=embed)
+        await self._slowmode_logic(interaction, seconds, channel)
+
+    @commands.command(name="slowmode")
+    @is_mod()
+    async def slowmode_prefix(self, ctx: commands.Context, seconds: int, channel: Optional[discord.TextChannel] = None):
+        """Set slowmode"""
+        if seconds < 0 or seconds > 21600:
+             return await ctx.send("Seconds must be between 0 and 21600.")
+        await self._slowmode_logic(ctx, seconds, channel)
 
     @app_commands.command(name="lockdown", description="🚨 Lock all channels")
     @app_commands.describe(reason="Reason for server lockdown")
@@ -1728,43 +2057,13 @@ class Moderation(commands.Cog):
         reason: str = "Server lockdown"
     ):
         """Lock all text channels in the server"""
-        await interaction.response.defer()
-        
-        locked = []
-        failed = []
-        
-        for channel in interaction.guild.text_channels:
-            try:
-                await channel.set_permissions(
-                    interaction.guild.default_role,
-                    send_messages=False,
-                    reason=f"[LOCKDOWN] {reason}"
-                )
-                locked.append(channel.mention)
-            except discord.Forbidden:
-                failed.append(channel.mention)
-            except discord.HTTPException:
-                failed.append(channel.mention)
-        
-        embed = discord.Embed(
-            title="🚨 Server Lockdown Initiated",
-            description=f"Locked **{len(locked)}** channels.",
-            color=Colors.DARK_RED,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.add_field(name="Reason", value=reason, inline=False)
-        embed.add_field(name="Moderator", value=interaction.user.mention, inline=False)
-        
-        if failed:
-            embed.add_field(
-                name=f"❌ Failed ({len(failed)})",
-                value=", ".join(failed[:10]) + (f" ...and {len(failed) - 10} more" if len(failed) > 10 else ""),
-                inline=False
-            )
-        
-        await interaction.followup.send(embed=embed)
-        await self.log_action(interaction.guild, embed)
+        await self._lockdown_logic(interaction, reason)
+
+    @commands.command(name="lockdown")
+    @is_admin()
+    async def lockdown_prefix(self, ctx: commands.Context, *, reason: str = "Server lockdown"):
+        """Lock all channels"""
+        await self._lockdown_logic(ctx, reason)
 
     @app_commands.command(name="unlockdown", description="✅ Unlock all channels")
     @app_commands.describe(reason="Reason for lifting lockdown")
@@ -1775,42 +2074,13 @@ class Moderation(commands.Cog):
         reason: str = "Lockdown lifted"
     ):
         """Unlock all text channels in the server"""
-        await interaction.response.defer()
-        
-        unlocked = []
-        failed = []
-        
-        for channel in interaction.guild.text_channels:
-            try:
-                await channel.set_permissions(
-                    interaction.guild.default_role,
-                    send_messages=None,
-                    reason=f"[UNLOCKDOWN] {reason}"
-                )
-                unlocked.append(channel.mention)
-            except discord.Forbidden:
-                failed.append(channel.mention)
-            except discord.HTTPException:
-                failed.append(channel.mention)
-        
-        embed = discord.Embed(
-            title="✅ Lockdown Lifted",
-            description=f"Unlocked **{len(unlocked)}** channels.",
-            color=Colors.SUCCESS,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.add_field(name="Moderator", value=interaction.user.mention, inline=False)
-        
-        if failed:
-            embed.add_field(
-                name=f"❌ Failed ({len(failed)})",
-                value=", ".join(failed[:10]) + (f" ...and {len(failed) - 10} more" if len(failed) > 10 else ""),
-                inline=False
-            )
-        
-        await interaction.followup.send(embed=embed)
-        await self.log_action(interaction.guild, embed)
+        await self._unlockdown_logic(interaction, reason)
+
+    @commands.command(name="unlockdown")
+    @is_admin()
+    async def unlockdown_prefix(self, ctx: commands.Context, *, reason: str = "Lockdown lifted"):
+        """Unlock all channels"""
+        await self._unlockdown_logic(ctx, reason)
 
     @app_commands.command(name="nuke", description="💥 Clone and delete a channel")
     @app_commands.describe(channel="Channel to nuke (current if not specified)")
@@ -1821,27 +2091,13 @@ class Moderation(commands.Cog):
         channel: Optional[discord.TextChannel] = None
     ):
         """Delete and recreate a channel (clears all messages)"""
-        channel = channel or interaction.channel
-        
-        try:
-            position = channel.position
-            new_channel = await channel.clone(reason=f"Nuked by {interaction.user}")
-            await new_channel.edit(position=position)
-            await channel.delete(reason=f"Nuked by {interaction.user}")
-        except discord.Forbidden:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", "I don't have permission to clone/delete channels."),
-                ephemeral=True
-            )
-        
-        embed = discord.Embed(
-            title="💥 Channel Nuked",
-            description=f"This channel has been nuked by {interaction.user.mention}.",
-            color=Colors.ERROR
-        )
-        embed.set_image(url="https://media1.tenor.com/m/OMQvHj3-AsMAAAAd/kaboom-boom.gif")
-        
-        await new_channel.send(embed=embed)
+        await self._nuke_logic(interaction, channel)
+
+    @commands.command(name="nuke")
+    @is_admin()
+    async def nuke_prefix(self, ctx: commands.Context, channel: Optional[discord.TextChannel] = None):
+        """Nuke a channel"""
+        await self._nuke_logic(ctx, channel)
 
     # ==================== MESSAGE PURGE COMMANDS ====================
 
@@ -1858,28 +2114,15 @@ class Moderation(commands.Cog):
         user: Optional[discord.Member] = None
     ):
         """Bulk delete messages"""
-        await interaction.response.defer(ephemeral=True)
-        
-        try:
-            if user:
-                deleted = await interaction.channel.purge(limit=amount, check=lambda m: m.author.id == user.id)
-            else:
-                deleted = await interaction.channel.purge(limit=amount)
-        except discord.Forbidden:
-            return await interaction.followup.send(
-                embed=ModEmbed.error("Failed", "I don't have permission to delete messages."),
-                ephemeral=True
-            )
-        except discord.HTTPException as e:
-            return await interaction.followup.send(
-                embed=ModEmbed.error("Failed", f"An error occurred: {str(e)}"),
-                ephemeral=True
-            )
-        
-        user_text = f" from {user.mention}" if user else ""
-        embed = ModEmbed.success("Messages Purged", f"Deleted **{len(deleted)}** message(s){user_text}.")
-        
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await self._purge_logic(interaction, amount, user)
+
+    @commands.command(name="purge", aliases=["clear"])
+    @is_mod()
+    async def purge_prefix(self, ctx: commands.Context, amount: int, user: Optional[discord.Member] = None):
+        """Purge messages"""
+        if amount < 1 or amount > 100:
+             return await ctx.send("Amount must be between 1 and 100.")
+        await self._purge_logic(ctx, amount, user)
 
     @app_commands.command(name="purgebots", description="🤖 Delete bot messages")
     @app_commands.describe(amount="Number of messages to check (1-100)")
@@ -1890,18 +2133,13 @@ class Moderation(commands.Cog):
         amount: app_commands.Range[int, 1, 100] = 100
     ):
         """Delete messages from bots"""
-        await interaction.response.defer(ephemeral=True)
-        
-        try:
-            deleted = await interaction.channel.purge(limit=amount, check=lambda m: m.author.bot)
-        except discord.Forbidden:
-            return await interaction.followup.send(
-                embed=ModEmbed.error("Failed", "I don't have permission to delete messages."),
-                ephemeral=True
-            )
-        
-        embed = ModEmbed.success("Bot Messages Purged", f"Deleted **{len(deleted)}** bot messages.")
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await self._purge_logic(interaction, amount, check=lambda m: m.author.bot)
+
+    @commands.command(name="purgebots")
+    @is_mod()
+    async def purgebots_prefix(self, ctx: commands.Context, amount: int = 100):
+        """Delete bot messages"""
+        await self._purge_logic(ctx, amount, check=lambda m: m.author.bot)
 
     @app_commands.command(name="purgecontains", description="🔍 Delete messages containing text")
     @app_commands.describe(
@@ -1916,18 +2154,13 @@ class Moderation(commands.Cog):
         amount: app_commands.Range[int, 1, 100] = 100
     ):
         """Delete messages containing specific text"""
-        await interaction.response.defer(ephemeral=True)
-        
-        try:
-            deleted = await interaction.channel.purge(limit=amount, check=lambda m: text.lower() in m.content.lower())
-        except discord.Forbidden:
-            return await interaction.followup.send(
-                embed=ModEmbed.error("Failed", "I don't have permission to delete messages."),
-                ephemeral=True
-            )
-        
-        embed = ModEmbed.success("Messages Purged", f"Deleted **{len(deleted)}** messages containing `{text}`.")
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await self._purge_logic(interaction, amount, check=lambda m: text.lower() in m.content.lower())
+
+    @commands.command(name="purgecontains")
+    @is_mod()
+    async def purgecontains_prefix(self, ctx: commands.Context, text: str, amount: int = 100):
+        """Delete messages containing text"""
+        await self._purge_logic(ctx, amount, check=lambda m: text.lower() in m.content.lower())
 
     @app_commands.command(name="purgeembeds", description="📦 Delete messages with embeds")
     @app_commands.describe(amount="Number of messages to check (1-100)")
@@ -1938,18 +2171,13 @@ class Moderation(commands.Cog):
         amount: app_commands.Range[int, 1, 100] = 100
     ):
         """Delete messages containing embeds"""
-        await interaction.response.defer(ephemeral=True)
-        
-        try:
-            deleted = await interaction.channel.purge(limit=amount, check=lambda m: len(m.embeds) > 0)
-        except discord.Forbidden:
-            return await interaction.followup.send(
-                embed=ModEmbed.error("Failed", "I don't have permission to delete messages."),
-                ephemeral=True
-            )
-        
-        embed = ModEmbed.success("Embed Messages Purged", f"Deleted **{len(deleted)}** messages with embeds.")
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await self._purge_logic(interaction, amount, check=lambda m: len(m.embeds) > 0)
+
+    @commands.command(name="purgeembeds")
+    @is_mod()
+    async def purgeembeds_prefix(self, ctx: commands.Context, amount: int = 100):
+        """Delete messages with embeds"""
+        await self._purge_logic(ctx, amount, check=lambda m: len(m.embeds) > 0)
 
     @app_commands.command(name="purgeimages", description="🖼️ Delete messages with attachments")
     @app_commands.describe(amount="Number of messages to check (1-100)")
@@ -1960,18 +2188,13 @@ class Moderation(commands.Cog):
         amount: app_commands.Range[int, 1, 100] = 100
     ):
         """Delete messages with attachments"""
-        await interaction.response.defer(ephemeral=True)
-        
-        try:
-            deleted = await interaction.channel.purge(limit=amount, check=lambda m: len(m.attachments) > 0)
-        except discord.Forbidden:
-            return await interaction.followup.send(
-                embed=ModEmbed.error("Failed", "I don't have permission to delete messages."),
-                ephemeral=True
-            )
-        
-        embed = ModEmbed.success("Image Messages Purged", f"Deleted **{len(deleted)}** messages with attachments.")
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await self._purge_logic(interaction, amount, check=lambda m: len(m.attachments) > 0)
+
+    @commands.command(name="purgeimages")
+    @is_mod()
+    async def purgeimages_prefix(self, ctx: commands.Context, amount: int = 100):
+        """Delete messages with images"""
+        await self._purge_logic(ctx, amount, check=lambda m: len(m.attachments) > 0)
 
     @app_commands.command(name="purgelinks", description="🔗 Delete messages with links")
     @app_commands.describe(amount="Number of messages to check (1-100)")
@@ -1982,20 +2205,15 @@ class Moderation(commands.Cog):
         amount: app_commands.Range[int, 1, 100] = 100
     ):
         """Delete messages containing URLs"""
-        await interaction.response.defer(ephemeral=True)
-        
         url_pattern = re.compile(r'https?://')
-        
-        try:
-            deleted = await interaction.channel.purge(limit=amount, check=lambda m: url_pattern.search(m.content))
-        except discord.Forbidden:
-            return await interaction.followup.send(
-                embed=ModEmbed.error("Failed", "I don't have permission to delete messages."),
-                ephemeral=True
-            )
-        
-        embed = ModEmbed.success("Link Messages Purged", f"Deleted **{len(deleted)}** messages with links.")
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await self._purge_logic(interaction, amount, check=lambda m: url_pattern.search(m.content))
+
+    @commands.command(name="purgelinks")
+    @is_mod()
+    async def purgelinks_prefix(self, ctx: commands.Context, amount: int = 100):
+        """Delete messages with links"""
+        url_pattern = re.compile(r'https?://')
+        await self._purge_logic(ctx, amount, check=lambda m: url_pattern.search(m.content))
 
     # ==================== ROLE MANAGEMENT ====================
 
@@ -2377,6 +2595,7 @@ class Moderation(commands.Cog):
     @app_commands.command(name="quarantine", description="🔒 Quarantine a user (remove all roles)")
     @app_commands.describe(
         user="User to quarantine",
+        duration="Duration (e.g., 1h, 1d, 7d) - leave empty for permanent",
         reason="Reason for quarantine"
     )
     @is_senior_mod()
@@ -2384,55 +2603,39 @@ class Moderation(commands.Cog):
         self,
         interaction: discord.Interaction,
         user: discord.Member,
+        duration: Optional[str] = None,
         reason: str = "No reason provided"
     ):
         """Remove all roles and apply quarantine role"""
-        can_mod, error = await self.can_moderate(interaction.guild_id, interaction.user, user)
-        if not can_mod:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Cannot Quarantine", error),
-                ephemeral=True
-            )
-        
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        quarantine_role_id = settings.get('quarantine_role')
-        
-        if not quarantine_role_id:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("No Quarantine Role", "Run `/setup` to configure a quarantine role first."),
-                ephemeral=True
-            )
-        
-        quarantine_role = interaction.guild.get_role(quarantine_role_id)
-        if not quarantine_role:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Role Not Found", "Quarantine role not found. Reconfigure with `/setup`."),
-                ephemeral=True
-            )
-        
-        try:
-            await user.edit(roles=[quarantine_role], reason=f"[QUARANTINE] {reason}")
-        except discord.Forbidden:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", "I don't have permission to edit roles."),
-                ephemeral=True
-            )
-        
-        case_num = await self.bot.db.create_case(
-            interaction.guild_id, user.id, interaction.user.id, "Quarantine", reason
-        )
-        
-        embed = await self.create_mod_embed(
-            title="🔒 User Quarantined",
-            user=user,
-            moderator=interaction.user,
-            reason=reason,
-            color=Colors.DARK_RED,
-            case_num=case_num
-        )
-        
-        await interaction.response.send_message(embed=embed)
-        await self.log_action(interaction.guild, embed)
+        await self._quarantine_logic(interaction, user, duration, reason)
+
+    @commands.command(name="quarantine")
+    @is_senior_mod()
+    async def quarantine_prefix(self, ctx: commands.Context, user: discord.Member, duration: Optional[str] = None, *, reason: str = "No reason provided"):
+        """Quarantine a user"""
+        await self._quarantine_logic(ctx, user, duration, reason)
+
+    @app_commands.command(name="unquarantine", description="🔓 Remove quarantine from a user")
+    @app_commands.describe(
+        user="User to unquarantine",
+        reason="Reason for removal"
+    )
+    @is_mod()
+    async def unquarantine(
+        self,
+        interaction: discord.Interaction,
+        user: discord.Member,
+        reason: str = "Quarantine lifted"
+    ):
+        """Restore user's original roles and remove quarantine"""
+        await self._unquarantine_logic(interaction, user, reason)
+
+    @commands.command(name="unquarantine")
+    @is_mod()
+    async def unquarantine_prefix(self, ctx: commands.Context, user: discord.Member, *, reason: str = "Quarantine lifted"):
+        """Unquarantine a user"""
+        await self._unquarantine_logic(ctx, user, reason)
+
 
     @app_commands.command(name="inrole", description="👥 List members with a specific role")
     @app_commands.describe(role="Role to check")

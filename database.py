@@ -389,6 +389,16 @@ class Database:
                     )
                 """)
                 
+                # ===== GLOBAL BLACKLIST =====
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS blacklist (
+                        user_id INTEGER PRIMARY KEY,
+                        reason TEXT,
+                        added_by INTEGER,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
                 # Auto-migrate missing columns
                 await self._migrate_schema(db)
 
@@ -1841,3 +1851,65 @@ class Database:
             stats["database_size_mb"] = round((page_count * page_size) / (1024 * 1024), 2)
         
         return stats
+    
+    # ==================== GLOBAL BLACKLIST ====================
+    
+    async def add_to_blacklist(self, user_id: int, reason: str, added_by: int) -> bool:
+        """Add a user to the global blacklist"""
+        self._validate_user_id(user_id)
+        self._validate_user_id(added_by)
+        
+        async with self._lock:
+            async with self.get_connection() as db:
+                try:
+                    await db.execute(
+                        """
+                        INSERT OR REPLACE INTO blacklist (user_id, reason, added_by)
+                        VALUES (?, ?, ?)
+                        """,
+                        (user_id, reason, added_by),
+                    )
+                    await db.commit()
+                    return True
+                except Exception:
+                    return False
+    
+    async def remove_from_blacklist(self, user_id: int) -> bool:
+        """Remove a user from the global blacklist"""
+        self._validate_user_id(user_id)
+        
+        async with self._lock:
+            async with self.get_connection() as db:
+                cursor = await db.execute(
+                    "DELETE FROM blacklist WHERE user_id = ?",
+                    (user_id,),
+                )
+                await db.commit()
+                return cursor.rowcount > 0
+    
+    async def get_blacklist(self) -> List[Dict[str, Any]]:
+        """Get all blacklisted users"""
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT user_id, reason, added_by, created_at FROM blacklist ORDER BY created_at DESC"
+            )
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "user_id": r[0],
+                    "reason": r[1],
+                    "added_by": r[2],
+                    "created_at": r[3],
+                }
+                for r in rows
+            ]
+    
+    async def is_blacklisted(self, user_id: int) -> bool:
+        """Check if a user is blacklisted"""
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT 1 FROM blacklist WHERE user_id = ?",
+                (user_id,),
+            )
+            row = await cursor.fetchone()
+            return row is not None

@@ -79,6 +79,14 @@ def is_mod():
     
     return app_commands.check(predicate)
 
+def is_owner_only():
+    """Check if user is a bot owner - for owner-only commands"""
+    async def predicate(interaction: discord.Interaction) -> bool:
+        if await is_bot_owner(interaction):
+            return True
+        raise app_commands.MissingPermissions(['Bot Owner'])
+    return app_commands.check(predicate)
+
 def is_senior_mod():
     """Check if user is a senior moderator"""
     async def predicate(interaction:  discord.Interaction) -> bool:

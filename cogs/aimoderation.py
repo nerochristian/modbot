@@ -408,7 +408,9 @@ Decide what to do and respond ONLY with JSON using the schema from the system me
 # ========= COG =========
 
 
-class ConfirmAIModActionView(discord.ui.LayoutView):
+class ConfirmAIModActionView(discord.ui.View):
+    """Confirmation view for AI moderation actions."""
+    
     def __init__(
         self,
         cog: "AIModeration",
@@ -430,21 +432,6 @@ class ConfirmAIModActionView(discord.ui.LayoutView):
         self._done = False
         self.prompt_message: Optional[discord.Message] = None
 
-        confirm_button = discord.ui.Button(label="Confirm", style=discord.ButtonStyle.danger)
-        cancel_button = discord.ui.Button(label="Cancel", style=discord.ButtonStyle.secondary)
-
-        async def _confirm(interaction: discord.Interaction):
-            return await self.confirm(interaction, confirm_button)
-
-        async def _cancel(interaction: discord.Interaction):
-            return await self.cancel(interaction, cancel_button)
-
-        confirm_button.callback = _confirm
-        cancel_button.callback = _cancel
-
-        self.add_item(confirm_button)
-        self.add_item(cancel_button)
-
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id == self._actor_id or is_bot_owner_id(interaction.user.id):
             return True
@@ -456,26 +443,34 @@ class ConfirmAIModActionView(discord.ui.LayoutView):
             pass
         return False
 
-    async def _disable(self) -> None:
+    async def _disable_all(self) -> None:
         for child in self.children:
-            child.disabled = True  # type: ignore[attr-defined]
+            if hasattr(child, 'disabled'):
+                child.disabled = True
 
     async def on_timeout(self) -> None:
         if self._done:
             return
         self._done = True
-        await self._disable()
+        await self._disable_all()
         if self.prompt_message:
             try:
-                await self.prompt_message.edit(view=self)
+                embed = discord.Embed(
+                    title="⏰ Confirmation Expired",
+                    description="The action was not confirmed in time.",
+                    color=discord.Color.greyple(),
+                )
+                await self.prompt_message.edit(embed=embed, view=self)
             except Exception:
                 pass
 
-    async def confirm(self, interaction: discord.Interaction, _: discord.ui.Button):
+    @discord.ui.button(label="✓ Confirm", style=discord.ButtonStyle.danger)
+    async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self._done:
             return
         self._done = True
-        await self._disable()
+        await self._disable_all()
+        
         try:
             await interaction.response.defer()
         except Exception:
@@ -483,7 +478,12 @@ class ConfirmAIModActionView(discord.ui.LayoutView):
 
         if self.prompt_message:
             try:
-                await self.prompt_message.edit(view=self)
+                embed = discord.Embed(
+                    title="✅ Action Confirmed",
+                    description="Executing the moderation action...",
+                    color=discord.Color.green(),
+                )
+                await self.prompt_message.edit(embed=embed, view=self)
             except Exception:
                 pass
 
@@ -495,20 +495,26 @@ class ConfirmAIModActionView(discord.ui.LayoutView):
             purge_before=self.prompt_message,
         )
 
-    async def cancel(self, interaction: discord.Interaction, _: discord.ui.Button):
+    @discord.ui.button(label="✗ Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self._done:
             return
         self._done = True
-        await self._disable()
+        await self._disable_all()
+        
         try:
-            await interaction.response.send_message("Canceled.", ephemeral=True)
+            embed = discord.Embed(
+                title="❌ Action Cancelled",
+                description="The moderation action was cancelled.",
+                color=discord.Color.red(),
+            )
+            await interaction.response.edit_message(embed=embed, view=self)
         except Exception:
-            pass
-        if self.prompt_message:
             try:
-                await self.prompt_message.edit(view=self)
+                await interaction.response.send_message("Cancelled.", ephemeral=True)
             except Exception:
                 pass
+
 
 
 class AIModeration(commands.Cog):
@@ -852,30 +858,66 @@ class AIModeration(commands.Cog):
         assert guild is not None
         actor: discord.Member = message.author  # type: ignore
 
+        # Resolve target info
         target_text = "*None*"
+        target_member = None
         raw_target = args.get("target_user_id")
         if raw_target is not None:
-            member = await self._resolve_member_from_id(guild, raw_target)
-            if member:
-                target_text = f"{member.mention} (`{member.id}`)"
+            target_member = await self._resolve_member_from_id(guild, raw_target)
+            if target_member:
+                target_text = f"{target_member.mention} ({target_member})"
             else:
                 try:
-                    target_text = f"<@{int(raw_target)}> (`{int(raw_target)}`)"
+                    target_text = f"<@{int(raw_target)}> (ID: `{int(raw_target)}`)"
                 except Exception:
-                    target_text = "*Unresolved*"
+                    target_text = "*Could not resolve target*"
 
+        # Action-specific formatting
+        tool_info = {
+            "warn_member": ("⚠️ Warn Member", discord.Color.gold()),
+            "timeout_member": ("🔇 Timeout Member", discord.Color.orange()),
+            "untimeout_member": ("🔊 Remove Timeout", discord.Color.green()),
+            "kick_member": ("👢 Kick Member", discord.Color.red()),
+            "ban_member": ("🔨 Ban Member", discord.Color.dark_red()),
+            "unban_member": ("✅ Unban Member", discord.Color.green()),
+            "purge_messages": ("🗑️ Purge Messages", discord.Color.blue()),
+        }
+        tool_display, tool_color = tool_info.get(tool, (f"🤖 {tool}", discord.Color.orange()))
+
+        # Build reason string
+        reason = args.get('reason') or decision.get('reason') or 'No reason provided'
+
+        # Build extra info for specific tools
+        extra_info = ""
+        if tool == "timeout_member":
+            seconds = args.get("seconds", 3600)
+            try:
+                mins = int(seconds) // 60
+                extra_info = f"\n**Duration:** {mins} minute(s)"
+            except Exception:
+                pass
+        elif tool == "purge_messages":
+            amount = args.get("amount", 10)
+            extra_info = f"\n**Amount:** {amount} message(s)"
+        elif tool == "ban_member":
+            delete_days = args.get("delete_message_days", 0)
+            extra_info = f"\n**Delete Messages:** {delete_days} day(s)"
+
+        timeout_secs = settings.get("aimod_confirm_timeout_seconds", 25)
         embed = discord.Embed(
-            title="Confirm AI Moderation Action",
+            title=f"🤖 Confirm: {tool_display}",
             description=(
-                f"**Tool:** `{tool}`\n"
                 f"**Target:** {target_text}\n"
-                f"**Reason:** {args.get('reason') or decision.get('reason') or 'No reason'}\n\n"
-                "Click **Confirm** to execute or **Cancel** to abort."
+                f"**Reason:** {reason}{extra_info}\n\n"
+                f"⏱️ This will expire in **{timeout_secs} seconds**.\n"
+                "Click a button below to confirm or cancel."
             ),
-            color=discord.Color.orange(),
+            color=tool_color,
             timestamp=datetime.now(timezone.utc),
         )
-        embed.set_footer(text=f"Requested by {actor}")
+        embed.set_footer(text=f"Requested by {actor} • AI Moderation")
+        if target_member and target_member.avatar:
+            embed.set_thumbnail(url=target_member.display_avatar.url)
 
         view = ConfirmAIModActionView(
             self,
@@ -884,7 +926,7 @@ class AIModeration(commands.Cog):
             tool=tool,
             args=args,
             decision=decision,
-            timeout_seconds=settings.get("aimod_confirm_timeout_seconds", 25),
+            timeout_seconds=timeout_secs,
         )
         try:
             prompt = await message.channel.send(
@@ -935,26 +977,28 @@ class AIModeration(commands.Cog):
             limit=int(settings.get("aimod_context_messages", 15)),
         )
 
-        try:
-            decision = await self.ai.choose_tool(
-                user_content=cleaned,
-                guild=message.guild,
-                author=message.author,
-                mentions_meta=mentions_meta,
-                recent_messages=recent_messages,
-                permission_flags=perm_flags,
-                model=settings.get("aimod_model") or GROQ_MODEL,
-            )
-        except Exception as e:
-            embed = discord.Embed(
-                title="AI Moderation Error",
-                description=f"Groq request failed: `{type(e).__name__}`",
-                color=0xFF0000,
-            )
-            await self._reply(message, embed=embed, delete_after=15)
-            if hasattr(self.bot, "errors_caught"):
-                self.bot.errors_caught += 1
-            return
+        # Show typing indicator while AI is processing
+        async with message.channel.typing():
+            try:
+                decision = await self.ai.choose_tool(
+                    user_content=cleaned,
+                    guild=message.guild,
+                    author=message.author,
+                    mentions_meta=mentions_meta,
+                    recent_messages=recent_messages,
+                    permission_flags=perm_flags,
+                    model=settings.get("aimod_model") or GROQ_MODEL,
+                )
+            except Exception as e:
+                embed = discord.Embed(
+                    title="❌ AI Moderation Error",
+                    description=f"Failed to process request: `{type(e).__name__}`\n\nPlease try again.",
+                    color=0xFF0000,
+                )
+                await self._reply(message, embed=embed, delete_after=15)
+                if hasattr(self.bot, "errors_caught"):
+                    self.bot.errors_caught += 1
+                return
 
         dtype = decision.get("type")
 

@@ -24,7 +24,7 @@ def _parse_hex_color(value: str | None, default: int) -> int:
 class Config:
     # Bot Token
     TOKEN = os.getenv('DISCORD_TOKEN')
-    PREFIX = os.getenv('PREFIX', '!')
+    PREFIX = os.getenv('PREFIX', ',')
     
     # Global embed side color (set `EMBED_ACCENT_COLOR` to a hex like `#A020F0`)
     EMBED_ACCENT_COLOR = _parse_hex_color(os.getenv("EMBED_ACCENT_COLOR"), 0x5865F2)

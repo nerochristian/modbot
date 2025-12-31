@@ -187,6 +187,9 @@ class ModBot(commands.Bot):
         # Internal flags
         self._ready_once: bool = False
         self._cache_cleanup_task: Optional[asyncio.Task] = None
+        
+        # Global blacklist cache (set of user IDs)
+        self.blacklist_cache: set[int] = set()
     
     @staticmethod
     def _load_owner_ids() -> set[int]:
@@ -216,11 +219,16 @@ class ModBot(commands.Bot):
             # Load from database
             try:
                 settings = await self.db.get_settings(message.guild.id)
-                prefix = settings.get("prefix", "!")
+                if prefix is None:
+                    prefix = "!" # Fallback if None but key exists
+                
+                # Check config override just in case
+                if prefix == "!":
+                    prefix = ","
                 await self.prefix_cache.set(message.guild.id, prefix)
             except Exception as e:
                 logger.error(f"Failed to get prefix for {message.guild.name}: {e}")
-                prefix = "!"
+                prefix = ","
         
         return commands.when_mentioned_or(prefix)(self, message)
     
@@ -264,6 +272,7 @@ class ModBot(commands.Bot):
             "cogs.court",
             "cogs.aimoderation",
             "cogs.modmail",
+            "cogs.blacklist",
         ]
         
         loaded: list[str] = []
@@ -384,7 +393,21 @@ class ModBot(commands.Bot):
         
         # Set presence
         await self.update_presence()
+        
+        # Load blacklist cache
+        await self._load_blacklist_cache()
+        
         logger.info("🚀 Bot is fully operational!")
+    
+    async def _load_blacklist_cache(self):
+        """Load blacklist from database into cache"""
+        try:
+            blacklist = await self.db.get_blacklist()
+            self.blacklist_cache = {entry["user_id"] for entry in blacklist}
+            logger.info(f"🚫 Loaded {len(self.blacklist_cache)} blacklisted users")
+        except Exception as e:
+            logger.error(f"Failed to load blacklist cache: {e}")
+            self.blacklist_cache = set()
     
     async def update_presence(self):
         """Update bot status"""
@@ -423,8 +446,47 @@ class ModBot(commands.Bot):
         if message.author.bot:
             return
         
+        # Check blacklist for prefix commands
+        if message.author.id in self.blacklist_cache:
+            # Check if this looks like a command
+            if message.guild:
+                prefix = await self.prefix_cache.get(message.guild.id)
+                if prefix is None:
+                    prefix = ","
+            else:
+                prefix = "!"
+            
+            if message.content.startswith(prefix) or message.content.startswith(f"<@{self.user.id}>") or message.content.startswith(f"<@!{self.user.id}>"):
+                embed = discord.Embed(
+                    title="🚫 Blacklisted",
+                    description="You are blacklisted from using this bot.",
+                    color=0xFF0000
+                )
+                await message.channel.send(f"{message.author.mention}", embed=embed)
+                return
+        
         self.messages_seen += 1
         await self.process_commands(message)
+    
+    async def on_interaction(self, interaction: discord.Interaction):
+        """Handle interactions - check blacklist for slash commands"""
+        if interaction.type != discord.InteractionType.application_command:
+            return
+        
+        if interaction.user.id in self.blacklist_cache:
+            embed = discord.Embed(
+                title="🚫 Blacklisted",
+                description="You are blacklisted from using this bot.",
+                color=0xFF0000
+            )
+            try:
+                await interaction.response.send_message(
+                    content=f"{interaction.user.mention}",
+                    embed=embed,
+                    ephemeral=False
+                )
+            except discord.errors.InteractionResponded:
+                pass
     
     async def on_command(self, ctx: commands.Context):
         """Track command usage"""
