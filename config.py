@@ -40,6 +40,8 @@ class Config:
     COLOR_PINK = EMBED_ACCENT_COLOR
     COLOR_GOLD = EMBED_ACCENT_COLOR
     COLOR_DARK_RED = EMBED_ACCENT_COLOR
+    COLOR_ADMIN = EMBED_ACCENT_COLOR
+    COLOR_OWNER = EMBED_ACCENT_COLOR
 
     # Log embed sizing (best-effort padding; higher = taller)
     LOG_EMBED_TARGET_LINES = int(os.getenv("LOG_EMBED_TARGET_LINES", "24"))
