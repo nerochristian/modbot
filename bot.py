@@ -274,6 +274,7 @@ class ModBot(commands.Bot):
             "cogs.modmail",
             "cogs.blacklist",
             "cogs.forum_moderation",
+            "cogs.polls",
             "cogs.prefix_commands",
         ]
         
