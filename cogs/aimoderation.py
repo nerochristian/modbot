@@ -3,7 +3,7 @@ import re
 import json
 import asyncio
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Literal
 
 import discord
 from discord import app_commands
@@ -1637,120 +1637,132 @@ class AIModeration(commands.Cog):
             await ctx.send(embed=embed)
 
     # ========= SLASH COMMANDS =========
-
-    aimod_group = app_commands.Group(
-        name="aimod",
-        description="AI mention moderation settings",
-    )
-
-    @aimod_group.command(name="status", description="View AI moderation settings")
-    @is_mod()
-    async def aimod_status(self, interaction: discord.Interaction):
-        settings = await self._get_aimod_settings(interaction.guild_id)
-        embed = discord.Embed(
-            title="🤖 AI Moderation Settings",
-            color=discord.Color.blurple(),
-        )
-        embed.add_field(
-            name="Enabled",
-            value="🟢 Yes" if settings.get("aimod_enabled", True) else "🔴 No",
-            inline=True,
-        )
-        embed.add_field(
-            name="Model",
-            value=f"`{settings.get('aimod_model', GROQ_MODEL)}`",
-            inline=True,
-        )
-        embed.add_field(
-            name="Context Messages",
-            value=str(settings.get("aimod_context_messages", 15)),
-            inline=True,
-        )
-        confirm_enabled = bool(settings.get("aimod_confirm_enabled", False))
-        embed.add_field(
-            name="Confirm Actions",
-            value="🟢 On" if confirm_enabled else "🔴 Off",
-            inline=True,
-        )
-        actions = settings.get("aimod_confirm_actions") or []
-        embed.add_field(
-            name="Confirm List",
-            value=f"`{', '.join(actions)}`" if actions else "*None*",
-            inline=False,
-        )
-        embed.add_field(
-            name="Confirm Timeout",
-            value=f"{settings.get('aimod_confirm_timeout_seconds', 25)}s",
-            inline=True,
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @aimod_group.command(name="enable", description="Enable AI moderation mentions")
-    @is_admin()
-    async def aimod_enable(self, interaction: discord.Interaction):
-        await self._set_aimod_setting(interaction.guild_id, "aimod_enabled", True)
-        await interaction.response.send_message(
-            "✅ AI moderation is now enabled.", ephemeral=True
-        )
-
-    @aimod_group.command(name="disable", description="Disable AI moderation mentions")
-    @is_admin()
-    async def aimod_disable(self, interaction: discord.Interaction):
-        await self._set_aimod_setting(interaction.guild_id, "aimod_enabled", False)
-        await interaction.response.send_message(
-            "✅ AI moderation is now disabled.", ephemeral=True
-        )
-
-    @aimod_group.command(
-        name="confirm",
-        description="Require confirmation before executing AI actions",
-    )
+    
+    @app_commands.command(name="aimod", description="🤖 AI moderation settings and tools")
     @app_commands.describe(
-        enabled="Enable or disable confirmations",
-        actions="Comma-separated tools (e.g. ban_member,kick_member,purge_messages)",
-        timeout_seconds="How long the buttons stay active (5-120)",
+        action="Action to perform (status, enable, disable, etc.)",
+        model="Model name (for 'model' action)",
+        count="Number of messages (for 'context' action)",
+        enabled="Enable/disable confirmations (for 'confirm' action)",
+        actions="Comma-separated tools (for 'confirm' action)",
+        timeout_seconds="Timeout in seconds (for 'confirm' action)",
+        text="Text to preview (for 'preview' action)",
+        target="Target member (for 'preview' action)",
     )
-    @is_admin()
-    async def aimod_confirm(
+    async def aimod(
         self,
         interaction: discord.Interaction,
-        enabled: bool,
+        action: Literal["status", "enable", "disable", "model", "context", "confirm", "preview", "help"],
+        model: Optional[str] = None,
+        count: Optional[int] = None,
+        enabled: Optional[bool] = None,
         actions: Optional[str] = None,
         timeout_seconds: Optional[int] = None,
+        text: Optional[str] = None,
+        target: Optional[discord.Member] = None,
     ):
+        if action == "help":
+            await self.aihelp(interaction) # type: ignore
+            return
+
+        if action == "status":
+            if not is_mod().predicate(interaction):
+                return await interaction.response.send_message("❌ You must be a moderator to use this.", ephemeral=True)
+            await self.aimod_status(interaction)
+        
+        elif action == "enable":
+            if not is_admin().predicate(interaction):
+                return await interaction.response.send_message("❌ You must be an admin to use this.", ephemeral=True)
+            await self._set_aimod_setting(interaction.guild_id, "aimod_enabled", True)
+            await interaction.response.send_message("✅ AI moderation is now enabled.", ephemeral=True)
+            
+        elif action == "disable":
+            if not is_admin().predicate(interaction):
+                return await interaction.response.send_message("❌ You must be an admin to use this.", ephemeral=True)
+            await self._set_aimod_setting(interaction.guild_id, "aimod_enabled", False)
+            await interaction.response.send_message("✅ AI moderation is now disabled.", ephemeral=True)
+
+        elif action == "model":
+            if not is_admin().predicate(interaction):
+                return await interaction.response.send_message("❌ You must be an admin to use this.", ephemeral=True)
+            if not model:
+                return await interaction.response.send_message("❌ Please specify a `model`.", ephemeral=True)
+            
+            clean_model = model.strip()
+            if clean_model.lower() == "default":
+                clean_model = GROQ_MODEL
+            await self._set_aimod_setting(interaction.guild_id, "aimod_model", clean_model)
+            await interaction.response.send_message(f"✅ AI moderation model set to `{clean_model}`.", ephemeral=True)
+
+        elif action == "context":
+            if not is_admin().predicate(interaction):
+                return await interaction.response.send_message("❌ You must be an admin to use this.", ephemeral=True)
+            if count is None:
+                return await interaction.response.send_message("❌ Please specify a `count` (0-30).", ephemeral=True)
+                
+            val = max(0, min(int(count), 30))
+            await self._set_aimod_setting(interaction.guild_id, "aimod_context_messages", val)
+            await interaction.response.send_message(f"✅ Context messages set to **{val}**.", ephemeral=True)
+
+        elif action == "confirm":
+            if not is_admin().predicate(interaction):
+                return await interaction.response.send_message("❌ You must be an admin to use this.", ephemeral=True)
+            if enabled is None:
+                return await interaction.response.send_message("❌ Please specify `enabled: True/False`.", ephemeral=True)
+            
+            await self.aimod_confirm(interaction, enabled, actions, timeout_seconds)
+
+        elif action == "preview":
+            if not is_mod().predicate(interaction):
+                return await interaction.response.send_message("❌ You must be a moderator to use this.", ephemeral=True)
+            if not text:
+                return await interaction.response.send_message("❌ Please specify `text` to preview.", ephemeral=True)
+            
+            await self.aimod_preview(interaction, text, target)
+
+    # Internal helper for status logic reuse
+    async def aimod_status(self, interaction: discord.Interaction):
+        settings = await self._get_aimod_settings(interaction.guild_id)
+        embed = discord.Embed(title="🤖 AI Moderation Settings", color=discord.Color.blurple())
+        
+        embed.add_field(name="Enabled", value="🟢 Yes" if settings.get("aimod_enabled", True) else "🔴 No", inline=True)
+        embed.add_field(name="Model", value=f"`{settings.get('aimod_model', GROQ_MODEL)}`", inline=True)
+        embed.add_field(name="Context Messages", value=str(settings.get("aimod_context_messages", 15)), inline=True)
+        
+        confirm_enabled = bool(settings.get("aimod_confirm_enabled", False))
+        embed.add_field(name="Confirm Actions", value="🟢 On" if confirm_enabled else "🔴 Off", inline=True)
+        
+        actions = settings.get("aimod_confirm_actions") or []
+        embed.add_field(name="Confirm List", value=f"`{', '.join(actions)}`" if actions else "*None*", inline=False)
+        embed.add_field(name="Confirm Timeout", value=f"{settings.get('aimod_confirm_timeout_seconds', 25)}s", inline=True)
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    # Internal helper for confirm logic reuse
+    async def aimod_confirm(self, interaction: discord.Interaction, enabled: bool, actions: Optional[str], timeout_seconds: Optional[int]):
         settings = await self._get_aimod_settings(interaction.guild_id)
         settings["aimod_confirm_enabled"] = bool(enabled)
+        
         if timeout_seconds is not None:
-            settings["aimod_confirm_timeout_seconds"] = max(
-                5, min(int(timeout_seconds), 120)
-            )
+            settings["aimod_confirm_timeout_seconds"] = max(5, min(int(timeout_seconds), 120))
+            
         if actions is not None:
             chosen = [a.strip() for a in actions.split(",") if a.strip()]
             valid = {
-                "warn_member",
-                "timeout_member",
-                "untimeout_member",
-                "kick_member",
-                "ban_member",
-                "unban_member",
-                "purge_messages",
-                "show_help",
+                "warn_member", "timeout_member", "untimeout_member", "kick_member",
+                "ban_member", "unban_member", "purge_messages", "show_help"
             }
             chosen = [a for a in chosen if a in valid]
             if chosen:
                 settings["aimod_confirm_actions"] = chosen
 
+        # Persist
         db = getattr(self.bot, "db", None)
         if db:
             raw = await db.get_settings(interaction.guild_id)
             raw["aimod_confirm_enabled"] = settings["aimod_confirm_enabled"]
-            raw["aimod_confirm_timeout_seconds"] = settings.get(
-                "aimod_confirm_timeout_seconds", 25
-            )
-            raw["aimod_confirm_actions"] = settings.get(
-                "aimod_confirm_actions",
-                DEFAULT_AIMOD_SETTINGS["aimod_confirm_actions"],
-            )
+            raw["aimod_confirm_timeout_seconds"] = settings.get("aimod_confirm_timeout_seconds", 25)
+            raw["aimod_confirm_actions"] = settings.get("aimod_confirm_actions", DEFAULT_AIMOD_SETTINGS["aimod_confirm_actions"])
             await db.update_settings(interaction.guild_id, raw)
 
         await interaction.response.send_message(
@@ -1758,45 +1770,8 @@ class AIModeration(commands.Cog):
             ephemeral=True,
         )
 
-    @aimod_group.command(name="model", description="Set Groq model for AI moderation")
-    @app_commands.describe(model="Model name, or 'default' to use GROQ_MODEL env var")
-    @is_admin()
-    async def aimod_model(self, interaction: discord.Interaction, model: str):
-        model = model.strip()
-        if model.lower() == "default":
-            model = GROQ_MODEL
-        await self._set_aimod_setting(interaction.guild_id, "aimod_model", model)
-        await interaction.response.send_message(
-            f"✅ AI moderation model set to `{model}`.", ephemeral=True
-        )
-
-    @aimod_group.command(
-        name="context",
-        description="Set how many recent messages are sent as context",
-    )
-    @app_commands.describe(count="Number of recent messages (0-30)")
-    @is_admin()
-    async def aimod_context(self, interaction: discord.Interaction, count: int):
-        count = max(0, min(int(count), 30))
-        await self._set_aimod_setting(
-            interaction.guild_id, "aimod_context_messages", count
-        )
-        await interaction.response.send_message(
-            f"✅ Context messages set to **{count}**.", ephemeral=True
-        )
-
-    @aimod_group.command(
-        name="preview",
-        description="Preview what the AI would do (no action is executed)",
-    )
-    @app_commands.describe(text="What you'd say to the bot", target="Optional target member")
-    @is_mod()
-    async def aimod_preview(
-        self,
-        interaction: discord.Interaction,
-        text: str,
-        target: Optional[discord.Member] = None,
-    ):
+    # Internal helper for preview logic reuse
+    async def aimod_preview(self, interaction: discord.Interaction, text: str, target: Optional[discord.Member]):
         if not interaction.guild or not interaction.channel:
             await interaction.response.send_message("Use this in a server.", ephemeral=True)
             return
@@ -1806,54 +1781,48 @@ class AIModeration(commands.Cog):
             return
 
         settings = await self._get_aimod_settings(interaction.guild_id)
-        perm_flags = self._permission_flags(interaction.user)  # type: ignore[arg-type]
+        perm_flags = self._permission_flags(interaction.user)  # type: ignore
 
         mentions_meta: List[Dict[str, Any]] = [
-            {
-                "index": 0,
-                "id": self.bot.user.id,
-                "is_bot": True,
-                "display": str(self.bot.user),
-            }
+            {"index": 0, "id": self.bot.user.id, "is_bot": True, "display": str(self.bot.user)}
         ]
         if target is not None:
             mentions_meta.append(
-                {
-                    "index": 1,
-                    "id": target.id,
-                    "is_bot": bool(getattr(target, "bot", False)),
-                    "display": str(target),
-                }
+                {"index": 1, "id": target.id, "is_bot": bool(getattr(target, "bot", False)), "display": str(target)}
             )
 
         recent_messages = await self._recent_messages(
             interaction.channel, limit=int(settings.get("aimod_context_messages", 15))
         )
-        decision = await self.ai.choose_tool(
-            user_content=text,
-            guild=interaction.guild,
-            author=interaction.user,
-            mentions_meta=mentions_meta,
-            recent_messages=recent_messages,
-            permission_flags=perm_flags,
-            model=settings.get("aimod_model") or GROQ_MODEL,
-        )
+        
+        # Defer since AI can take a moment
+        await interaction.response.defer(ephemeral=True)
+        
+        try:
+            decision = await self.ai.choose_tool(
+                user_content=text,
+                guild=interaction.guild,
+                author=interaction.user,
+                mentions_meta=mentions_meta,
+                recent_messages=recent_messages,
+                permission_flags=perm_flags,
+                model=settings.get("aimod_model") or GROQ_MODEL,
+            )
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error during preview: {e}", ephemeral=True)
+            return
 
-        embed = discord.Embed(
-            title="AI Moderation Preview",
-            color=discord.Color.blurple(),
-        )
+        embed = discord.Embed(title="AI Moderation Preview", color=discord.Color.blurple())
         embed.add_field(name="Type", value=f"`{decision.get('type')}`", inline=True)
         embed.add_field(name="Tool", value=f"`{decision.get('tool')}`", inline=True)
-        embed.add_field(
-            name="Reason", value=str(decision.get("reason") or "No reason"), inline=False
-        )
+        embed.add_field(name="Reason", value=str(decision.get("reason") or "No reason"), inline=False)
         try:
             args_json = json.dumps(decision.get("arguments") or {}, ensure_ascii=False)
         except Exception:
             args_json = "{}"
         embed.add_field(name="Arguments", value=f"`{args_json}`", inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 async def setup(bot: commands.Bot):
