@@ -829,7 +829,7 @@ class Moderation(commands.Cog):
         try:
             await user.timeout(delta, reason=f"{moderator}: {reason}")
         except Exception as e:
-            return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not timeout: {e}"), ephemeral=True)
+            return await self._respond(source, embed=ModEmbed.error("Failed", "You do not have permission to use this bot on that user."), ephemeral=True)
 
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Mute", reason, human_duration)
         
