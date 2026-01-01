@@ -729,6 +729,9 @@ class ForumModeration(commands.Cog):
                         f"**Reason:** {reason}\n\n"
                         f"A moderator will review this shortly. If this is a mistake, please contact staff."
                     )
+                    
+                    # Log to mod log / forum alerts channel
+                    await self._log_to_mod_log(interaction.guild, thread, reason, starter_message.content)
                 
                 # Rate limit - Jikan API allows 3 requests/second, so wait 2 seconds between checks
                 await asyncio.sleep(2)
