@@ -44,58 +44,59 @@ class PrefixCommands(commands.Cog):
     #     await self.bot.db.create_case(ctx.guild.id, member.id, ctx.author.id, "Kick", reason)
     #     await ctx.send(embed=ModEmbed.success("👢 User Kicked", f"{member} has been kicked.\n**Reason:** {reason}"))
 
-    @commands.command(name="ban", aliases=["b"])
-    @commands.has_permissions(ban_members=True)
-    async def ban_cmd(self, ctx, member: discord.Member, *, reason="No reason"):
-        """Ban a user from the server"""
-        await member.ban(reason=f"{ctx.author}: {reason}")
-        await self.bot.db.create_case(ctx.guild.id, member.id, ctx.author.id, "Ban", reason)
-        await ctx.send(embed=ModEmbed.success("🔨 User Banned", f"{member} has been banned.\n**Reason:** {reason}"))
+    # NOTE: ban, unban, mute, unmute, tempban, softban are defined in moderation.py
+    # @commands.command(name="ban", aliases=["b"])
+    # @commands.has_permissions(ban_members=True)
+    # async def ban_cmd(self, ctx, member: discord.Member, *, reason="No reason"):
+    #     """Ban a user from the server"""
+    #     await member.ban(reason=f"{ctx.author}: {reason}")
+    #     await self.bot.db.create_case(ctx.guild.id, member.id, ctx.author.id, "Ban", reason)
+    #     await ctx.send(embed=ModEmbed.success("🔨 User Banned", f"{member} has been banned.\n**Reason:** {reason}"))
 
-    @commands.command(name="unban")
-    @commands.has_permissions(ban_members=True)
-    async def unban_cmd(self, ctx, user_id: int, *, reason="No reason"):
-        """Unban a user by ID"""
-        user = discord.Object(id=user_id)
-        await ctx.guild.unban(user, reason=reason)
-        await ctx.send(embed=ModEmbed.success("✅ User Unbanned", f"<@{user_id}> has been unbanned."))
+    # @commands.command(name="unban")
+    # @commands.has_permissions(ban_members=True)
+    # async def unban_cmd(self, ctx, user_id: int, *, reason="No reason"):
+    #     """Unban a user by ID"""
+    #     user = discord.Object(id=user_id)
+    #     await ctx.guild.unban(user, reason=reason)
+    #     await ctx.send(embed=ModEmbed.success("✅ User Unbanned", f"<@{user_id}> has been unbanned."))
 
-    @commands.command(name="mute", aliases=["timeout", "to"])
-    @commands.has_permissions(moderate_members=True)
-    async def mute_cmd(self, ctx, member: discord.Member, duration: str = "1h", *, reason="No reason"):
-        """Timeout a user"""
-        units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
-        try:
-            unit = duration[-1].lower()
-            amount = int(duration[:-1])
-            seconds = amount * units.get(unit, 60)
-        except:
-            seconds = 3600
-        until = datetime.now(timezone.utc) + timedelta(seconds=seconds)
-        await member.timeout(until, reason=reason)
-        await ctx.send(embed=ModEmbed.success("🔇 User Muted", f"{member.mention} muted for {duration}.\n**Reason:** {reason}"))
+    # @commands.command(name="mute", aliases=["timeout", "to"])
+    # @commands.has_permissions(moderate_members=True)
+    # async def mute_cmd(self, ctx, member: discord.Member, duration: str = "1h", *, reason="No reason"):
+    #     """Timeout a user"""
+    #     units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+    #     try:
+    #         unit = duration[-1].lower()
+    #         amount = int(duration[:-1])
+    #         seconds = amount * units.get(unit, 60)
+    #     except:
+    #         seconds = 3600
+    #     until = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+    #     await member.timeout(until, reason=reason)
+    #     await ctx.send(embed=ModEmbed.success("🔇 User Muted", f"{member.mention} muted for {duration}.\n**Reason:** {reason}"))
 
-    @commands.command(name="unmute", aliases=["untimeout", "uto"])
-    @commands.has_permissions(moderate_members=True)
-    async def unmute_cmd(self, ctx, member: discord.Member):
-        """Remove timeout from a user"""
-        await member.timeout(None)
-        await ctx.send(embed=ModEmbed.success("🔊 User Unmuted", f"{member.mention} has been unmuted."))
+    # @commands.command(name="unmute", aliases=["untimeout", "uto"])
+    # @commands.has_permissions(moderate_members=True)
+    # async def unmute_cmd(self, ctx, member: discord.Member):
+    #     """Remove timeout from a user"""
+    #     await member.timeout(None)
+    #     await ctx.send(embed=ModEmbed.success("🔊 User Unmuted", f"{member.mention} has been unmuted."))
 
-    @commands.command(name="tempban", aliases=["tb"])
-    @commands.has_permissions(ban_members=True)
-    async def tempban_cmd(self, ctx, member: discord.Member, duration: str, *, reason="No reason"):
-        """Temporarily ban a user"""
-        await member.ban(reason=f"[TEMPBAN] {reason}")
-        await ctx.send(embed=ModEmbed.success("⏰ Temp Banned", f"{member} temp banned for {duration}.\n**Reason:** {reason}"))
+    # @commands.command(name="tempban", aliases=["tb"])
+    # @commands.has_permissions(ban_members=True)
+    # async def tempban_cmd(self, ctx, member: discord.Member, duration: str, *, reason="No reason"):
+    #     """Temporarily ban a user"""
+    #     await member.ban(reason=f"[TEMPBAN] {reason}")
+    #     await ctx.send(embed=ModEmbed.success("⏰ Temp Banned", f"{member} temp banned for {duration}.\n**Reason:** {reason}"))
 
-    @commands.command(name="softban", aliases=["sb"])
-    @commands.has_permissions(ban_members=True)
-    async def softban_cmd(self, ctx, member: discord.Member, *, reason="No reason"):
-        """Ban and immediately unban to delete messages"""
-        await member.ban(reason=reason, delete_message_days=7)
-        await ctx.guild.unban(member, reason="Softban complete")
-        await ctx.send(embed=ModEmbed.success("🧹 Softbanned", f"{member} softbanned (messages deleted)."))
+    # @commands.command(name="softban", aliases=["sb"])
+    # @commands.has_permissions(ban_members=True)
+    # async def softban_cmd(self, ctx, member: discord.Member, *, reason="No reason"):
+    #     """Ban and immediately unban to delete messages"""
+    #     await member.ban(reason=reason, delete_message_days=7)
+    #     await ctx.guild.unban(member, reason="Softban complete")
+    #     await ctx.send(embed=ModEmbed.success("🧹 Softbanned", f"{member} softbanned (messages deleted)."))
 
     @commands.command(name="purge", aliases=["clear", "prune"])
     @commands.has_permissions(manage_messages=True)
@@ -150,47 +151,48 @@ class PrefixCommands(commands.Cog):
         await member.remove_roles(*roles, reason=f"Stripped by {ctx.author}")
         await ctx.send(embed=ModEmbed.success("🔻 Roles Stripped", f"Removed {len(roles)} roles from {member.mention}."))
 
-    @commands.command(name="vcmute", aliases=["vm"])
-    @commands.has_permissions(mute_members=True)
-    async def vcmute_cmd(self, ctx, member: discord.Member):
-        """Server mute a user in voice"""
-        await member.edit(mute=True)
-        await ctx.send(embed=ModEmbed.success("🔇 VC Muted", f"{member.mention} is now muted in VC."))
+    # NOTE: VC commands are defined in voice.py
+    # @commands.command(name="vcmute", aliases=["vm"])
+    # @commands.has_permissions(mute_members=True)
+    # async def vcmute_cmd(self, ctx, member: discord.Member):
+    #     """Server mute a user in voice"""
+    #     await member.edit(mute=True)
+    #     await ctx.send(embed=ModEmbed.success("🔇 VC Muted", f"{member.mention} is now muted in VC."))
 
-    @commands.command(name="vcunmute", aliases=["vum"])
-    @commands.has_permissions(mute_members=True)
-    async def vcunmute_cmd(self, ctx, member: discord.Member):
-        """Unmute a user in voice"""
-        await member.edit(mute=False)
-        await ctx.send(embed=ModEmbed.success("🔊 VC Unmuted", f"{member.mention} is now unmuted in VC."))
+    # @commands.command(name="vcunmute", aliases=["vum"])
+    # @commands.has_permissions(mute_members=True)
+    # async def vcunmute_cmd(self, ctx, member: discord.Member):
+    #     """Unmute a user in voice"""
+    #     await member.edit(mute=False)
+    #     await ctx.send(embed=ModEmbed.success("🔊 VC Unmuted", f"{member.mention} is now unmuted in VC."))
 
-    @commands.command(name="deafen", aliases=["deaf"])
-    @commands.has_permissions(deafen_members=True)
-    async def deafen_cmd(self, ctx, member: discord.Member):
-        """Deafen a user in voice"""
-        await member.edit(deafen=True)
-        await ctx.send(embed=ModEmbed.success("🔇 Deafened", f"{member.mention} is now deafened."))
+    # @commands.command(name="deafen", aliases=["deaf"])
+    # @commands.has_permissions(deafen_members=True)
+    # async def deafen_cmd(self, ctx, member: discord.Member):
+    #     """Deafen a user in voice"""
+    #     await member.edit(deafen=True)
+    #     await ctx.send(embed=ModEmbed.success("🔇 Deafened", f"{member.mention} is now deafened."))
 
-    @commands.command(name="undeafen", aliases=["undeaf"])
-    @commands.has_permissions(deafen_members=True)
-    async def undeafen_cmd(self, ctx, member: discord.Member):
-        """Undeafen a user in voice"""
-        await member.edit(deafen=False)
-        await ctx.send(embed=ModEmbed.success("🔊 Undeafened", f"{member.mention} is now undeafened."))
+    # @commands.command(name="undeafen", aliases=["undeaf"])
+    # @commands.has_permissions(deafen_members=True)
+    # async def undeafen_cmd(self, ctx, member: discord.Member):
+    #     """Undeafen a user in voice"""
+    #     await member.edit(deafen=False)
+    #     await ctx.send(embed=ModEmbed.success("🔊 Undeafened", f"{member.mention} is now undeafened."))
 
-    @commands.command(name="vckick", aliases=["vk", "disconnect"])
-    @commands.has_permissions(move_members=True)
-    async def vckick_cmd(self, ctx, member: discord.Member):
-        """Kick a user from voice channel"""
-        await member.move_to(None)
-        await ctx.send(embed=ModEmbed.success("👢 VC Kicked", f"{member.mention} disconnected from VC."))
+    # @commands.command(name="vckick", aliases=["vk", "disconnect"])
+    # @commands.has_permissions(move_members=True)
+    # async def vckick_cmd(self, ctx, member: discord.Member):
+    #     """Kick a user from voice channel"""
+    #     await member.move_to(None)
+    #     await ctx.send(embed=ModEmbed.success("👢 VC Kicked", f"{member.mention} disconnected from VC."))
 
-    @commands.command(name="vcmove", aliases=["vmove"])
-    @commands.has_permissions(move_members=True)
-    async def vcmove_cmd(self, ctx, member: discord.Member, channel: discord.VoiceChannel):
-        """Move a user to another voice channel"""
-        await member.move_to(channel)
-        await ctx.send(embed=ModEmbed.success("📦 Moved", f"{member.mention} moved to {channel.mention}."))
+    # @commands.command(name="vcmove", aliases=["vmove"])
+    # @commands.has_permissions(move_members=True)
+    # async def vcmove_cmd(self, ctx, member: discord.Member, channel: discord.VoiceChannel):
+    #     """Move a user to another voice channel"""
+    #     await member.move_to(channel)
+    #     await ctx.send(embed=ModEmbed.success("📦 Moved", f"{member.mention} moved to {channel.mention}."))
 
     @commands.command(name="hide")
     @commands.has_permissions(manage_channels=True)
