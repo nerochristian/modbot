@@ -44,10 +44,11 @@ class ForumModeration(commands.Cog):
             print(f"[ForumMod] Skipping - not in anime forum (expected {self.anime_forum_id})")
             return
         
-        # Don't moderate posts by staff
+        # Check if author is staff (still check but don't auto-flag)
+        is_staff = False
         if thread.owner and (thread.owner.guild_permissions.manage_messages or is_bot_owner_id(thread.owner_id)):
-            print(f"[ForumMod] Skipping - owner is staff: {thread.owner}")
-            return
+            is_staff = True
+            print(f"[ForumMod] Author is staff: {thread.owner} - will check but not auto-flag")
         
         print(f"[ForumMod] Processing thread: {thread.name}")
         
@@ -63,18 +64,18 @@ class ForumModeration(commands.Cog):
             
             print(f"[ForumMod] Checking content - Title: {thread.name[:50]}, Content: {starter_message.content[:100] if starter_message.content else '(empty)'}...")
             
-            # Check content with AI
+            # Check content with API
             is_safe, reason = await self._check_content_with_ai(
                 title=thread.name,
                 content=starter_message.content
             )
             
-            print(f"[ForumMod] AI Result - Safe: {is_safe}, Reason: {reason}")
+            print(f"[ForumMod] Check Result - Safe: {is_safe}, Reason: {reason}")
             
             if is_safe:
                 # Approved!
                 await thread.send(
-                    f"✅ **Post Approved** - Thank you for your anime recommendation, {thread.owner.mention}! "
+                    f"✅ **Post Approved** - Thank you for your anime recommendation, {thread.owner.mention if thread.owner else 'author'}! "
                     f"This content has been reviewed and approved for the community."
                 )
                 print(f"[ForumMod] Post approved: {thread.name}")
@@ -83,7 +84,7 @@ class ForumModeration(commands.Cog):
                 self.blacklisted_posts.add(thread.id)
                 
                 await thread.send(
-                    f"🚫 **Post Flagged** - {thread.owner.mention}, this post has been flagged for review.\n"
+                    f"🚫 **Post Flagged** - {thread.owner.mention if thread.owner else 'Author'}, this post has been flagged for review.\n"
                     f"**Reason:** {reason}\n\n"
                     f"A moderator will review this shortly. If this is a mistake, please contact staff."
                 )
@@ -98,7 +99,7 @@ class ForumModeration(commands.Cog):
                     if channel:
                         embed = discord.Embed(
                             title="🚨 Forum Post Flagged",
-                            description=f"**Post:** {thread.mention}\n**Author:** {thread.owner.mention}\n**Reason:** {reason}",
+                            description=f"**Post:** {thread.mention}\n**Author:** {thread.owner.mention if thread.owner else 'Unknown'}\n**Reason:** {reason}",
                             color=0xFF0000,
                             timestamp=datetime.now(timezone.utc)
                         )
@@ -109,6 +110,8 @@ class ForumModeration(commands.Cog):
         
         except Exception as e:
             print(f"[ForumMod] Error checking post {thread.id}: {e}")
+            import traceback
+            traceback.print_exc()
 
     
     async def _check_content_with_ai(self, title: str, content: str) -> tuple[bool, str]:
@@ -121,12 +124,13 @@ class ForumModeration(commands.Cog):
         """
         import aiohttp
         import re
+        import urllib.parse
         
         combined_text = f"{title} {content}".lower()
         
         # Quick keyword blocklist for obvious cases
         quick_block = ["hentai", "h-anime", "hanime", "nhentai", "hentaihaven", 
-                       "fakku", "doujinshi", "18+", "xxx", "porn"]
+                       "fakku", "doujinshi", "18+", "xxx", "porn", "ecchi"]
         for keyword in quick_block:
             if keyword in combined_text:
                 return False, f"Blocked: Contains '{keyword}'"
@@ -141,69 +145,107 @@ class ForumModeration(commands.Cog):
         anime_title = anime_title.strip()
         
         if not anime_title or len(anime_title) < 2:
-            # Can't determine anime name, use AI fallback or approve with warning
             print(f"[ForumMod] Could not extract anime title from: {title}")
-            return True, "Could not determine anime title - approved with caution"
+            return False, "Could not determine anime title - flagged for manual review"
         
         print(f"[ForumMod] Looking up anime: '{anime_title}'")
         
+        # For long titles, try using just the first few words for search
+        search_terms = [anime_title]
+        words = anime_title.split()
+        if len(words) > 3:
+            search_terms.append(" ".join(words[:3]))  # First 3 words
+        if len(words) > 2:
+            search_terms.append(" ".join(words[:2]))  # First 2 words
+        # Also try the first word if it's reasonably long
+        if len(words[0]) >= 4:
+            search_terms.append(words[0])
+        
         try:
-            # Search for the anime on Jikan (MAL API)
             async with aiohttp.ClientSession() as session:
-                search_url = f"https://api.jikan.moe/v4/anime?q={anime_title}&limit=3&sfw=false"
-                
-                async with session.get(search_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
-                    if response.status != 200:
-                        print(f"[ForumMod] Jikan API error: {response.status}")
-                        return True, "API unavailable - approved with caution"
+                for search_term in search_terms:
+                    encoded_term = urllib.parse.quote(search_term)
+                    search_url = f"https://api.jikan.moe/v4/anime?q={encoded_term}&limit=5&sfw=false"
                     
-                    data = await response.json()
+                    print(f"[ForumMod] Searching: '{search_term}'")
                     
-                    if not data.get("data"):
-                        print(f"[ForumMod] No results for: {anime_title}")
-                        return True, "Anime not found in database - approved with caution"
-                    
-                    # Check the top results
-                    for result in data["data"]:
-                        result_title = result.get("title", "").lower()
-                        result_title_en = result.get("title_english", "") or ""
-                        result_title_en = result_title_en.lower()
+                    async with session.get(search_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                        if response.status == 429:  # Rate limited
+                            await asyncio.sleep(1)
+                            continue
+                        if response.status != 200:
+                            print(f"[ForumMod] Jikan API error: {response.status}")
+                            continue
                         
-                        # Check if this is likely a match
-                        search_lower = anime_title.lower()
-                        if search_lower in result_title or search_lower in result_title_en or \
-                           result_title in search_lower or result_title_en in search_lower:
+                        data = await response.json()
+                        
+                        if not data.get("data"):
+                            continue
+                        
+                        # Check the top results
+                        for result in data["data"]:
+                            result_title = result.get("title", "").lower()
+                            result_title_en = (result.get("title_english") or "").lower()
+                            all_titles = [result_title, result_title_en]
+                            # Add synonyms
+                            for syn in result.get("title_synonyms", []):
+                                all_titles.append(syn.lower())
                             
-                            # Check rating
-                            rating = result.get("rating", "")
-                            genres = [g.get("name", "").lower() for g in result.get("genres", [])]
+                            search_lower = anime_title.lower()
                             
-                            print(f"[ForumMod] Found match: {result.get('title')} - Rating: {rating}, Genres: {genres}")
+                            # Check for matches
+                            match_found = False
+                            for t in all_titles:
+                                if not t:
+                                    continue
+                                # Check various matching conditions
+                                if search_lower == t or t == search_lower:
+                                    match_found = True
+                                elif search_lower.startswith(t[:min(10, len(t))]):
+                                    match_found = True
+                                elif t.startswith(search_lower[:min(10, len(search_lower))]):
+                                    match_found = True
+                                elif search_term.lower() in t or t in search_term.lower():
+                                    match_found = True
                             
-                            # Rx - Hentai is the explicit adult rating on MAL
-                            if "rx" in rating.lower() or "hentai" in rating.lower():
-                                return False, f"Rated Rx (Hentai) on MyAnimeList"
-                            
-                            # Also check if hentai is in genres
-                            if "hentai" in genres:
-                                return False, f"Genre: Hentai on MyAnimeList"
-                            
-                            # R+ (Mild Nudity) is borderline but usually okay
-                            # R - 17+ is violent/mature themes but not hentai
-                            
-                            # Found a match that's not hentai
-                            return True, f"Verified: {result.get('title')} - {rating or 'No rating'}"
+                            if match_found:
+                                # Check rating
+                                rating = result.get("rating", "") or ""
+                                genres = [g.get("name", "").lower() for g in result.get("genres", [])]
+                                
+                                print(f"[ForumMod] Found match: {result.get('title')} - Rating: {rating}, Genres: {genres}")
+                                
+                                # Rx - Hentai is the explicit adult rating on MAL
+                                if "rx" in rating.lower() or "hentai" in rating.lower():
+                                    return False, f"BLOCKED: {result.get('title')} is rated Rx (Hentai)"
+                                
+                                # Check if hentai or ecchi is in genres
+                                if "hentai" in genres:
+                                    return False, f"BLOCKED: {result.get('title')} - Genre: Hentai"
+                                
+                                if "ecchi" in genres:
+                                    return False, f"BLOCKED: {result.get('title')} - Genre: Ecchi (sexually suggestive)"
+                                
+                                # R+ - Mild Nudity should also be flagged
+                                if "r+" in rating.lower() or "mild nudity" in rating.lower():
+                                    return False, f"BLOCKED: {result.get('title')} - Rated R+ (Mild Nudity)"
+                                
+                                # Found a match that's appropriate
+                                return True, f"Verified: {result.get('title')} - {rating or 'No rating'}"
                     
-                    # No close match found
-                    print(f"[ForumMod] No close match for: {anime_title}")
-                    return True, "No exact match found - approved with caution"
+                    # Small delay between searches to avoid rate limiting
+                    await asyncio.sleep(0.5)
+                
+                # No match found with any search term
+                print(f"[ForumMod] No match found for: {anime_title}")
+                return False, "Anime not found in database - flagged for manual review"
                     
         except asyncio.TimeoutError:
             print(f"[ForumMod] API timeout for: {anime_title}")
-            return True, "API timeout - approved with caution"
+            return False, "API timeout - flagged for manual review"
         except Exception as e:
             print(f"[ForumMod] API error: {e}")
-            return True, f"API error - approved with caution"
+            return False, f"API error - flagged for manual review"
     
     async def _log_to_mod_log(self, guild: discord.Guild, thread: discord.Thread, reason: str, content: str = None):
         """Log a forum moderation action to the mod log channel"""
