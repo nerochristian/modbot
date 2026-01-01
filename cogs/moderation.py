@@ -597,7 +597,7 @@ class Moderation(commands.Cog):
         mod_level = await self.get_user_level(guild_id, moderator)
         target_level = await self.get_user_level(guild_id, target)
         
-        if mod_level < target_level:
+        if mod_level <= target_level:
             return False, "You cannot moderate this user. They have equal or higher permissions."
         
         # Role position check
@@ -1202,20 +1202,84 @@ class Moderation(commands.Cog):
         if isinstance(source, discord.Interaction):
             await source.response.defer(ephemeral=True)
             channel = source.channel
+            interaction = source
+            author = source.user
         else:
             try:
                 await source.message.delete()
             except:
                 pass
             channel = source.channel
+            interaction = None
+            author = source.author
+
+        # Fetch settings for hierarchy check
+        settings = await self.bot.db.get_settings(source.guild.id)
+        
+        # Hierarchy Definition (Sync Version)
+        role_hierarchy = {
+            'manager_role': 7,
+            'admin_role': 6,
+            'supervisor_role': 5,
+            'senior_mod_role': 4,
+            'mod_role': 3,
+            'trial_mod_role': 2,
+            'staff_role': 1
+        }
+
+        def get_sync_level(member: discord.Member) -> int:
+            if is_bot_owner_id(member.id) or member.id == member.guild.owner_id:
+                return 100
+            if member.guild_permissions.administrator:
+                return 7
+            
+            user_role_ids = {r.id for r in member.roles}
+            current_level = 0
+            for key, val in role_hierarchy.items():
+                rid = settings.get(key)
+                if rid and rid in user_role_ids:
+                    if val > current_level:
+                        current_level = val
+            return current_level
+
+        # Calculate Moderator Level
+        mod_level = get_sync_level(author)
+        
+        # Combined Check
+        def combined_check(m: discord.Message):
+            # 1. Existing checks (user filter / content filter)
+            if user and m.author.id != user.id:
+                return False
+            if check and not check(m):
+                return False
+            
+            # 2. Hierarchy Check
+            if not isinstance(m.author, discord.Member):
+                return True # Allow deleting messages from departed users
+            
+            # Allow deleting own messages
+            if m.author.id == author.id:
+                return True
+                
+            # Allow deleting bot messages (unless it's the bot owner?? No, bots are fair game usually, 
+            # but let's check if the specific bot has a high role? 
+            # Existing code for `can_moderate` checks bot hierarchy.
+            # Simplified: If target is bot, allow unless it has higher role.
+            if m.author.bot:
+                if m.author.top_role >= author.top_role:
+                    return False
+                return True
+
+            target_level = get_sync_level(m.author)
+            
+            # Strict inequality: mod_level Must be > target_level
+            if mod_level <= target_level:
+                return False
+            
+            return True
 
         try:
-            if check:
-                deleted = await channel.purge(limit=amount, check=check)
-            elif user:
-                deleted = await channel.purge(limit=amount, check=lambda m: m.author.id == user.id)
-            else:
-                deleted = await channel.purge(limit=amount)
+            deleted = await channel.purge(limit=amount, check=combined_check)
         except discord.Forbidden:
              return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to delete messages."), ephemeral=True)
         except discord.HTTPException as e:

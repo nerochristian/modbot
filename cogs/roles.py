@@ -292,14 +292,51 @@ class Roles(commands.Cog):
         
         return True, ""
 
-    def can_manage_target(self, moderator: discord.Member, target: discord.Member) -> tuple[bool, str]:
+    async def get_user_level(self, guild_id: int, member: discord.Member) -> int:
+        """
+        Get the hierarchy level of a user based on roles
+        Returns: int (0-100, higher = more power)
+        """
+        # Bot owner = max level
+        if is_bot_owner_id(member.id):
+            return 100
+        
+        # Owner = max level
+        if member.id == member.guild.owner_id:
+            return 100
+        
+        # Admin perms = level 7
+        if member.guild_permissions.administrator:
+            return 7
+        
+        settings = await self.bot.db.get_settings(guild_id)
+        user_role_ids = {r.id for r in member.roles}
+        
+        role_hierarchy = {
+            'manager_role': 7,
+            'admin_role': 6,
+            'supervisor_role': 5,
+            'senior_mod_role': 4,
+            'mod_role': 3,
+            'trial_mod_role': 2,
+            'staff_role': 1
+        }
+        
+        current_level = 0
+        for role_key, level in role_hierarchy.items():
+            if settings.get(role_key) in user_role_ids:
+                if level > current_level:
+                    current_level = level
+        return current_level
+
+    async def can_manage_target(self, moderator: discord.Member, target: discord.Member) -> tuple[bool, str]:
         """
         Check if moderator can manage the target user
         Returns (can_manage, error_message)
         """
-        # Can't manage yourself (for some actions)
+        # Can't manage yourself
         if moderator.id == target.id:
-            return True, ""  # Allow managing own roles in some cases
+            return True, ""
 
         # Protect bot owner(s)
         if is_bot_owner_id(target.id) and not is_bot_owner_id(moderator.id):
@@ -313,7 +350,14 @@ class Roles(commands.Cog):
         if target.id == target.guild.owner_id:
             return False, "You cannot manage the server owner."
         
-        # Can't manage someone with higher or equal role
+        # Strict hierarchy check (Levels)
+        mod_level = await self.get_user_level(moderator.guild.id, moderator)
+        target_level = await self.get_user_level(target.guild.id, target)
+        
+        if mod_level <= target_level:
+             return False, "You cannot manage this user. They have equal or higher hierarchy level."
+
+        # Can't manage someone with higher or equal role (Discord Hierarchy)
         if target.top_role >= moderator.top_role:
             return False, "You cannot manage this user as their highest role is higher than or equal to yours."
         
@@ -396,7 +440,7 @@ class Roles(commands.Cog):
                 can_proceed = True
             else:
                 can_manage, error = self.can_manage_role(interaction.user, role)
-                can_manage_user, error2 = self.can_manage_target(interaction.user, user)
+                can_manage_user, error2 = await self.can_manage_target(interaction.user, user)
                 if can_manage and can_manage_user:
                     can_proceed = True
             
