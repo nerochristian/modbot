@@ -291,12 +291,12 @@ class VoiceAFK(commands.Cog):
                 
                 # Find a text channel to send the confirmation button - prioritize DM, then fallback channel
                 # Try to DM the user first
-                text_channel = None
+                msg = None
                 dm_mode = False
+                message_target = None  # Either DM channel or text channel
                 
                 try:
                     dm_channel = await member.create_dm()
-                    # Test if we can send
                     view = AFKConfirmButton(self, member, timeout=settings["response_timeout"])
                     
                     embed = discord.Embed(
@@ -313,6 +313,7 @@ class VoiceAFK(commands.Cog):
                     
                     msg = await dm_channel.send(embed=embed, view=view)
                     dm_mode = True
+                    message_target = dm_channel
                 except:
                     # DM failed, try fallback channel (1388268039773884591) or any text channel
                     fallback_channel_id = 1388268039773884591
@@ -345,10 +346,12 @@ class VoiceAFK(commands.Cog):
                             embed=embed,
                             view=view
                         )
-                    
+                        message_target = text_channel
+                
+                # If we managed to send a message, wait for response
+                if msg:
                     # Wait for either button click, voice activity, or timeout
                     try:
-                        # Wait for whichever happens first
                         done, pending = await asyncio.wait(
                             [
                                 asyncio.create_task(view.wait()),
@@ -365,11 +368,12 @@ class VoiceAFK(commands.Cog):
                     except asyncio.TimeoutError:
                         pass
                     
-                    # Delete the message
-                    try:
-                        await msg.delete()
-                    except:
-                        pass
+                    # Delete the message (only if in text channel, not DM)
+                    if not dm_mode:
+                        try:
+                            await msg.delete()
+                        except:
+                            pass
                     
                     # Check result - confirmed via button OR voice activity
                     if view.confirmed or voice_activity_detected:
@@ -378,7 +382,7 @@ class VoiceAFK(commands.Cog):
                         method = "voice activity" if voice_activity_detected else "button"
                         print(f"[VoiceAFK] {member} confirmed presence in {channel.name} via {method}")
                         
-                        # Play TTS confirmation "Ok, just checking!"
+                        # Play TTS confirmation "Ok, just checking!" in VOICE CHANNEL
                         try:
                             confirm_tts_file = await self._generate_tts(
                                 f"Okay, just checking! Thanks for confirming, {member.display_name}.",
@@ -400,26 +404,36 @@ class VoiceAFK(commands.Cog):
                         except Exception as e:
                             print(f"[VoiceAFK] Failed to play confirmation TTS: {e}")
                         
-                        # Send confirmation to the text channel briefly
-                        try:
-                            confirm_msg = await text_channel.send(
-                                embed=discord.Embed(
+                        # Send confirmation (to DM or text channel)
+                        if dm_mode:
+                            try:
+                                await msg.edit(embed=discord.Embed(
                                     title="✅ Presence Confirmed",
-                                    description=f"{member.mention} confirmed they're still here!",
+                                    description=f"Thanks for confirming you're still in **{channel.name}**!",
                                     color=0x00FF00
+                                ), view=None)
+                            except:
+                                pass
+                        elif message_target:
+                            try:
+                                confirm_msg = await message_target.send(
+                                    embed=discord.Embed(
+                                        title="✅ Presence Confirmed",
+                                        description=f"{member.mention} confirmed they're still here!",
+                                        color=0x00FF00
+                                    )
                                 )
-                            )
-                            await asyncio.sleep(5)
-                            await confirm_msg.delete()
-                        except:
-                            pass
+                                await asyncio.sleep(5)
+                                await confirm_msg.delete()
+                            except:
+                                pass
                     else:
                         # User didn't respond, kick them
                         if member.voice and member.voice.channel:
                             try:
                                 await member.move_to(None, reason="AFK detection - No response to activity check")
                                 
-                                # Try to DM them
+                                # Notify in DM
                                 try:
                                     dm_embed = discord.Embed(
                                         title="🔇 Disconnected for Inactivity",
@@ -436,7 +450,7 @@ class VoiceAFK(commands.Cog):
                             except discord.Forbidden:
                                 print(f"[VoiceAFK] Failed to kick {member} - no permissions")
                 else:
-                    # No text channel found - just listen for voice activity only
+                    # No message was sent - just listen for voice activity only
                     try:
                         await asyncio.wait_for(voice_event.wait(), timeout=settings["response_timeout"])
                         self._update_activity(member.guild.id, member.id)
