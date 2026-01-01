@@ -241,11 +241,15 @@ class ForumModeration(commands.Cog):
                 
                 # Notify moderators in the forum alerts channel with action buttons
                 settings = await self.bot.db.get_settings(thread.guild.id)
+                print(f"[ForumMod] Settings: forum_alerts={settings.get('forum_alerts_channel')}, mod_log={settings.get('mod_log_channel')}")
                 
                 # Try forum alerts channel first, fall back to mod log
                 alerts_channel_id = settings.get("forum_alerts_channel") or settings.get("mod_log_channel")
+                print(f"[ForumMod] Using alerts channel ID: {alerts_channel_id}")
+                
                 if alerts_channel_id:
                     channel = thread.guild.get_channel(alerts_channel_id)
+                    print(f"[ForumMod] Found channel: {channel}")
                     if channel:
                         embed = discord.Embed(
                             title="🚨 Forum Post Flagged - Action Required",
@@ -267,6 +271,11 @@ class ForumModeration(commands.Cog):
                         )
                         
                         await channel.send(embed=embed, view=view)
+                        print(f"[ForumMod] Alert sent to {channel.name}")
+                    else:
+                        print(f"[ForumMod] Could not find channel with ID {alerts_channel_id}")
+                else:
+                    print(f"[ForumMod] No alerts channel configured!")
         
         except Exception as e:
             print(f"[ForumMod] Error checking post {thread.id}: {e}")
@@ -408,23 +417,35 @@ class ForumModeration(commands.Cog):
             return False, f"API error - flagged for manual review"
     
     async def _log_to_mod_log(self, guild: discord.Guild, thread: discord.Thread, reason: str, content: str = None):
-        """Log a forum moderation action to the mod log channel"""
+        """Log a forum moderation action to the mod log channel with action buttons"""
         try:
             settings = await self.bot.db.get_settings(guild.id)
-            mod_log = settings.get("mod_log_channel")
-            if mod_log:
-                channel = guild.get_channel(mod_log)
+            # Try forum alerts channel first, fall back to mod log
+            alerts_channel_id = settings.get("forum_alerts_channel") or settings.get("mod_log_channel")
+            
+            if alerts_channel_id:
+                channel = guild.get_channel(alerts_channel_id)
                 if channel:
                     embed = discord.Embed(
-                        title="🚨 Forum Post Flagged",
+                        title="🚨 Forum Post Flagged - Action Required",
                         description=f"**Post:** {thread.mention}\n**Author:** {thread.owner.mention if thread.owner else 'Unknown'}\n**Reason:** {reason}",
-                        color=0xFF0000,
+                        color=0xFF6600,
                         timestamp=datetime.now(timezone.utc)
                     )
-                    embed.add_field(name="Title", value=thread.name[:1024], inline=False)
+                    embed.add_field(name="📝 Title", value=thread.name[:1024], inline=False)
                     if content:
-                        embed.add_field(name="Content Preview", value=content[:1024], inline=False)
-                    await channel.send(embed=embed)
+                        embed.add_field(name="📄 Content Preview", value=content[:500] + ("..." if len(content) > 500 else ""), inline=False)
+                    embed.set_footer(text="Use the buttons below to take action")
+                    
+                    # Create action buttons
+                    view = ForumActionButtons(
+                        self.bot,
+                        thread_id=thread.id,
+                        author_id=thread.owner_id if thread.owner else 0,
+                        guild_id=guild.id
+                    )
+                    
+                    await channel.send(embed=embed, view=view)
         except Exception as e:
             print(f"[ForumMod] Error logging to mod log: {e}")
     
