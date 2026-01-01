@@ -319,54 +319,22 @@ class ModBot(commands.Bot):
         logger.info("=" * 60)
         
         # Display loaded commands
-        await self._display_loaded_commands()
+        logger.info("=" * 60)
+        logger.info(f"✅ Loaded {len(self.cogs)} cogs successfully")
+        logger.info(f"📊 Total Commands: {len(list(self.walk_commands()))} prefix, {len(self.tree.get_commands())} slash")
+        logger.info("=" * 60)
         
         # Sync slash commands
         try:
             logger.info("⚡ Syncing slash commands...")
             synced = await self.tree.sync()
             logger.info(f"⚡ Successfully synced {len(synced)} slash commands")
-            
-            if synced:
-                logger.info("=" * 60)
-                logger.info("💬 Loaded Slash Commands:")
-                for cmd in synced:
-                    logger.info(
-                        f"  /{cmd.name} - {cmd.description[:50] if cmd.description else 'No description'}"
-                    )
-                logger.info("=" * 60)
         except discord.HTTPException as e:
             logger.error(f"❌ Failed to sync commands: {e}")
             self.errors_caught += 1
         except Exception as e:
             logger.error(f"❌ Unexpected error syncing commands: {e}")
             self.errors_caught += 1
-    
-    async def _display_loaded_commands(self):
-        """Display all loaded commands organized by cog"""
-        logger.info("=" * 60)
-        logger.info("💬 Loaded Prefix Commands:")
-        
-        total_commands = 0
-        cog_commands = {}
-        
-        for command in self.walk_commands():
-            total_commands += 1
-            cog_name = command.cog_name if command.cog_name else "No Category"
-            if cog_name not in cog_commands:
-                cog_commands[cog_name] = []
-            cog_commands[cog_name].append(command)
-        
-        # Display by cog
-        for cog_name in sorted(cog_commands.keys()):
-            cmds = cog_commands[cog_name]
-            logger.info(f"\n  📦 {cog_name} ({len(cmds)} commands):")
-            for cmd in sorted(cmds, key=lambda x: x.qualified_name):
-                aliases = f" [aliases: {', '.join(cmd.aliases)}]" if cmd.aliases else ""
-                logger.info(f"    • {cmd.qualified_name}{aliases}")
-        
-        logger.info(f"\n  📊 Total Commands Loaded: {total_commands}")
-        logger.info("=" * 60)
     
     async def on_ready(self):
         """Called when bot is ready and connected"""
