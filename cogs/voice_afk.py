@@ -176,9 +176,16 @@ class VoiceAFK(commands.Cog):
                             self._update_activity(guild.id, member.id)
                             continue
                         
+                        # Check if user is alone in the VC (special 5-minute timeout)
+                        non_bot_members = [m for m in vc.members if not m.bot]
+                        is_alone = len(non_bot_members) == 1
+                        
+                        # Use 5 minutes for solo users, normal timeout for others
+                        check_timeout = 5 if is_alone else timeout_minutes
+                        
                         # Check if inactive for too long
                         inactive_time = (now - last_active).total_seconds() / 60
-                        if inactive_time >= timeout_minutes:
+                        if inactive_time >= check_timeout:
                             # Start AFK check
                             self.pending_checks.add(key)
                             asyncio.create_task(self._perform_afk_check(member, vc, afk_settings))
@@ -282,19 +289,19 @@ class VoiceAFK(commands.Cog):
                     while voice_client.is_playing():
                         await asyncio.sleep(0.5)
                 
-                # Find a text channel to send the confirmation button
+                # Find a text channel to send the confirmation button - prioritize DM, then fallback channel
+                # Try to DM the user first
                 text_channel = None
-                for tc in member.guild.text_channels:
-                    if tc.permissions_for(member).read_messages:
-                        text_channel = tc
-                        break
+                dm_mode = False
                 
-                if text_channel:
+                try:
+                    dm_channel = await member.create_dm()
+                    # Test if we can send
                     view = AFKConfirmButton(self, member, timeout=settings["response_timeout"])
                     
                     embed = discord.Embed(
                         title="🎤 AFK Check",
-                        description=f"{member.mention}, you have been inactive in **{channel.name}** for a while.\n\n"
+                        description=f"You have been inactive in **{channel.name}** ({member.guild.name}) for a while.\n\n"
                                     f"**Respond in one of these ways within {settings['response_timeout']} seconds:**\n"
                                     f"• 🎙️ Say something in voice chat\n"
                                     f"• 🔇 Toggle your mute/unmute\n"
@@ -304,11 +311,40 @@ class VoiceAFK(commands.Cog):
                         timestamp=datetime.now(timezone.utc)
                     )
                     
-                    msg = await text_channel.send(
-                        content=member.mention,
-                        embed=embed,
-                        view=view
-                    )
+                    msg = await dm_channel.send(embed=embed, view=view)
+                    dm_mode = True
+                except:
+                    # DM failed, try fallback channel (1388268039773884591) or any text channel
+                    fallback_channel_id = 1388268039773884591
+                    text_channel = member.guild.get_channel(fallback_channel_id)
+                    
+                    if not text_channel:
+                        # Find any text channel the member can read
+                        for tc in member.guild.text_channels:
+                            if tc.permissions_for(member).read_messages:
+                                text_channel = tc
+                                break
+                    
+                    if text_channel:
+                        view = AFKConfirmButton(self, member, timeout=settings["response_timeout"])
+                        
+                        embed = discord.Embed(
+                            title="🎤 AFK Check",
+                            description=f"{member.mention}, you have been inactive in **{channel.name}** for a while.\n\n"
+                                        f"**Respond in one of these ways within {settings['response_timeout']} seconds:**\n"
+                                        f"• 🎙️ Say something in voice chat\n"
+                                        f"• 🔇 Toggle your mute/unmute\n"
+                                        f"• ✅ Click the button below\n\n"
+                                        f"If you don't respond, you will be disconnected.",
+                            color=0xFFAA00,
+                            timestamp=datetime.now(timezone.utc)
+                        )
+                        
+                        msg = await text_channel.send(
+                            content=member.mention,
+                            embed=embed,
+                            view=view
+                        )
                     
                     # Wait for either button click, voice activity, or timeout
                     try:

@@ -344,6 +344,11 @@ class Setup(commands.Cog):
                 "setting_key": "modmail_log_channel",
                 "topic": "Modmail transcripts and events",
             },
+            {
+                "name": "forum-alerts",
+                "setting_key": "forum_alerts_channel",
+                "topic": "🎯 Flagged forum recommendations with moderation actions",
+            },
         ]
 
         for cfg in log_channels_to_create:

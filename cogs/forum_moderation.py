@@ -16,6 +16,154 @@ from utils.embeds import ModEmbed
 from utils.checks import is_mod, is_admin, is_bot_owner_id
 
 
+class ForumActionButtons(discord.ui.View):
+    """Action buttons for moderators to act on flagged forum posts"""
+    
+    def __init__(self, bot, thread_id: int, author_id: int, guild_id: int):
+        super().__init__(timeout=None)  # Persistent view
+        self.bot = bot
+        self.thread_id = thread_id
+        self.author_id = author_id
+        self.guild_id = guild_id
+    
+    @discord.ui.button(label="✅ Approve", style=discord.ButtonStyle.success, custom_id="forum_approve")
+    async def approve_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Approve the flagged post"""
+        # Check if user has manage_messages permission
+        if not interaction.user.guild_permissions.manage_messages:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", "You need Manage Messages permission."),
+                ephemeral=True
+            )
+        
+        try:
+            thread = interaction.guild.get_thread(self.thread_id)
+            if not thread:
+                thread = await interaction.guild.fetch_channel(self.thread_id)
+            
+            if thread:
+                await thread.send(
+                    f"✅ **Post Approved** - This post has been approved by {interaction.user.mention}."
+                )
+                
+                # Remove from forum moderation cog blacklist if exists
+                forum_cog = self.bot.get_cog("ForumModeration")
+                if forum_cog:
+                    forum_cog.blacklisted_posts.discard(self.thread_id)
+                
+                # Update the original message to show it was handled
+                embed = interaction.message.embeds[0] if interaction.message.embeds else None
+                if embed:
+                    embed.color = 0x00FF00
+                    embed.title = "✅ Forum Post Approved"
+                    embed.set_footer(text=f"Approved by {interaction.user} at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+                
+                # Disable buttons
+                for item in self.children:
+                    item.disabled = True
+                
+                await interaction.response.edit_message(embed=embed, view=self)
+            else:
+                await interaction.response.send_message(
+                    embed=ModEmbed.error("Error", "Thread not found - it may have been deleted."),
+                    ephemeral=True
+                )
+        except Exception as e:
+            await interaction.response.send_message(
+                embed=ModEmbed.error("Error", f"Failed to approve: {str(e)[:100]}"),
+                ephemeral=True
+            )
+    
+    @discord.ui.button(label="🗑️ Delete", style=discord.ButtonStyle.danger, custom_id="forum_delete")
+    async def delete_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Delete the flagged post"""
+        if not interaction.user.guild_permissions.manage_threads:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", "You need Manage Threads permission."),
+                ephemeral=True
+            )
+        
+        try:
+            thread = interaction.guild.get_thread(self.thread_id)
+            if not thread:
+                thread = await interaction.guild.fetch_channel(self.thread_id)
+            
+            if thread:
+                thread_name = thread.name
+                author = thread.owner
+                
+                # Try to DM the author
+                if author:
+                    try:
+                        dm_embed = discord.Embed(
+                            title="🗑️ Forum Post Removed",
+                            description=f"Your post **{thread_name}** in **{interaction.guild.name}** was removed by a moderator.",
+                            color=0xFF0000,
+                            timestamp=datetime.now(timezone.utc)
+                        )
+                        dm_embed.add_field(name="Removed by", value=str(interaction.user), inline=True)
+                        dm_embed.add_field(name="Reason", value="Content flagged by moderation system", inline=True)
+                        await author.send(embed=dm_embed)
+                    except:
+                        pass
+                
+                # Delete the thread
+                await thread.delete()
+                
+                # Remove from blacklist
+                forum_cog = self.bot.get_cog("ForumModeration")
+                if forum_cog:
+                    forum_cog.blacklisted_posts.discard(self.thread_id)
+                
+                # Update the original message
+                embed = interaction.message.embeds[0] if interaction.message.embeds else None
+                if embed:
+                    embed.color = 0xFF0000
+                    embed.title = "🗑️ Forum Post Deleted"
+                    embed.set_footer(text=f"Deleted by {interaction.user} at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
+                
+                # Disable buttons
+                for item in self.children:
+                    item.disabled = True
+                
+                await interaction.response.edit_message(embed=embed, view=self)
+            else:
+                await interaction.response.send_message(
+                    embed=ModEmbed.error("Error", "Thread not found - it may already be deleted."),
+                    ephemeral=True
+                )
+        except Exception as e:
+            await interaction.response.send_message(
+                embed=ModEmbed.error("Error", f"Failed to delete: {str(e)[:100]}"),
+                ephemeral=True
+            )
+    
+    @discord.ui.button(label="👁️ View Post", style=discord.ButtonStyle.secondary, custom_id="forum_view")
+    async def view_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """View the flagged post"""
+        try:
+            thread = interaction.guild.get_thread(self.thread_id)
+            if not thread:
+                thread = await interaction.guild.fetch_channel(self.thread_id)
+            
+            if thread:
+                await interaction.response.send_message(
+                    f"📍 **Go to post:** {thread.mention}",
+                    ephemeral=True
+                )
+            else:
+                await interaction.response.send_message(
+                    embed=ModEmbed.error("Error", "Thread not found - it may have been deleted."),
+                    ephemeral=True
+                )
+        except Exception as e:
+            await interaction.response.send_message(
+                embed=ModEmbed.error("Error", f"Failed to find thread: {str(e)[:100]}"),
+                ephemeral=True
+            )
+
+
+
 class ForumModeration(commands.Cog):
     """AI-powered forum moderation system"""
     
@@ -91,22 +239,34 @@ class ForumModeration(commands.Cog):
                 
                 print(f"[ForumMod] Post FLAGGED: {thread.name} - {reason}")
                 
-                # Notify moderators
+                # Notify moderators in the forum alerts channel with action buttons
                 settings = await self.bot.db.get_settings(thread.guild.id)
-                mod_log = settings.get("mod_log_channel")
-                if mod_log:
-                    channel = thread.guild.get_channel(mod_log)
+                
+                # Try forum alerts channel first, fall back to mod log
+                alerts_channel_id = settings.get("forum_alerts_channel") or settings.get("mod_log_channel")
+                if alerts_channel_id:
+                    channel = thread.guild.get_channel(alerts_channel_id)
                     if channel:
                         embed = discord.Embed(
-                            title="🚨 Forum Post Flagged",
+                            title="🚨 Forum Post Flagged - Action Required",
                             description=f"**Post:** {thread.mention}\n**Author:** {thread.owner.mention if thread.owner else 'Unknown'}\n**Reason:** {reason}",
-                            color=0xFF0000,
+                            color=0xFF6600,
                             timestamp=datetime.now(timezone.utc)
                         )
-                        embed.add_field(name="Title", value=thread.name[:1024], inline=False)
+                        embed.add_field(name="📝 Title", value=thread.name[:1024], inline=False)
                         if starter_message.content:
-                            embed.add_field(name="Content Preview", value=starter_message.content[:1024], inline=False)
-                        await channel.send(embed=embed)
+                            embed.add_field(name="📄 Content Preview", value=starter_message.content[:500] + ("..." if len(starter_message.content) > 500 else ""), inline=False)
+                        embed.set_footer(text="Use the buttons below to take action")
+                        
+                        # Create action buttons
+                        view = ForumActionButtons(
+                            self.bot,
+                            thread_id=thread.id,
+                            author_id=thread.owner_id if thread.owner else 0,
+                            guild_id=thread.guild.id
+                        )
+                        
+                        await channel.send(embed=embed, view=view)
         
         except Exception as e:
             print(f"[ForumMod] Error checking post {thread.id}: {e}")
