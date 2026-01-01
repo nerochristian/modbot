@@ -49,6 +49,13 @@ class Setup(commands.Cog):
         # ==================== ROLES ====================
         roles_to_create = [
             {
+                "name": "👔 Manager",
+                "color": discord.Color.from_rgb(46, 204, 113), # Emerald Green
+                "permissions": discord.Permissions(administrator=True),
+                "hoist": True,
+                "setting_key": "manager_role",
+            },
+            {
                 "name": "👑 Admin",
                 "color": discord.Color.red(),
                 "permissions": discord.Permissions(administrator=True),
@@ -268,32 +275,30 @@ class Setup(commands.Cog):
                 guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True),
             }
 
-            # Find all staff/mod roles by name and give them view access
-            staff_role_names = ["staff", "trial mod", "mod", "senior mod", "supervisor", "admin"]
-            found_staff_roles = []
+            # ALLOW: Specific Staff Role ID + Manager + Admin
+            allowed_role_ids = set()
             
-            for role_name in staff_role_names:
-                role = discord.utils.get(guild.roles, name=role_name)
+            # The requested specific staff role
+            req_staff_id = 1448482784849957017
+            allowed_role_ids.add(req_staff_id)
+            
+            # Add dynamic Admin/Manager roles
+            if settings.get("admin_role"): allowed_role_ids.add(settings["admin_role"])
+            if settings.get("manager_role"): allowed_role_ids.add(settings["manager_role"])
+            
+            # Apply overwrites
+            found_staff_roles = []
+            for rid in allowed_role_ids:
+                role = guild.get_role(rid)
                 if role:
                     overwrites[role] = discord.PermissionOverwrite(
                         view_channel=True, 
-                        send_messages=False  # Staff can view but not send in logs
-                    )
-                    found_staff_roles.append(role.name)
-            
-            # Special handling for log-access role
-            log_access_role_id = settings.get("log_access_role")
-            if log_access_role_id:
-                role = guild.get_role(log_access_role_id)
-                if role:
-                    overwrites[role] = discord.PermissionOverwrite(
-                        view_channel=True,
-                        send_messages=False
+                        send_messages=False  # Logs are read-only-ish for staff (bot sends logs)
                     )
                     found_staff_roles.append(role.name)
             
             if not found_staff_roles:
-                errors.append("⚠️ No staff roles found; mod logs visibility may be too open.")
+                errors.append("⚠️ Specific Staff/Manager roles not found; logs might be inaccessible.")
 
             if not mod_category:
                 mod_category = await guild.create_category(
@@ -304,7 +309,7 @@ class Setup(commands.Cog):
             else:
                 await mod_category.edit(
                     overwrites=overwrites,
-                    reason="ModBot Setup: restrict mod logs to staff roles only",
+                    reason="ModBot Setup: restrict mod logs to specific staff only",
                 )
         except Exception as e:
             errors.append(f"❌ Failed to configure mod category: {e}")
@@ -428,15 +433,20 @@ class Setup(commands.Cog):
                 ),
             }
 
-            staff_role_id = settings.get("staff_role")
-            staff_role = guild.get_role(staff_role_id) if staff_role_id else None
-            if staff_role:
-                staff_overwrites[staff_role] = discord.PermissionOverwrite(
-                    view_channel=True, send_messages=True
-                )
-            else:
-                errors.append("⚠️ Staff role not found; staff area visibility may be too open.")
+            # ALLOW: Specific Staff Role ID + Manager + Admin
+            allowed_role_ids = set()
+            req_staff_id = 1448482784849957017
+            allowed_role_ids.add(req_staff_id)
+            if settings.get("admin_role"): allowed_role_ids.add(settings["admin_role"])
+            if settings.get("manager_role"): allowed_role_ids.add(settings["manager_role"])
 
+            for rid in allowed_role_ids:
+                role = guild.get_role(rid)
+                if role:
+                    staff_overwrites[role] = discord.PermissionOverwrite(
+                        view_channel=True, send_messages=True
+                    )
+            
             if not staff_category:
                 staff_category = await guild.create_category(
                     "👔 Staff Area",
@@ -446,7 +456,7 @@ class Setup(commands.Cog):
             else:
                 await staff_category.edit(
                     overwrites=staff_overwrites,
-                    reason="ModBot Setup: restrict staff area to staff role",
+                    reason="ModBot Setup: restrict staff area to specific role",
                 )
 
             settings["staff_category"] = staff_category.id

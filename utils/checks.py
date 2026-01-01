@@ -121,12 +121,15 @@ def is_admin():
         
         settings = await interaction.client.db.get_settings(interaction.guild_id)
         admin_roles = settings.get("admin_roles", [])
+        manager_role = settings.get("manager_role")
         user_role_ids = [r.id for r in interaction.user.roles]
         
+        if manager_role and manager_role in user_role_ids:
+            return True
         if any(role_id in user_role_ids for role_id in admin_roles):
             return True
         
-        raise app_commands.MissingPermissions(['Administrator'])
+        raise app_commands.MissingPermissions(['Administrator', 'Manager'])
     
     return app_commands.check(predicate)
 
