@@ -602,16 +602,17 @@ class PrefixCommands(commands.Cog):
         except:
             await ctx.send(embed=ModEmbed.info("📋 Mod Log", "No recent activity."))
 
-    @commands.command(name="warnings", aliases=["warns"])
-    @commands.has_permissions(manage_messages=True)
-    async def warnings_cmd(self, ctx, member: discord.Member):
-        """View warnings for a user"""
-        cases = await self.bot.db.get_cases(ctx.guild.id, member.id)
-        warns = [c for c in cases if c.get("action") == "Warn"] if cases else []
-        if not warns:
-            return await ctx.send(embed=ModEmbed.info("⚠️ Warnings", f"No warnings for {member.mention}"))
-        desc = "\n".join([f"• {w.get('reason', 'N/A')[:40]}" for w in warns[:10]])
-        await ctx.send(embed=ModEmbed.info(f"⚠️ Warnings for {member}", desc))
+    # NOTE: warnings is defined in moderation.py
+    # @commands.command(name="warnings", aliases=["warns"])
+    # @commands.has_permissions(manage_messages=True)
+    # async def warnings_cmd(self, ctx, member: discord.Member):
+    #     """View warnings for a user"""
+    #     cases = await self.bot.db.get_cases(ctx.guild.id, member.id)
+    #     warns = [c for c in cases if c.get("action") == "Warn"] if cases else []
+    #     if not warns:
+    #         return await ctx.send(embed=ModEmbed.info("⚠️ Warnings", f"No warnings for {member.mention}"))
+    #     desc = "\n".join([f"• {w.get('reason', 'N/A')[:40]}" for w in warns[:10]])
+    #     await ctx.send(embed=ModEmbed.info(f"⚠️ Warnings for {member}", desc))
 
     # ═══════════════════════════════════════════════════════════════
     # OWNER COMMANDS (10+)
@@ -895,7 +896,7 @@ class PrefixCommands(commands.Cog):
         
         await ctx.send(embed=ModEmbed.success("👁️ Channels Visible", f"Unhid **{count}** channels for @everyone"))
 
-    @commands.command(name="createemoji", aliases=["addemoji"])
+    @commands.command(name="createemoji", aliases=["makeemoji"])
     @commands.has_permissions(manage_emojis=True)
     async def createemoji_cmd(self, ctx, name: str, url: str):
         """Create an emoji from a URL"""
