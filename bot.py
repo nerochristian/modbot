@@ -21,6 +21,14 @@ from config import Config
 # Load environment variables
 load_dotenv()
 
+# Initialize static-ffmpeg if installed (ensures ffmpeg binary is in PATH)
+try:
+    import static_ffmpeg
+    static_ffmpeg.add_paths()
+    print("[Setup] Static FFmpeg initialized successfully")
+except ImportError:
+    pass
+
 # ==================== GLOBAL EMBED COLOR ENFORCEMENT ====================
 # Forces all embeds (side color) to use Config.EMBED_ACCENT_COLOR.
 _ORIGINAL_EMBED_INIT = discord.Embed.__init__

@@ -27,14 +27,14 @@ class PrefixCommands(commands.Cog):
     # MODERATION COMMANDS (30+)
     # ═══════════════════════════════════════════════════════════════
 
-    @commands.command(name="warn", aliases=["w"])
-    @commands.has_permissions(manage_messages=True)
-    async def warn_cmd(self, ctx, member: discord.Member, *, reason="No reason"):
-        """Warn a user"""
-        case = await self.bot.db.create_case(ctx.guild.id, member.id, ctx.author.id, "Warn", reason)
-        embed = ModEmbed.success("⚠️ User Warned", f"{member.mention} has been warned.\n**Reason:** {reason}")
-        embed.set_footer(text=f"Case #{case}")
-        await ctx.send(embed=embed)
+    # @commands.command(name="warn", aliases=["w"])
+    # @commands.has_permissions(manage_messages=True)
+    # async def warn_cmd(self, ctx, member: discord.Member, *, reason="No reason"):
+    #     """Warn a user"""
+    #     case = await self.bot.db.create_case(ctx.guild.id, member.id, ctx.author.id, "Warn", reason)
+    #     embed = ModEmbed.success("⚠️ User Warned", f"{member.mention} has been warned.\n**Reason:** {reason}")
+    #     embed.set_footer(text=f"Case #{case}")
+    #     await ctx.send(embed=embed)
 
     @commands.command(name="kick", aliases=["k"])
     @commands.has_permissions(kick_members=True)

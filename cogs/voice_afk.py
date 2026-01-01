@@ -67,24 +67,6 @@ class AFKConfirmButton(discord.ui.View):
             self.confirmed = False
 
 
-class VoiceSpeakingListener(discord.AudioSink):
-    """Audio sink to detect when a specific user speaks"""
-    
-    def __init__(self, target_user_id: int, callback):
-        self.target_user_id = target_user_id
-        self.callback = callback
-        self.detected = False
-    
-    def write(self, user, data):
-        """Called when audio is received from a user"""
-        if user and user.id == self.target_user_id and not self.detected:
-            self.detected = True
-            # Call the callback to notify that user spoke
-            asyncio.create_task(self.callback())
-    
-    def cleanup(self):
-        pass
-
 
 class VoiceAFK(commands.Cog):
     """Voice AFK detection and verification system"""

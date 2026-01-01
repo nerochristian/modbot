@@ -37,13 +37,19 @@ class ForumModeration(commands.Cog):
     @commands.Cog.listener()
     async def on_thread_create(self, thread: discord.Thread):
         """Auto-moderate new forum posts in the anime forum"""
+        print(f"[ForumMod] Thread created: {thread.name} (ID: {thread.id}, Parent: {thread.parent_id})")
+        
         # Only moderate the anime forum
         if thread.parent_id != self.anime_forum_id:
+            print(f"[ForumMod] Skipping - not in anime forum (expected {self.anime_forum_id})")
             return
         
         # Don't moderate posts by staff
         if thread.owner and (thread.owner.guild_permissions.manage_messages or is_bot_owner_id(thread.owner_id)):
+            print(f"[ForumMod] Skipping - owner is staff: {thread.owner}")
             return
+        
+        print(f"[ForumMod] Processing thread: {thread.name}")
         
         # Wait a moment for the initial message to be created
         await asyncio.sleep(2)
@@ -52,7 +58,10 @@ class ForumModeration(commands.Cog):
             # Get the starter message
             starter_message = await thread.fetch_message(thread.id)
             if not starter_message:
+                print(f"[ForumMod] Could not fetch starter message for {thread.id}")
                 return
+            
+            print(f"[ForumMod] Checking content - Title: {thread.name[:50]}, Content: {starter_message.content[:100] if starter_message.content else '(empty)'}...")
             
             # Check content with AI
             is_safe, reason = await self._check_content_with_ai(
@@ -60,12 +69,15 @@ class ForumModeration(commands.Cog):
                 content=starter_message.content
             )
             
+            print(f"[ForumMod] AI Result - Safe: {is_safe}, Reason: {reason}")
+            
             if is_safe:
                 # Approved!
                 await thread.send(
                     f"✅ **Post Approved** - Thank you for your anime recommendation, {thread.owner.mention}! "
                     f"This content has been reviewed and approved for the community."
                 )
+                print(f"[ForumMod] Post approved: {thread.name}")
             else:
                 # Rejected - inappropriate content
                 self.blacklisted_posts.add(thread.id)
@@ -75,6 +87,8 @@ class ForumModeration(commands.Cog):
                     f"**Reason:** {reason}\n\n"
                     f"A moderator will review this shortly. If this is a mistake, please contact staff."
                 )
+                
+                print(f"[ForumMod] Post FLAGGED: {thread.name} - {reason}")
                 
                 # Notify moderators
                 settings = await self.bot.db.get_settings(thread.guild.id)
@@ -95,59 +109,101 @@ class ForumModeration(commands.Cog):
         
         except Exception as e:
             print(f"[ForumMod] Error checking post {thread.id}: {e}")
+
     
     async def _check_content_with_ai(self, title: str, content: str) -> tuple[bool, str]:
         """
-        Check if anime forum content is appropriate using Groq AI
+        Check if anime forum content is appropriate by looking up the anime on MyAnimeList
+        Uses Jikan API to check ratings
         
         Returns:
             (is_safe, reason) - True if content is safe, and reason if not
         """
-        if not self.groq_client:
-            # No AI available - approve by default
-            return True, "AI check unavailable"
+        import aiohttp
+        import re
         
-        system_prompt = """You are a content moderator for an anime recommendations forum.
-Your job is to determine if a post is appropriate anime content or if it contains hentai/NSFW content.
-
-Respond with ONLY ONE WORD:
-- "SAFE" if the post is about regular anime (any rating including ecchi, but not hentai)
-- "UNSAFE" if the post contains hentai, pornographic content, or explicit NSFW anime
-
-After your one-word response, add a brief reason (10 words max)."""
-
-        user_prompt = f"""Title: {title}
-
-Content: {content}
-
-Is this appropriate anime content or hentai/NSFW?"""
-
+        combined_text = f"{title} {content}".lower()
+        
+        # Quick keyword blocklist for obvious cases
+        quick_block = ["hentai", "h-anime", "hanime", "nhentai", "hentaihaven", 
+                       "fakku", "doujinshi", "18+", "xxx", "porn"]
+        for keyword in quick_block:
+            if keyword in combined_text:
+                return False, f"Blocked: Contains '{keyword}'"
+        
+        # Extract anime title - usually the thread title is the anime name
+        anime_title = title.strip()
+        
+        # Clean up common patterns like "Anime Name - My Review" or "Anime Name (2024)"
+        anime_title = re.sub(r'\s*[-–—]\s*.*$', '', anime_title)  # Remove " - anything after"
+        anime_title = re.sub(r'\s*\([^)]*\)\s*$', '', anime_title)  # Remove (year) etc
+        anime_title = re.sub(r'\s*\[[^\]]*\]\s*$', '', anime_title)  # Remove [tags]
+        anime_title = anime_title.strip()
+        
+        if not anime_title or len(anime_title) < 2:
+            # Can't determine anime name, use AI fallback or approve with warning
+            print(f"[ForumMod] Could not extract anime title from: {title}")
+            return True, "Could not determine anime title - approved with caution"
+        
+        print(f"[ForumMod] Looking up anime: '{anime_title}'")
+        
         try:
-            response = self.groq_client.chat.completions.create(
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                model=os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile"),
-                temperature=0.3,
-                max_tokens=100,
-            )
-            
-            result = response.choices[0].message.content.strip()
-            
-            # Parse response
-            if result.upper().startswith("SAFE"):
-                return True, "Content approved by AI"
-            else:
-                # Extract reason
-                lines = result.split("\n")
-                reason = lines[1] if len(lines) > 1 else "Inappropriate content detected"
-                return False, reason
+            # Search for the anime on Jikan (MAL API)
+            async with aiohttp.ClientSession() as session:
+                search_url = f"https://api.jikan.moe/v4/anime?q={anime_title}&limit=3&sfw=false"
                 
+                async with session.get(search_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                    if response.status != 200:
+                        print(f"[ForumMod] Jikan API error: {response.status}")
+                        return True, "API unavailable - approved with caution"
+                    
+                    data = await response.json()
+                    
+                    if not data.get("data"):
+                        print(f"[ForumMod] No results for: {anime_title}")
+                        return True, "Anime not found in database - approved with caution"
+                    
+                    # Check the top results
+                    for result in data["data"]:
+                        result_title = result.get("title", "").lower()
+                        result_title_en = result.get("title_english", "") or ""
+                        result_title_en = result_title_en.lower()
+                        
+                        # Check if this is likely a match
+                        search_lower = anime_title.lower()
+                        if search_lower in result_title or search_lower in result_title_en or \
+                           result_title in search_lower or result_title_en in search_lower:
+                            
+                            # Check rating
+                            rating = result.get("rating", "")
+                            genres = [g.get("name", "").lower() for g in result.get("genres", [])]
+                            
+                            print(f"[ForumMod] Found match: {result.get('title')} - Rating: {rating}, Genres: {genres}")
+                            
+                            # Rx - Hentai is the explicit adult rating on MAL
+                            if "rx" in rating.lower() or "hentai" in rating.lower():
+                                return False, f"Rated Rx (Hentai) on MyAnimeList"
+                            
+                            # Also check if hentai is in genres
+                            if "hentai" in genres:
+                                return False, f"Genre: Hentai on MyAnimeList"
+                            
+                            # R+ (Mild Nudity) is borderline but usually okay
+                            # R - 17+ is violent/mature themes but not hentai
+                            
+                            # Found a match that's not hentai
+                            return True, f"Verified: {result.get('title')} - {rating or 'No rating'}"
+                    
+                    # No close match found
+                    print(f"[ForumMod] No close match for: {anime_title}")
+                    return True, "No exact match found - approved with caution"
+                    
+        except asyncio.TimeoutError:
+            print(f"[ForumMod] API timeout for: {anime_title}")
+            return True, "API timeout - approved with caution"
         except Exception as e:
-            print(f"[ForumMod] AI check failed: {e}")
-            # On error, approve but log
-            return True, f"AI check failed: {str(e)[:50]}"
+            print(f"[ForumMod] API error: {e}")
+            return True, f"API error - approved with caution"
     
     async def _log_to_mod_log(self, guild: discord.Guild, thread: discord.Thread, reason: str, content: str = None):
         """Log a forum moderation action to the mod log channel"""
@@ -369,16 +425,44 @@ Is this appropriate anime content or hentai/NSFW?"""
         forum = interaction.guild.get_channel(self.anime_forum_id)
         if not forum or not isinstance(forum, discord.ForumChannel):
             return await interaction.followup.send(
-                embed=ModEmbed.error("Error", "Anime forum channel not found."),
+                embed=ModEmbed.error("Error", f"Anime forum channel not found (ID: {self.anime_forum_id})."),
                 ephemeral=True
             )
         
         checked = 0
         flagged = 0
         safe = 0
+        errors = 0
         
-        # Check active threads
-        for thread in forum.threads:
+        # Get all threads - both active and archived
+        all_threads = list(forum.threads)  # Active threads
+        
+        # Also fetch archived threads
+        try:
+            async for archived_thread in forum.archived_threads(limit=50):
+                if archived_thread not in all_threads:
+                    all_threads.append(archived_thread)
+        except Exception as e:
+            print(f"[ForumMod] Could not fetch archived threads: {e}")
+        
+        if not all_threads:
+            return await interaction.followup.send(
+                embed=ModEmbed.warning("No Threads", "No threads found in the anime forum."),
+                ephemeral=True
+            )
+        
+        # Send initial status
+        status_msg = await interaction.followup.send(
+            embed=discord.Embed(
+                title="🔍 Checking Forum Posts...",
+                description=f"Found **{len(all_threads)}** threads to check.\nThis may take a while due to API rate limits.",
+                color=0x00AAFF
+            ),
+            ephemeral=True
+        )
+        
+        # Check each thread
+        for thread in all_threads:
             try:
                 starter_message = await thread.fetch_message(thread.id)
                 is_safe, reason = await self._check_content_with_ai(
@@ -392,7 +476,8 @@ Is this appropriate anime content or hentai/NSFW?"""
                     # Send approval message
                     await thread.send(
                         f"✅ **Post Approved** - Thank you for your anime recommendation, {thread.owner.mention if thread.owner else 'author'}! "
-                        f"This content has been reviewed and approved for the community."
+                        f"This content has been reviewed and approved for the community.\n"
+                        f"*Verified: {reason}*"
                     )
                 else:
                     flagged += 1
@@ -404,20 +489,25 @@ Is this appropriate anime content or hentai/NSFW?"""
                         f"A moderator will review this shortly. If this is a mistake, please contact staff."
                     )
                 
-                # Small delay to avoid rate limiting
-                await asyncio.sleep(1)
+                # Rate limit - Jikan API allows 3 requests/second, so wait 2 seconds between checks
+                await asyncio.sleep(2)
+                
             except Exception as e:
+                errors += 1
                 print(f"[ForumMod] Error checking thread {thread.id}: {e}")
         
         embed = discord.Embed(
             title="📊 Forum Check Complete",
-            description=f"Checked {checked} threads",
-            color=0x00FF00
+            description=f"Checked **{checked}** threads",
+            color=0x00FF00 if flagged == 0 else 0xFFAA00
         )
         embed.add_field(name="✅ Safe", value=str(safe), inline=True)
         embed.add_field(name="🚫 Flagged", value=str(flagged), inline=True)
+        if errors > 0:
+            embed.add_field(name="❌ Errors", value=str(errors), inline=True)
         
         await interaction.followup.send(embed=embed, ephemeral=True)
+
     
     async def _forum_list(self, interaction: discord.Interaction):
         """List all blacklisted threads"""
