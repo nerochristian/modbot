@@ -1,62 +1,119 @@
 """
-Poll System - Create interactive polls with reactions or buttons
-Similar structure to giveaway system
+Poll System - Custom implementation that mimics Discord's native poll UI
 """
 
 import discord
 from discord import app_commands
 from discord.ext import commands
-from typing import Optional, Literal, List
+from typing import Optional, Dict, Set
 from datetime import datetime, timezone, timedelta
 import asyncio
 
 from utils.embeds import ModEmbed
 from utils.checks import is_mod
-from config import Config
+
+
+class PollButton(discord.ui.Button):
+    """Button for poll options"""
+    
+    def __init__(self, poll_id: int, option_index: int, option_text: str, is_selected: bool):
+        # Style to look like Discord's poll options
+        super().__init__(
+            label=option_text[:80],
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"poll_{poll_id}_{option_index}",
+            row=option_index if option_index < 5 else 4
+        )
+        self.poll_id = poll_id
+        self.option_index = option_index
+    
+    async def callback(self, interaction: discord.Interaction):
+        poll_cog = interaction.client.get_cog("Polls")
+        if poll_cog:
+            await poll_cog._handle_vote(interaction, self.poll_id, self.option_index)
+
+
+class RemoveVoteButton(discord.ui.Button):
+    """Remove vote button"""
+    
+    def __init__(self, poll_id: int):
+        super().__init__(
+            label="Remove Vote",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"poll_remove_{poll_id}",
+            row=4
+        )
+        self.poll_id = poll_id
+    
+    async def callback(self, interaction: discord.Interaction):
+        poll_cog = interaction.client.get_cog("Polls")
+        if poll_cog:
+            await poll_cog._remove_vote(interaction, self.poll_id)
+
+
+class ShowResultsButton(discord.ui.Button):
+    """Show results button"""
+    
+    def __init__(self, poll_id: int):
+        super().__init__(
+            label="Show results",
+            style=discord.ButtonStyle.secondary,
+            custom_id=f"poll_results_{poll_id}",
+            row=4
+        )
+        self.poll_id = poll_id
+    
+    async def callback(self, interaction: discord.Interaction):
+        poll_cog = interaction.client.get_cog("Polls")
+        if poll_cog:
+            await poll_cog._show_results(interaction, self.poll_id)
+
+
+class VoteButton(discord.ui.Button):
+    """Vote button (appears when results are shown)"""
+    
+    def __init__(self, poll_id: int):
+        super().__init__(
+            label="Vote",
+            style=discord.ButtonStyle.primary,
+            custom_id=f"poll_vote_{poll_id}",
+            row=4
+        )
+        self.poll_id = poll_id
+    
+    async def callback(self, interaction: discord.Interaction):
+        poll_cog = interaction.client.get_cog("Polls")
+        if poll_cog:
+            await poll_cog._back_to_voting(interaction, self.poll_id)
 
 
 class PollView(discord.ui.View):
-    """Interactive view for poll with buttons"""
+    """View for poll - dynamically updates based on user's vote status"""
     
-    def __init__(self, poll_data: dict, ended: bool = False):
+    def __init__(self, poll_data: dict, user_id: int, user_vote: Optional[int], show_results: bool = False):
         super().__init__(timeout=None)
-        self.poll_data = poll_data
-        self.ended = ended
         
-        # Add buttons for each option
-        options = poll_data.get("options", [])
-        for i, option in enumerate(options[:5]):  # Max 5 options for buttons
-            button = discord.ui.Button(
-                label=option[:80],  # Discord button label limit
-                custom_id=f"poll_{poll_data['id']}_{i}",
-                style=discord.ButtonStyle.primary,
-                disabled=ended
-            )
-            button.callback = self._create_callback(i)
-            self.add_item(button)
-    
-    def _create_callback(self, option_index: int):
-        async def callback(interaction: discord.Interaction):
-            # Get the poll cog to handle the vote
-            poll_cog = interaction.client.get_cog("Polls")
-            if poll_cog:
-                await poll_cog._handle_vote(interaction, self.poll_data['id'], option_index)
-            else:
-                await interaction.response.send_message(
-                    "Poll system is currently unavailable.",
-                    ephemeral=True
-                )
-        return callback
+        poll_id = poll_data["id"]
+        options = poll_data["options"]
+        
+        if show_results:
+            # Just show "Vote" button when viewing results
+            self.add_item(VoteButton(poll_id))
+        elif user_vote is not None:
+            # User has voted - show Remove Vote button
+            self.add_item(RemoveVoteButton(poll_id))
+        else:
+            # User hasn't voted - show Show Results button
+            self.add_item(ShowResultsButton(poll_id))
 
 
 class Polls(commands.Cog):
-    """Poll management system"""
+    """Poll management system with Discord-native-like UI"""
     
     def __init__(self, bot):
         self.bot = bot
-        # In-memory storage for polls (could be moved to database)
-        self.active_polls: dict[int, dict] = {}
-        self.poll_votes: dict[int, dict[int, int]] = {}  # poll_id -> {user_id -> option_index}
+        self.active_polls: Dict[int, dict] = {}
+        self.poll_votes: Dict[int, Dict[int, int]] = {}  # poll_id -> {user_id -> option_index}
         self._poll_counter = 1
     
     poll_group = app_commands.Group(name="poll", description="📊 Poll commands")
@@ -69,11 +126,14 @@ class Polls(commands.Cog):
         option3="Third option (optional)",
         option4="Fourth option (optional)",
         option5="Fifth option (optional)",
-        duration="How long the poll runs (e.g. 1h, 1d, 30m). Leave empty for no expiry.",
+        option6="Sixth option (optional)",
+        option7="Seventh option (optional)",
+        option8="Eighth option (optional)",
+        option9="Ninth option (optional)",
+        option10="Tenth option (optional)",
+        duration="How long the poll runs in hours (1-168, default: 24)",
         channel="Which channel to post the poll in",
-        multiple_choice="Allow users to vote for multiple options",
-        anonymous="Hide who voted for what (shows only counts)",
-        image="URL to an image to show with the poll"
+        multiple_choice="Allow users to vote for multiple options"
     )
     @is_mod()
     async def poll_create(
@@ -85,17 +145,20 @@ class Polls(commands.Cog):
         option3: Optional[str] = None,
         option4: Optional[str] = None,
         option5: Optional[str] = None,
-        duration: Optional[str] = None,
+        option6: Optional[str] = None,
+        option7: Optional[str] = None,
+        option8: Optional[str] = None,
+        option9: Optional[str] = None,
+        option10: Optional[str] = None,
+        duration: Optional[int] = 24,
         channel: Optional[discord.TextChannel] = None,
-        multiple_choice: bool = False,
-        anonymous: bool = False,
-        image: Optional[str] = None
+        multiple_choice: bool = False
     ):
         """Create a new poll"""
         
         # Collect options
         options = [option1, option2]
-        for opt in [option3, option4, option5]:
+        for opt in [option3, option4, option5, option6, option7, option8, option9, option10]:
             if opt:
                 options.append(opt)
         
@@ -105,19 +168,11 @@ class Polls(commands.Cog):
                 ephemeral=True
             )
         
-        # Parse duration if provided
-        ends_at = None
+        # Validate duration
         if duration:
-            from utils.time_parser import parse_time
-            parsed = parse_time(duration)
-            if parsed:
-                delta, human_duration = parsed
-                ends_at = datetime.now(timezone.utc) + delta
-            else:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Invalid Duration", "Please use a format like `1d`, `12h`, `30m`"),
-                    ephemeral=True
-                )
+            duration = max(1, min(168, duration))
+        else:
+            duration = 24
         
         # Default to current channel
         if channel is None:
@@ -126,6 +181,8 @@ class Polls(commands.Cog):
         # Create poll data
         poll_id = self._poll_counter
         self._poll_counter += 1
+        
+        ends_at = datetime.now(timezone.utc) + timedelta(hours=duration)
         
         poll_data = {
             "id": poll_id,
@@ -137,19 +194,16 @@ class Polls(commands.Cog):
             "created_at": datetime.now(timezone.utc),
             "ends_at": ends_at,
             "multiple_choice": multiple_choice,
-            "anonymous": anonymous,
-            "image_url": image,
             "ended": False
         }
-        
-        # Create embed
-        embed = self._create_poll_embed(poll_data, vote_counts={})
         
         await interaction.response.defer(ephemeral=True)
         
         try:
-            # Send poll message
-            view = PollView(poll_data, ended=False)
+            # Create the initial message
+            embed = self._create_poll_embed(poll_data, 0, show_results=False)
+            view = PollView(poll_data, 0, None, show_results=False)
+            
             msg = await channel.send(embed=embed, view=view)
             
             # Store poll data
@@ -157,9 +211,8 @@ class Polls(commands.Cog):
             self.active_polls[poll_id] = poll_data
             self.poll_votes[poll_id] = {}
             
-            # Start auto-end task if duration specified
-            if ends_at:
-                asyncio.create_task(self._auto_end_poll(poll_id, ends_at))
+            # Start auto-end task
+            asyncio.create_task(self._auto_end_poll(poll_id))
             
             await interaction.followup.send(
                 embed=ModEmbed.success(
@@ -169,79 +222,78 @@ class Polls(commands.Cog):
                 ephemeral=True
             )
             
-        except discord.Forbidden:
-            await interaction.followup.send(
-                embed=ModEmbed.error("Forbidden", f"I don't have permission to post in {channel.mention}."),
-                ephemeral=True
-            )
         except Exception as e:
             await interaction.followup.send(
                 embed=ModEmbed.error("Failed", f"Failed to create poll: {e}"),
                 ephemeral=True
             )
     
-    def _create_poll_embed(self, poll_data: dict, vote_counts: dict[int, int]) -> discord.Embed:
-        """Create the poll embed"""
+    def _create_poll_embed(self, poll_data: dict, user_id: int, show_results: bool = False, user_vote: Optional[int] = None) -> discord.Embed:
+        """Create poll embed that looks like Discord's native polls"""
+        
         question = poll_data["question"]
         options = poll_data["options"]
-        ends_at = poll_data.get("ends_at")
-        ended = poll_data.get("ended", False)
+        multiple = poll_data.get("multiple_choice", False)
+        
+        votes = self.poll_votes.get(poll_data["id"], {})
+        total_votes = len(votes)
+        
+        # Count votes per option
+        vote_counts = {}
+        for option_idx in range(len(options)):
+            vote_counts[option_idx] = sum(1 for v in votes.values() if v == option_idx)
         
         # Build description
-        description = ""
-        total_votes = sum(vote_counts.values())
+        description = f"**{question}**\n"
+        description += f"*Select {'multiple answers' if multiple else 'one answer'}*\n\n"
         
-        # Emojis for options
-        emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
-        
+        # Add options
         for i, option in enumerate(options):
-            votes = vote_counts.get(i, 0)
-            percentage = (votes / total_votes * 100) if total_votes > 0 else 0
+            count = vote_counts.get(i, 0)
+            percentage = (count / total_votes * 100) if total_votes > 0 else 0
             
-            # Create progress bar
-            bar_length = 10
-            filled = int(percentage / 10)
-            bar = "█" * filled + "░" * (bar_length - filled)
+            # Check if this option is selected by the user
+            is_selected = user_vote == i
             
-            description += f"{emojis[i]} **{option}**\n"
-            description += f"{bar} {percentage:.1f}% ({votes} vote{'s' if votes != 1 else ''})\n\n"
+            if show_results or (user_vote is not None):
+                # Show results
+                # Use a checkmark if user voted for this
+                check = "✅ " if is_selected else ""
+                description += f"{check}**{option}**\n"
+                description += f"`{count} vote{'s' if count != 1 else ''} - {percentage:.0f}%`\n\n"
+            else:
+                # Just show option text
+                description += f"**{option}**\n\n"
         
-        # Create embed
+        # Calculate time left
+        ends_at = poll_data.get("ends_at")
+        if ends_at:
+            time_left = ends_at - datetime.now(timezone.utc)
+            hours_left = int(time_left.total_seconds() / 3600)
+            if hours_left > 0:
+                time_text = f"{hours_left}h left"
+            else:
+                mins_left = int(time_left.total_seconds() / 60)
+                time_text = f"{mins_left}m left" if mins_left > 0 else "Ending soon"
+        else:
+            time_text = "No time limit"
+        
+        # Add vote count and time
+        if show_results or user_vote is not None:
+            description += f"\n{total_votes} vote{'s' if total_votes != 1 else ''} • {time_text}"
+        else:
+            description += f"\n0 votes • {time_text}"
+        
+        # Create embed with Discord's dark theme colors
         embed = discord.Embed(
-            title=f"📊 {question}",
-            description=description or "No votes yet",
-            color=Config.COLOR_INFO if not ended else 0x808080,
-            timestamp=datetime.now(timezone.utc)
+            description=description,
+            color=0x2B2D31  # Discord's dark background color
         )
-        
-        # Add footer
-        footer_text = f"Poll ID: {poll_data['id']} | Total Votes: {total_votes}"
-        if ends_at and not ended:
-            footer_text += f" | Ends: "
-            embed.timestamp = ends_at
-        elif ended:
-            footer_text += " | Poll Ended"
-        
-        embed.set_footer(text=footer_text)
-        
-        # Add image if provided
-        if poll_data.get("image_url"):
-            embed.set_image(url=poll_data["image_url"])
-        
-        # Add info field
-        info = []
-        if poll_data.get("multiple_choice"):
-            info.append("🔢 Multiple choice allowed")
-        if poll_data.get("anonymous"):
-            info.append("🕵️ Anonymous voting")
-        
-        if info:
-            embed.add_field(name="ℹ️ Info", value="\n".join(info), inline=False)
         
         return embed
     
     async def _handle_vote(self, interaction: discord.Interaction, poll_id: int, option_index: int):
-        """Handle a vote on a poll"""
+        """Handle a user voting"""
         poll_data = self.active_polls.get(poll_id)
         
         if not poll_data:
@@ -259,133 +311,103 @@ class Polls(commands.Cog):
         user_id = interaction.user.id
         votes = self.poll_votes.get(poll_id, {})
         
-        # Check if user already voted
-        if user_id in votes:
-            if poll_data.get("multiple_choice"):
-                # Toggle vote in multiple choice
-                current = votes[user_id]
-                if isinstance(current, list):
-                    if option_index in current:
-                        current.remove(option_index)
-                    else:
-                        current.append(option_index)
-                else:
-                    votes[user_id] = [current, option_index] if current != option_index else [option_index]
-            else:
-                # Change vote in single choice
-                if votes[user_id] == option_index:
-                    # Remove vote if clicking same option
-                    del votes[user_id]
-                    await interaction.response.send_message(
-                        "Vote removed!",
-                        ephemeral=True
-                    )
-                else:
-                    votes[user_id] = option_index
-                    await interaction.response.send_message(
-                        f"Vote changed to **{poll_data['options'][option_index]}**!",
-                        ephemeral=True
-                    )
-        else:
-            # New vote
-            if poll_data.get("multiple_choice"):
-                votes[user_id] = [option_index]
-            else:
-                votes[user_id] = option_index
-            
-            await interaction.response.send_message(
-                f"Voted for **{poll_data['options'][option_index]}**!",
+        # Record vote
+        votes[user_id] = option_index
+        self.poll_votes[poll_id] = votes
+        
+        # Update message
+        await self._update_poll_for_user(interaction, poll_id, user_id)
+    
+    async def _remove_vote(self, interaction: discord.Interaction, poll_id: int):
+        """Remove a user's vote"""
+        poll_data = self.active_polls.get(poll_id)
+        
+        if not poll_data:
+            return await interaction.response.send_message(
+                "This poll is no longer active.",
                 ephemeral=True
             )
         
-        self.poll_votes[poll_id] = votes
+        user_id = interaction.user.id
+        votes = self.poll_votes.get(poll_id, {})
         
-        # Update poll message
-        await self._update_poll_message(poll_id)
+        if user_id in votes:
+            del votes[user_id]
+            self.poll_votes[poll_id] = votes
+        
+        # Update message
+        await self._update_poll_for_user(interaction, poll_id, user_id)
     
-    async def _update_poll_message(self, poll_id: int):
-        """Update the poll message with current vote counts"""
+    async def _show_results(self, interaction: discord.Interaction, poll_id: int):
+        """Show results without voting"""
+        await self._update_poll_for_user(interaction, poll_id, interaction.user.id, show_results=True)
+    
+    async def _back_to_voting(self, interaction: discord.Interaction, poll_id: int):
+        """Go back to voting view"""
+        await self._update_poll_for_user(interaction, poll_id, interaction.user.id, show_results=False)
+    
+    async def _update_poll_for_user(self, interaction: discord.Interaction, poll_id: int, user_id: int, show_results: bool = False):
+        """Update the poll view for a specific user"""
         poll_data = self.active_polls.get(poll_id)
         if not poll_data:
             return
         
         votes = self.poll_votes.get(poll_id, {})
+        user_vote = votes.get(user_id)
         
-        # Count votes for each option
-        vote_counts = {i: 0 for i in range(len(poll_data["options"]))}
-        
-        for user_vote in votes.values():
-            if isinstance(user_vote, list):
-                # Multiple choice
-                for opt_idx in user_vote:
-                    vote_counts[opt_idx] = vote_counts.get(opt_idx, 0) + 1
-            else:
-                # Single choice
-                vote_counts[user_vote] = vote_counts.get(user_vote, 0) + 1
-        
-        # Update embed
-        embed = self._create_poll_embed(poll_data, vote_counts)
-        view = PollView(poll_data, ended=poll_data.get("ended", False))
+        # Create updated embed and view
+        embed = self._create_poll_embed(poll_data, user_id, show_results=show_results, user_vote=user_vote)
+        view = PollView(poll_data, user_id, user_vote, show_results=show_results)
         
         try:
-            channel = self.bot.get_channel(poll_data["channel_id"])
-            if channel:
-                msg = await channel.fetch_message(poll_data["message_id"])
-                await msg.edit(embed=embed, view=view)
+            await interaction.response.edit_message(embed=embed, view=view)
+        except discord.InteractionResponded:
+            # Already responded, use followup
+            await interaction.followup.edit_message(interaction.message.id, embed=embed, view=view)
         except Exception as e:
-            print(f"[Polls] Failed to update poll {poll_id}: {e}")
+            print(f"[Polls] Error updating poll: {e}")
     
-    async def _auto_end_poll(self, poll_id: int, ends_at: datetime):
-        """Automatically end a poll after duration"""
+    async def _auto_end_poll(self, poll_id: int):
+        """Auto-end poll after duration"""
+        poll_data = self.active_polls.get(poll_id)
+        if not poll_data:
+            return
+        
+        ends_at = poll_data.get("ends_at")
+        if not ends_at:
+            return
+        
         now = datetime.now(timezone.utc)
         wait_seconds = (ends_at - now).total_seconds()
         
         if wait_seconds > 0:
             await asyncio.sleep(wait_seconds)
         
-        await self._end_poll(poll_id)
-    
-    async def _end_poll(self, poll_id: int):
-        """End a poll and show results"""
-        poll_data = self.active_polls.get(poll_id)
-        if not poll_data or poll_data.get("ended"):
-            return
-        
+        # Mark as ended
         poll_data["ended"] = True
         
-        # Update message one last time
-        await self._update_poll_message(poll_id)
-        
-        # Send results message
-        votes = self.poll_votes.get(poll_id, {})
-        vote_counts = {i: 0 for i in range(len(poll_data["options"]))}
-        
-        for user_vote in votes.values():
-            if isinstance(user_vote, list):
-                for opt_idx in user_vote:
-                    vote_counts[opt_idx] = vote_counts.get(opt_idx, 0) + 1
-            else:
-                vote_counts[user_vote] = vote_counts.get(user_vote, 0) + 1
-        
-        # Find winner(s)
-        max_votes = max(vote_counts.values()) if vote_counts.values() else 0
-        winners = [poll_data["options"][i] for i, count in vote_counts.items() if count == max_votes]
-        
+        # Post results
         try:
             channel = self.bot.get_channel(poll_data["channel_id"])
             if channel:
                 msg = await channel.fetch_message(poll_data["message_id"])
                 
-                result_text = f"🏆 **Win ner{'s' if len(winners) > 1 else ''}:** {', '.join(f'**{w}**' for w in winners)}"
-                if max_votes > 0:
-                    result_text += f" ({max_votes} vote{'s' if max_votes != 1 else ''})"
+                votes = self.poll_votes.get(poll_id, {})
+                vote_counts = {}
+                for option_idx in range(len(poll_data["options"])):
+                    vote_counts[option_idx] = sum(1 for v in votes.values() if v == option_idx)
                 
-                await msg.reply(f"📊 **Poll Ended!**\n{result_text}")
+                max_votes = max(vote_counts.values()) if vote_counts.values() else 0
+                winners = [poll_data["options"][i] for i, count in vote_counts.items() if count == max_votes]
+                
+                result_text = f"📊 **Poll Ended!**\n🏆 Winner: **{winners[0]}**" if winners and max_votes > 0 else "📊 **Poll Ended!** (No votes)"
+                
+                await msg.reply(result_text)
         except Exception as e:
-            print(f"[Polls] Failed to post poll results for {poll_id}: {e}")
+            print(f"[Polls] Error ending poll {poll_id}: {e}")
     
     @poll_group.command(name="end", description="🛑 End a poll early")
-    @app_commands.describe(poll_id="The poll ID to end")
+    @app_commands.describe(poll_id="The poll ID")
     @is_mod()
     async def poll_end(self, interaction: discord.Interaction, poll_id: int):
         """Manually end a poll"""
@@ -403,73 +425,12 @@ class Polls(commands.Cog):
                 ephemeral=True
             )
         
-        await self._end_poll(poll_id)
+        poll_data["ended"] = True
         
         await interaction.response.send_message(
             embed=ModEmbed.success("Poll Ended", f"Poll ID: `{poll_id}` has been ended."),
             ephemeral=True
         )
-    
-    @poll_group.command(name="results", description="📊 View poll results")
-    @app_commands.describe(poll_id="The poll ID")
-    async def poll_results(self, interaction: discord.Interaction, poll_id: int):
-        """View detailed poll results"""
-        poll_data = self.active_polls.get(poll_id)
-        
-        if not poll_data:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Not Found", "I couldn't find that poll."),
-                ephemeral=True
-            )
-        
-        votes = self.poll_votes.get(poll_id, {})
-        vote_counts = {i: 0 for i in range(len(poll_data["options"]))}
-        voter_lists = {i: [] for i in range(len(poll_data["options"]))}
-        
-        # Count votes and collect voters
-        for user_id, user_vote in votes.items():
-            if isinstance(user_vote, list):
-                for opt_idx in user_vote:
-                    vote_counts[opt_idx] = vote_counts.get(opt_idx, 0) + 1
-                    voter_lists[opt_idx].append(user_id)
-            else:
-                vote_counts[user_vote] = vote_counts.get(user_vote, 0) + 1
-                voter_lists[user_vote].append(user_id)
-        
-        # Create results embed
-        embed = discord.Embed(
-            title=f"📊 Poll Results: {poll_data['question']}",
-            description=f"Poll ID: `{poll_id}`",
-            color=Config.COLOR_INFO,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        emojis = ["1️⃣", "2️⃣", "3️⃣", "4️⃣", "5️⃣"]
-        total_votes = sum(vote_counts.values())
-        
-        for i, option in enumerate(poll_data["options"]):
-            votes_count = vote_counts.get(i, 0)
-            percentage = (votes_count / total_votes * 100) if total_votes > 0 else 0
-            
-            value = f"**{votes_count}** vote{'s' if votes_count != 1 else ''} ({percentage:.1f}%)"
-            
-            # Show voters if not anonymous
-            if not poll_data.get("anonymous") and voter_lists[i]:
-                voters = voter_lists[i][:10]  # Limit to first 10
-                voter_mentions = [f"<@{uid}>" for uid in voters]
-                value += f"\n{', '.join(voter_mentions)}"
-                if len(voter_lists[i]) > 10:
-                    value += f" +{len(voter_lists[i]) - 10} more"
-            
-            embed.add_field(
-                name=f"{emojis[i]} {option}",
-                value=value,
-                inline=False
-            )
-        
-        embed.set_footer(text=f"Total Votes: {total_votes} | Status: {'Ended' if poll_data.get('ended') else 'Active'}")
-        
-        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 async def setup(bot):

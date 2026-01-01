@@ -261,14 +261,21 @@ class Setup(commands.Cog):
                 guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True),
             }
 
-            staff_role_id = settings.get("staff_role")
-            staff_role = guild.get_role(staff_role_id) if staff_role_id else None
-            if staff_role:
-                overwrites[staff_role] = discord.PermissionOverwrite(
-                    view_channel=True, send_messages=False
-                )
-            else:
-                errors.append("⚠️ Staff role not found; mod logs visibility may be too open.")
+            # Find all staff/mod roles by name and give them view access
+            staff_role_names = ["staff", "trial mod", "mod", "senior mod", "supervisor", "admin"]
+            found_staff_roles = []
+            
+            for role_name in staff_role_names:
+                role = discord.utils.get(guild.roles, name=role_name)
+                if role:
+                    overwrites[role] = discord.PermissionOverwrite(
+                        view_channel=True, 
+                        send_messages=False  # Staff can view but not send in logs
+                    )
+                    found_staff_roles.append(role.name)
+            
+            if not found_staff_roles:
+                errors.append("⚠️ No staff roles found; mod logs visibility may be too open.")
 
             if not mod_category:
                 mod_category = await guild.create_category(
@@ -279,7 +286,7 @@ class Setup(commands.Cog):
             else:
                 await mod_category.edit(
                     overwrites=overwrites,
-                    reason="ModBot Setup: restrict mod logs to staff role",
+                    reason="ModBot Setup: restrict mod logs to staff roles only",
                 )
         except Exception as e:
             errors.append(f"❌ Failed to configure mod category: {e}")

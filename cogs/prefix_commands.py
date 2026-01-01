@@ -710,6 +710,251 @@ class PrefixCommands(commands.Cog):
         except:
             await ctx.send(embed=ModEmbed.error("Failed", "Could not DM user."))
 
+    # ═══════════════════════════════════════════════════════════════
+    # NEW UTILITY COMMANDS
+    # ═══════════════════════════════════════════════════════════════
+
+    @commands.command(name="remindme", aliases=["remind", "reminder"])
+    async def remindme_cmd(self, ctx, time: str, *, reminder: str):
+        """Set a reminder (e.g. ,remindme 10m Do homework)"""
+        units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+        try:
+            unit = time[-1].lower()
+            amount = int(time[:-1])
+            seconds = amount * units.get(unit, 60)
+        except:
+            return await ctx.send(embed=ModEmbed.error("Invalid Time", "Use format like `10m`, `2h`, `1d`"))
+        
+        await ctx.send(embed=ModEmbed.success("⏰ Reminder Set", f"I'll remind you in {time}"))
+        await asyncio.sleep(seconds)
+        
+        try:
+            await ctx.author.send(f"⏰ **Reminder:** {reminder}")
+        except:
+            await ctx.send(f"{ctx.author.mention} ⏰ **Reminder:** {reminder}")
+
+    @commands.command(name="emojis", aliases=["emojilist", "allemojis"])
+    async def emojis_cmd(self, ctx):
+        """List all server emojis"""
+        if not ctx.guild.emojis:
+            return await ctx.send(embed=ModEmbed.error("No Emojis", "This server has no custom emojis."))
+        
+        emoji_str = " ".join([str(e) for e in ctx.guild.emojis[:50]])
+        embed = discord.Embed(title="📝 Server Emojis", description=emoji_str, color=Colors.INFO)
+        embed.set_footer(text=f"Total: {len(ctx.guild.emojis)} emojis")
+        await ctx.send(embed=embed)
+
+    @commands.command(name="enlarge", aliases=["bigemoji", "e"])
+    async def enlarge_cmd(self, ctx, emoji: str):
+        """Enlarge an emoji"""
+        # Extract custom emoji ID
+        if "<" in emoji:
+            emoji_id = emoji.split(":")[-1].replace(">", "")
+            animated = emoji.startswith("<a:")
+            ext = "gif" if animated else "png"
+            url = f"https://cdn.discordapp.com/emojis/{emoji_id}.{ext}"
+            
+            embed = discord.Embed(color=Colors.INFO)
+            embed.set_image(url=url)
+            await ctx.send(embed=embed)
+        else:
+            await ctx.send(embed=ModEmbed.error("Invalid Emoji", "Please provide a custom emoji."))
+
+    @commands.command(name="steal", aliases=["addemoji", "clone"])
+    @commands.has_permissions(manage_emojis=True)
+    async def steal_cmd(self, ctx, emoji: str, name: str = None):
+        """Steal an emoji from another server"""
+        if "<" not in emoji:
+            return await ctx.send(embed=ModEmbed.error("Invalid Emoji", "Must be a custom emoji."))
+        
+        emoji_id = emoji.split(":")[-1].replace(">", "")
+        animated = emoji.startswith("<a:")
+        ext = "gif" if animated else "png"
+        url = f"https://cdn.discordapp.com/emojis/{emoji_id}.{ext}"
+        
+        if not name:
+            name = emoji.split(":")[1]
+        
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as resp:
+                    image = await resp.read()
+            
+            new_emoji = await ctx.guild.create_custom_emoji(name=name, image=image)
+            await ctx.send(embed=ModEmbed.success("✅ Emoji Added", f"Added {new_emoji} as `:{name}:`"))
+        except Exception as e:
+            await ctx.send(embed=ModEmbed.error("Failed", f"Could not steal emoji: {str(e)[:100]}"))
+
+    @commands.command(name="charinfo", aliases=["char", "character"])
+    async def charinfo_cmd(self, ctx, *, characters: str):
+        """Get info about characters"""
+        result = []
+        for char in characters[:20]:
+            code = ord(char)
+            result.append(f"`{char}` - U+{code:04X} ({code})")
+        
+        embed = discord.Embed(title="📝 Character Info", description="\n".join(result), color=Colors.INFO)
+        await ctx.send(embed=embed)
+
+    @commands.command(name="firstmessage", aliases=["first", "fm"])
+    async def firstmessage_cmd(self, ctx, channel: discord.TextChannel = None):
+        """Get the first message in a channel"""
+        channel = channel or ctx.channel
+        try:
+            async for message in channel.history(limit=1, oldest_first=True):
+                embed = discord.Embed(
+                    description=f"[Jump to first message]({message.jump_url})",
+                    color=Colors.INFO
+                )
+                embed.set_author(name=message.author, icon_url=message.author.display_avatar.url)
+                embed.add_field(name="Content", value=message.content[:1024] or "*No content*")
+                embed.set_footer(text=message.created_at.strftime("%Y-%m-%d %H:%M:%S"))
+                await ctx.send(embed=embed)
+        except:
+            await ctx.send(embed=ModEmbed.error("Error", "Could not fetch first message."))
+
+    @commands.command(name="roleall", aliases=["giveroleall"])
+    @commands.has_permissions(administrator=True)
+    async def roleall_cmd(self, ctx, role: discord.Role):
+        """Give a role to everyone in the server"""
+        msg = await ctx.send(embed=ModEmbed.info("⏳ Processing", "Adding role to all members..."))
+        
+        success = 0
+        failed = 0
+        
+        for member in ctx.guild.members:
+            if role in member.roles:
+                continue
+            try:
+                await member.add_roles(role)
+                success += 1
+            except:
+                failed += 1
+        
+        await msg.edit(embed=ModEmbed.success(
+            "✅ Complete",
+            f"Added {role.mention} to **{success}** members.\nFailed: **{failed}**"
+        ))
+
+    @commands.command(name="removeall", aliases=["removeroleall"])
+    @commands.has_permissions(administrator=True)
+    async def removeall_cmd(self, ctx, role: discord.Role):
+        """Remove a role from everyone"""
+        msg = await ctx.send(embed=ModEmbed.info("⏳ Processing", "Removing role from all members..."))
+        
+        success = 0
+        for member in role.members:
+            try:
+                await member.remove_roles(role)
+                success += 1
+            except:
+                pass
+        
+        await msg.edit(embed=ModEmbed.success("✅ Complete", f"Removed {role.mention} from **{success}** members."))
+
+    @commands.command(name="rolecolor", aliases=["rc", "colorole"])
+    @commands.has_permissions(manage_roles=True)
+    async def rolecolor_cmd(self, ctx, role: discord.Role, color: str):
+        """Change a role's color (hex code like #FF0000)"""
+        try:
+            if not color.startswith("#"):
+                color = "#" + color
+            await role.edit(color=discord.Color(int(color[1:], 16)))
+            await ctx.send(embed=ModEmbed.success("🎨 Color Changed", f"{role.mention} color set to `{color}`"))
+        except:
+            await ctx.send(embed=ModEmbed.error("Invalid Color", "Use hex format like `#FF0000`"))
+
+    @commands.command(name="hideall", aliases=["hidechannels"])
+    @commands.has_permissions(administrator=True)
+    async def hideall_cmd(self, ctx):
+        """Hide all channels from @everyone"""
+        count = 0
+        for channel in ctx.guild.channels:
+            try:
+                await channel.set_permissions(ctx.guild.default_role, view_channel=False)
+                count += 1
+            except:
+                pass
+        
+        await ctx.send(embed=ModEmbed.success("👻 Channels Hidden", f"Hid **{count}** channels from @everyone"))
+
+    @commands.command(name="unhideall", aliases=["unhidechannels"])
+    @commands.has_permissions(administrator=True)
+    async def unhideall_cmd(self, ctx):
+        """Unhide all channels for @everyone"""
+        count = 0
+        for channel in ctx.guild.channels:
+            try:
+                await channel.set_permissions(ctx.guild.default_role, view_channel=True)
+                count += 1
+            except:
+                pass
+        
+        await ctx.send(embed=ModEmbed.success("👁️ Channels Visible", f"Unhid **{count}** channels for @everyone"))
+
+    @commands.command(name="createemoji", aliases=["addemoji"])
+    @commands.has_permissions(manage_emojis=True)
+    async def createemoji_cmd(self, ctx, name: str, url: str):
+        """Create an emoji from a URL"""
+        try:
+            import aiohttp
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url) as resp:
+                    image = await resp.read()
+            
+            emoji = await ctx.guild.create_custom_emoji(name=name, image=image)
+            await ctx.send(embed=ModEmbed.success("✅ Emoji Created", f"Added {emoji} as `:{name}:`"))
+        except Exception as e:
+            await ctx.send(embed=ModEmbed.error("Failed", f"Error: {str(e)[:100]}"))
+
+    @commands.command(name="deleteemoji", aliases=["removeemoji"])
+    @commands.has_permissions(manage_emojis=True)
+    async def deleteemoji_cmd(self, ctx, emoji: str):
+        """Delete a server emoji"""
+        if "<" not in emoji:
+            return await ctx.send(embed=ModEmbed.error("Invalid Emoji", "Must be a custom emoji."))
+        
+        emoji_id = int(emoji.split(":")[-1].replace(">", ""))
+        emoji_obj = discord.utils.get(ctx.guild.emojis, id=emoji_id)
+        
+        if emoji_obj:
+            name = emoji_obj.name
+            await emoji_obj.delete()
+            await ctx.send(embed=ModEmbed.success("🗑️ Emoji Deleted", f"Deleted `:{name}:`"))
+        else:
+            await ctx.send(embed=ModEmbed.error("Not Found", "Emoji not found in this server."))
+
+    @commands.command(name="permissions", aliases=["perms", "perm"])
+    async def permissions_cmd(self, ctx, member: discord.Member = None, channel: discord.TextChannel = None):
+        """Check permissions for a user"""
+        member = member or ctx.author
+        channel = channel or ctx.channel
+        
+        perms = channel.permissions_for(member)
+        perm_list = [name.replace("_", " ").title() for name, value in perms if value]
+        
+        embed = discord.Embed(
+            title=f"Permissions for {member}",
+            description=f"**Channel:** {channel.mention}\n\n" + ", ".join(perm_list[:20]),
+            color=member.color
+        )
+        await ctx.send(embed=embed)
+
+    @commands.command(name="color", aliases=["colour"])
+    async def color_cmd(self, ctx, color: str):
+        """Show a color preview"""
+        try:
+            if not color.startswith("#"):
+                color = "#" + color
+            color_int = int(color[1:], 16)
+            embed = discord.Embed(title=color, color=color_int)
+            embed.set_thumbnail(url=f"https://singlecolorimage.com/get/{color[1:]}/100x100")
+            await ctx.send(embed=embed)
+        except:
+            await ctx.send(embed=ModEmbed.error("Invalid Color", "Use hex format like `#FF0000`"))
+
 
 async def setup(bot):
     await bot.add_cog(PrefixCommands(bot))
+
