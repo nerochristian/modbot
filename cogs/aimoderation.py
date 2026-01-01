@@ -18,8 +18,8 @@ from utils.messages import Messages
 
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-USER_MEMORY_WINDOW = 8  # how many past exchanges to keep per user
-USER_MEMORY_MAX_CHARS = 1500  # hard cap on memory string length per user
+USER_MEMORY_WINDOW = 20  # how many past exchanges to keep per user
+USER_MEMORY_MAX_CHARS = 8000  # hard cap on memory string length per user
 
 DEFAULT_AIMOD_SETTINGS: Dict[str, Any] = {
     "aimod_enabled": True,
@@ -350,10 +350,12 @@ Decide what to do and respond ONLY with JSON using the schema from the system me
         channel_snippet = "\n".join(history_lines) or "None"
 
         convo_system = (
-            "You are a chill Discord bot that talks casually. "
-            "Keep answers short, clear, and a bit playful, but don't be rude. "
-            "No paragraphs of essays; 1–3 sentences most of the time. "
-            "You can reference earlier things this user said to you."
+            "You are an intelligent, witty, and highly capable AI assistant for this Discord server. "
+            "Your personality is helpful, observant, and slightly sophisticated but still conversational. "
+            "You can discuss complex topics, offer moderation advice, or just chat. "
+            "Use the provided context (memory and recent messages) to give relevant, coherent answers. "
+            "Keep responses concise (usually 1-3 sentences) unless a detailed explanation is requested. "
+            "Avoid generic bot-like answers; show personality."
         )
 
         user_prompt = (
@@ -376,8 +378,8 @@ Decide what to do and respond ONLY with JSON using the schema from the system me
             return self.client.chat.completions.create(
                 model=model or GROQ_MODEL,
                 messages=messages,
-                temperature=0.6,
-                max_tokens=256,
+                temperature=0.7,
+                max_tokens=512,
             )
 
         try:

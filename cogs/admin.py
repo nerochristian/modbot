@@ -636,65 +636,7 @@ class Admin(commands.Cog):
 
             await self._end_giveaway_record(guild, giveaway, winners, message)
 
-    @app_commands.command(name="settings", description="⚙️ View bot settings for this server")
-    @is_admin()
-    async def settings(self, interaction: discord. Interaction):
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-
-        embed = discord.Embed(
-            title="⚙️ Server Settings",
-            color=Config. COLOR_INFO,
-            timestamp=datetime.utcnow()
-        )
-
-        # Log Channels
-        log_channels = []
-        for key, name in [
-            ('mod_log_channel', 'Mod Logs'),
-            ('audit_log_channel', 'Audit Logs'),
-            ('message_log_channel', 'Message Logs'),
-            ('voice_log_channel', 'Voice Logs'),
-            ('automod_log_channel', 'AutoMod Logs'),
-            ('report_log_channel', 'Report Logs'),
-            ('ticket_log_channel', 'Ticket Logs')
-        ]:
-            channel_id = settings.get(key)
-            if channel_id: 
-                channel = interaction.guild.get_channel(channel_id)
-                log_channels.append(f"**{name}:** {channel.mention if channel else 'Deleted'}")
-            else:
-                log_channels. append(f"**{name}:** Not set")
-
-        embed.add_field(name="📝 Log Channels", value="\n". join(log_channels[: 4]), inline=True)
-        embed.add_field(name="​", value="\n".join(log_channels[4:]), inline=True)
-
-        # Mod Roles
-        mod_roles = []
-        for key, name in [
-            ('admin_role', 'Admin'),
-            ('senior_mod_role', 'Senior Mod'),
-            ('mod_role', 'Moderator'),
-            ('trial_mod_role', 'Trial Mod')
-        ]:
-            role_id = settings.get(key)
-            if role_id:
-                role = interaction. guild.get_role(role_id)
-                mod_roles. append(f"**{name}:** {role.mention if role else 'Deleted'}")
-            else:
-                mod_roles. append(f"**{name}:** Not set")
-
-        embed.add_field(name="🏷️ Mod Roles", value="\n".join(mod_roles), inline=False)
-
-        # AutoMod Status
-        automod_status = "🟢 Enabled" if settings. get('automod_enabled') else "🔴 Disabled"
-        antiraid_status = "🟢 Enabled" if settings.get('antiraid_enabled') else "🔴 Disabled"
-        raid_mode = "🚨 ACTIVE" if settings.get('raid_mode') else "✅ Inactive"
-
-        embed.add_field(name="🤖 AutoMod", value=automod_status, inline=True)
-        embed.add_field(name="🛡️ Anti-Raid", value=antiraid_status, inline=True)
-        embed.add_field(name="🚨 Raid Mode", value=raid_mode, inline=True)
-
-        await interaction.response.send_message(embed=embed)
+    # Settings command removed: moved to cogs.settings
 
     @app_commands.command(name="modrole", description="🏷️ Add or remove a moderator role")
     @app_commands.describe(action="Add or remove", role="The role")
