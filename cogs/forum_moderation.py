@@ -42,9 +42,16 @@ class ForumActionButtons(discord.ui.View):
                 thread = await interaction.guild.fetch_channel(self.thread_id)
             
             if thread:
-                await thread.send(
-                    f"✅ **Post Approved** - This post has been approved by {interaction.user.mention}."
+                # Send approval message to the thread
+                approval_embed = discord.Embed(
+                    title="✅ Post Approved",
+                    description=f"This post has been reviewed and approved by a moderator.\n\n"
+                                f"**Approved by:** {interaction.user.mention}\n"
+                                f"Thank you for your contribution!",
+                    color=0x00FF00,
+                    timestamp=datetime.now(timezone.utc)
                 )
+                await thread.send(embed=approval_embed)
                 
                 # Remove from forum moderation cog blacklist if exists
                 forum_cog = self.bot.get_cog("ForumModeration")
