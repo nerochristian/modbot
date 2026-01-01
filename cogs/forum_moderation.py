@@ -283,29 +283,38 @@ class ForumModeration(commands.Cog):
         reason: Optional[str] = "No reason provided"
     ):
         """Manage forum moderation"""
+        # Defer once at the start for all actions
+        await interaction.response.defer(ephemeral=True)
         
-        if action == "check":
-            await self._forum_check(interaction, thread)
-        elif action == "approve":
-            await self._forum_approve(interaction, thread)
-        elif action == "delete":
-            await self._forum_delete(interaction, thread, reason)
-        elif action == "blacklist":
-            await self._forum_blacklist(interaction, thread)
-        elif action == "checkall":
-            await self._forum_checkall(interaction)
-        elif action == "list":
-            await self._forum_list(interaction)
+        try:
+            if action == "check":
+                await self._forum_check(interaction, thread)
+            elif action == "approve":
+                await self._forum_approve(interaction, thread)
+            elif action == "delete":
+                await self._forum_delete(interaction, thread, reason)
+            elif action == "blacklist":
+                await self._forum_blacklist(interaction, thread)
+            elif action == "checkall":
+                await self._forum_checkall(interaction)
+            elif action == "list":
+                await self._forum_list(interaction)
+        except Exception as e:
+            print(f"[ForumMod] Error in /forum {action}: {e}")
+            import traceback
+            traceback.print_exc()
+            await interaction.followup.send(
+                embed=ModEmbed.error("Error", f"An error occurred: {str(e)[:200]}"),
+                ephemeral=True
+            )
     
     async def _forum_check(self, interaction: discord.Interaction, thread: Optional[discord.Thread]):
-        """Manually check a forum post with AI"""
+        """Manually check a forum post with API"""
         if not thread:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 embed=ModEmbed.error("Missing Argument", "Please specify a thread to check."),
                 ephemeral=True
             )
-        
-        await interaction.response.defer(ephemeral=True)
         
         try:
             starter_message = await thread.fetch_message(thread.id)
@@ -351,7 +360,7 @@ class ForumModeration(commands.Cog):
     async def _forum_approve(self, interaction: discord.Interaction, thread: Optional[discord.Thread]):
         """Manually approve a forum post"""
         if not thread:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 embed=ModEmbed.error("Missing Argument", "Please specify a thread to approve."),
                 ephemeral=True
             )
@@ -363,7 +372,7 @@ class ForumModeration(commands.Cog):
             f"✅ **Manually Approved** - This post has been approved by {interaction.user.mention}."
         )
         
-        await interaction.response.send_message(
+        await interaction.followup.send(
             embed=ModEmbed.success("Post Approved", f"Approved {thread.mention}"),
             ephemeral=True
         )
@@ -371,7 +380,7 @@ class ForumModeration(commands.Cog):
     async def _forum_delete(self, interaction: discord.Interaction, thread: Optional[discord.Thread], reason: str):
         """Delete a forum post"""
         if not thread:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 embed=ModEmbed.error("Missing Argument", "Please specify a thread to delete."),
                 ephemeral=True
             )
@@ -428,12 +437,12 @@ class ForumModeration(commands.Cog):
             "Thread Deleted",
             f"**Thread:** {thread_name}\n**Author:** {thread_owner.mention if thread_owner else 'Unknown'}\n**Reason:** {reason}"
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
     
     async def _forum_blacklist(self, interaction: discord.Interaction, thread: Optional[discord.Thread]):
         """Add a thread to the blacklist"""
         if not thread:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 embed=ModEmbed.error("Missing Argument", "Please specify a thread to blacklist."),
                 ephemeral=True
             )
@@ -455,14 +464,14 @@ class ForumModeration(commands.Cog):
         
         await self._log_to_mod_log(interaction.guild, thread, f"Manually blacklisted by {interaction.user}", content)
         
-        await interaction.response.send_message(
+        await interaction.followup.send(
             embed=ModEmbed.success("Thread Blacklisted", f"Blacklisted {thread.mention} and sent flagged notification."),
             ephemeral=True
         )
     
     async def _forum_checkall(self, interaction: discord.Interaction):
         """Check all recent posts in the anime forum"""
-        await interaction.response.defer(ephemeral=True)
+        # Already deferred by main command
         
         forum = interaction.guild.get_channel(self.anime_forum_id)
         if not forum or not isinstance(forum, discord.ForumChannel):
@@ -554,14 +563,14 @@ class ForumModeration(commands.Cog):
     async def _forum_list(self, interaction: discord.Interaction):
         """List all blacklisted threads"""
         if not self.blacklisted_posts:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 embed=ModEmbed.info("No Blacklisted Posts", "No forum posts are currently blacklisted."),
                 ephemeral=True
             )
         
         forum = interaction.guild.get_channel(self.anime_forum_id)
         if not forum:
-            return await interaction.response.send_message(
+            return await interaction.followup.send(
                 embed=ModEmbed.error("Error", "Anime forum channel not found."),
                 ephemeral=True
             )
@@ -582,7 +591,7 @@ class ForumModeration(commands.Cog):
         )
         embed.set_footer(text=f"Total: {len(self.blacklisted_posts)} posts")
         
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 async def setup(bot):
