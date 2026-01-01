@@ -98,20 +98,21 @@ class PrefixCommands(commands.Cog):
     #     await ctx.guild.unban(member, reason="Softban complete")
     #     await ctx.send(embed=ModEmbed.success("🧹 Softbanned", f"{member} softbanned (messages deleted)."))
 
-    @commands.command(name="purge", aliases=["clear", "prune"])
-    @commands.has_permissions(manage_messages=True)
-    async def purge_cmd(self, ctx, amount: int = 10):
-        """Delete messages in bulk"""
-        deleted = await ctx.channel.purge(limit=amount + 1)
-        msg = await ctx.send(embed=ModEmbed.success("🗑️ Purged", f"Deleted {len(deleted)-1} messages."))
-        await msg.delete(delay=3)
+    # NOTE: purge is defined in moderation.py
+    # @commands.command(name="purge", aliases=["clear", "prune"])
+    # @commands.has_permissions(manage_messages=True)
+    # async def purge_cmd(self, ctx, amount: int = 10):
+    #     """Delete messages in bulk"""
+    #     deleted = await ctx.channel.purge(limit=amount + 1)
+    #     msg = await ctx.send(embed=ModEmbed.success("🗑️ Purged", f"Deleted {len(deleted)-1} messages."))
+    #     await msg.delete(delay=3)
 
-    @commands.command(name="purgeuser", aliases=["pu"])
-    @commands.has_permissions(manage_messages=True)
-    async def purgeuser_cmd(self, ctx, member: discord.Member, amount: int = 50):
-        """Delete messages from a specific user"""
-        deleted = await ctx.channel.purge(limit=amount, check=lambda m: m.author == member)
-        await ctx.send(embed=ModEmbed.success("🗑️ Purged", f"Deleted {len(deleted)} messages from {member}."), delete_after=3)
+    # @commands.command(name="purgeuser", aliases=["pu"])
+    # @commands.has_permissions(manage_messages=True)
+    # async def purgeuser_cmd(self, ctx, member: discord.Member, amount: int = 50):
+    #     """Delete messages from a specific user"""
+    #     deleted = await ctx.channel.purge(limit=amount, check=lambda m: m.author == member)
+    #     await ctx.send(embed=ModEmbed.success("🗑️ Purged", f"Deleted {len(deleted)} messages from {member}."), delete_after=3)
 
     @commands.command(name="slowmode", aliases=["slow"])
     @commands.has_permissions(manage_channels=True)
