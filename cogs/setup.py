@@ -155,6 +155,13 @@ class Setup(commands.Cog):
                 "hoist": False,
                 "setting_key": "verified_role",
             },
+            {
+                "name": "log-access",
+                "color": discord.Color.teal(),
+                "permissions": discord.Permissions.none(),
+                "hoist": False,
+                "setting_key": "log_access_role",
+            },
         ]
 
         settings = await self.bot.db.get_settings(guild.id)
@@ -271,6 +278,17 @@ class Setup(commands.Cog):
                     overwrites[role] = discord.PermissionOverwrite(
                         view_channel=True, 
                         send_messages=False  # Staff can view but not send in logs
+                    )
+                    found_staff_roles.append(role.name)
+            
+            # Special handling for log-access role
+            log_access_role_id = settings.get("log_access_role")
+            if log_access_role_id:
+                role = guild.get_role(log_access_role_id)
+                if role:
+                    overwrites[role] = discord.PermissionOverwrite(
+                        view_channel=True,
+                        send_messages=False
                     )
                     found_staff_roles.append(role.name)
             

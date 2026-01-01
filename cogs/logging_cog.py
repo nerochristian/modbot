@@ -249,14 +249,18 @@ class Logging(commands.Cog):
             return
         
         embed = discord.Embed(
-            title="🗑️ Message Deleted",
-            color=Colors.ERROR,
+            title="Message Deleted",
+            color=0xFF0000,
             timestamp=datetime.now(timezone.utc)
         )
         
+        # Set author to match the image style
+        embed.set_author(name=f"{message.author.name}", icon_url=message.author.display_avatar.url)
+        
+        # Top 3 fields inline
         embed.add_field(
             name="Author",
-            value=f"{message.author.mention} (`{message.author.id}`)",
+            value=f"{message.author.mention} ({message.author.name})",
             inline=True
         )
         embed.add_field(
@@ -266,18 +270,23 @@ class Logging(commands.Cog):
         )
         embed.add_field(
             name="Message ID",
-            value=f"`{message.id}`",
+            value=f"{message.id}",
             inline=True
         )
         
         # Content (truncated if too long)
-        if message.content:
-            content = message.content[:1000]
-            if len(message.content) > 1000:
-                content += "\n\n*[Content truncated]*"
-            embed.add_field(name="Content", value=content, inline=False)
-        else:
-            embed.add_field(name="Content", value="*No text content*", inline=False)
+        content_value = message.content
+        if not content_value and not message.embeds and not message.attachments:
+            content_value = "*No content*"
+        elif not content_value:
+            # If no text content but has attachments/embeds, describe them in content or leave empty if handled below
+            content_value = ""
+
+        if len(content_value) > 1024:
+            content_value = content_value[:1021] + "..."
+            
+        if content_value:
+            embed.add_field(name="Content", value=content_value, inline=False)
         
         # Attachments
         if message.attachments:
@@ -299,8 +308,8 @@ class Logging(commands.Cog):
                 inline=False
             )
         
-        embed.set_thumbnail(url=message.author.display_avatar.url)
-        embed.set_footer(text=f"User ID: {message.author.id}")
+        # Footer
+        embed.set_footer(text=f"Author ID: {message.author.id}")
         
         await self.safe_send_log(channel, embed)
 
@@ -322,14 +331,16 @@ class Logging(commands.Cog):
             return
         
         embed = discord.Embed(
-            title="✏️ Message Edited",
+            title="Message Edited",
             color=Colors.WARNING,
             timestamp=datetime.now(timezone.utc)
         )
         
+        embed.set_author(name=f"{before.author.name}", icon_url=before.author.display_avatar.url)
+        
         embed.add_field(
             name="Author",
-            value=f"{before.author.mention} (`{before.author.id}`)",
+            value=f"{before.author.mention} ({before.author.name})",
             inline=True
         )
         embed.add_field(
@@ -339,7 +350,7 @@ class Logging(commands.Cog):
         )
         embed.add_field(
             name="Jump",
-            value=f"[Click Here]({after.jump_url})",
+            value=f"[Go to Message]({after.jump_url})",
             inline=True
         )
         
@@ -355,7 +366,6 @@ class Logging(commands.Cog):
             after_content += "..."
         embed.add_field(name="After", value=after_content, inline=False)
         
-        embed.set_thumbnail(url=before.author.display_avatar.url)
         embed.set_footer(text=f"Message ID: {before.id}")
         
         await self.safe_send_log(channel, embed)
@@ -376,7 +386,7 @@ class Logging(commands.Cog):
             return
         
         embed = discord.Embed(
-            title="🗑️ Bulk Message Delete",
+            title="Bulk Message Delete",
             description=f"**{len(messages)}** messages were deleted in {messages[0].channel.mention}",
             color=Colors.ERROR,
             timestamp=datetime.now(timezone.utc)
@@ -405,14 +415,16 @@ class Logging(commands.Cog):
         account_age = (datetime.now(timezone.utc) - member.created_at).days
         
         embed = discord.Embed(
-            title="📥 Member Joined",
+            title="Member Joined",
             color=Colors.SUCCESS,
             timestamp=datetime.now(timezone.utc)
         )
         
+        embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
+        
         embed.add_field(
             name="User",
-            value=f"{member.mention} (`{member.id}`)",
+            value=f"{member.mention} ({member.name})",
             inline=True
         )
         embed.add_field(
@@ -425,13 +437,13 @@ class Logging(commands.Cog):
             value=f"<t:{int(member.created_at.timestamp())}:R>",
             inline=True
         )
+        
         embed.add_field(
             name="Member Count",
             value=f"#{member.guild.member_count}",
-            inline=True
+            inline=False
         )
         
-        embed.set_thumbnail(url=member.display_avatar.url)
         embed.set_footer(text=f"User ID: {member.id}")
         
         # Warning for new accounts
@@ -464,14 +476,16 @@ class Logging(commands.Cog):
             return
         
         embed = discord.Embed(
-            title="📤 Member Left",
+            title="Member Left",
             color=Colors.ERROR,
             timestamp=datetime.now(timezone.utc)
         )
         
+        embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
+        
         embed.add_field(
             name="User",
-            value=f"{member.mention} (`{member.id}`)",
+            value=f"{member.mention} ({member.name})",
             inline=True
         )
         
@@ -479,15 +493,18 @@ class Logging(commands.Cog):
         if member.joined_at:
             days_in_server = (datetime.now(timezone.utc) - member.joined_at).days
             embed.add_field(
-                name="Joined",
-                value=f"<t:{int(member.joined_at.timestamp())}:R>",
-                inline=True
-            )
-            embed.add_field(
                 name="Time in Server",
                 value=f"{days_in_server} days",
                 inline=True
             )
+        else:
+             embed.add_field(name="Time in Server", value="Unknown", inline=True)
+             
+        embed.add_field(
+            name="Members",
+            value=f"#{member.guild.member_count}",
+            inline=True
+        )
         
         # Roles
         roles = [r.mention for r in member.roles[1:] if r.name != "@everyone"]
@@ -497,8 +514,7 @@ class Logging(commands.Cog):
                 roles_text += f" *+{len(roles) - 10} more*"
             embed.add_field(name="Roles", value=roles_text, inline=False)
         
-        embed.set_thumbnail(url=member.display_avatar.url)
-        embed.set_footer(text=f"User ID: {member.id} | Members: {member.guild.member_count}")
+        embed.set_footer(text=f"User ID: {member.id}")
         
         # Check audit log for kick
         try:
@@ -536,14 +552,16 @@ class Logging(commands.Cog):
         # ===== NICKNAME CHANGE =====
         if before.nick != after.nick:
             embed = discord.Embed(
-                title="✏️ Nickname Changed",
+                title="Nickname Changed",
                 color=Colors.INFO,
                 timestamp=datetime.now(timezone.utc)
             )
             
+            embed.set_author(name=f"{after.name}", icon_url=after.display_avatar.url)
+            
             embed.add_field(
                 name="User",
-                value=f"{after.mention} (`{after.id}`)",
+                value=f"{after.mention} ({after.name})",
                 inline=True
             )
             embed.add_field(
@@ -571,7 +589,6 @@ class Logging(commands.Cog):
             )
             embed.add_field(name="Reason", value=self._shorten(reason, 250), inline=False)
 
-            embed.set_thumbnail(url=after.display_avatar.url)
             embed.set_footer(text=f"User ID: {after.id}")
             
             await self.safe_send_log(channel, embed)
@@ -583,15 +600,17 @@ class Logging(commands.Cog):
             
             if added or removed:
                 embed = discord.Embed(
-                    title="🏷️ Roles Updated",
+                    title="Roles Updated",
                     color=Colors.INFO,
                     timestamp=datetime.now(timezone.utc)
                 )
                 
+                embed.set_author(name=f"{after.name}", icon_url=after.display_avatar.url)
+                
                 embed.add_field(
                     name="User",
-                    value=f"{after.mention} (`{after.id}`)",
-                    inline=False
+                    value=f"{after.mention} ({after.name})",
+                    inline=True
                 )
                 
                 added_text = "*None*"
@@ -622,7 +641,6 @@ class Logging(commands.Cog):
                 )
                 embed.add_field(name="Reason", value=self._shorten(reason, 250), inline=False)
 
-                embed.set_thumbnail(url=after.display_avatar.url)
                 embed.set_footer(text=f"User ID: {after.id}")
                 
                 await self.safe_send_log(channel, embed)
@@ -632,19 +650,26 @@ class Logging(commands.Cog):
             if after.timed_out_until and after.timed_out_until > datetime.now(timezone.utc):
                 # User was timed out
                 embed = discord.Embed(
-                    title="🔇 Member Timed Out",
+                    title="Member Timed Out",
                     color=Colors.WARNING,
                     timestamp=datetime.now(timezone.utc)
                 )
                 
+                embed.set_author(name=f"{after.name}", icon_url=after.display_avatar.url)
+                
                 embed.add_field(
                     name="User",
-                    value=f"{after.mention} (`{after.id}`)",
+                    value=f"{after.mention} ({after.name})",
                     inline=True
                 )
                 embed.add_field(
                     name="Until",
                     value=f"<t:{int(after.timed_out_until.timestamp())}:F>",
+                    inline=True
+                )
+                embed.add_field(
+                    name="Duration",
+                    value=f"<t:{int(after.timed_out_until.timestamp())}:R>",
                     inline=True
                 )
                 
@@ -657,46 +682,28 @@ class Logging(commands.Cog):
                 reason = getattr(entry, "reason", None)
 
                 embed.add_field(
-                    name="Duration",
-                    value=f"<t:{int(after.timed_out_until.timestamp())}:R>",
-                    inline=True
-                )
-                embed.add_field(
                     name="Moderator",
                     value=moderator.mention if moderator else "*Unknown*",
                     inline=True
                 )
                 embed.add_field(name="Reason", value=self._shorten(reason, 250), inline=False)
 
-                entry = await self._find_recent_audit_entry(
-                    before.guild,
-                    action=discord.AuditLogAction.member_role_update,
-                    target_id=after.id,
-                )
-                moderator = getattr(entry, "user", None)
-                reason = getattr(entry, "reason", None)
-                embed.add_field(
-                    name="Moderator",
-                    value=moderator.mention if moderator else "*Unknown*",
-                    inline=True
-                )
-                embed.add_field(name="Reason", value=self._shorten(reason, 250), inline=False)
-
-                embed.set_thumbnail(url=after.display_avatar.url)
                 embed.set_footer(text=f"User ID: {after.id}")
                 
                 await self.safe_send_log(channel, embed)
             elif before.timed_out_until and not after.timed_out_until:
                 # Timeout removed
                 embed = discord.Embed(
-                    title="🔊 Timeout Removed",
+                    title="Timeout Removed",
                     color=Colors.SUCCESS,
                     timestamp=datetime.now(timezone.utc)
                 )
                 
+                embed.set_author(name=f"{after.name}", icon_url=after.display_avatar.url)
+                
                 embed.add_field(
                     name="User",
-                    value=f"{after.mention} (`{after.id}`)",
+                    value=f"{after.mention} ({after.name})",
                     inline=True
                 )
                 
@@ -710,7 +717,6 @@ class Logging(commands.Cog):
 
                 prev_ts = int(before.timed_out_until.timestamp())
                 embed.add_field(name="Previous Until", value=f"<t:{prev_ts}:F>", inline=True)
-                embed.add_field(name="Was Remaining", value=f"<t:{prev_ts}:R>", inline=True)
                 embed.add_field(
                     name="Moderator",
                     value=moderator.mention if moderator else "*Unknown*",
@@ -718,7 +724,6 @@ class Logging(commands.Cog):
                 )
                 embed.add_field(name="Reason", value=self._shorten(reason, 250), inline=False)
 
-                embed.set_thumbnail(url=after.display_avatar.url)
                 embed.set_footer(text=f"User ID: {after.id}")
                 
                 await self.safe_send_log(channel, embed)
@@ -742,11 +747,13 @@ class Logging(commands.Cog):
         # ===== JOINED VOICE =====
         if before.channel is None and after.channel is not None:
             embed = discord.Embed(
-                title="🔊 Joined Voice Channel",
+                title="Joined Voice Channel",
                 color=Colors.SUCCESS,
                 timestamp=datetime.now(timezone.utc)
             )
-            embed.add_field(name="User", value=member.mention, inline=True)
+            embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
+            
+            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
             embed.add_field(name="Channel", value=after.channel.mention, inline=True)
             embed.add_field(
                 name="Members",
@@ -757,21 +764,25 @@ class Logging(commands.Cog):
         # ===== LEFT VOICE =====
         elif before.channel is not None and after.channel is None:
             embed = discord.Embed(
-                title="🔇 Left Voice Channel",
+                title="Left Voice Channel",
                 color=Colors.ERROR,
                 timestamp=datetime.now(timezone.utc)
             )
-            embed.add_field(name="User", value=member.mention, inline=True)
+            embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
+            
+            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
             embed.add_field(name="Channel", value=before.channel.mention, inline=True)
         
         # ===== SWITCHED VOICE =====
         elif before.channel != after.channel and before.channel and after.channel:
             embed = discord.Embed(
-                title="🔀 Switched Voice Channel",
+                title="Switched Voice Channel",
                 color=Colors.INFO,
                 timestamp=datetime.now(timezone.utc)
             )
-            embed.add_field(name="User", value=member.mention, inline=True)
+            embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
+            
+            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
             embed.add_field(name="From", value=before.channel.mention, inline=True)
             embed.add_field(name="To", value=after.channel.mention, inline=True)
         
@@ -779,11 +790,13 @@ class Logging(commands.Cog):
         elif before.self_mute != after.self_mute:
             action = "Muted" if after.self_mute else "Unmuted"
             embed = discord.Embed(
-                title=f"🎤 Self {action}",
+                title=f"Self {action}",
                 color=Colors.INFO if after.self_mute else Colors.SUCCESS,
                 timestamp=datetime.now(timezone.utc)
             )
-            embed.add_field(name="User", value=member.mention, inline=True)
+            embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
+            
+            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
             if after.channel:
                 embed.add_field(name="Channel", value=after.channel.mention, inline=True)
         
@@ -791,40 +804,45 @@ class Logging(commands.Cog):
         elif before.self_deaf != after.self_deaf:
             action = "Deafened" if after.self_deaf else "Undeafened"
             embed = discord.Embed(
-                title=f"🔇 Self {action}",
+                title=f"Self {action}",
                 color=Colors.INFO if after.self_deaf else Colors.SUCCESS,
                 timestamp=datetime.now(timezone.utc)
             )
-            embed.add_field(name="User", value=member.mention, inline=True)
+            embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
+            
+            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
             if after.channel:
                 embed.add_field(name="Channel", value=after.channel.mention, inline=True)
-        
-        # ===== STREAM START/STOP =====
+
+        # ===== STREAMING START/STOP =====
         elif before.self_stream != after.self_stream:
-            action = "Started" if after.self_stream else "Stopped"
+            action = "Started Streaming" if after.self_stream else "Stopped Streaming"
             embed = discord.Embed(
-                title=f"📡 {action} Streaming",
-                color=Colors.SUCCESS if after.self_stream else Colors.INFO,
+                title=f"{action}",
+                color=Colors.INFO if after.self_stream else Colors.ERROR,
                 timestamp=datetime.now(timezone.utc)
             )
-            embed.add_field(name="User", value=member.mention, inline=True)
+            embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
+            
+            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
             if after.channel:
                 embed.add_field(name="Channel", value=after.channel.mention, inline=True)
-        
+
         # ===== VIDEO START/STOP =====
         elif before.self_video != after.self_video:
-            action = "Started" if after.self_video else "Stopped"
+            action = "Started Video" if after.self_video else "Stopped Video"
             embed = discord.Embed(
-                title=f"📹 {action} Video",
-                color=Colors.SUCCESS if after.self_video else Colors.INFO,
+                title=f"{action}",
+                color=Colors.INFO if after.self_video else Colors.ERROR,
                 timestamp=datetime.now(timezone.utc)
             )
-            embed.add_field(name="User", value=member.mention, inline=True)
+            embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
+            
+            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
             if after.channel:
                 embed.add_field(name="Channel", value=after.channel.mention, inline=True)
-        
+
         if embed:
-            embed.set_thumbnail(url=member.display_avatar.url)
             embed.set_footer(text=f"User ID: {member.id}")
             await self.safe_send_log(channel, embed)
 

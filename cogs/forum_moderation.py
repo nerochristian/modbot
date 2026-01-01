@@ -63,6 +63,7 @@ class ForumActionButtons(discord.ui.View):
                 if embed:
                     embed.color = 0x00FF00
                     embed.title = "✅ Forum Post Approved"
+                    embed.description = f"**Approved by:** {interaction.user.mention}\n\n" + (embed.description or "")
                     embed.set_footer(text=f"Approved by {interaction.user} at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
                 
                 # Disable buttons
@@ -127,6 +128,7 @@ class ForumActionButtons(discord.ui.View):
                 if embed:
                     embed.color = 0xFF0000
                     embed.title = "🗑️ Forum Post Deleted"
+                    embed.description = f"**Deleted by:** {interaction.user.mention}\n\n" + (embed.description or "")
                     embed.set_footer(text=f"Deleted by {interaction.user} at {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}")
                 
                 # Disable buttons
