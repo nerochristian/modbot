@@ -32,7 +32,8 @@ except ImportError:
 # Try to import voice-recv for speaking detection
 try:
     import discord.ext.voice_recv as voice_recv
-    VOICE_RECV_AVAILABLE = True
+    # Temporarily disabled due to unhandled OpusError/corrupted stream crashes on host
+    VOICE_RECV_AVAILABLE = False 
 except ImportError:
     VOICE_RECV_AVAILABLE = False
 

@@ -1444,8 +1444,14 @@ class Setup(commands.Cog):
         summary.set_footer(text="Use /help for all available commands")
 
         # Components v2: original interaction response cannot be edited with embeds.
-        layout = await layout_view_from_embeds(embed=summary)
-        await interaction.edit_original_response(view=layout)
+        try:
+            layout = await layout_view_from_embeds(embed=summary)
+            await interaction.edit_original_response(view=layout)
+        except (discord.NotFound, discord.HTTPException, discord.InteractionResponded):
+            # Interaction might be stale, message deleted, or already responded to
+            pass
+        except Exception:
+            pass
 
 
 async def setup(bot: commands.Bot):
