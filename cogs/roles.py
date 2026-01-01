@@ -326,6 +326,9 @@ class Roles(commands.Cog):
         action="The action to perform",
         user="Target user (for add/remove)",
         role="Target role",
+        role2="Second role (optional)",
+        role3="Third role (optional)",
+        role4="Fourth role (optional)",
         name="Role name (for create)",
         color="Hex color e.g. #ff0000 (for create)",
         hoist="Show separately in member list (for create)",
@@ -336,6 +339,9 @@ class Roles(commands.Cog):
         interaction: discord.Interaction,
         action: Literal["add", "remove", "create", "delete", "all", "bots", "humans", "info"],
         role: Optional[discord.Role] = None,
+        role2: Optional[discord.Role] = None,
+        role3: Optional[discord.Role] = None,
+        role4: Optional[discord.Role] = None,
         user: Optional[discord.Member] = None,
         name: Optional[str] = None,
         color: Optional[str] = None,
@@ -347,148 +353,162 @@ class Roles(commands.Cog):
                 ephemeral=True
             )
 
+        # Collect all roles provided
+        roles_list = [r for r in [role, role2, role3, role4] if r is not None]
+        primary_role = roles_list[0] if roles_list else None
+
         # Route to appropriate handler
         if action == "add":
-            await self._role_add(interaction, user, role)
+            await self._role_add(interaction, user, roles_list)
         elif action == "remove":
-            await self._role_remove(interaction, user, role)
+            await self._role_remove(interaction, user, roles_list)
         elif action == "create":
             await self._role_create(interaction, name, color, hoist)
         elif action == "delete":
-            await self._role_delete(interaction, role)
+            await self._role_delete(interaction, primary_role)
         elif action == "all":
-            await self._role_all(interaction, role)
+            await self._role_all(interaction, primary_role)
         elif action == "bots":
-            await self._role_bots(interaction, role)
+            await self._role_bots(interaction, primary_role)
         elif action == "humans":
-            await self._role_humans(interaction, role)
+            await self._role_humans(interaction, primary_role)
         elif action == "info":
-            await self._role_info(interaction, role)
+            await self._role_info(interaction, primary_role)
 
-    async def _role_add(self, interaction: discord.Interaction, user: Optional[discord.Member], role: Optional[discord.Role]):
-        if not user or not role:
+    async def _role_add(self, interaction: discord.Interaction, user: Optional[discord.Member], roles: list[discord.Role]):
+        if not user or not roles:
             return await interaction.response.send_message(
-                embed=ModEmbed.error("Missing Arguments", "Please specify both `user` and `role`."),
+                embed=ModEmbed.error("Missing Arguments", "Please specify `user` and at least one `role`."),
                 ephemeral=True
             )
 
-        # Bot-owner override for safe role assignment
-        owner_override, owner_error = await self._owner_override_for_role(interaction, role)
-        if not owner_override:
-            can_manage, error = self.can_manage_role(interaction.user, role)
-            if not can_manage:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Permission Denied", error),
-                    ephemeral=True,
-                )
+        added_roles = []
+        failed_roles = []
+        
+        await interaction.response.defer()
 
-            can_manage_user, error = self.can_manage_target(interaction.user, user)
-            if not can_manage_user:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Permission Denied", error),
-                    ephemeral=True,
-                )
-        elif owner_error:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Permission Denied", owner_error),
-                ephemeral=True,
-            )
+        for role in roles:
+            # Bot-owner override for safe role assignment
+            owner_override, owner_error = await self._owner_override_for_role(interaction, role)
+            
+            can_proceed = False
+            if owner_override:
+                can_proceed = True
+            else:
+                can_manage, error = self.can_manage_role(interaction.user, role)
+                can_manage_user, error2 = self.can_manage_target(interaction.user, user)
+                if can_manage and can_manage_user:
+                    can_proceed = True
+            
+            if not can_proceed:
+                failed_roles.append(f"{role.mention} (No Permission)")
+                continue
 
-        if (
-            interaction.guild
-            and user.id == interaction.guild.owner_id
-            and interaction.user.id != interaction.guild.owner_id
-            and not is_bot_owner_id(interaction.user.id)
-        ):
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Permission Denied", "You cannot manage the server owner's roles."),
-                ephemeral=True,
-            )
-        
-        if role >= interaction.guild.me.top_role:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Bot Permission Error", "I cannot manage this role as it's higher than or equal to my highest role."),
-                ephemeral=True
-            )
-        
-        if role in user.roles:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Already Has Role", f"{user.mention} already has {role.mention}"),
-                ephemeral=True
-            )
-        
-        if role.managed:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Managed Role", "This role is managed by an integration and cannot be manually assigned."),
-                ephemeral=True
-            )
-        
-        await user.add_roles(role, reason=f"Added by {interaction.user}")
-        embed = ModEmbed.success("Role Added", f"Added {role.mention} to {user.mention}")
-        embed.set_footer(text=f"By {interaction.user}")
-        await interaction.response.send_message(embed=embed)
+            if (
+                interaction.guild
+                and user.id == interaction.guild.owner_id
+                and interaction.user.id != interaction.guild.owner_id
+                and not is_bot_owner_id(interaction.user.id)
+            ):
+                failed_roles.append(f"{role.mention} (Server Owner Protected)")
+                continue
+            
+            if role >= interaction.guild.me.top_role:
+                failed_roles.append(f"{role.mention} (Bot Hierarchy)")
+                continue
+            
+            if role in user.roles:
+                failed_roles.append(f"{role.mention} (Already Has)")
+                continue
+            
+            if role.managed:
+                failed_roles.append(f"{role.mention} (Managed Role)")
+                continue
+            
+            try:
+                await user.add_roles(role, reason=f"Added by {interaction.user}")
+                added_roles.append(role.mention)
+            except Exception as e:
+                failed_roles.append(f"{role.mention} (Error: {e})")
 
-    async def _role_remove(self, interaction: discord.Interaction, user: Optional[discord.Member], role: Optional[discord.Role]):
-        if not user or not role:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Missing Arguments", "Please specify both `user` and `role`."),
+        if added_roles:
+            embed = ModEmbed.success("Roles Added", f"Added {', '.join(added_roles)} to {user.mention}")
+            if failed_roles:
+                embed.add_field(name="Failed to Add", value="\n".join(failed_roles), inline=False)
+            embed.set_footer(text=f"By {interaction.user}")
+            await interaction.followup.send(embed=embed)
+        else:
+            await interaction.followup.send(
+                embed=ModEmbed.error("Failed to Add Roles", "\n".join(failed_roles)),
                 ephemeral=True
             )
 
-        owner_override, owner_error = await self._owner_override_for_role(interaction, role)
-        if not owner_override:
-            can_manage, error = self.can_manage_role(interaction.user, role)
-            if not can_manage:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Permission Denied", error),
-                    ephemeral=True,
-                )
-
-            can_manage_user, error = self.can_manage_target(interaction.user, user)
-            if not can_manage_user:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Permission Denied", error),
-                    ephemeral=True,
-                )
-        elif owner_error:
+    async def _role_remove(self, interaction: discord.Interaction, user: Optional[discord.Member], roles: list[discord.Role]):
+        if not user or not roles:
             return await interaction.response.send_message(
-                embed=ModEmbed.error("Permission Denied", owner_error),
-                ephemeral=True,
+                embed=ModEmbed.error("Missing Arguments", "Please specify `user` and at least one `role`."),
+                ephemeral=True
             )
 
-        if (
-            interaction.guild
-            and user.id == interaction.guild.owner_id
-            and interaction.user.id != interaction.guild.owner_id
-            and not is_bot_owner_id(interaction.user.id)
-        ):
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Permission Denied", "You cannot manage the server owner's roles."),
-                ephemeral=True,
-            )
+        removed_roles = []
+        failed_roles = []
         
-        if role >= interaction.guild.me.top_role:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Bot Permission Error", "I cannot manage this role as it's higher than or equal to my highest role."),
+        await interaction.response.defer()
+
+        for role in roles:
+            owner_override, owner_error = await self._owner_override_for_role(interaction, role)
+            
+            can_proceed = False
+            if owner_override:
+                can_proceed = True
+            else:
+                can_manage, error = self.can_manage_role(interaction.user, role)
+                can_manage_user, error2 = self.can_manage_target(interaction.user, user)
+                if can_manage and can_manage_user:
+                    can_proceed = True
+
+            if not can_proceed:
+                failed_roles.append(f"{role.mention} (No Permission)")
+                continue
+
+            if (
+                interaction.guild
+                and user.id == interaction.guild.owner_id
+                and interaction.user.id != interaction.guild.owner_id
+                and not is_bot_owner_id(interaction.user.id)
+            ):
+                failed_roles.append(f"{role.mention} (Server Owner Protected)")
+                continue
+            
+            if role >= interaction.guild.me.top_role:
+                failed_roles.append(f"{role.mention} (Bot Hierarchy)")
+                continue
+            
+            if role not in user.roles:
+                failed_roles.append(f"{role.mention} (User Doesn't Have)")
+                continue
+            
+            if role.managed:
+                failed_roles.append(f"{role.mention} (Managed Role)")
+                continue
+            
+            try:
+                await user.remove_roles(role, reason=f"Removed by {interaction.user}")
+                removed_roles.append(role.mention)
+            except Exception:
+                failed_roles.append(f"{role.mention} (Error)")
+
+        if removed_roles:
+            embed = ModEmbed.success("Roles Removed", f"Removed {', '.join(removed_roles)} from {user.mention}")
+            if failed_roles:
+                embed.add_field(name="Failed to Remove", value="\n".join(failed_roles), inline=False)
+            embed.set_footer(text=f"By {interaction.user}")
+            await interaction.followup.send(embed=embed)
+        else:
+            await interaction.followup.send(
+                embed=ModEmbed.error("Failed to Remove Roles", "\n".join(failed_roles)),
                 ephemeral=True
             )
-        
-        if role not in user.roles:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Doesn't Have Role", f"{user.mention} doesn't have {role.mention}"),
-                ephemeral=True
-            )
-        
-        if role.managed:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Managed Role", "This role is managed by an integration and cannot be manually removed."),
-                ephemeral=True
-            )
-        
-        await user.remove_roles(role, reason=f"Removed by {interaction.user}")
-        embed = ModEmbed.success("Role Removed", f"Removed {role.mention} from {user.mention}")
-        embed.set_footer(text=f"By {interaction.user}")
-        await interaction.response.send_message(embed=embed)
 
     async def _role_create(self, interaction: discord.Interaction, name: Optional[str], color: Optional[str], hoist: Optional[bool]):
         # Check admin permission

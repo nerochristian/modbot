@@ -1724,14 +1724,72 @@ class Moderation(commands.Cog):
 
     # ==================== TIMEOUT/MUTE COMMANDS ====================
 
-    @app_commands.command(name="mute", description="🔇 Timeout a user")
-    @app_commands.describe(
-        user="User to timeout",
-        duration="Duration (e.g., 10m, 1h, 1d)",
-        reason="Reason for timeout"
-    )
+    @app_commands.command(name="rename", description="✏️ Change a member's nickname")
     @is_mod()
-    async def mute(
+    @app_commands.describe(
+        user="The member to rename",
+        new_name="The new nickname (leave empty to reset)"
+    )
+    async def rename(self, interaction: discord.Interaction, user: discord.Member, new_name: Optional[str] = None):
+        if not interaction.guild:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Guild Only", "This command can only be used in a server."),
+                ephemeral=True,
+            )
+
+        # Check permission to moderate target
+        can_mod, error = await self.can_moderate(interaction.guild.id, interaction.user, user)
+        if not can_mod:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", error),
+                ephemeral=True,
+            )
+        
+        # Check bot permission
+        bot_member = interaction.guild.me
+        if user.top_role >= bot_member.top_role:
+             return await interaction.response.send_message(
+                embed=ModEmbed.error("Bot Permission Error", "I cannot rename this user due to role hierarchy."),
+                ephemeral=True,
+            )
+
+        await interaction.response.defer()
+        
+        old_name = user.display_name
+        try:
+            await user.edit(nick=new_name, reason=f"Rename by {interaction.user}")
+            
+            embed = ModEmbed.success(
+                "Nickname Changed",
+                f"Renamed {user.mention} from `{old_name}` to `{new_name if new_name else user.name}`"
+            )
+            await interaction.followup.send(embed=embed)
+            
+            # Log it
+            log_embed = await self.create_mod_embed(
+                title="✏️ Member Renamed",
+                user=user,
+                moderator=interaction.user,
+                reason="Nickname Change",
+                color=Colors.INFO,
+                extra_fields={"Old Name": old_name, "New Name": new_name if new_name else user.name}
+            )
+            await self.log_action(interaction.guild, log_embed)
+            
+        except Exception as e:
+            await interaction.followup.send(
+                embed=ModEmbed.error("Failed", f"Could not rename user: {e}"),
+                ephemeral=True,
+            )
+
+    @app_commands.command(name="timeout", description="🕒 Timeout a member")
+    @is_mod()
+    @app_commands.describe(
+        user="The member to timeout",
+        duration="Duration (e.g. 1m, 1h, 1d)",
+        reason="Reason for the timeout"
+    )
+    async def timeout(
         self,
         interaction: discord.Interaction,
         user: discord.Member,
