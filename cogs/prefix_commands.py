@@ -113,44 +113,44 @@ class PrefixCommands(commands.Cog):
     #     """Delete messages from a specific user"""
     #     deleted = await ctx.channel.purge(limit=amount, check=lambda m: m.author == member)
     #     await ctx.send(embed=ModEmbed.success("🗑️ Purged", f"Deleted {len(deleted)} messages from {member}."), delete_after=3)
+    # NOTE: slowmode, lock, unlock, nick, strip are defined in moderation.py
+    # @commands.command(name="slowmode", aliases=["slow"])
+    # @commands.has_permissions(manage_channels=True)
+    # async def slowmode_cmd(self, ctx, seconds: int = 0):
+    #     """Set channel slowmode"""
+    #     await ctx.channel.edit(slowmode_delay=seconds)
+    #     await ctx.send(embed=ModEmbed.success("🐌 Slowmode Set", f"Slowmode: {seconds}s"))
 
-    @commands.command(name="slowmode", aliases=["slow"])
-    @commands.has_permissions(manage_channels=True)
-    async def slowmode_cmd(self, ctx, seconds: int = 0):
-        """Set channel slowmode"""
-        await ctx.channel.edit(slowmode_delay=seconds)
-        await ctx.send(embed=ModEmbed.success("🐌 Slowmode Set", f"Slowmode: {seconds}s"))
+    # @commands.command(name="lock", aliases=["lockdown"])
+    # @commands.has_permissions(manage_channels=True)
+    # async def lock_cmd(self, ctx, channel: discord.TextChannel = None):
+    #     """Lock a channel"""
+    #     channel = channel or ctx.channel
+    #     await channel.set_permissions(ctx.guild.default_role, send_messages=False)
+    #     await ctx.send(embed=ModEmbed.success("🔒 Locked", f"{channel.mention} is now locked."))
 
-    @commands.command(name="lock", aliases=["lockdown"])
-    @commands.has_permissions(manage_channels=True)
-    async def lock_cmd(self, ctx, channel: discord.TextChannel = None):
-        """Lock a channel"""
-        channel = channel or ctx.channel
-        await channel.set_permissions(ctx.guild.default_role, send_messages=False)
-        await ctx.send(embed=ModEmbed.success("🔒 Locked", f"{channel.mention} is now locked."))
+    # @commands.command(name="unlock")
+    # @commands.has_permissions(manage_channels=True)
+    # async def unlock_cmd(self, ctx, channel: discord.TextChannel = None):
+    #     """Unlock a channel"""
+    #     channel = channel or ctx.channel
+    #     await channel.set_permissions(ctx.guild.default_role, send_messages=None)
+    #     await ctx.send(embed=ModEmbed.success("🔓 Unlocked", f"{channel.mention} is now unlocked."))
 
-    @commands.command(name="unlock")
-    @commands.has_permissions(manage_channels=True)
-    async def unlock_cmd(self, ctx, channel: discord.TextChannel = None):
-        """Unlock a channel"""
-        channel = channel or ctx.channel
-        await channel.set_permissions(ctx.guild.default_role, send_messages=None)
-        await ctx.send(embed=ModEmbed.success("🔓 Unlocked", f"{channel.mention} is now unlocked."))
+    # @commands.command(name="nick", aliases=["setnick"])
+    # @commands.has_permissions(manage_nicknames=True)
+    # async def nick_cmd(self, ctx, member: discord.Member, *, nickname: str = None):
+    #     """Change a user's nickname"""
+    #     await member.edit(nick=nickname)
+    #     await ctx.send(embed=ModEmbed.success("✏️ Nickname Changed", f"{member.mention}'s nickname updated."))
 
-    @commands.command(name="nick", aliases=["setnick"])
-    @commands.has_permissions(manage_nicknames=True)
-    async def nick_cmd(self, ctx, member: discord.Member, *, nickname: str = None):
-        """Change a user's nickname"""
-        await member.edit(nick=nickname)
-        await ctx.send(embed=ModEmbed.success("✏️ Nickname Changed", f"{member.mention}'s nickname updated."))
-
-    @commands.command(name="strip", aliases=["removeallroles"])
-    @commands.has_permissions(manage_roles=True)
-    async def strip_cmd(self, ctx, member: discord.Member):
-        """Remove all roles from a user"""
-        roles = [r for r in member.roles if r != ctx.guild.default_role and r < ctx.guild.me.top_role]
-        await member.remove_roles(*roles, reason=f"Stripped by {ctx.author}")
-        await ctx.send(embed=ModEmbed.success("🔻 Roles Stripped", f"Removed {len(roles)} roles from {member.mention}."))
+    # @commands.command(name="strip", aliases=["removeallroles"])
+    # @commands.has_permissions(manage_roles=True)
+    # async def strip_cmd(self, ctx, member: discord.Member):
+    #     """Remove all roles from a user"""
+    #     roles = [r for r in member.roles if r != ctx.guild.default_role and r < ctx.guild.me.top_role]
+    #     await member.remove_roles(*roles, reason=f"Stripped by {ctx.author}")
+    #     await ctx.send(embed=ModEmbed.success("🔻 Roles Stripped", f"Removed {len(roles)} roles from {member.mention}."))
 
     # NOTE: VC commands are defined in voice.py
     # @commands.command(name="vcmute", aliases=["vm"])
@@ -194,101 +194,100 @@ class PrefixCommands(commands.Cog):
     #     """Move a user to another voice channel"""
     #     await member.move_to(channel)
     #     await ctx.send(embed=ModEmbed.success("📦 Moved", f"{member.mention} moved to {channel.mention}."))
+    # NOTE: hide, unhide, nuke, massban, note, notes, clearwarns, role are defined in moderation.py
+    # @commands.command(name="hide")
+    # @commands.has_permissions(manage_channels=True)
+    # async def hide_cmd(self, ctx, channel: discord.TextChannel = None):
+    #     """Hide a channel from everyone"""
+    #     channel = channel or ctx.channel
+    #     await channel.set_permissions(ctx.guild.default_role, view_channel=False)
+    #     await ctx.send(embed=ModEmbed.success("👁️ Hidden", f"{channel.mention} is now hidden."))
 
-    @commands.command(name="hide")
-    @commands.has_permissions(manage_channels=True)
-    async def hide_cmd(self, ctx, channel: discord.TextChannel = None):
-        """Hide a channel from everyone"""
-        channel = channel or ctx.channel
-        await channel.set_permissions(ctx.guild.default_role, view_channel=False)
-        await ctx.send(embed=ModEmbed.success("👁️ Hidden", f"{channel.mention} is now hidden."))
+    # @commands.command(name="unhide", aliases=["show"])
+    # @commands.has_permissions(manage_channels=True)
+    # async def unhide_cmd(self, ctx, channel: discord.TextChannel = None):
+    #     """Unhide a channel"""
+    #     channel = channel or ctx.channel
+    #     await channel.set_permissions(ctx.guild.default_role, view_channel=None)
+    #     await ctx.send(embed=ModEmbed.success("👁️ Visible", f"{channel.mention} is now visible."))
 
-    @commands.command(name="unhide", aliases=["show"])
-    @commands.has_permissions(manage_channels=True)
-    async def unhide_cmd(self, ctx, channel: discord.TextChannel = None):
-        """Unhide a channel"""
-        channel = channel or ctx.channel
-        await channel.set_permissions(ctx.guild.default_role, view_channel=None)
-        await ctx.send(embed=ModEmbed.success("👁️ Visible", f"{channel.mention} is now visible."))
+    # @commands.command(name="nuke")
+    # @commands.has_permissions(administrator=True)
+    # async def nuke_cmd(self, ctx):
+    #     """Delete and recreate a channel"""
+    #     pos = ctx.channel.position
+    #     new = await ctx.channel.clone(reason=f"Nuked by {ctx.author}")
+    #     await ctx.channel.delete()
+    #     await new.edit(position=pos)
+    #     await new.send(embed=ModEmbed.success("💣 Nuked", "Channel has been nuked."))
 
-    @commands.command(name="nuke")
-    @commands.has_permissions(administrator=True)
-    async def nuke_cmd(self, ctx):
-        """Delete and recreate a channel"""
-        pos = ctx.channel.position
-        new = await ctx.channel.clone(reason=f"Nuked by {ctx.author}")
-        await ctx.channel.delete()
-        await new.edit(position=pos)
-        await new.send(embed=ModEmbed.success("💣 Nuked", "Channel has been nuked."))
+    # @commands.command(name="massban", aliases=["mb"])
+    # @commands.has_permissions(administrator=True)
+    # async def massban_cmd(self, ctx, *user_ids: int):
+    #     """Ban multiple users by ID"""
+    #     banned = 0
+    #     for uid in user_ids[:20]:
+    #         try:
+    #             await ctx.guild.ban(discord.Object(id=uid), reason=f"Massban by {ctx.author}")
+    #             banned += 1
+    #         except: pass
+    #     await ctx.send(embed=ModEmbed.success("🔨 Mass Banned", f"Banned {banned} users."))
 
-    @commands.command(name="massban", aliases=["mb"])
-    @commands.has_permissions(administrator=True)
-    async def massban_cmd(self, ctx, *user_ids: int):
-        """Ban multiple users by ID"""
-        banned = 0
-        for uid in user_ids[:20]:
-            try:
-                await ctx.guild.ban(discord.Object(id=uid), reason=f"Massban by {ctx.author}")
-                banned += 1
-            except: pass
-        await ctx.send(embed=ModEmbed.success("🔨 Mass Banned", f"Banned {banned} users."))
+    # @commands.command(name="note", aliases=["addnote"])
+    # @commands.has_permissions(manage_messages=True)
+    # async def note_cmd(self, ctx, member: discord.Member, *, note: str):
+    #     """Add a note to a user"""
+    #     await self.bot.db.create_case(ctx.guild.id, member.id, ctx.author.id, "Note", note)
+    #     await ctx.send(embed=ModEmbed.success("📝 Note Added", f"Note added to {member.mention}."))
 
-    @commands.command(name="note", aliases=["addnote"])
-    @commands.has_permissions(manage_messages=True)
-    async def note_cmd(self, ctx, member: discord.Member, *, note: str):
-        """Add a note to a user"""
-        await self.bot.db.create_case(ctx.guild.id, member.id, ctx.author.id, "Note", note)
-        await ctx.send(embed=ModEmbed.success("📝 Note Added", f"Note added to {member.mention}."))
+    # @commands.command(name="notes")
+    # @commands.has_permissions(manage_messages=True)
+    # async def notes_cmd(self, ctx, member: discord.Member):
+    #     """View notes for a user"""
+    #     cases = await self.bot.db.get_cases(ctx.guild.id, member.id)
+    #     notes = [c for c in cases if c.get("action") == "Note"]
+    #     if not notes:
+    #         return await ctx.send(embed=ModEmbed.info("📝 Notes", f"No notes for {member.mention}."))
+    #     desc = "\n".join([f"• {n['reason'][:50]}" for n in notes[:10]])
+    #     await ctx.send(embed=ModEmbed.info(f"📝 Notes for {member}", desc))
 
-    @commands.command(name="notes")
-    @commands.has_permissions(manage_messages=True)
-    async def notes_cmd(self, ctx, member: discord.Member):
-        """View notes for a user"""
-        cases = await self.bot.db.get_cases(ctx.guild.id, member.id)
-        notes = [c for c in cases if c.get("action") == "Note"]
-        if not notes:
-            return await ctx.send(embed=ModEmbed.info("📝 Notes", f"No notes for {member.mention}."))
-        desc = "\n".join([f"• {n['reason'][:50]}" for n in notes[:10]])
-        await ctx.send(embed=ModEmbed.info(f"📝 Notes for {member}", desc))
+    # @commands.command(name="clearwarns", aliases=["cw"])
+    # @commands.has_permissions(administrator=True)
+    # async def clearwarns_cmd(self, ctx, member: discord.Member):
+    #     """Clear all warnings for a user"""
+    #     await ctx.send(embed=ModEmbed.success("🧹 Cleared", f"Warnings cleared for {member.mention}."))
 
-    @commands.command(name="clearwarns", aliases=["cw"])
-    @commands.has_permissions(administrator=True)
-    async def clearwarns_cmd(self, ctx, member: discord.Member):
-        """Clear all warnings for a user"""
-        await ctx.send(embed=ModEmbed.success("🧹 Cleared", f"Warnings cleared for {member.mention}."))
-
-    @commands.command(name="role", aliases=["giverole", "addrole"])
-    @commands.has_permissions(manage_roles=True)
-    async def role_cmd(self, ctx, member: discord.Member, role: discord.Role):
-        """Add or remove a role from a user"""
-        # Security checks
-        if role >= ctx.author.top_role and ctx.author.id != ctx.guild.owner_id:
-            return await ctx.send(embed=ModEmbed.error("Permission Denied", "You cannot manage a role equal to or higher than your highest role."))
-        
-        if role >= ctx.guild.me.top_role:
-            return await ctx.send(embed=ModEmbed.error("Bot Error", "I cannot manage this role as it's higher than or equal to my highest role."))
-        
-        if role.managed:
-            return await ctx.send(embed=ModEmbed.error("Managed Role", "This role is managed by an integration and cannot be manually assigned."))
-        
-        # Protect dangerous roles from being assigned by non-admins
-        if (role.permissions.administrator or role.permissions.manage_guild or role.permissions.manage_roles) and not ctx.author.guild_permissions.administrator:
-            return await ctx.send(embed=ModEmbed.error("Permission Denied", "Only administrators can assign roles with dangerous permissions."))
-        
-        # Can't modify server owner's roles unless you're the owner
-        if member.id == ctx.guild.owner_id and ctx.author.id != ctx.guild.owner_id and not is_bot_owner_id(ctx.author.id):
-            return await ctx.send(embed=ModEmbed.error("Permission Denied", "You cannot modify the server owner's roles."))
-        
-        # Can't modify someone with higher role than you
-        if member.top_role >= ctx.author.top_role and member.id != ctx.author.id and ctx.author.id != ctx.guild.owner_id:
-            return await ctx.send(embed=ModEmbed.error("Permission Denied", "You cannot modify roles for someone with equal or higher role."))
-        
-        if role in member.roles:
-            await member.remove_roles(role, reason=f"Removed by {ctx.author}")
-            await ctx.send(embed=ModEmbed.success("🎭 Role Removed", f"Removed {role.mention} from {member.mention}."))
-        else:
-            await member.add_roles(role, reason=f"Added by {ctx.author}")
-            await ctx.send(embed=ModEmbed.success("🎭 Role Added", f"Added {role.mention} to {member.mention}."))
+    # @commands.command(name="role", aliases=["giverole", "addrole"])
+    # @commands.has_permissions(manage_roles=True)
+    # async def role_cmd(self, ctx, member: discord.Member, role: discord.Role):
+    #     """Add or remove a role from a user"""
+    #     # Security checks
+    #     if role >= ctx.author.top_role and ctx.author.id != ctx.guild.owner_id:
+    #         return await ctx.send(embed=ModEmbed.error("Permission Denied", "You cannot manage a role equal to or higher than your highest role."))
+    #     
+    #     if role >= ctx.guild.me.top_role:
+    #         return await ctx.send(embed=ModEmbed.error("Bot Error", "I cannot manage this role as it's higher than or equal to my highest role."))
+    #     
+    #     if role.managed:
+    #         return await ctx.send(embed=ModEmbed.error("Managed Role", "This role is managed by an integration and cannot be manually assigned."))
+    #     
+    #     # Protect dangerous roles from being assigned by non-admins
+    #     if (role.permissions.administrator or role.permissions.manage_guild or role.permissions.manage_roles) and not ctx.author.guild_permissions.administrator:
+    #         return await ctx.send(embed=ModEmbed.error("Permission Denied", "Only administrators can assign roles with dangerous permissions."))
+    #     
+    #     # Can't modify server owner's roles unless you're the owner
+    #     if member.id == ctx.guild.owner_id and ctx.author.id != ctx.guild.owner_id and not is_bot_owner_id(ctx.author.id):
+    #         return await ctx.send(embed=ModEmbed.error("Permission Denied", "You cannot modify the server owner's roles."))
+    #     # Can't modify someone with higher role than you
+    #     if member.top_role >= ctx.author.top_role and member.id != ctx.author.id and ctx.author.id != ctx.guild.owner_id:
+    #         return await ctx.send(embed=ModEmbed.error("Permission Denied", "You cannot modify roles for someone with equal or higher role."))
+    #     
+    #     if role in member.roles:
+    #         await member.remove_roles(role, reason=f"Removed by {ctx.author}")
+    #         await ctx.send(embed=ModEmbed.success("🎭 Role Removed", f"Removed {role.mention} from {member.mention}."))
+    #     else:
+    #         await member.add_roles(role, reason=f"Added by {ctx.author}")
+    #         await ctx.send(embed=ModEmbed.success("🎭 Role Added", f"Added {role.mention} to {member.mention}."))
 
     # ═══════════════════════════════════════════════════════════════
     # INFO & UTILITY COMMANDS (15+)
