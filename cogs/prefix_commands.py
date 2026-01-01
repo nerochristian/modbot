@@ -36,13 +36,13 @@ class PrefixCommands(commands.Cog):
     #     embed.set_footer(text=f"Case #{case}")
     #     await ctx.send(embed=embed)
 
-    @commands.command(name="kick", aliases=["k"])
-    @commands.has_permissions(kick_members=True)
-    async def kick_cmd(self, ctx, member: discord.Member, *, reason="No reason"):
-        """Kick a user from the server"""
-        await member.kick(reason=f"{ctx.author}: {reason}")
-        await self.bot.db.create_case(ctx.guild.id, member.id, ctx.author.id, "Kick", reason)
-        await ctx.send(embed=ModEmbed.success("👢 User Kicked", f"{member} has been kicked.\n**Reason:** {reason}"))
+    # @commands.command(name="kick", aliases=["k"])
+    # @commands.has_permissions(kick_members=True)
+    # async def kick_cmd(self, ctx, member: discord.Member, *, reason="No reason"):
+    #     """Kick a user from the server"""
+    #     await member.kick(reason=f"{ctx.author}: {reason}")
+    #     await self.bot.db.create_case(ctx.guild.id, member.id, ctx.author.id, "Kick", reason)
+    #     await ctx.send(embed=ModEmbed.success("👢 User Kicked", f"{member} has been kicked.\n**Reason:** {reason}"))
 
     @commands.command(name="ban", aliases=["b"])
     @commands.has_permissions(ban_members=True)
@@ -490,11 +490,11 @@ class PrefixCommands(commands.Cog):
         else:
             await ctx.send(embed=ModEmbed.error("No Edit Snipe", "Nothing to snipe."))
 
-    @commands.command(name="afk")
-    async def afk_cmd(self, ctx, *, reason: str = "AFK"):
-        """Set yourself as AFK"""
-        self.afk_users[ctx.author.id] = reason
-        await ctx.send(embed=ModEmbed.info("💤 AFK", f"{ctx.author.mention} is now AFK: {reason}"))
+    # @commands.command(name="afk")
+    # async def afk_cmd(self, ctx, *, reason: str = "AFK"):
+    #     """Set yourself as AFK"""
+    #     self.afk_users[ctx.author.id] = reason
+    #     await ctx.send(embed=ModEmbed.info("💤 AFK", f"{ctx.author.mention} is now AFK: {reason}"))
 
     @commands.command(name="choose", aliases=["pick"])
     async def choose_cmd(self, ctx, *choices):

@@ -432,49 +432,50 @@ class VoiceAFK(commands.Cog):
             self.pending_checks.discard(key)
     
     # ========== User AFK Status System ==========
+    # NOTE: The /afk command is defined in utility.py - this is just the on_message handler
     
-    @app_commands.command(name="afk", description="💤 Set yourself as AFK with a reason")
-    @app_commands.describe(
-        reason="Why are you AFK? (optional)"
-    )
-    async def afk_status(
-        self,
-        interaction: discord.Interaction,
-        reason: Optional[str] = "AFK"
-    ):
-        """Set yourself as AFK - when someone pings you, they'll see your AFK status"""
-        guild_id = interaction.guild.id
-        user_id = interaction.user.id
-        
-        # Store AFK status in database
-        settings = await self.bot.db.get_settings(guild_id)
-        afk_users = settings.get("afk_users", {})
-        
-        # Convert to dict if it's a string (JSON issue)
-        if isinstance(afk_users, str):
-            import json
-            try:
-                afk_users = json.loads(afk_users)
-            except:
-                afk_users = {}
-        
-        afk_users[str(user_id)] = {
-            "reason": reason[:200] if reason else "AFK",  # Limit reason length
-            "since": datetime.now(timezone.utc).isoformat()
-        }
-        
-        settings["afk_users"] = afk_users
-        await self.bot.db.update_settings(guild_id, settings)
-        
-        embed = discord.Embed(
-            title="💤 AFK Set",
-            description=f"You are now AFK: **{reason}**\n\nI'll let people know when they ping you!",
-            color=0x9966FF,
-            timestamp=datetime.now(timezone.utc)
-        )
-        embed.set_footer(text="Send a message to remove your AFK status")
-        
-        await interaction.response.send_message(embed=embed)
+    # @app_commands.command(name="afk", description="💤 Set yourself as AFK with a reason")
+    # @app_commands.describe(
+    #     reason="Why are you AFK? (optional)"
+    # )
+    # async def afk_status(
+    #     self,
+    #     interaction: discord.Interaction,
+    #     reason: Optional[str] = "AFK"
+    # ):
+    #     """Set yourself as AFK - when someone pings you, they'll see your AFK status"""
+    #     guild_id = interaction.guild.id
+    #     user_id = interaction.user.id
+    #     
+    #     # Store AFK status in database
+    #     settings = await self.bot.db.get_settings(guild_id)
+    #     afk_users = settings.get("afk_users", {})
+    #     
+    #     # Convert to dict if it's a string (JSON issue)
+    #     if isinstance(afk_users, str):
+    #         import json
+    #         try:
+    #             afk_users = json.loads(afk_users)
+    #         except:
+    #             afk_users = {}
+    #     
+    #     afk_users[str(user_id)] = {
+    #         "reason": reason[:200] if reason else "AFK",  # Limit reason length
+    #         "since": datetime.now(timezone.utc).isoformat()
+    #     }
+    #     
+    #     settings["afk_users"] = afk_users
+    #     await self.bot.db.update_settings(guild_id, settings)
+    #     
+    #     embed = discord.Embed(
+    #         title="💤 AFK Set",
+    #         description=f"You are now AFK: **{reason}**\n\nI'll let people know when they ping you!",
+    #         color=0x9966FF,
+    #         timestamp=datetime.now(timezone.utc)
+    #     )
+    #     embed.set_footer(text="Send a message to remove your AFK status")
+    #     
+    #     await interaction.response.send_message(embed=embed)
     
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
