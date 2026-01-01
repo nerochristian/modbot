@@ -149,6 +149,27 @@ Is this appropriate anime content or hentai/NSFW?"""
             # On error, approve but log
             return True, f"AI check failed: {str(e)[:50]}"
     
+    async def _log_to_mod_log(self, guild: discord.Guild, thread: discord.Thread, reason: str, content: str = None):
+        """Log a forum moderation action to the mod log channel"""
+        try:
+            settings = await self.bot.db.get_settings(guild.id)
+            mod_log = settings.get("mod_log_channel")
+            if mod_log:
+                channel = guild.get_channel(mod_log)
+                if channel:
+                    embed = discord.Embed(
+                        title="🚨 Forum Post Flagged",
+                        description=f"**Post:** {thread.mention}\n**Author:** {thread.owner.mention if thread.owner else 'Unknown'}\n**Reason:** {reason}",
+                        color=0xFF0000,
+                        timestamp=datetime.now(timezone.utc)
+                    )
+                    embed.add_field(name="Title", value=thread.name[:1024], inline=False)
+                    if content:
+                        embed.add_field(name="Content Preview", value=content[:1024], inline=False)
+                    await channel.send(embed=embed)
+        except Exception as e:
+            print(f"[ForumMod] Error logging to mod log: {e}")
+    
     @app_commands.command(name="forum", description="🔍 Manage forum posts")
     @app_commands.describe(
         action="Action to perform",
@@ -196,6 +217,23 @@ Is this appropriate anime content or hentai/NSFW?"""
             )
             
             status = "✅ **SAFE**" if is_safe else "🚫 **FLAGGED**"
+            
+            # Send result message to the thread
+            if is_safe:
+                await thread.send(
+                    f"✅ **Post Approved** - Thank you for your anime recommendation, {thread.owner.mention if thread.owner else 'author'}! "
+                    f"This content has been reviewed and approved for the community."
+                )
+            else:
+                self.blacklisted_posts.add(thread.id)
+                await thread.send(
+                    f"🚫 **Post Flagged** - {thread.owner.mention if thread.owner else 'Author'}, this post has been flagged for review.\n"
+                    f"**Reason:** {reason}\n\n"
+                    f"A moderator will review this shortly. If this is a mistake, please contact staff."
+                )
+                # Log to mod log
+                await self._log_to_mod_log(interaction.guild, thread, reason, starter_message.content)
+            
             embed = discord.Embed(
                 title=f"Forum Check: {thread.name}",
                 description=f"**Status:** {status}\n**Reason:** {reason}",
@@ -243,7 +281,50 @@ Is this appropriate anime content or hentai/NSFW?"""
         thread_name = thread.name
         thread_owner = thread.owner
         
+        # Send deletion notice to thread before deleting
+        try:
+            await thread.send(
+                f"🗑️ **Post Deleted** - This post has been removed by {interaction.user.mention}.\n"
+                f"**Reason:** {reason}\n\n"
+                f"This thread will be deleted shortly."
+            )
+            await asyncio.sleep(2)  # Brief delay so the message can be seen
+        except Exception:
+            pass
+        
+        # Try to notify the author via DM
+        if thread_owner:
+            try:
+                dm_embed = discord.Embed(
+                    title="📋 Forum Post Deleted",
+                    description=f"Your forum post **{thread_name}** in **{interaction.guild.name}** has been deleted.",
+                    color=0xFF6600,
+                    timestamp=datetime.now(timezone.utc)
+                )
+                dm_embed.add_field(name="Reason", value=reason, inline=False)
+                dm_embed.add_field(name="Deleted by", value=str(interaction.user), inline=True)
+                await thread_owner.send(embed=dm_embed)
+            except Exception:
+                pass  # Can't DM user
+        
+        # Remove from blacklist if present
+        self.blacklisted_posts.discard(thread.id)
+        
         await thread.delete()
+        
+        # Log to mod log
+        settings = await self.bot.db.get_settings(interaction.guild.id)
+        mod_log = settings.get("mod_log_channel")
+        if mod_log:
+            channel = interaction.guild.get_channel(mod_log)
+            if channel:
+                log_embed = discord.Embed(
+                    title="🗑️ Forum Post Deleted",
+                    description=f"**Thread:** {thread_name}\n**Author:** {thread_owner.mention if thread_owner else 'Unknown'}\n**Deleted by:** {interaction.user.mention}\n**Reason:** {reason}",
+                    color=0xFF6600,
+                    timestamp=datetime.now(timezone.utc)
+                )
+                await channel.send(embed=log_embed)
         
         embed = ModEmbed.success(
             "Thread Deleted",
@@ -261,8 +342,23 @@ Is this appropriate anime content or hentai/NSFW?"""
         
         self.blacklisted_posts.add(thread.id)
         
+        # Send flagged message to the thread
+        await thread.send(
+            f"🚫 **Post Blacklisted** - {thread.owner.mention if thread.owner else 'Author'}, this post has been manually flagged by {interaction.user.mention}.\n\n"
+            f"A moderator has determined this content requires review. If this is a mistake, please contact staff."
+        )
+        
+        # Log to mod log
+        try:
+            starter_message = await thread.fetch_message(thread.id)
+            content = starter_message.content
+        except Exception:
+            content = "(Could not fetch content)"
+        
+        await self._log_to_mod_log(interaction.guild, thread, f"Manually blacklisted by {interaction.user}", content)
+        
         await interaction.response.send_message(
-            embed=ModEmbed.success("Thread Blacklisted", f"Blacklisted {thread.mention}"),
+            embed=ModEmbed.success("Thread Blacklisted", f"Blacklisted {thread.mention} and sent flagged notification."),
             ephemeral=True
         )
     
@@ -293,11 +389,25 @@ Is this appropriate anime content or hentai/NSFW?"""
                 
                 if is_safe:
                     safe += 1
+                    # Send approval message
+                    await thread.send(
+                        f"✅ **Post Approved** - Thank you for your anime recommendation, {thread.owner.mention if thread.owner else 'author'}! "
+                        f"This content has been reviewed and approved for the community."
+                    )
                 else:
                     flagged += 1
                     self.blacklisted_posts.add(thread.id)
-            except Exception:
-                pass
+                    # Send flagged message
+                    await thread.send(
+                        f"🚫 **Post Flagged** - {thread.owner.mention if thread.owner else 'Author'}, this post has been flagged for review.\n"
+                        f"**Reason:** {reason}\n\n"
+                        f"A moderator will review this shortly. If this is a mistake, please contact staff."
+                    )
+                
+                # Small delay to avoid rate limiting
+                await asyncio.sleep(1)
+            except Exception as e:
+                print(f"[ForumMod] Error checking thread {thread.id}: {e}")
         
         embed = discord.Embed(
             title="📊 Forum Check Complete",

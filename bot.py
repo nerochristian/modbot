@@ -276,6 +276,7 @@ class ModBot(commands.Bot):
             "cogs.forum_moderation",
             "cogs.polls",
             "cogs.prefix_commands",
+            "cogs.voice_afk",
         ]
         
         loaded: list[str] = []

@@ -21,22 +21,24 @@ class Voice(commands.Cog):
         action="The action to perform",
         user="The user to target (required for most actions)",
         user_id="User ID for unban (if user left server)",
-        channel="Target voice channel (for move/moveall)",
+        channel="Target voice channel (for move/moveall/check/afkdetect)",
         from_channel="Source channel (for moveall)",
         reason="Reason for the action",
-        state="on/off (for verification)"
+        state="on/off (for verification/afkdetect)",
+        minutes="Minutes for afkdetect timeout"
     )
     @is_mod()
     async def vc(
         self, 
         interaction: discord.Interaction, 
-        action: Literal["mute", "unmute", "deafen", "undeafen", "kick", "move", "moveall", "ban", "unban", "verification"],
+        action: Literal["mute", "unmute", "deafen", "undeafen", "kick", "move", "moveall", "ban", "unban", "verification", "check", "afkdetect"],
         user: Optional[discord.Member] = None,
         user_id: Optional[str] = None,
         channel: Optional[discord.VoiceChannel] = None,
         from_channel: Optional[discord.VoiceChannel] = None,
         reason: Optional[str] = "No reason provided",
-        state: Optional[Literal["on", "off"]] = None
+        state: Optional[Literal["on", "off", "settings", "ignore", "unignore"]] = None,
+        minutes: Optional[int] = None
     ):
         # Handle verification separately (admin only)
         if action == "verification":
@@ -56,6 +58,31 @@ class Voice(commands.Cog):
                     ephemeral=True
                 )
             await self._verification(interaction, state)
+            return
+        
+        # Handle afkdetect separately (admin only)
+        if action == "afkdetect":
+            # Check admin permission
+            admin_check = is_admin()
+            try:
+                await admin_check.interaction_check(interaction)
+            except app_commands.CheckFailure:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Permission Denied", "You need administrator permissions for this action."),
+                    ephemeral=True
+                )
+            
+            await self._afkdetect(interaction, state, channel, user, minutes)
+            return
+        
+        # Handle check separately (checks all users in a VC)
+        if action == "check":
+            if channel is None:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Missing Argument", "Please specify a `channel` to check."),
+                    ephemeral=True
+                )
+            await self._check_vc(interaction, channel)
             return
         
         # All other actions require a user
@@ -490,6 +517,105 @@ class Voice(commands.Cog):
             ephemeral=True,
         )
 
+    async def _check_vc(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
+        """Check all users in a voice channel for AFK"""
+        # Get the VoiceAFK cog
+        voice_afk_cog = self.bot.get_cog("VoiceAFK")
+        
+        if not voice_afk_cog:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not Available", "Voice AFK detection is not loaded. Make sure `voice_afk.py` cog is loaded."),
+                ephemeral=True
+            )
+        
+        # Check if there are users in the channel
+        members = [m for m in channel.members if not m.bot]
+        if not members:
+            return await interaction.response.send_message(
+                embed=ModEmbed.warning("Empty Channel", f"{channel.mention} has no users to check."),
+                ephemeral=True
+            )
+        
+        await interaction.response.defer(ephemeral=True)
+        
+        # Get AFK settings
+        settings = await voice_afk_cog._get_afk_settings(interaction.guild.id)
+        
+        # Queue AFK checks for all members
+        queued = 0
+        skipped = 0
+        
+        for member in members:
+            key = (interaction.guild.id, member.id)
+            
+            # Skip if already being checked
+            if key in voice_afk_cog.pending_checks:
+                skipped += 1
+                continue
+            
+            # Start AFK check
+            voice_afk_cog.pending_checks.add(key)
+            import asyncio
+            asyncio.create_task(voice_afk_cog._perform_afk_check(member, channel, settings))
+            queued += 1
+            
+            # Small delay between checks
+            await asyncio.sleep(0.5)
+        
+        embed = ModEmbed.success(
+            "AFK Check Started",
+            f"Checking **{queued}** users in {channel.mention} for AFK.\n"
+            f"Skipped **{skipped}** (already being checked).\n\n"
+            f"Users will hear a TTS prompt and must respond within {settings['response_timeout']} seconds."
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    async def _afkdetect(
+        self,
+        interaction: discord.Interaction,
+        state: Optional[str],
+        channel: Optional[discord.VoiceChannel],
+        user: Optional[discord.Member],
+        minutes: Optional[int]
+    ):
+        """Handle AFK detection admin actions"""
+        voice_afk_cog = self.bot.get_cog("VoiceAFK")
+        
+        if not voice_afk_cog:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not Available", "Voice AFK detection cog is not loaded."),
+                ephemeral=True
+            )
+        
+        # Route based on state parameter
+        if state is None or state == "settings":
+            await voice_afk_cog.afk_settings(interaction)
+        elif state == "on":
+            await voice_afk_cog.afk_enable(interaction)
+        elif state == "off":
+            await voice_afk_cog.afk_disable(interaction)
+        elif state == "ignore":
+            if channel is None:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Missing Argument", "Please specify a `channel` to ignore."),
+                    ephemeral=True
+                )
+            await voice_afk_cog.afk_ignore(interaction, channel)
+        elif state == "unignore":
+            if channel is None:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Missing Argument", "Please specify a `channel` to unignore."),
+                    ephemeral=True
+                )
+            await voice_afk_cog.afk_unignore(interaction, channel)
+        
+        # Handle timeout setting via minutes parameter
+        if minutes is not None:
+            await voice_afk_cog.afk_timeout(interaction, minutes)
+        
+        # Handle user check
+        if user is not None and state is None:
+            await voice_afk_cog.afk_check_user(interaction, user)
 
     @commands.command(name="vcmute")
     @is_mod()
