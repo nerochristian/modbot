@@ -29,6 +29,14 @@ except ImportError:
         TTS_AVAILABLE = False
         TTS_ENGINE = None
 
+# Try to import voice-recv for speaking detection
+try:
+    import discord.ext.voice_recv as voice_recv
+    VOICE_RECV_AVAILABLE = True
+except ImportError:
+    VOICE_RECV_AVAILABLE = False
+
+
 
 class AFKConfirmButton(discord.ui.View):
     """Button view for AFK confirmation"""
@@ -277,8 +285,24 @@ class VoiceAFK(commands.Cog):
                         self._update_activity(m.guild.id, m.id)
             
             try:
-                # Join the voice channel
-                voice_client = await channel.connect()
+                # Join the voice channel - use VoiceRecvClient if available for speaking detection
+                if VOICE_RECV_AVAILABLE:
+                    # Use voice recv client to detect speaking
+                    voice_client = await channel.connect(cls=voice_recv.VoiceRecvClient)
+                    
+                    # Create speaking callback
+                    def on_voice_packet(user, data):
+                        nonlocal voice_activity_detected
+                        if user and user.id == member.id:
+                            voice_activity_detected = True
+                            voice_event.set()
+                            if view:
+                                view.mark_spoke()
+                    
+                    # Start listening for voice packets
+                    voice_client.listen(voice_recv.BasicSink(on_voice_packet))
+                else:
+                    voice_client = await channel.connect()
                 
                 # Play TTS if available
                 if tts_file and os.path.exists(tts_file):

@@ -584,10 +584,30 @@ class Voice(commands.Cog):
         import os
         from datetime import datetime, timezone
         
-        # Join voice channel
-        voice_client = None
+        # Try to import voice recv for speaking detection
         try:
-            voice_client = await channel.connect()
+            import discord.ext.voice_recv as voice_recv
+            VOICE_RECV_AVAILABLE = True
+        except ImportError:
+            VOICE_RECV_AVAILABLE = False
+        
+        # Join voice channel - use VoiceRecvClient if available
+        voice_client = None
+        speaking_detected = {}  # member_id -> True when they speak
+        
+        try:
+            if VOICE_RECV_AVAILABLE:
+                voice_client = await channel.connect(cls=voice_recv.VoiceRecvClient)
+                
+                # Create speaking callback for all users
+                def on_voice_packet(user, data):
+                    if user and user.id in [m.id for m in to_check]:
+                        speaking_detected[user.id] = True
+                
+                # Start listening for voice packets
+                voice_client.listen(voice_recv.BasicSink(on_voice_packet))
+            else:
+                voice_client = await channel.connect()
         except Exception as e:
             print(f"[VoiceAFK] Failed to connect to {channel.name}: {e}")
             for member in to_check:
@@ -725,11 +745,50 @@ class Voice(commands.Cog):
                                     except:
                                         pass
                         
-                        # Check voice activity
+                        # Check voice activity (mute/unmute toggle)
                         if member.id in voice_events and voice_events[member.id].is_set():
                             if member.id not in confirmed:
                                 confirmed.add(member.id)
                                 voice_afk_cog._update_activity(interaction.guild.id, member.id)
+                                
+                                # Thank them in voice
+                                if voice_client and voice_client.is_connected():
+                                    try:
+                                        tts_file = await voice_afk_cog._generate_tts(
+                                            f"Thanks {member.display_name}!",
+                                            f"afk_thanks_{member.id}.mp3"
+                                        )
+                                        if tts_file and os.path.exists(tts_file):
+                                            while voice_client.is_playing():
+                                                await asyncio.sleep(0.2)
+                                            audio_source = discord.FFmpegPCMAudio(tts_file)
+                                            voice_client.play(audio_source)
+                                            while voice_client.is_playing():
+                                                await asyncio.sleep(0.2)
+                                            try:
+                                                os.remove(tts_file)
+                                            except:
+                                                pass
+                                    except:
+                                        pass
+                        
+                        # Check speaking detection (green indicator)
+                        if member.id in speaking_detected and speaking_detected[member.id]:
+                            if member.id not in confirmed:
+                                confirmed.add(member.id)
+                                voice_afk_cog._update_activity(interaction.guild.id, member.id)
+                                
+                                # Edit DM if they have one
+                                if member.id in user_views:
+                                    view, msg = user_views[member.id]
+                                    try:
+                                        await msg.edit(embed=discord.Embed(
+                                            title="✅ Presence Confirmed",
+                                            description=f"Detected you speaking in **{channel.name}**!",
+                                            color=0x00FF00
+                                        ), view=None)
+                                    except:
+                                        pass
                                 
                                 # Thank them in voice
                                 if voice_client and voice_client.is_connected():
