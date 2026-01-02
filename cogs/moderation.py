@@ -1036,6 +1036,7 @@ class Moderation(commands.Cog):
     async def _lock_logic(self, source, channel: discord.TextChannel = None, reason: str = "No reason provided", role: discord.Role = None):
         author = source.user if isinstance(source, discord.Interaction) else source.author
         channel = channel or (source.channel if isinstance(source, discord.Interaction) else source.channel)
+        bot_member = source.guild.me
         
         try:
             # Lock for everyone
@@ -1044,6 +1045,30 @@ class Moderation(commands.Cog):
                 send_messages=False,
                 reason=f"{author}: {reason}"
             )
+            
+            # Also revoke send_messages for ALL existing role overrides (except allowed role and bot)
+            # This prevents roles with explicit send_messages=True from bypassing the lock
+            for target, overwrite in channel.overwrites.items():
+                # Skip @everyone (already handled), the allowed role, and the bot itself
+                if target == source.guild.default_role:
+                    continue
+                if role and target == role:
+                    continue
+                if isinstance(target, discord.Role) and target == bot_member.top_role:
+                    continue
+                if isinstance(target, discord.Member) and target.id == bot_member.id:
+                    continue
+                    
+                # If this role/member has send_messages permission, revoke it
+                if isinstance(target, discord.Role) and overwrite.send_messages is True:
+                    await channel.set_permissions(
+                        target,
+                        overwrite=discord.PermissionOverwrite.from_pair(
+                            overwrite.pair()[0],  # Keep allow permissions
+                            overwrite.pair()[1] | discord.Permissions(send_messages=True)  # Add send_messages to deny
+                        ),
+                        reason=f"{author} (Lock): {reason}"
+                    )
             
             # Allow specific role if provided
             role_msg = ""
