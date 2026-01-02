@@ -1033,22 +1033,34 @@ class Moderation(commands.Cog):
         await self._respond(source, embed=embed)
         await self.log_action(source.guild, embed)
 
-    async def _lock_logic(self, source, channel: discord.TextChannel = None, reason: str = "No reason provided"):
+    async def _lock_logic(self, source, channel: discord.TextChannel = None, reason: str = "No reason provided", role: discord.Role = None):
         author = source.user if isinstance(source, discord.Interaction) else source.author
         channel = channel or (source.channel if isinstance(source, discord.Interaction) else source.channel)
         
         try:
+            # Lock for everyone
             await channel.set_permissions(
                 source.guild.default_role,
                 send_messages=False,
                 reason=f"{author}: {reason}"
             )
+            
+            # Allow specific role if provided
+            role_msg = ""
+            if role:
+                await channel.set_permissions(
+                    role,
+                    send_messages=True,
+                    reason=f"{author} (Lock Bypass): {reason}"
+                )
+                role_msg = f"\n✅ Allowed: {role.mention}"
+                
         except discord.Forbidden:
             return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to edit channel permissions."), ephemeral=True)
         
         embed = discord.Embed(
             title="🔒 Channel Locked",
-            description=f"{channel.mention} has been locked.",
+            description=f"{channel.mention} has been locked.{role_msg}",
             color=Colors.ERROR
         )
         embed.add_field(name="Reason", value=reason, inline=False)
@@ -1895,6 +1907,7 @@ class Moderation(commands.Cog):
     @app_commands.command(name="lock", description="🔒 Lock a channel")
     @app_commands.describe(
         channel="Channel to lock (current channel if not specified)",
+        rank="Role that can still talk (optional)",
         reason="Reason for lock"
     )
     @is_mod()
@@ -1902,16 +1915,17 @@ class Moderation(commands.Cog):
         self,
         interaction: discord.Interaction,
         channel: Optional[discord.TextChannel] = None,
+        rank: Optional[discord.Role] = None,
         reason: str = "No reason provided"
     ):
         """Lock a channel (prevent @everyone from sending messages)"""
-        await self._lock_logic(interaction, channel, reason)
+        await self._lock_logic(interaction, channel, reason, role=rank)
 
     @commands.command(name="lock")
     @is_mod()
-    async def lock_prefix(self, ctx: commands.Context, channel: Optional[discord.TextChannel] = None, *, reason: str = "No reason provided"):
+    async def lock_prefix(self, ctx: commands.Context, channel: Optional[discord.TextChannel] = None, role: Optional[discord.Role] = None, *, reason: str = "No reason provided"):
         """Lock a channel"""
-        await self._lock_logic(ctx, channel, reason)
+        await self._lock_logic(ctx, channel, reason, role=role)
 
     @app_commands.command(name="unlock", description="🔓 Unlock a channel")
     @app_commands.describe(

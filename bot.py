@@ -325,6 +325,9 @@ class ModBot(commands.Bot):
         logger.info(f"📊 Total Commands: {len(list(self.walk_commands()))} prefix, {len(self.tree.get_commands())} slash")
         logger.info("=" * 60)
         
+        # Set global interaction check for the tree
+        self.tree.interaction_check = self._check_global_blacklist
+        
         # Sync slash commands
         try:
             logger.info("⚡ Syncing slash commands...")
@@ -337,6 +340,25 @@ class ModBot(commands.Bot):
             logger.error(f"❌ Unexpected error syncing commands: {e}")
             self.errors_caught += 1
     
+    async def _check_global_blacklist(self, interaction: discord.Interaction) -> bool:
+        """Global check for application commands - blocks blacklisted users"""
+        # Allow owners to bypass blacklist (just in case they tested it on themselves)
+        if interaction.user.id in self.owner_ids:
+            return True
+
+        if interaction.user.id in self.blacklist_cache:
+            try:
+                await interaction.response.send_message(
+                    f"{interaction.user.mention} 🚫 **Blacklisted** - You are blacklisted from using this bot.",
+                    ephemeral=True
+                )
+            except (discord.errors.InteractionResponded, discord.errors.NotFound):
+                pass
+            # Return False to halt command execution
+            return False
+        
+        return True
+
     async def on_ready(self):
         """Called when bot is ready and connected"""
         if self._ready_once:
@@ -450,17 +472,7 @@ class ModBot(commands.Bot):
         if interaction.type != discord.InteractionType.application_command:
             return
         
-        # Block blacklisted users
-        if interaction.user.id in self.blacklist_cache:
-            try:
-                await interaction.response.send_message(
-                    f"{interaction.user.mention} 🚫 **Blacklisted** - You are blacklisted from using this bot.",
-                    ephemeral=False
-                )
-            except discord.errors.InteractionResponded:
-                pass
-            # CRITICAL: Return here to prevent command execution
-            return
+        pass
     
     async def on_command(self, ctx: commands.Context):
         """Track command usage"""
