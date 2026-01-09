@@ -19,10 +19,8 @@ class Setup(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    setup_group = app_commands.Group(name="setup", description="🛡️ Server setup commands")
-    
-    @setup_group.command(
-        name="server",
+    @app_commands.command(
+        name="setup",
         description="🛡️ Set up the moderation bot - creates channels, roles, and configurations",
     )
     @app_commands.describe(
@@ -30,7 +28,7 @@ class Setup(commands.Cog):
         welcome_channel="Existing welcome channel to use (optional)",
     )
     @is_admin()
-    async def setup_server(
+    async def setup(
         self,
         interaction: discord.Interaction,
         verify: bool = False,
@@ -483,6 +481,11 @@ class Setup(commands.Cog):
                 "name": "staff-announcements",
                 "setting_key": "staff_announcements_channel",
                 "topic": "📢 Important staff announcements",
+            },
+            {
+                "name": "staff-updates",
+                "setting_key": "staff_updates_channel",
+                "topic": "📊 Staff promotions and demotions",
             },
             {
                 "name": "staff-sanctions",
@@ -1455,15 +1458,15 @@ class Setup(commands.Cog):
         except Exception:
             pass
     
-    @setup_group.command(
-        name="staff-updates",
+    @app_commands.command(
+        name="staffupdates",
         description="📢 Set up the staff updates channel for promotions/demotions"
     )
     @app_commands.describe(
         channel="The channel where staff promotion/demotion announcements will be posted"
     )
     @is_admin()
-    async def setup_staff_updates(
+    async def staffupdates(
         self,
         interaction: discord.Interaction,
         channel: discord.TextChannel
