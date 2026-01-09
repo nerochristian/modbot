@@ -1042,6 +1042,28 @@ class Database:
                 await db.commit()
                 return cursor.rowcount
     
+    async def clear_staff_warns(self, guild_id: int, staff_id: int) -> int:
+        """Clear staff warnings only"""
+        async with self._lock:
+            async with self.get_connection() as db:
+                cursor = await db.execute(
+                    "DELETE FROM staff_sanctions WHERE guild_id = ? AND staff_id = ? AND sanction_type = 'warn'",
+                    (guild_id, staff_id),
+                )
+                await db.commit()
+                return cursor.rowcount
+    
+    async def clear_staff_strikes(self, guild_id: int, staff_id: int) -> int:
+        """Clear staff strikes only"""
+        async with self._lock:
+            async with self.get_connection() as db:
+                cursor = await db.execute(
+                    "DELETE FROM staff_sanctions WHERE guild_id = ? AND staff_id = ? AND sanction_type = 'strike'",
+                    (guild_id, staff_id),
+                )
+                await db.commit()
+                return cursor.rowcount
+    
     # ==================== COURT SYSTEM ====================
     
     async def create_court_session(

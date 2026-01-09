@@ -789,6 +789,306 @@ class Staff(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
+    # ==================== PROMOTE/DEMOTE COMMANDS ====================
+    
+    @app_commands.command(name="promote", description="👆 Promote a staff member to a higher role")
+    @app_commands.describe(
+        member="The staff member to promote",
+        role="Optional: Specific role to promote to (must be higher than current)"
+    )
+    async def promote(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        role: Optional[discord.Role] = None
+    ):
+        """Promote a staff member up one rank or to a specific role"""
+        # Check supervisor permission
+        if not await check_supervisor(interaction):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", "You need supervisor permissions for this command."),
+                ephemeral=True
+            )
+        
+        # Can't promote yourself
+        if member.id == interaction.user.id:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Error", "You cannot promote yourself."),
+                ephemeral=True
+            )
+        
+        # Can't promote bots
+        if member.bot:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Error", "You cannot promote bots."),
+                ephemeral=True
+            )
+        
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        
+        # Define staff hierarchy (lowest to highest)
+        staff_hierarchy = [
+            ('staff_role', '⭐ Staff'),
+            ('trial_mod_role', '🔰 Trial Moderator'),
+            ('mod_role', '🛡️ Moderator'),
+            ('senior_mod_role', '⚔️ Senior Moderator'),
+            ('supervisor_role', '👁️ Supervisor'),
+            ('admin_role', '👑 Admin'),
+        ]
+        
+        # Find current staff role
+        current_role = None
+        current_index = -1
+        member_role_ids = [r.id for r in member.roles]
+        
+        for idx, (key, name) in enumerate(staff_hierarchy):
+            role_id = settings.get(key)
+            if role_id and role_id in member_role_ids:
+                current_role = interaction.guild.get_role(role_id)
+                current_index = idx
+                break
+        
+        if current_role is None:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not Staff", f"{member.mention} is not a staff member."),
+                ephemeral=True
+            )
+        
+        # Determine target role
+        if role:
+            # Custom role specified
+            target_role = role
+            target_role_name = role.name
+            
+            # Verify it's a staff role and higher than current
+            target_index = -1
+            for idx, (key, name) in enumerate(staff_hierarchy):
+                role_id = settings.get(key)
+                if role_id == role.id:
+                    target_index = idx
+                    target_role_name = name
+                    break
+            
+            if target_index == -1:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Invalid Role", "The specified role is not a staff role."),
+                    ephemeral=True
+                )
+            
+            if target_index <= current_index:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Invalid Promotion", "The specified role must be higher than the member's current role."),
+                    ephemeral=True
+                )
+        else:
+            # Promote to next rank
+            if current_index >= len(staff_hierarchy) - 1:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Max Rank", f"{member.mention} is already at the highest staff rank."),
+                    ephemeral=True
+                )
+            
+            next_key, target_role_name = staff_hierarchy[current_index + 1]
+            next_role_id = settings.get(next_key)
+            
+            if not next_role_id:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Role Not Found", f"The next rank role ({target_role_name}) is not configured."),
+                    ephemeral=True
+                )
+            
+            target_role = interaction.guild.get_role(next_role_id)
+            if not target_role:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Role Not Found", f"The role for {target_role_name} no longer exists."),
+                    ephemeral=True
+                )
+        
+        # Perform the promotion
+        try:
+            await member.remove_roles(current_role, reason=f"Promoted by {interaction.user}")
+            await member.add_roles(target_role, reason=f"Promoted by {interaction.user}")
+        except discord.Forbidden:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Error", "I don't have permission to manage these roles."),
+                ephemeral=True
+            )
+        except Exception as e:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Error", f"Failed to promote member: {e}"),
+                ephemeral=True
+            )
+        
+        # Send confirmation
+        await interaction.response.send_message(
+            embed=ModEmbed.success(
+                "Staff Promoted",
+                f"{member.mention} has been promoted from **{current_role.name}** to **{target_role.name}**"
+            )
+        )
+        
+        # Send public announcement
+        staff_updates_channel_id = settings.get('staff_updates_channel')
+        if staff_updates_channel_id:
+            channel = interaction.guild.get_channel(staff_updates_channel_id)
+            if channel:
+                try:
+                    msg = await channel.send(
+                        f"Congratulations {member.mention}, you have been promoted from **{current_role.name}** to **{target_role.name}**!"
+                    )
+                    await msg.add_reaction("🎉")
+                except Exception:
+                    pass
+    
+    @app_commands.command(name="demote", description="👇 Demote a staff member to a lower role")
+    @app_commands.describe(
+        member="The staff member to demote",
+        role="Optional: Specific role to demote to (must be lower than current)"
+    )
+    async def demote(
+        self,
+        interaction: discord.Interaction,
+        member: discord.Member,
+        role: Optional[discord.Role] = None
+    ):
+        """Demote a staff member down one rank or to a specific role"""
+        # Check supervisor permission
+        if not await check_supervisor(interaction):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", "You need supervisor permissions for this command."),
+                ephemeral=True
+            )
+        
+        # Can't demote yourself
+        if member.id == interaction.user.id:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Error", "You cannot demote yourself."),
+                ephemeral=True
+            )
+        
+        # Can't demote bots
+        if member.bot:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Error", "You cannot demote bots."),
+                ephemeral=True
+            )
+        
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        
+        # Define staff hierarchy (lowest to highest)
+        staff_hierarchy = [
+            ('staff_role', '⭐ Staff'),
+            ('trial_mod_role', '🔰 Trial Moderator'),
+            ('mod_role', '🛡️ Moderator'),
+            ('senior_mod_role', '⚔️ Senior Moderator'),
+            ('supervisor_role', '👁️ Supervisor'),
+            ('admin_role', '👑 Admin'),
+        ]
+        
+        # Find current staff role
+        current_role = None
+        current_index = -1
+        member_role_ids = [r.id for r in member.roles]
+        
+        for idx, (key, name) in enumerate(staff_hierarchy):
+            role_id = settings.get(key)
+            if role_id and role_id in member_role_ids:
+                current_role = interaction.guild.get_role(role_id)
+                current_index = idx
+                break
+        
+        if current_role is None:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not Staff", f"{member.mention} is not a staff member."),
+                ephemeral=True
+            )
+        
+        # Determine target role
+        if role:
+            # Custom role specified
+            target_role = role
+            target_role_name = role.name
+            
+            # Verify it's a staff role and lower than current
+            target_index = -1
+            for idx, (key, name) in enumerate(staff_hierarchy):
+                role_id = settings.get(key)
+                if role_id == role.id:
+                    target_index = idx
+                    target_role_name = name
+                    break
+            
+            if target_index == -1:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Invalid Role", "The specified role is not a staff role."),
+                    ephemeral=True
+                )
+            
+            if target_index >= current_index:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Invalid Demotion", "The specified role must be lower than the member's current role."),
+                    ephemeral=True
+                )
+        else:
+            # Demote to previous rank
+            if current_index <= 0:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Min Rank", f"{member.mention} is already at the lowest staff rank."),
+                    ephemeral=True
+                )
+            
+            prev_key, target_role_name = staff_hierarchy[current_index - 1]
+            prev_role_id = settings.get(prev_key)
+            
+            if not prev_role_id:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Role Not Found", f"The previous rank role ({target_role_name}) is not configured."),
+                    ephemeral=True
+                )
+            
+            target_role = interaction.guild.get_role(prev_role_id)
+            if not target_role:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Role Not Found", f"The role for {target_role_name} no longer exists."),
+                    ephemeral=True
+                )
+        
+        # Perform the demotion
+        try:
+            await member.remove_roles(current_role, reason=f"Demoted by {interaction.user}")
+            await member.add_roles(target_role, reason=f"Demoted by {interaction.user}")
+        except discord.Forbidden:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Error", "I don't have permission to manage these roles."),
+                ephemeral=True
+            )
+        except Exception as e:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Error", f"Failed to demote member: {e}"),
+                ephemeral=True
+            )
+        
+        # Send confirmation
+        await interaction.response.send_message(
+            embed=ModEmbed.success(
+                "Staff Demoted",
+                f"{member.mention} has been demoted from **{current_role.name}** to **{target_role.name}**"
+            )
+        )
+        
+        # Send public announcement
+        staff_updates_channel_id = settings.get('staff_updates_channel')
+        if staff_updates_channel_id:
+            channel = interaction.guild.get_channel(staff_updates_channel_id)
+            if channel:
+                try:
+                    msg = await channel.send(
+                        f"{member.mention}, you have been demoted from **{current_role.name}** to **{target_role.name}**."
+                    )
+                    await msg.add_reaction("🫡")
+                except Exception:
+                    pass
+
 
 async def setup(bot):
     await bot.add_cog(Staff(bot))

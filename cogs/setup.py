@@ -19,8 +19,10 @@ class Setup(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @app_commands.command(
-        name="setup",
+    setup_group = app_commands.Group(name="setup", description="🛡️ Server setup commands")
+    
+    @setup_group.command(
+        name="server",
         description="🛡️ Set up the moderation bot - creates channels, roles, and configurations",
     )
     @app_commands.describe(
@@ -28,7 +30,7 @@ class Setup(commands.Cog):
         welcome_channel="Existing welcome channel to use (optional)",
     )
     @is_admin()
-    async def setup(
+    async def setup_server(
         self,
         interaction: discord.Interaction,
         verify: bool = False,
@@ -1450,6 +1452,53 @@ class Setup(commands.Cog):
         except (discord.NotFound, discord.HTTPException, discord.InteractionResponded):
             # Interaction might be stale, message deleted, or already responded to
             pass
+        except Exception:
+            pass
+    
+    @setup_group.command(
+        name="staff-updates",
+        description="📢 Set up the staff updates channel for promotions/demotions"
+    )
+    @app_commands.describe(
+        channel="The channel where staff promotion/demotion announcements will be posted"
+    )
+    @is_admin()
+    async def setup_staff_updates(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.TextChannel
+    ):
+        """Configure the staff updates channel for public announcements"""
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        settings['staff_updates_channel'] = channel.id
+        await self.bot.db.update_settings(interaction.guild_id, settings)
+        
+        # Send confirmation
+        embed = discord.Embed(
+            title="✅ Staff Updates Channel Configured",
+            description=f"Staff promotion and demotion announcements will now be posted in {channel.mention}",
+            color=0x00FF00
+        )
+        embed.add_field(
+            name="📌 What will be posted here?",
+            value=(
+                "• **Promotions**: Congratulatory messages with 🎉 reaction\n"
+                "• **Demotions**: Notification messages with 🫡 reaction"
+            ),
+            inline=False
+        )
+        embed.set_footer(text="Use /promote or /demote to manage staff ranks")
+        
+        await interaction.response.send_message(embed=embed)
+        
+        # Send a test message to the channel
+        test_embed = discord.Embed(
+            description="This channel has been configured for staff updates! 🎉",
+            color=0x5865F2
+        )
+        test_embed.set_footer(text="Promotions and demotions will be announced here")
+        try:
+            await channel.send(embed=test_embed)
         except Exception:
             pass
 
