@@ -937,8 +937,13 @@ class Staff(commands.Cog):
                         f"Congratulations {member.mention}, you have been promoted from **{current_role.name}** to **{target_role.name}**!"
                     )
                     await msg.add_reaction("🎉")
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Log the error but don't fail the command
+                    print(f"Failed to send promotion announcement: {e}")
+            else:
+                print(f"Staff updates channel not found (ID: {staff_updates_channel_id})")
+        else:
+            print("Staff updates channel not configured")
     
     @app_commands.command(name="demote", description="👇 Demote a staff member to a lower role")
     @app_commands.describe(
@@ -1086,8 +1091,13 @@ class Staff(commands.Cog):
                         f"{member.mention}, you have been demoted from **{current_role.name}** to **{target_role.name}**."
                     )
                     await msg.add_reaction("🫡")
-                except Exception:
-                    pass
+                except Exception as e:
+                    # Log the error but don't fail the command
+                    print(f"Failed to send demotion announcement: {e}")
+            else:
+                print(f"Staff updates channel not found (ID: {staff_updates_channel_id})")
+        else:
+            print("Staff updates channel not configured")
 
 
 async def setup(bot):
