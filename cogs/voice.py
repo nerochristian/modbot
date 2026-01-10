@@ -44,11 +44,24 @@ class Voice(commands.Cog):
     ):
         # Handle verification separately (admin only)
         if action == "verification":
-            # Check admin permission
-            admin_check = is_admin()
-            try:
-                await admin_check.interaction_check(interaction)
-            except app_commands.CheckFailure:
+            # Check admin permission directly
+            is_admin_user = False
+            if is_bot_owner_id(interaction.user.id):
+                is_admin_user = True
+            elif interaction.user.guild_permissions.administrator:
+                is_admin_user = True
+            else:
+                # Check for admin/manager roles from database
+                settings = await self.bot.db.get_settings(interaction.guild_id)
+                admin_roles = settings.get("admin_roles", [])
+                manager_role = settings.get("manager_role")
+                user_role_ids = [r.id for r in interaction.user.roles]
+                if manager_role and manager_role in user_role_ids:
+                    is_admin_user = True
+                elif any(role_id in user_role_ids for role_id in admin_roles):
+                    is_admin_user = True
+            
+            if not is_admin_user:
                 return await interaction.response.send_message(
                     embed=ModEmbed.error("Permission Denied", "You need administrator permissions for this action."),
                     ephemeral=True
