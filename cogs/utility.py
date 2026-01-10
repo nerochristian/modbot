@@ -85,6 +85,104 @@ class Utility(commands.Cog):
                 except:
                     pass
     
+    # ==================== UNIFIED INFO COMMAND ====================
+
+    @app_commands.command(name="info", description="ℹ️ Get information about users, server, or channels")
+    @app_commands.describe(
+        type="Type of information to display",
+        user="User to get info about (for user type)",
+        channel="Channel to get info about (for channel type)",
+    )
+    async def info(
+        self,
+        interaction: discord.Interaction,
+        type: Literal["user", "server", "channel", "members", "bots"],
+        user: Optional[discord.Member] = None,
+        channel: Optional[discord.abc.GuildChannel] = None,
+    ):
+        """Unified information command."""
+        if type == "user":
+            await self._userinfo_logic(interaction, user or interaction.user)
+        elif type == "server":
+            await self._serverinfo_logic(interaction)
+        elif type == "channel":
+            await self._channelinfo_logic(interaction, channel or interaction.channel)
+        elif type == "members":
+            await self._membercount_logic(interaction)
+        elif type == "bots":
+            await self._bots_logic(interaction)
+
+    async def _userinfo_logic(self, interaction, user):
+        """Display user info."""
+        embed = discord.Embed(
+            title=f"User Information - {user}",
+            color=user.color if user.color != discord.Color.default() else Colors.INFO,
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.set_thumbnail(url=user.display_avatar.url)
+        embed.add_field(name="ID", value=f"`{user.id}`", inline=True)
+        embed.add_field(name="Nickname", value=user.nick or "None", inline=True)
+        embed.add_field(name="Bot", value="Yes" if user.bot else "No", inline=True)
+        embed.add_field(name="Created", value=f"<t:{int(user.created_at.timestamp())}:R>", inline=True)
+        if user.joined_at:
+            embed.add_field(name="Joined", value=f"<t:{int(user.joined_at.timestamp())}:R>", inline=True)
+        roles = [r.mention for r in user.roles[1:][:10]]
+        roles.reverse()
+        embed.add_field(name=f"Roles [{len(user.roles)-1}]", value=", ".join(roles) if roles else "None", inline=False)
+        await interaction.response.send_message(embed=embed)
+
+    async def _serverinfo_logic(self, interaction):
+        """Display server info."""
+        guild = interaction.guild
+        embed = discord.Embed(title=f"Server - {guild.name}", color=Colors.INFO, timestamp=datetime.now(timezone.utc))
+        if guild.icon:
+            embed.set_thumbnail(url=guild.icon.url)
+        embed.add_field(name="Owner", value=guild.owner.mention if guild.owner else "Unknown", inline=True)
+        embed.add_field(name="ID", value=f"`{guild.id}`", inline=True)
+        embed.add_field(name="Members", value=f"{guild.member_count:,}", inline=True)
+        embed.add_field(name="Created", value=f"<t:{int(guild.created_at.timestamp())}:R>", inline=True)
+        embed.add_field(name="Channels", value=f"{len(guild.channels)}", inline=True)
+        embed.add_field(name="Roles", value=f"{len(guild.roles)}", inline=True)
+        embed.add_field(name="Boost Level", value=f"{guild.premium_tier} ({guild.premium_subscription_count or 0} boosts)", inline=True)
+        await interaction.response.send_message(embed=embed)
+
+    async def _channelinfo_logic(self, interaction, channel):
+        """Display channel info."""
+        embed = discord.Embed(title=f"Channel - {channel.name}", color=Colors.INFO, timestamp=datetime.now(timezone.utc))
+        embed.add_field(name="ID", value=f"`{channel.id}`", inline=True)
+        embed.add_field(name="Type", value=str(channel.type).replace("_", " ").title(), inline=True)
+        embed.add_field(name="Created", value=f"<t:{int(channel.created_at.timestamp())}:R>", inline=True)
+        if hasattr(channel, 'topic') and channel.topic:
+            embed.add_field(name="Topic", value=channel.topic[:200], inline=False)
+        await interaction.response.send_message(embed=embed)
+
+    async def _membercount_logic(self, interaction):
+        """Display member count."""
+        guild = interaction.guild
+        total = guild.member_count
+        humans = len([m for m in guild.members if not m.bot])
+        bots = total - humans
+        online = len([m for m in guild.members if m.status != discord.Status.offline])
+        embed = discord.Embed(title=f"📊 {guild.name} Members", color=Colors.INFO)
+        embed.add_field(name="Total", value=f"{total:,}", inline=True)
+        embed.add_field(name="Humans", value=f"{humans:,}", inline=True)
+        embed.add_field(name="Bots", value=f"{bots:,}", inline=True)
+        embed.add_field(name="Online", value=f"{online:,}", inline=True)
+        await interaction.response.send_message(embed=embed)
+
+    async def _bots_logic(self, interaction):
+        """Display server bots."""
+        guild = interaction.guild
+        bots = [m for m in guild.members if m.bot]
+        if not bots:
+            return await interaction.response.send_message(embed=ModEmbed.info("No Bots", "No bots in server."), ephemeral=True)
+        embed = discord.Embed(title=f"🤖 Server Bots ({len(bots)})", color=Colors.INFO)
+        bot_list = [f"{b.mention} - {'🟢' if b.status != discord.Status.offline else '⚫'}" for b in bots[:20]]
+        embed.description = "\n".join(bot_list)
+        if len(bots) > 20:
+            embed.set_footer(text=f"+{len(bots)-20} more")
+        await interaction.response.send_message(embed=embed)
+
     # ==================== TIMESTAMP GENERATOR ====================
     
     @app_commands.command(name="timestamp", description="⏰ Generate Discord timestamp formats")

@@ -183,24 +183,14 @@ def get_category_icon(category: str) -> str:
 # =============================================================================
 
 MOD_COMMANDS = {
-    "User Actions": [
-        ("`/warn`", "Issue a warning"),
-        ("`/kick`", "Kick a user"),
-        ("`/ban`", "Ban a user"),
-        ("`/tempban`", "Temporary ban"),
-        ("`/mute`", "Timeout a user"),
-        ("`/unmute`", "Remove timeout"),
+    "Unified Commands": [
+        ("`/mod action:<action>`", "warn|kick|ban|tempban|unban|softban|timeout|unmute|rename"),
+        ("`/channel action:<action>`", "lock|unlock|slowmode|nuke|glock|gunlock"),
+        ("`/info type:<type>`", "user|server|channel|members|bots"),
     ],
-    "Channel Actions": [
+    "Other Actions": [
         ("`/purge`", "Bulk delete messages"),
-        ("`/lock`", "Lock a channel"),
-        ("`/unlock`", "Unlock a channel"),
-        ("`/slowmode`", "Set slowmode"),
-    ],
-    "Voice Actions": [
-        ("`/vc action:mute`", "Server mute user"),
-        ("`/vc action:kick`", "Kick from VC"),
-        ("`/vc action:move`", "Move user to VC"),
+        ("`/vc action:<action>`", "Voice moderation"),
     ],
     "Info & History": [
         ("`/history`", "View user history"),

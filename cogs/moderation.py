@@ -1537,22 +1537,130 @@ class Moderation(commands.Cog):
 
         return await self._respond(interaction, embed=embed, ephemeral=True)
 
-    # ==================== WARNING COMMANDS ====================
+    # ==================== UNIFIED MOD COMMAND ====================
 
-    @app_commands.command(name="warn", description="⚠️ Issue a warning to a user")
+    @app_commands.command(name="mod", description="🛡️ Unified moderation command")
     @app_commands.describe(
-        user="The user to warn",
-        reason="Reason for the warning"
+        action="Moderation action to perform",
+        user="User to moderate",
+        reason="Reason for the action",
+        duration="Duration for timeout/tempban (e.g., 1h, 1d, 7d)",
+        delete_days="Days of messages to delete for ban (0-7)",
+        user_id="User ID for unban (if user left server)",
     )
     @is_mod()
-    async def warn(
+    async def mod(
         self,
         interaction: discord.Interaction,
-        user: discord.Member,
-        reason: str = "No reason provided"
+        action: Literal["warn", "kick", "ban", "tempban", "unban", "softban", "timeout", "unmute", "rename"],
+        user: Optional[discord.Member] = None,
+        reason: str = "No reason provided",
+        duration: Optional[str] = None,
+        delete_days: app_commands.Range[int, 0, 7] = 1,
+        user_id: Optional[str] = None,
     ):
-        """Warn a user and track in database"""
-        await self._warn_logic(interaction, user, reason)
+        """Unified moderation command - consolidates warn, kick, ban, timeout, etc."""
+        
+        # Unban requires user_id, not user member
+        if action == "unban":
+            if not user_id and not user:
+                return await self._respond(
+                    interaction,
+                    embed=ModEmbed.error("Missing Argument", "Please provide `user_id` for unban."),
+                    ephemeral=True
+                )
+            uid = None
+            if user_id:
+                try:
+                    uid = int(user_id)
+                except ValueError:
+                    return await self._respond(
+                        interaction,
+                        embed=ModEmbed.error("Invalid ID", "User ID must be a number."),
+                        ephemeral=True
+                    )
+            elif user:
+                uid = user.id
+            await self._unban_logic(interaction, uid, reason)
+            return
+        
+        # All other actions require a user member
+        if user is None:
+            return await self._respond(
+                interaction,
+                embed=ModEmbed.error("Missing Argument", "Please specify a `user` for this action."),
+                ephemeral=True
+            )
+        
+        # Check bot owner protection
+        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
+            return await self._respond(
+                interaction,
+                embed=ModEmbed.error("Permission Denied", f"You cannot {action} the bot owner."),
+                ephemeral=True
+            )
+        
+        # Route to appropriate logic
+        if action == "warn":
+            await self._warn_logic(interaction, user, reason)
+        elif action == "kick":
+            await self._kick_logic(interaction, user, reason)
+        elif action == "ban":
+            # Check senior mod for ban
+            if not await self._check_senior_mod(interaction):
+                return await self._respond(
+                    interaction,
+                    embed=ModEmbed.error("Permission Denied", "Ban requires Senior Moderator permissions."),
+                    ephemeral=True
+                )
+            await self._ban_logic(interaction, user, reason, delete_days)
+        elif action == "tempban":
+            if not await self._check_senior_mod(interaction):
+                return await self._respond(
+                    interaction,
+                    embed=ModEmbed.error("Permission Denied", "Tempban requires Senior Moderator permissions."),
+                    ephemeral=True
+                )
+            dur = duration or "1d"
+            await self._tempban_logic(interaction, user, dur, reason)
+        elif action == "softban":
+            if not await self._check_senior_mod(interaction):
+                return await self._respond(
+                    interaction,
+                    embed=ModEmbed.error("Permission Denied", "Softban requires Senior Moderator permissions."),
+                    ephemeral=True
+                )
+            await self._softban_logic(interaction, user, reason, delete_days)
+        elif action == "timeout":
+            dur = duration or "1h"
+            await self._mute_logic(interaction, user, dur, reason)
+        elif action == "unmute":
+            await self._unmute_logic(interaction, user, reason)
+        elif action == "rename":
+            # Rename needs a new nickname - use reason as the new name
+            await self._rename_logic(interaction, user, reason if reason != "No reason provided" else None)
+
+    async def _check_senior_mod(self, interaction: discord.Interaction) -> bool:
+        """Check if user has senior mod permissions."""
+        if is_bot_owner_id(interaction.user.id):
+            return True
+        if interaction.user.guild_permissions.administrator:
+            return True
+        if interaction.user.guild_permissions.ban_members:
+            return True
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        senior_mod_role = settings.get("senior_mod_role")
+        admin_roles = settings.get("admin_roles", [])
+        user_role_ids = [r.id for r in interaction.user.roles]
+        if senior_mod_role and senior_mod_role in user_role_ids:
+            return True
+        if any(role_id in user_role_ids for role_id in admin_roles):
+            return True
+        return False
+
+    # ==================== WARNING COMMANDS ====================
+    # NOTE: Slash commands removed - use /mod action:warn instead
+
 
     @commands.command(name="warn")
     @is_mod()
@@ -1560,12 +1668,6 @@ class Moderation(commands.Cog):
         """Warn a user"""
         await self._warn_logic(ctx, user, reason)
 
-    @app_commands.command(name="warnings", description="📋 View all warnings for a user")
-    @app_commands.describe(user="User to check")
-    @is_mod()
-    async def warnings(self, interaction: discord.Interaction, user: discord.Member):
-        """Display all warnings for a user"""
-        await self._warnings_logic(interaction, user)
 
     @commands.command(name="warnings")
     @is_mod()
@@ -1573,12 +1675,6 @@ class Moderation(commands.Cog):
         """View warnings for a user"""
         await self._warnings_logic(ctx, user)
 
-    @app_commands.command(name="delwarn", description="🗑️ Delete a specific warning")
-    @app_commands.describe(warning_id="ID of the warning to delete")
-    @is_mod()
-    async def delwarn(self, interaction: discord.Interaction, warning_id: int):
-        """Remove a warning from the database"""
-        await self._delwarn_logic(interaction, warning_id)
 
     @commands.command(name="delwarn")
     @is_mod()
@@ -1586,20 +1682,6 @@ class Moderation(commands.Cog):
         """Delete a specific warning"""
         await self._delwarn_logic(ctx, warning_id)
 
-    @app_commands.command(name="clearwarnings", description="🧹 Clear all warnings for a user")
-    @app_commands.describe(
-        user="User whose warnings to clear",
-        reason="Reason for clearing"
-    )
-    @is_senior_mod()
-    async def clearwarnings(
-        self,
-        interaction: discord.Interaction,
-        user: discord.Member,
-        reason: str = "No reason provided"
-    ):
-        """Clear all warnings for a user"""
-        await self._clearwarnings_logic(interaction, user, reason)
 
     @commands.command(name="clearwarnings")
     @is_senior_mod()
@@ -1609,20 +1691,7 @@ class Moderation(commands.Cog):
 
     # ==================== KICK & BAN COMMANDS ====================
 
-    @app_commands.command(name="kick", description="👢 Kick a user from the server")
-    @app_commands.describe(
-        user="User to kick",
-        reason="Reason for kick"
-    )
-    @is_mod()
-    async def kick(
-        self,
-        interaction: discord.Interaction,
-        user: discord.Member,
-        reason: str = "No reason provided"
-    ):
-        """Kick a user from the server"""
-        await self._kick_logic(interaction, user, reason)
+    # NOTE: /kick, /ban, /tempban, /unban, /softban, /timeout, /unmute removed - use /mod instead
 
     @commands.command(name="kick")
     @is_mod()
@@ -1630,22 +1699,6 @@ class Moderation(commands.Cog):
         """Kick a user"""
         await self._kick_logic(ctx, user, reason)
 
-    @app_commands.command(name="ban", description="🔨 Ban a user from the server")
-    @app_commands.describe(
-        user="User to ban",
-        reason="Reason for ban",
-        delete_days="Days of messages to delete (0-7)"
-    )
-    @is_senior_mod()
-    async def ban(
-        self,
-        interaction: discord.Interaction,
-        user: discord.Member,
-        reason: str = "No reason provided",
-        delete_days: app_commands.Range[int, 0, 7] = 1
-    ):
-        """Permanently ban a user"""
-        await self._ban_logic(interaction, user, reason, delete_days)
 
     @commands.command(name="ban")
     @is_senior_mod()
@@ -1653,22 +1706,6 @@ class Moderation(commands.Cog):
         """Ban a user"""
         await self._ban_logic(ctx, user, reason)
 
-    @app_commands.command(name="tempban", description="⏰ Temporarily ban a user")
-    @app_commands.describe(
-        user="User to temporarily ban",
-        duration="Ban duration (e.g., 1d, 7d, 30d)",
-        reason="Reason for ban"
-    )
-    @is_senior_mod()
-    async def tempban(
-        self,
-        interaction: discord.Interaction,
-        user: discord.Member,
-        duration: str,
-        reason: str = "No reason provided"
-    ):
-        """Temporarily ban a user with automatic unban"""
-        await self._tempban_logic(interaction, user, duration, reason)
 
     @commands.command(name="tempban")
     @is_senior_mod()
@@ -1676,24 +1713,6 @@ class Moderation(commands.Cog):
         """Temporarily ban a user"""
         await self._tempban_logic(ctx, user, duration, reason)
 
-    @app_commands.command(name="unban", description="🔓 Unban a user")
-    @app_commands.describe(
-        user_id="ID of the user to unban",
-        reason="Reason for unban"
-    )
-    @is_senior_mod()
-    async def unban(
-        self,
-        interaction: discord.Interaction,
-        user_id: str,
-        reason: str = "No reason provided"
-    ):
-        """Unban a previously banned user"""
-        try:
-            uid = int(user_id)
-        except ValueError:
-            return await self._respond(interaction, embed=ModEmbed.error("Invalid ID", "User ID must be an integer."), ephemeral=True)
-        await self._unban_logic(interaction, uid, reason)
 
     @commands.command(name="unban")
     @is_senior_mod()
@@ -1705,20 +1724,6 @@ class Moderation(commands.Cog):
              return await self._respond(ctx, embed=ModEmbed.error("Invalid ID", "User ID must be an integer."))
         await self._unban_logic(ctx, uid, reason)
 
-    @app_commands.command(name="softban", description="🧹 Softban (ban + immediate unban to delete messages)")
-    @app_commands.describe(
-        user="User to softban",
-        reason="Reason for softban"
-    )
-    @is_senior_mod()
-    async def softban(
-        self,
-        interaction: discord.Interaction,
-        user: discord.Member,
-        reason: str = "No reason provided"
-    ):
-        """Ban and immediately unban to delete messages"""
-        await self._softban_logic(interaction, user, reason)
 
     @commands.command(name="softban")
     @is_senior_mod()
@@ -1829,101 +1834,8 @@ class Moderation(commands.Cog):
 
     # ==================== TIMEOUT/MUTE COMMANDS ====================
 
-    @app_commands.command(name="rename", description="✏️ Change a member's nickname")
-    @is_mod()
-    @app_commands.describe(
-        user="The member to rename",
-        new_name="The new nickname (leave empty to reset)"
-    )
-    async def rename(self, interaction: discord.Interaction, user: discord.Member, new_name: Optional[str] = None):
-        if not interaction.guild:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Guild Only", "This command can only be used in a server."),
-                ephemeral=True,
-            )
+    # NOTE: /rename, /timeout, /unmute removed - use /mod instead
 
-        # Check permission to moderate target
-        can_mod, error = await self.can_moderate(interaction.guild.id, interaction.user, user)
-        if not can_mod:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Permission Denied", error),
-                ephemeral=True,
-            )
-        
-        # Check bot permission
-        bot_member = interaction.guild.me
-        if user.top_role >= bot_member.top_role:
-             return await interaction.response.send_message(
-                embed=ModEmbed.error("Bot Permission Error", "I cannot rename this user due to role hierarchy."),
-                ephemeral=True,
-            )
-
-        await interaction.response.defer()
-        
-        old_name = user.display_name
-        try:
-            await user.edit(nick=new_name, reason=f"Rename by {interaction.user}")
-            
-            embed = ModEmbed.success(
-                "Nickname Changed",
-                f"Renamed {user.mention} from `{old_name}` to `{new_name if new_name else user.name}`"
-            )
-            await interaction.followup.send(embed=embed)
-            
-            # Log it
-            log_embed = await self.create_mod_embed(
-                title="✏️ Member Renamed",
-                user=user,
-                moderator=interaction.user,
-                reason="Nickname Change",
-                color=Colors.INFO,
-                extra_fields={"Old Name": old_name, "New Name": new_name if new_name else user.name}
-            )
-            await self.log_action(interaction.guild, log_embed)
-            
-        except Exception as e:
-            await interaction.followup.send(
-                embed=ModEmbed.error("Failed", f"Could not rename user: {e}"),
-                ephemeral=True,
-            )
-
-    @app_commands.command(name="timeout", description="🕒 Timeout a member")
-    @is_mod()
-    @app_commands.describe(
-        user="The member to timeout",
-        duration="Duration (e.g. 1m, 1h, 1d)",
-        reason="Reason for the timeout"
-    )
-    async def timeout(
-        self,
-        interaction: discord.Interaction,
-        user: discord.Member,
-        duration: str = "1h",
-        reason: str = "No reason provided"
-    ):
-        """Timeout (mute) a user"""
-        await self._mute_logic(interaction, user, duration, reason)
-
-    @commands.command(name="mute")
-    @is_mod()
-    async def mute_prefix(self, ctx: commands.Context, user: discord.Member, duration: str = "1h", *, reason: str = "No reason provided"):
-        """Timeout (mute) a user"""
-        await self._mute_logic(ctx, user, duration, reason)
-
-    @app_commands.command(name="unmute", description="🔊 Remove timeout from a user")
-    @app_commands.describe(
-        user="User to unmute",
-        reason="Reason for unmute"
-    )
-    @is_mod()
-    async def unmute(
-        self,
-        interaction: discord.Interaction,
-        user: discord.Member,
-        reason: str = "No reason provided"
-    ):
-        """Remove timeout from a user"""
-        await self._unmute_logic(interaction, user, reason)
 
     @commands.command(name="unmute")
     @is_mod()
@@ -1931,51 +1843,98 @@ class Moderation(commands.Cog):
         """Remove timeout from a user"""
         await self._unmute_logic(ctx, user, reason)
 
+    # ==================== UNIFIED CHANNEL COMMAND ====================
+
+    @app_commands.command(name="channel", description="📺 Channel management commands")
+    @app_commands.describe(
+        action="Channel action to perform",
+        channel="Target channel (current if not specified)",
+        duration="Slowmode duration (e.g., 5s, 1m, 1h) or 0 to disable",
+        role="Role that can still talk (for lock/glock)",
+        reason="Reason for the action",
+    )
+    @is_mod()
+    async def channel(
+        self,
+        interaction: discord.Interaction,
+        action: Literal["lock", "unlock", "slowmode", "nuke", "glock", "gunlock"],
+        channel: Optional[discord.TextChannel] = None,
+        duration: Optional[str] = None,
+        role: Optional[discord.Role] = None,
+        reason: str = "No reason provided",
+    ):
+        """Unified channel management command."""
+        target = channel or interaction.channel
+        
+        if action == "lock":
+            await self._lock_logic(interaction, target, reason, role=role)
+        elif action == "unlock":
+            await self._unlock_logic(interaction, target, reason)
+        elif action == "slowmode":
+            seconds = 0
+            if duration:
+                parsed = parse_time(duration)
+                if parsed:
+                    seconds = int(parsed.total_seconds())
+            await self._slowmode_logic(interaction, seconds, target)
+        elif action == "nuke":
+            if not await self._check_senior_mod(interaction):
+                return await self._respond(
+                    interaction,
+                    embed=ModEmbed.error("Permission Denied", "Nuke requires Senior Moderator permissions."),
+                    ephemeral=True
+                )
+            await self._nuke_logic(interaction, target, reason)
+        elif action == "glock":
+            await self._glock_channel(interaction, target, role, reason)
+        elif action == "gunlock":
+            await self._gunlock_channel(interaction, target, reason)
+
+    async def _glock_channel(self, interaction: discord.Interaction, channel, role, reason):
+        """Apply glock to a single channel."""
+        if not interaction.guild:
+            return
+        settings = await self.bot.db.get_settings(interaction.guild.id)
+        configured_role_id = settings.get("glock_role_id") or settings.get("glock_role")
+        glock_role = (
+            role
+            or (interaction.guild.get_role(int(configured_role_id)) if configured_role_id else None)
+            or discord.utils.get(interaction.guild.roles, name="Glock")
+        )
+        if glock_role is None:
+            return await self._respond(
+                interaction,
+                embed=ModEmbed.error("Missing Role", "No glock role configured. Create a role named `Glock` or use `role:`."),
+                ephemeral=True
+            )
+        try:
+            await channel.set_permissions(interaction.guild.default_role, send_messages=False, reason=f"Glock by {interaction.user}: {reason}")
+            await channel.set_permissions(glock_role, send_messages=True, reason=f"Glock by {interaction.user}: {reason}")
+            await self._respond(interaction, embed=ModEmbed.success("Glocked", f"{channel.mention} is now glock-only (only {glock_role.mention} can talk)."))
+        except discord.Forbidden:
+            await self._respond(interaction, embed=ModEmbed.error("Failed", "I don't have permission to modify channel permissions."), ephemeral=True)
+
+    async def _gunlock_channel(self, interaction: discord.Interaction, channel, reason):
+        """Remove glock from a single channel."""
+        if not interaction.guild:
+            return
+        settings = await self.bot.db.get_settings(interaction.guild.id)
+        configured_role_id = settings.get("glock_role_id") or settings.get("glock_role")
+        glock_role = (
+            (interaction.guild.get_role(int(configured_role_id)) if configured_role_id else None)
+            or discord.utils.get(interaction.guild.roles, name="Glock")
+        )
+        try:
+            await channel.set_permissions(interaction.guild.default_role, send_messages=None, reason=f"Gunlock by {interaction.user}: {reason}")
+            if glock_role:
+                await channel.set_permissions(glock_role, overwrite=None, reason=f"Gunlock by {interaction.user}: {reason}")
+            await self._respond(interaction, embed=ModEmbed.success("Gunlocked", f"{channel.mention} glock restriction removed."))
+        except discord.Forbidden:
+            await self._respond(interaction, embed=ModEmbed.error("Failed", "I don't have permission to modify channel permissions."), ephemeral=True)
+
     # ==================== CHANNEL MANAGEMENT ====================
+    # NOTE: /lock, /unlock, /glock, /gunlock, /slowmode, /nuke removed - use /channel instead
 
-    @app_commands.command(name="lock", description="🔒 Lock a channel")
-    @app_commands.describe(
-        channel="Channel to lock (current channel if not specified)",
-        rank="Role that can still talk (optional)",
-        reason="Reason for lock"
-    )
-    @is_mod()
-    async def lock(
-        self,
-        interaction: discord.Interaction,
-        channel: Optional[discord.TextChannel] = None,
-        rank: Optional[discord.Role] = None,
-        reason: str = "No reason provided"
-    ):
-        """Lock a channel (prevent @everyone from sending messages)"""
-        await self._lock_logic(interaction, channel, reason, role=rank)
-
-    @commands.command(name="lock")
-    @is_mod()
-    async def lock_prefix(self, ctx: commands.Context, channel: Optional[discord.TextChannel] = None, role: Optional[discord.Role] = None, *, reason: str = "No reason provided"):
-        """Lock a channel"""
-        await self._lock_logic(ctx, channel, reason, role=role)
-
-    @app_commands.command(name="unlock", description="🔓 Unlock a channel")
-    @app_commands.describe(
-        channel="Channel to unlock (current channel if not specified)",
-        reason="Reason for unlock"
-    )
-    @is_mod()
-    async def unlock(
-        self,
-        interaction: discord.Interaction,
-        channel: Optional[discord.TextChannel] = None,
-        reason: str = "No reason provided"
-    ):
-        """Unlock a channel"""
-        await self._unlock_logic(interaction, channel, reason)
-
-    @commands.command(name="unlock")
-    @is_mod()
-    async def unlock_prefix(self, ctx: commands.Context, channel: Optional[discord.TextChannel] = None, *, reason: str = "No reason provided"):
-        """Unlock a channel"""
-        await self._unlock_logic(ctx, channel, reason)
 
     @app_commands.command(name="glock", description="🔒 Only the Glock role can talk in the channel")
     @app_commands.describe(
