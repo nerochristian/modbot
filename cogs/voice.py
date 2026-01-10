@@ -21,24 +21,26 @@ class Voice(commands.Cog):
         action="The action to perform",
         user="The user to target (required for most actions)",
         user_id="User ID for unban (if user left server)",
-        channel="Target voice channel (for move/moveall/check/afkdetect)",
+        channel="Target voice channel (for move/moveall)",
         from_channel="Source channel (for moveall)",
         reason="Reason for the action",
-        state="on/off (for verification/afkdetect)",
-        minutes="Minutes for afkdetect timeout"
+        state="on/off/settings/bypass/timeout (for verification)",
+        role="Role for bypass add/remove",
+        minutes="Minutes for session timeout",
     )
     @is_mod()
     async def vc(
         self, 
         interaction: discord.Interaction, 
-        action: Literal["mute", "unmute", "deafen", "undeafen", "kick", "move", "moveall", "ban", "unban", "verification", "check", "afkdetect"],
+        action: Literal["mute", "unmute", "deafen", "undeafen", "kick", "move", "moveall", "ban", "unban", "verification"],
         user: Optional[discord.Member] = None,
         user_id: Optional[str] = None,
         channel: Optional[discord.VoiceChannel] = None,
         from_channel: Optional[discord.VoiceChannel] = None,
         reason: Optional[str] = "No reason provided",
-        state: Optional[Literal["on", "off", "settings", "ignore", "unignore"]] = None,
-        minutes: Optional[int] = None
+        state: Optional[Literal["on", "off", "settings", "bypass_add", "bypass_remove", "timeout"]] = None,
+        role: Optional[discord.Role] = None,
+        minutes: Optional[int] = None,
     ):
         # Handle verification separately (admin only)
         if action == "verification":
@@ -52,49 +54,67 @@ class Voice(commands.Cog):
                     ephemeral=True
                 )
             
+            verification_cog = self.bot.get_cog("Verification")
+            
+            # Handle different verification sub-actions
+            if state == "settings":
+                if not verification_cog:
+                    return await interaction.response.send_message(
+                        embed=ModEmbed.error("Not Available", "Verification cog is not loaded."),
+                        ephemeral=True
+                    )
+                await verification_cog.show_settings(interaction)
+                return
+            
+            if state == "bypass_add":
+                if not verification_cog:
+                    return await interaction.response.send_message(
+                        embed=ModEmbed.error("Not Available", "Verification cog is not loaded."),
+                        ephemeral=True
+                    )
+                if role is None:
+                    return await interaction.response.send_message(
+                        embed=ModEmbed.error("Missing Argument", "Please specify a `role` to add as bypass."),
+                        ephemeral=True
+                    )
+                await verification_cog.add_bypass_role(interaction, role)
+                return
+            
+            if state == "bypass_remove":
+                if not verification_cog:
+                    return await interaction.response.send_message(
+                        embed=ModEmbed.error("Not Available", "Verification cog is not loaded."),
+                        ephemeral=True
+                    )
+                if role is None:
+                    return await interaction.response.send_message(
+                        embed=ModEmbed.error("Missing Argument", "Please specify a `role` to remove from bypass."),
+                        ephemeral=True
+                    )
+                await verification_cog.remove_bypass_role(interaction, role)
+                return
+            
+            if state == "timeout":
+                if not verification_cog:
+                    return await interaction.response.send_message(
+                        embed=ModEmbed.error("Not Available", "Verification cog is not loaded."),
+                        ephemeral=True
+                    )
+                if minutes is None:
+                    return await interaction.response.send_message(
+                        embed=ModEmbed.error("Missing Argument", "Please specify `minutes` for session timeout (1-1440)."),
+                        ephemeral=True
+                    )
+                await verification_cog.set_session_timeout(interaction, minutes)
+                return
+            
+            # Handle on/off states
             if state is None:
                 return await interaction.response.send_message(
-                    embed=ModEmbed.error("Missing Argument", "Please specify `state: on` or `state: off` for verification."),
+                    embed=ModEmbed.error("Missing Argument", "Please specify `state: on`, `off`, `settings`, `bypass_add`, `bypass_remove`, or `timeout`."),
                     ephemeral=True
                 )
             await self._verification(interaction, state)
-            return
-        
-        # Handle afkdetect separately (admin only)
-        if action == "afkdetect":
-            # Check admin permission
-            admin_check = is_admin()
-            try:
-                await admin_check.interaction_check(interaction)
-            except app_commands.CheckFailure:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Permission Denied", "You need administrator permissions for this action."),
-                    ephemeral=True
-                )
-            
-            await self._afkdetect(interaction, state, channel, user, minutes)
-            return
-        
-        # Handle check separately - can check a single user OR all users in a VC
-        if action == "check":
-            # If a specific user is provided, check just that user
-            if user is not None:
-                voice_afk_cog = self.bot.get_cog("VoiceAFK")
-                if not voice_afk_cog:
-                    return await interaction.response.send_message(
-                        embed=ModEmbed.error("Not Available", "Voice AFK detection cog is not loaded."),
-                        ephemeral=True
-                    )
-                await voice_afk_cog.afk_check_user(interaction, user)
-                return
-            
-            # No user specified - check all users in the channel
-            if channel is None:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Missing Argument", "Please specify a `user` to check, or a `channel` to check everyone."),
-                    ephemeral=True
-                )
-            await self._check_vc(interaction, channel)
             return
         
         # All other actions require a user
@@ -528,367 +548,6 @@ class Voice(commands.Cog):
             ),
             ephemeral=True,
         )
-
-    async def _check_vc(self, interaction: discord.Interaction, channel: discord.VoiceChannel):
-        """Check all users in a voice channel for AFK - parallel DMs, individual thanks"""
-        # Get the VoiceAFK cog
-        voice_afk_cog = self.bot.get_cog("VoiceAFK")
-        
-        if not voice_afk_cog:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Not Available", "Voice AFK detection is not loaded. Make sure `voice_afk.py` cog is loaded."),
-                ephemeral=True
-            )
-        
-        # Check if there are users in the channel
-        members = [m for m in channel.members if not m.bot]
-        if not members:
-            return await interaction.response.send_message(
-                embed=ModEmbed.warning("Empty Channel", f"{channel.mention} has no users to check."),
-                ephemeral=True
-            )
-        
-        await interaction.response.defer(ephemeral=True)
-        
-        # Get AFK settings
-        settings = await voice_afk_cog._get_afk_settings(interaction.guild.id)
-        
-        # Filter out members already being checked
-        to_check = []
-        skipped = 0
-        
-        for member in members:
-            key = (interaction.guild.id, member.id)
-            if key in voice_afk_cog.pending_checks:
-                skipped += 1
-                continue
-            to_check.append(member)
-            voice_afk_cog.pending_checks.add(key)
-        
-        if not to_check:
-            return await interaction.followup.send(
-                embed=ModEmbed.warning("All Being Checked", "All users in this channel are already being checked."),
-                ephemeral=True
-            )
-        
-        # Send initial message
-        embed = ModEmbed.success(
-            "AFK Check Started",
-            f"Checking **{len(to_check)}** users in {channel.mention} for AFK.\n"
-            f"Skipped **{skipped}** (already being checked).\n\n"
-            f"A TTS prompt will play and users must respond within {settings['response_timeout']} seconds."
-        )
-        await interaction.followup.send(embed=embed, ephemeral=True)
-        
-        import asyncio
-        import os
-        from datetime import datetime, timezone
-        
-        # Try to import voice recv for speaking detection
-        try:
-            import discord.ext.voice_recv as voice_recv
-            VOICE_RECV_AVAILABLE = True
-        except ImportError:
-            VOICE_RECV_AVAILABLE = False
-        
-        # Join voice channel - use VoiceRecvClient if available
-        voice_client = None
-        speaking_detected = {}  # member_id -> True when they speak
-        
-        try:
-            if VOICE_RECV_AVAILABLE:
-                voice_client = await channel.connect(cls=voice_recv.VoiceRecvClient)
-                
-                # Create speaking callback for all users
-                def on_voice_packet(user, data):
-                    if user and user.id in [m.id for m in to_check]:
-                        speaking_detected[user.id] = True
-                
-                # Start listening for voice packets
-                voice_client.listen(voice_recv.BasicSink(on_voice_packet))
-            else:
-                voice_client = await channel.connect()
-        except Exception as e:
-            print(f"[VoiceAFK] Failed to connect to {channel.name}: {e}")
-            for member in to_check:
-                voice_afk_cog.pending_checks.discard((interaction.guild.id, member.id))
-            return
-        
-        try:
-            # Play generic "Hello everyone" TTS
-            generic_tts = await voice_afk_cog._generate_tts(
-                f"Hello everyone! This is an AFK check. Please confirm you're here by clicking the button in your DMs, "
-                f"toggling your mute, or saying something. You have {settings['response_timeout']} seconds.",
-                "afk_check_all.mp3"
-            )
-            
-            if generic_tts and os.path.exists(generic_tts):
-                audio_source = discord.FFmpegPCMAudio(generic_tts)
-                voice_client.play(audio_source)
-                while voice_client.is_playing():
-                    await asyncio.sleep(0.5)
-                try:
-                    os.remove(generic_tts)
-                except:
-                    pass
-            
-            # Send DMs to all users in PARALLEL
-            from cogs.voice_afk import AFKConfirmButton
-            
-            user_views = {}  # member_id -> (view, msg)
-            
-            async def send_dm(member):
-                try:
-                    dm_channel = await member.create_dm()
-                    view = AFKConfirmButton(voice_afk_cog, member, timeout=settings["response_timeout"])
-                    
-                    embed = discord.Embed(
-                        title="🎤 AFK Check",
-                        description=f"You are being checked for AFK in **{channel.name}** ({interaction.guild.name}).\n\n"
-                                    f"**Respond in one of these ways within {settings['response_timeout']} seconds:**\n"
-                                    f"• 🎙️ Say something in voice chat\n"
-                                    f"• 🔇 Toggle your mute/unmute\n"
-                                    f"• ✅ Click the button below\n\n"
-                                    f"If you don't respond, you will be disconnected.",
-                        color=0xFFAA00,
-                        timestamp=datetime.now(timezone.utc)
-                    )
-                    
-                    msg = await dm_channel.send(embed=embed, view=view)
-                    return member.id, view, msg
-                except Exception as e:
-                    print(f"[VoiceAFK] Failed to DM {member}: {e}")
-                    return member.id, None, None
-            
-            # Send all DMs in parallel
-            dm_results = await asyncio.gather(*[send_dm(m) for m in to_check])
-            
-            for member_id, view, msg in dm_results:
-                if view:
-                    user_views[member_id] = (view, msg)
-            
-            # Wait for responses (listen for button clicks or voice activity)
-            confirmed = set()
-            
-            # Create voice activity listeners for each member
-            voice_events = {m.id: asyncio.Event() for m in to_check}
-            
-            async def check_voice_activity(m, before, after):
-                if m.id in voice_events:
-                    if before.self_mute != after.self_mute or \
-                       before.self_deaf != after.self_deaf or \
-                       before.mute != after.mute or \
-                       before.deaf != after.deaf:
-                        voice_events[m.id].set()
-            
-            # Temporarily add voice listener
-            original_listeners = self.bot.extra_events.get('on_voice_state_update', []).copy()
-            
-            @self.bot.event
-            async def on_voice_state_update(m, before, after):
-                await check_voice_activity(m, before, after)
-                for listener in original_listeners:
-                    try:
-                        await listener(m, before, after)
-                    except:
-                        pass
-            
-            try:
-                # Wait for timeout, checking for confirmations
-                start_time = asyncio.get_event_loop().time()
-                timeout = settings["response_timeout"]
-                
-                while asyncio.get_event_loop().time() - start_time < timeout:
-                    await asyncio.sleep(1)
-                    
-                    # Check for new confirmations
-                    for member in to_check:
-                        if member.id in confirmed:
-                            continue
-                        
-                        # Check button click
-                        if member.id in user_views:
-                            view, msg = user_views[member.id]
-                            if view and view.confirmed:
-                                confirmed.add(member.id)
-                                voice_afk_cog._update_activity(interaction.guild.id, member.id)
-                                
-                                # Edit DM
-                                try:
-                                    await msg.edit(embed=discord.Embed(
-                                        title="✅ Presence Confirmed",
-                                        description=f"Thanks for confirming you're still in **{channel.name}**!",
-                                        color=0x00FF00
-                                    ), view=None)
-                                except:
-                                    pass
-                                
-                                # Thank them in voice
-                                if voice_client and voice_client.is_connected():
-                                    try:
-                                        tts_file = await voice_afk_cog._generate_tts(
-                                            f"Thanks {member.display_name}!",
-                                            f"afk_thanks_{member.id}.mp3"
-                                        )
-                                        if tts_file and os.path.exists(tts_file):
-                                            # Wait for any current audio to finish
-                                            while voice_client.is_playing():
-                                                await asyncio.sleep(0.2)
-                                            audio_source = discord.FFmpegPCMAudio(tts_file)
-                                            voice_client.play(audio_source)
-                                            while voice_client.is_playing():
-                                                await asyncio.sleep(0.2)
-                                            try:
-                                                os.remove(tts_file)
-                                            except:
-                                                pass
-                                    except:
-                                        pass
-                        
-                        # Check voice activity (mute/unmute toggle)
-                        if member.id in voice_events and voice_events[member.id].is_set():
-                            if member.id not in confirmed:
-                                confirmed.add(member.id)
-                                voice_afk_cog._update_activity(interaction.guild.id, member.id)
-                                
-                                # Thank them in voice
-                                if voice_client and voice_client.is_connected():
-                                    try:
-                                        tts_file = await voice_afk_cog._generate_tts(
-                                            f"Thanks {member.display_name}!",
-                                            f"afk_thanks_{member.id}.mp3"
-                                        )
-                                        if tts_file and os.path.exists(tts_file):
-                                            while voice_client.is_playing():
-                                                await asyncio.sleep(0.2)
-                                            audio_source = discord.FFmpegPCMAudio(tts_file)
-                                            voice_client.play(audio_source)
-                                            while voice_client.is_playing():
-                                                await asyncio.sleep(0.2)
-                                            try:
-                                                os.remove(tts_file)
-                                            except:
-                                                pass
-                                    except:
-                                        pass
-                        
-                        # Check speaking detection (green indicator)
-                        if member.id in speaking_detected and speaking_detected[member.id]:
-                            if member.id not in confirmed:
-                                confirmed.add(member.id)
-                                voice_afk_cog._update_activity(interaction.guild.id, member.id)
-                                
-                                # Edit DM if they have one
-                                if member.id in user_views:
-                                    view, msg = user_views[member.id]
-                                    try:
-                                        await msg.edit(embed=discord.Embed(
-                                            title="✅ Presence Confirmed",
-                                            description=f"Detected you speaking in **{channel.name}**!",
-                                            color=0x00FF00
-                                        ), view=None)
-                                    except:
-                                        pass
-                                
-                                # Thank them in voice
-                                if voice_client and voice_client.is_connected():
-                                    try:
-                                        tts_file = await voice_afk_cog._generate_tts(
-                                            f"Thanks {member.display_name}!",
-                                            f"afk_thanks_{member.id}.mp3"
-                                        )
-                                        if tts_file and os.path.exists(tts_file):
-                                            while voice_client.is_playing():
-                                                await asyncio.sleep(0.2)
-                                            audio_source = discord.FFmpegPCMAudio(tts_file)
-                                            voice_client.play(audio_source)
-                                            while voice_client.is_playing():
-                                                await asyncio.sleep(0.2)
-                                            try:
-                                                os.remove(tts_file)
-                                            except:
-                                                pass
-                                    except:
-                                        pass
-                
-                # Timeout reached - kick unconfirmed users
-                for member in to_check:
-                    if member.id not in confirmed:
-                        if member.voice and member.voice.channel:
-                            try:
-                                await member.move_to(None, reason="AFK detection - No response to activity check")
-                                try:
-                                    dm_embed = discord.Embed(
-                                        title="🔇 Disconnected for Inactivity",
-                                        description=f"You were disconnected from **{channel.name}** in **{interaction.guild.name}** for being AFK.",
-                                        color=0xFF6600,
-                                        timestamp=datetime.now(timezone.utc)
-                                    )
-                                    await member.send(embed=dm_embed)
-                                except:
-                                    pass
-                                print(f"[VoiceAFK] Kicked {member} from {channel.name} for inactivity")
-                            except:
-                                pass
-                    
-                    # Remove from pending
-                    voice_afk_cog.pending_checks.discard((interaction.guild.id, member.id))
-            
-            finally:
-                # Restore original listeners
-                pass
-        
-        finally:
-            # Disconnect from voice
-            if voice_client and voice_client.is_connected():
-                await voice_client.disconnect()
-
-    async def _afkdetect(
-        self,
-        interaction: discord.Interaction,
-        state: Optional[str],
-        channel: Optional[discord.VoiceChannel],
-        user: Optional[discord.Member],
-        minutes: Optional[int]
-    ):
-        """Handle AFK detection admin actions"""
-        voice_afk_cog = self.bot.get_cog("VoiceAFK")
-        
-        if not voice_afk_cog:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Not Available", "Voice AFK detection cog is not loaded."),
-                ephemeral=True
-            )
-        
-        # Route based on state parameter
-        if state is None or state == "settings":
-            await voice_afk_cog.afk_settings(interaction)
-        elif state == "on":
-            await voice_afk_cog.afk_enable(interaction)
-        elif state == "off":
-            await voice_afk_cog.afk_disable(interaction)
-        elif state == "ignore":
-            if channel is None:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Missing Argument", "Please specify a `channel` to ignore."),
-                    ephemeral=True
-                )
-            await voice_afk_cog.afk_ignore(interaction, channel)
-        elif state == "unignore":
-            if channel is None:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Missing Argument", "Please specify a `channel` to unignore."),
-                    ephemeral=True
-                )
-            await voice_afk_cog.afk_unignore(interaction, channel)
-        
-        # Handle timeout setting via minutes parameter
-        if minutes is not None:
-            await voice_afk_cog.afk_timeout(interaction, minutes)
-        
-        # Handle user check
-        if user is not None and state is None:
-            await voice_afk_cog.afk_check_user(interaction, user)
 
     @commands.command(name="vcmute")
     @is_mod()

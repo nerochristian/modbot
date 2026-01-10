@@ -3297,6 +3297,118 @@ class Moderation(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
 
+    @app_commands.command(name="modlogs", description="📋 View comprehensive moderation logs (Cases + Warns + Notes)")
+    @app_commands.describe(user="User to check logs for")
+    @is_mod()
+    async def modlogs(self, interaction: discord.Interaction, user: discord.Member):
+        """View full moderation logs including warnings and notes"""
+        await interaction.response.defer()
+        
+        guild_id = interaction.guild_id
+        
+        # Fetch all data concurrently
+        cases = await self.bot.db.get_user_cases(guild_id, user.id)
+        warnings = await self.bot.db.get_warnings(guild_id, user.id)
+        notes = await self.bot.db.get_notes(guild_id, user.id)
+        
+        all_logs = []
+        
+        # Process Cases
+        for c in cases:
+            all_logs.append({
+                'type': 'case',
+                'action': c['action'],
+                'reason': c['reason'],
+                'mod_id': c['moderator_id'],
+                'timestamp': str(c['created_at']), # Ensure string for parsing
+                'id': c['case_number']
+            })
+            
+        # Process Warnings
+        for w in warnings:
+             all_logs.append({
+                'type': 'warn',
+                'action': 'Warning',
+                'reason': w['reason'],
+                'mod_id': w['moderator_id'],
+                'timestamp': str(w['created_at']),
+                'id': w['id']
+            })
+             
+        # Process Notes
+        for n in notes:
+             all_logs.append({
+                'type': 'note',
+                'action': 'Note',
+                'reason': n['note'],
+                'mod_id': n['moderator_id'],
+                'timestamp': str(n['created_at']),
+                'id': n['id']
+            })
+        
+        if not all_logs:
+            return await interaction.followup.send(
+                embed=ModEmbed.info("No Logs", f"{user.mention} has no moderation logs.")
+            )
+            
+        # Sort by timestamp (newest first)
+        # Handle potential parsing errors if format varies, but usually ISO string from SQLite
+        def parse_ts(x):
+            try:
+                # Try standard replace first
+                return datetime.fromisoformat(str(x['timestamp']).replace(' ', 'T'))
+            except:
+                return datetime.min
+
+        all_logs.sort(key=parse_ts, reverse=True)
+        
+        # Pagination Logic (Basic: Display first 15)
+        embed = discord.Embed(
+            title=f"📋 Mod Logs: {user.display_name}",
+            color=Colors.MOD,
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.set_thumbnail(url=user.display_avatar.url)
+        
+        description_lines = []
+        
+        for log in all_logs[:15]:
+            # Emoji mapping
+            emoji = "📝"
+            if log['type'] == 'case':
+                if 'ban' in log['action'].lower(): emoji = "🔨"
+                elif 'kick' in log['action'].lower(): emoji = "👢"
+                elif 'mute' in log['action'].lower(): emoji = "🔇"
+                else: emoji = "🛡️"
+            elif log['type'] == 'warn':
+                emoji = "⚠️"
+            
+            # Timestamp formatting
+            ts_obj = parse_ts(log)
+            time_str = f"<t:{int(ts_obj.timestamp())}:R>" if ts_obj != datetime.min else "Unknown"
+            
+            mod_user = interaction.guild.get_member(log['mod_id'])
+            mod_name = mod_user.name if mod_user else f"ID:{log['mod_id']}"
+            
+            # Format line
+            # e.g. 🔨 **Ban** (#12) • 5m ago • _Spamming_ • by ModName
+            line = f"{emoji} **{log['action'].title()}**"
+            if log['type'] == 'case':
+                line += f" (#{log['id']})"
+            
+            reason_short = (log['reason'] or "No reason")[:50]
+            if len(log['reason'] or "") > 50: reason_short += "..."
+                
+            line += f" • {time_str} • *{reason_short}* • by **{mod_name}**"
+            description_lines.append(line)
+            
+        embed.description = "\n".join(description_lines)
+        
+        if len(all_logs) > 15:
+            embed.set_footer(text=f"Showing recent 15 of {len(all_logs)} entries")
+        
+        await interaction.followup.send(embed=embed)
+
     @app_commands.command(name="note", description="📝 Add a note to a user")
     @app_commands.describe(
         user="User to add note to",

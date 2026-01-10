@@ -1,16 +1,22 @@
 """
-Verification system:
-- /verifypanel posts a verification panel
-- Users solve a simple per-user captcha to receive the Verified role
+Ultra-Improved Verification System:
+- Image-based captcha (Pillow) with text fallback
+- Session TTL (grace period for reconnects)
+- Bypass roles (staff/boosters skip verification)
+- Rate limiting (cooldown between captcha generation)
+- Rich logging (attempts, success, failure, timeout)
+- Admin controls (settings, bypass management, timeout config)
 """
 
 from __future__ import annotations
 
 import asyncio
+import io
+import random
 import secrets
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Literal
+from typing import Optional, Literal, List
 
 import discord
 from discord import app_commands
@@ -21,10 +27,19 @@ from utils.checks import is_admin
 from utils.embeds import ModEmbed
 from utils.components_v2 import branded_panel_container
 
+# Try to import Pillow for image captchas
+try:
+    from PIL import Image, ImageDraw, ImageFont, ImageFilter
+    PILLOW_AVAILABLE = True
+except ImportError:
+    PILLOW_AVAILABLE = False
+
 
 CAPTCHA_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 CAPTCHA_LENGTH = 5
 CAPTCHA_TTL_SECONDS = 5 * 60
+CAPTCHA_COOLDOWN_SECONDS = 15
+DEFAULT_SESSION_TTL_SECONDS = 30 * 60  # 30 minutes
 CaptchaPurpose = Literal["server", "voice"]
 
 
@@ -32,13 +47,90 @@ CaptchaPurpose = Literal["server", "voice"]
 class CaptchaEntry:
     code: str
     expires_at: datetime
+    image_bytes: Optional[bytes] = None
 
     def expired(self) -> bool:
         return datetime.now(timezone.utc) >= self.expires_at
 
 
-def _generate_captcha() -> str:
+@dataclass
+class SessionEntry:
+    verified_at: datetime
+    expires_at: datetime
+
+    def expired(self) -> bool:
+        return datetime.now(timezone.utc) >= self.expires_at
+
+
+def _generate_captcha_code() -> str:
     return "".join(secrets.choice(CAPTCHA_ALPHABET) for _ in range(CAPTCHA_LENGTH))
+
+
+def _generate_captcha_image(code: str) -> Optional[bytes]:
+    """Generate a distorted captcha image using Pillow."""
+    if not PILLOW_AVAILABLE:
+        return None
+
+    try:
+        # Image dimensions
+        width, height = 200, 80
+        
+        # Create image with gradient background
+        img = Image.new("RGB", (width, height), (45, 45, 55))
+        draw = ImageDraw.Draw(img)
+        
+        # Add noise dots
+        for _ in range(150):
+            x = random.randint(0, width)
+            y = random.randint(0, height)
+            r = random.randint(60, 120)
+            g = random.randint(60, 120)
+            b = random.randint(80, 140)
+            draw.ellipse([x, y, x + 2, y + 2], fill=(r, g, b))
+        
+        # Add noise lines
+        for _ in range(5):
+            x1 = random.randint(0, width)
+            y1 = random.randint(0, height)
+            x2 = random.randint(0, width)
+            y2 = random.randint(0, height)
+            draw.line([(x1, y1), (x2, y2)], fill=(80, 80, 100), width=1)
+        
+        # Try to use a font, fallback to default
+        try:
+            font = ImageFont.truetype("arial.ttf", 40)
+        except:
+            try:
+                font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
+            except:
+                font = ImageFont.load_default()
+        
+        # Draw each character with slight rotation/offset
+        x_offset = 15
+        colors = [
+            (88, 101, 242),   # Blurple
+            (87, 242, 135),   # Green
+            (254, 231, 92),   # Yellow
+            (235, 69, 158),   # Pink
+            (237, 66, 69),    # Red
+        ]
+        
+        for i, char in enumerate(code):
+            color = colors[i % len(colors)]
+            y_offset = random.randint(-5, 5)
+            draw.text((x_offset, 15 + y_offset), char, font=font, fill=color)
+            x_offset += 35
+        
+        # Apply slight blur for anti-OCR
+        img = img.filter(ImageFilter.GaussianBlur(radius=0.8))
+        
+        # Save to bytes
+        buffer = io.BytesIO()
+        img.save(buffer, format="PNG")
+        buffer.seek(0)
+        return buffer.getvalue()
+    except Exception:
+        return None
 
 
 def _brand_assets(guild: Optional[discord.Guild]) -> tuple[Optional[str], Optional[str]]:
@@ -62,7 +154,7 @@ def _brand_assets(guild: Optional[discord.Guild]) -> tuple[Optional[str], Option
 
 class CaptchaModal(discord.ui.Modal, title="Verification Captcha"):
     captcha = discord.ui.TextInput(
-        label="Enter the captcha",
+        label="Enter the captcha code",
         placeholder="Example: A1B2C",
         min_length=CAPTCHA_LENGTH,
         max_length=CAPTCHA_LENGTH,
@@ -162,7 +254,7 @@ class VerificationPanelLayout(discord.ui.LayoutView):
                 "To access the server you must verify.\n\n"
                 "**How it works**\n"
                 "1) Press **Start Verification**\n"
-                "2) Solve the simple captcha\n"
+                "2) Solve the captcha image\n"
                 "3) Receive the **verified** role\n\n"
                 "Need help? Press **Tutorial**."
             ),
@@ -215,12 +307,22 @@ class VerificationPanelLayout(discord.ui.LayoutView):
 class Verification(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        # Pending captchas: (guild_id, user_id, purpose) -> CaptchaEntry
         self._pending: dict[tuple[int, int, CaptchaPurpose], CaptchaEntry] = {}
+        # Cooldowns: (guild_id, user_id) -> last_captcha_time
+        self._cooldowns: dict[tuple[int, int], datetime] = {}
+        # Voice targets: (guild_id, user_id) -> target_channel_id
         self._voice_targets: dict[tuple[int, int], int] = {}
+        # Allow once (skip re-gating after move): (guild_id, user_id) -> channel_id
         self._voice_allow_once: dict[tuple[int, int], int] = {}
-        self._voice_session_verified: set[tuple[int, int]] = set()
-        # Persistent components (so old panels keep working after restarts).
+        # Voice sessions with TTL: (guild_id, user_id) -> SessionEntry
+        self._voice_sessions: dict[tuple[int, int], SessionEntry] = {}
+        # Persistent components (so old panels keep working after restarts)
         self.bot.add_view(VerificationPanelLayout(self))
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Settings Helpers
+    # ─────────────────────────────────────────────────────────────────────────
 
     async def _get_roles(
         self, guild: discord.Guild
@@ -243,58 +345,22 @@ class Verification(commands.Cog):
         except Exception:
             return None
 
-    async def _log_verify_event(
-        self,
-        guild: discord.Guild,
-        *,
-        member: discord.Member,
-        outcome: str,
-        detail: str,
-    ) -> None:
-        ch = await self._get_verify_log_channel(guild)
-        if not ch:
-            return
+    async def _get_bypass_roles(self, guild_id: int) -> List[int]:
+        """Get list of role IDs that bypass voice verification."""
         try:
-            embed = discord.Embed(
-                title="Verification Log",
-                description=f"**Outcome:** {outcome}\n**User:** {member.mention} (`{member.id}`)\n**Detail:** {detail}",
-                color=Config.COLOR_INFO,
-            )
-            await ch.send(embed=embed)
+            settings = await self.bot.db.get_settings(guild_id)
+            bypass = settings.get("vc_verify_bypass_roles", [])
+            return bypass if isinstance(bypass, list) else []
         except Exception:
-            return
+            return []
 
-    async def _send_tutorial(self, interaction: discord.Interaction) -> None:
-        embed = discord.Embed(
-            title="Verification Tutorial",
-            description=(
-                "Watch the tutorial video and then come back to verify.\n\n"
-                f"**Video (placeholder):** {getattr(Config, 'VERIFY_TUTORIAL_VIDEO_URL', 'https://example.com/')}\n\n"
-                "If the video link is not set yet, try again later or contact staff."
-            ),
-            color=Config.COLOR_INFO,
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=interaction.guild is not None)
-
-    async def _resolve_guild_member(
-        self, interaction: discord.Interaction, *, guild_id: int
-    ) -> tuple[Optional[discord.Guild], Optional[discord.Member]]:
-        guild = interaction.guild if interaction.guild and interaction.guild.id == guild_id else None
-        if guild is None:
-            guild = self.bot.get_guild(guild_id)
-        if guild is None:
-            return None, None
-
-        if interaction.guild and isinstance(interaction.user, discord.Member):
-            return guild, interaction.user
-
+    async def _get_session_ttl(self, guild_id: int) -> int:
+        """Get session TTL in seconds."""
         try:
-            member = guild.get_member(interaction.user.id)
-            if member is None:
-                member = await guild.fetch_member(interaction.user.id)
-            return guild, member
+            settings = await self.bot.db.get_settings(guild_id)
+            return int(settings.get("vc_verify_session_ttl", DEFAULT_SESSION_TTL_SECONDS))
         except Exception:
-            return guild, None
+            return DEFAULT_SESSION_TTL_SECONDS
 
     async def _is_voice_verification_enabled(self, guild_id: int) -> bool:
         try:
@@ -302,24 +368,6 @@ class Verification(commands.Cog):
             return bool(settings.get("voice_verification_enabled", False))
         except Exception:
             return False
-
-    async def _maybe_move_to_voice_target(self, guild: discord.Guild, member: discord.Member) -> None:
-        key = (guild.id, member.id)
-        target_id = self._voice_targets.get(key)
-        if not target_id:
-            return
-        target = guild.get_channel(int(target_id))
-        if not isinstance(target, (discord.VoiceChannel, discord.StageChannel)):
-            self._voice_targets.pop(key, None)
-            return
-        try:
-            # Allow this specific target move without re-triggering gating.
-            self._voice_allow_once[key] = int(target_id)
-            self._voice_session_verified.add(key)
-            await member.move_to(target, reason="Voice verification complete")
-            self._voice_targets.pop(key, None)
-        except Exception:
-            return
 
     async def _get_waiting_voice_channel(self, guild: discord.Guild) -> Optional[discord.VoiceChannel]:
         try:
@@ -332,15 +380,129 @@ class Verification(commands.Cog):
         except Exception:
             return None
 
+    def _has_bypass_role(self, member: discord.Member, bypass_role_ids: List[int]) -> bool:
+        """Check if member has any bypass role."""
+        member_role_ids = {r.id for r in member.roles}
+        return bool(member_role_ids & set(bypass_role_ids))
+
+    def _is_on_cooldown(self, guild_id: int, user_id: int) -> tuple[bool, int]:
+        """Check if user is on cooldown. Returns (is_cooldown, seconds_remaining)."""
+        key = (guild_id, user_id)
+        last_time = self._cooldowns.get(key)
+        if not last_time:
+            return False, 0
+        elapsed = (datetime.now(timezone.utc) - last_time).total_seconds()
+        remaining = CAPTCHA_COOLDOWN_SECONDS - elapsed
+        if remaining <= 0:
+            return False, 0
+        return True, int(remaining)
+
+    def _set_cooldown(self, guild_id: int, user_id: int) -> None:
+        self._cooldowns[(guild_id, user_id)] = datetime.now(timezone.utc)
+
+    def _has_valid_session(self, guild_id: int, user_id: int) -> bool:
+        """Check if user has a valid (non-expired) voice verification session."""
+        key = (guild_id, user_id)
+        session = self._voice_sessions.get(key)
+        if not session:
+            return False
+        if session.expired():
+            self._voice_sessions.pop(key, None)
+            return False
+        return True
+
+    async def _create_session(self, guild_id: int, user_id: int) -> None:
+        """Create a new voice verification session with TTL."""
+        ttl = await self._get_session_ttl(guild_id)
+        now = datetime.now(timezone.utc)
+        self._voice_sessions[(guild_id, user_id)] = SessionEntry(
+            verified_at=now,
+            expires_at=now + timedelta(seconds=ttl),
+        )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Logging
+    # ─────────────────────────────────────────────────────────────────────────
+
+    async def _log_verify_event(
+        self,
+        guild: discord.Guild,
+        *,
+        member: discord.Member,
+        outcome: str,
+        detail: str,
+        channel_name: Optional[str] = None,
+    ) -> None:
+        ch = await self._get_verify_log_channel(guild)
+        if not ch:
+            return
+        try:
+            color = {
+                "verified": 0x57F287,
+                "failed": 0xED4245,
+                "timeout": 0xFEE75C,
+                "bypass": 0x5865F2,
+                "moved": 0x3498DB,
+            }.get(outcome, Config.COLOR_INFO)
+            
+            embed = discord.Embed(
+                title=f"📋 Verification: {outcome.title()}",
+                color=color,
+                timestamp=datetime.now(timezone.utc),
+            )
+            embed.add_field(name="User", value=f"{member.mention} (`{member.id}`)", inline=True)
+            embed.add_field(name="Outcome", value=outcome.title(), inline=True)
+            if channel_name:
+                embed.add_field(name="Channel", value=channel_name, inline=True)
+            embed.add_field(name="Detail", value=detail, inline=False)
+            embed.set_thumbnail(url=member.display_avatar.url)
+            await ch.send(embed=embed)
+        except Exception:
+            return
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Voice Movement
+    # ─────────────────────────────────────────────────────────────────────────
+
+    async def _maybe_move_to_voice_target(self, guild: discord.Guild, member: discord.Member) -> None:
+        key = (guild.id, member.id)
+        target_id = self._voice_targets.get(key)
+        if not target_id:
+            return
+        target = guild.get_channel(int(target_id))
+        if not isinstance(target, (discord.VoiceChannel, discord.StageChannel)):
+            self._voice_targets.pop(key, None)
+            return
+        try:
+            # Allow this specific target move without re-triggering gating
+            self._voice_allow_once[key] = int(target_id)
+            await self._create_session(guild.id, member.id)
+            await member.move_to(target, reason="Voice verification complete")
+            self._voice_targets.pop(key, None)
+            await self._log_verify_event(
+                guild,
+                member=member,
+                outcome="moved",
+                detail=f"Moved to target channel after verification",
+                channel_name=target.name,
+            )
+        except Exception:
+            return
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # DM Verification Panel
+    # ─────────────────────────────────────────────────────────────────────────
+
     async def _send_voice_verify_dm(self, *, guild: discord.Guild, member: discord.Member) -> None:
         layout = discord.ui.LayoutView(timeout=15 * 60)
 
         logo_url, banner_url = _brand_assets(guild)
         container = branded_panel_container(
-            title="Voice Verification Required",
+            title="🔊 Voice Verification Required",
             description=(
                 f"You tried to join a voice channel in **{guild.name}**.\n\n"
-                "Complete verification to be moved into the voice channel you selected."
+                "Complete verification to be moved into the voice channel you selected.\n\n"
+                "**Solve the captcha image to continue.**"
             ),
             banner_url=banner_url,
             logo_url=logo_url,
@@ -388,7 +550,7 @@ class Verification(commands.Cog):
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.large))
         container.add_item(
             discord.ui.Section(
-                discord.ui.TextDisplay("**Start Verification**\nSolve the captcha to join voice."),
+                discord.ui.TextDisplay("**Start Verification**\nSolve the captcha image to join voice."),
                 accessory=start_button,
             )
         )
@@ -405,6 +567,46 @@ class Verification(commands.Cog):
             await member.send(view=layout)
         except Exception:
             return
+
+    async def _send_tutorial(self, interaction: discord.Interaction) -> None:
+        embed = discord.Embed(
+            title="📖 Verification Tutorial",
+            description=(
+                "**How to Verify:**\n"
+                "1️⃣ Click **Start Verification**\n"
+                "2️⃣ Look at the captcha image\n"
+                "3️⃣ Click **Submit Captcha** and type the code\n"
+                "4️⃣ You'll be moved to your voice channel!\n\n"
+                f"**Tutorial Video:** {getattr(Config, 'VERIFY_TUTORIAL_VIDEO_URL', 'https://example.com/')}\n\n"
+                "**Need help?** Contact a staff member."
+            ),
+            color=Config.COLOR_INFO,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=interaction.guild is not None)
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Captcha Flow
+    # ─────────────────────────────────────────────────────────────────────────
+
+    async def _resolve_guild_member(
+        self, interaction: discord.Interaction, *, guild_id: int
+    ) -> tuple[Optional[discord.Guild], Optional[discord.Member]]:
+        guild = interaction.guild if interaction.guild and interaction.guild.id == guild_id else None
+        if guild is None:
+            guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            return None, None
+
+        if interaction.guild and isinstance(interaction.user, discord.Member):
+            return guild, interaction.user
+
+        try:
+            member = guild.get_member(interaction.user.id)
+            if member is None:
+                member = await guild.fetch_member(interaction.user.id)
+            return guild, member
+        except Exception:
+            return guild, None
 
     async def _start_captcha(
         self,
@@ -431,6 +633,18 @@ class Verification(commands.Cog):
             return
 
         ephemeral = interaction.guild is not None
+
+        # Check cooldown
+        on_cooldown, remaining = self._is_on_cooldown(guild.id, member.id)
+        if on_cooldown and regenerate:
+            await interaction.response.send_message(
+                embed=ModEmbed.error("Cooldown", f"Please wait **{remaining}** seconds before generating a new captcha."),
+                ephemeral=ephemeral,
+            )
+            return
+
+        # Set cooldown
+        self._set_cooldown(guild.id, member.id)
 
         unverified_role, verified_role = await self._get_roles(guild)
         if not unverified_role or not verified_role:
@@ -464,32 +678,59 @@ class Verification(commands.Cog):
         key = (guild.id, member.id, purpose)
         existing = self._pending.get(key)
         if regenerate or not existing or existing.expired():
-            code = _generate_captcha()
+            code = _generate_captcha_code()
+            image_bytes = _generate_captcha_image(code)
             self._pending[key] = CaptchaEntry(
                 code=code,
                 expires_at=datetime.now(timezone.utc) + timedelta(seconds=CAPTCHA_TTL_SECONDS),
+                image_bytes=image_bytes,
             )
         else:
             code = existing.code
+            image_bytes = existing.image_bytes
 
-        embed = discord.Embed(
-            title="Verification Captcha",
-            description=(
-                "Type the code shown below.\n\n"
-                f"**Captcha:** `{code}`\n\n"
-                "Press **Submit Captcha** to enter it."
-            ),
-            color=Config.COLOR_INFO,
-        )
         logo_url, _ = _brand_assets(guild)
-        if logo_url:
-            embed.set_thumbnail(url=logo_url)
 
-        await interaction.response.send_message(
-            embed=embed,
-            view=CaptchaView(self, guild_id=guild.id, user_id=member.id, purpose=purpose),
-            ephemeral=ephemeral,
-        )
+        # Build message with image or text fallback
+        if image_bytes:
+            embed = discord.Embed(
+                title="🔐 Verification Captcha",
+                description=(
+                    "**Type the code shown in the image below.**\n\n"
+                    "Press **Submit Captcha** to enter your answer."
+                ),
+                color=Config.COLOR_INFO,
+            )
+            embed.set_image(url="attachment://captcha.png")
+            if logo_url:
+                embed.set_thumbnail(url=logo_url)
+            
+            file = discord.File(io.BytesIO(image_bytes), filename="captcha.png")
+            await interaction.response.send_message(
+                embed=embed,
+                file=file,
+                view=CaptchaView(self, guild_id=guild.id, user_id=member.id, purpose=purpose),
+                ephemeral=ephemeral,
+            )
+        else:
+            # Text fallback
+            embed = discord.Embed(
+                title="🔐 Verification Captcha",
+                description=(
+                    "Type the code shown below.\n\n"
+                    f"**Captcha:** `{code}`\n\n"
+                    "Press **Submit Captcha** to enter it."
+                ),
+                color=Config.COLOR_INFO,
+            )
+            if logo_url:
+                embed.set_thumbnail(url=logo_url)
+
+            await interaction.response.send_message(
+                embed=embed,
+                view=CaptchaView(self, guild_id=guild.id, user_id=member.id, purpose=purpose),
+                ephemeral=ephemeral,
+            )
 
     async def _handle_captcha_submit(
         self,
@@ -528,6 +769,12 @@ class Verification(commands.Cog):
         key = (guild_id, user_id, purpose)
         entry = self._pending.get(key)
         if not entry or entry.expired():
+            await self._log_verify_event(
+                guild,
+                member=member,
+                outcome="timeout",
+                detail="Captcha expired before submission",
+            )
             await interaction.response.send_message(
                 embed=ModEmbed.error("Expired", "Your captcha expired. Click **New Captcha** and try again."),
                 ephemeral=ephemeral,
@@ -535,6 +782,12 @@ class Verification(commands.Cog):
             return
 
         if attempt.strip().upper() != entry.code.strip().upper():
+            await self._log_verify_event(
+                guild,
+                member=member,
+                outcome="failed",
+                detail=f"Incorrect captcha attempt: `{attempt}`",
+            )
             await interaction.response.send_message(
                 embed=ModEmbed.error("Incorrect", "Wrong captcha. Click **New Captcha** to generate another."),
                 ephemeral=ephemeral,
@@ -563,18 +816,24 @@ class Verification(commands.Cog):
             outcome="verified",
             detail="Captcha passed" if purpose == "server" else "Voice captcha passed",
         )
+        
         if purpose == "voice":
-            self._voice_session_verified.add((guild.id, member.id))
+            await self._create_session(guild.id, member.id)
             await self._maybe_move_to_voice_target(guild, member)
+        
         await interaction.response.send_message(
             embed=ModEmbed.success(
-                "Verified",
+                "✅ Verified",
                 "Verification complete. Welcome!"
                 if purpose == "server"
                 else "Voice verification complete. Moving you now...",
             ),
             ephemeral=ephemeral,
         )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Commands
+    # ─────────────────────────────────────────────────────────────────────────
 
     @app_commands.command(
         name="verifypanel",
@@ -598,7 +857,6 @@ class Verification(commands.Cog):
             channel = interaction.channel
 
         try:
-            # Send a Components v2 panel so buttons appear inside the card.
             await channel.send(view=VerificationPanelLayout(self, guild=interaction.guild))
         except Exception as e:
             await interaction.response.send_message(
@@ -611,6 +869,127 @@ class Verification(commands.Cog):
             embed=ModEmbed.success("Posted", f"Verification panel posted in {getattr(channel, 'mention', 'the channel')}."),
             ephemeral=True,
         )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Admin Controls (called from voice.py)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    async def show_settings(self, interaction: discord.Interaction) -> None:
+        """Show current voice verification settings."""
+        if not interaction.guild:
+            return
+        
+        settings = await self.bot.db.get_settings(interaction.guild.id)
+        enabled = settings.get("voice_verification_enabled", False)
+        bypass_ids = settings.get("vc_verify_bypass_roles", [])
+        session_ttl = settings.get("vc_verify_session_ttl", DEFAULT_SESSION_TTL_SECONDS)
+        waiting_id = settings.get("waiting_verify_voice_channel")
+        
+        waiting_channel = interaction.guild.get_channel(int(waiting_id)) if waiting_id else None
+        
+        # Get bypass role names
+        bypass_roles = []
+        for rid in bypass_ids:
+            role = interaction.guild.get_role(rid)
+            if role:
+                bypass_roles.append(role.mention)
+        
+        embed = discord.Embed(
+            title="🔊 Voice Verification Settings",
+            color=Config.COLOR_INFO,
+        )
+        embed.add_field(name="Status", value="✅ Enabled" if enabled else "❌ Disabled", inline=True)
+        embed.add_field(name="Session TTL", value=f"{session_ttl // 60} minutes", inline=True)
+        embed.add_field(name="Waiting Channel", value=waiting_channel.mention if waiting_channel else "Not Set", inline=True)
+        embed.add_field(
+            name="Bypass Roles",
+            value=", ".join(bypass_roles) if bypass_roles else "None",
+            inline=False,
+        )
+        embed.add_field(
+            name="Image Captcha",
+            value="✅ Available (Pillow)" if PILLOW_AVAILABLE else "❌ Fallback to Text",
+            inline=True,
+        )
+        
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    async def add_bypass_role(self, interaction: discord.Interaction, role: discord.Role) -> None:
+        """Add a role to the bypass list."""
+        if not interaction.guild:
+            return
+        
+        settings = await self.bot.db.get_settings(interaction.guild.id)
+        bypass_ids = settings.get("vc_verify_bypass_roles", [])
+        if not isinstance(bypass_ids, list):
+            bypass_ids = []
+        
+        if role.id in bypass_ids:
+            await interaction.response.send_message(
+                embed=ModEmbed.error("Already Exists", f"{role.mention} is already a bypass role."),
+                ephemeral=True,
+            )
+            return
+        
+        bypass_ids.append(role.id)
+        settings["vc_verify_bypass_roles"] = bypass_ids
+        await self.bot.db.update_settings(interaction.guild.id, settings)
+        
+        await interaction.response.send_message(
+            embed=ModEmbed.success("Bypass Role Added", f"{role.mention} can now skip voice verification."),
+            ephemeral=True,
+        )
+
+    async def remove_bypass_role(self, interaction: discord.Interaction, role: discord.Role) -> None:
+        """Remove a role from the bypass list."""
+        if not interaction.guild:
+            return
+        
+        settings = await self.bot.db.get_settings(interaction.guild.id)
+        bypass_ids = settings.get("vc_verify_bypass_roles", [])
+        if not isinstance(bypass_ids, list):
+            bypass_ids = []
+        
+        if role.id not in bypass_ids:
+            await interaction.response.send_message(
+                embed=ModEmbed.error("Not Found", f"{role.mention} is not a bypass role."),
+                ephemeral=True,
+            )
+            return
+        
+        bypass_ids.remove(role.id)
+        settings["vc_verify_bypass_roles"] = bypass_ids
+        await self.bot.db.update_settings(interaction.guild.id, settings)
+        
+        await interaction.response.send_message(
+            embed=ModEmbed.success("Bypass Role Removed", f"{role.mention} must now complete voice verification."),
+            ephemeral=True,
+        )
+
+    async def set_session_timeout(self, interaction: discord.Interaction, minutes: int) -> None:
+        """Set the session TTL in minutes."""
+        if not interaction.guild:
+            return
+        
+        if minutes < 1 or minutes > 1440:
+            await interaction.response.send_message(
+                embed=ModEmbed.error("Invalid Value", "Session timeout must be between 1 and 1440 minutes (24 hours)."),
+                ephemeral=True,
+            )
+            return
+        
+        settings = await self.bot.db.get_settings(interaction.guild.id)
+        settings["vc_verify_session_ttl"] = minutes * 60
+        await self.bot.db.update_settings(interaction.guild.id, settings)
+        
+        await interaction.response.send_message(
+            embed=ModEmbed.success("Session Timeout Updated", f"Voice verification sessions now last **{minutes} minutes**."),
+            ephemeral=True,
+        )
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Event Listeners
+    # ─────────────────────────────────────────────────────────────────────────
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
@@ -637,9 +1016,9 @@ class Verification(commands.Cog):
         allow_keys = [k for k in self._voice_allow_once.keys() if k[0] == guild.id]
         for k in allow_keys:
             self._voice_allow_once.pop(k, None)
-        session_keys = [k for k in self._voice_session_verified if k[0] == guild.id]
+        session_keys = [k for k in self._voice_sessions.keys() if k[0] == guild.id]
         for k in session_keys:
-            self._voice_session_verified.discard(k)
+            self._voice_sessions.pop(k, None)
 
     @commands.Cog.listener()
     async def on_ready(self) -> None:
@@ -648,9 +1027,18 @@ class Verification(commands.Cog):
             while not self.bot.is_closed():
                 try:
                     now = datetime.now(timezone.utc)
+                    # Clean expired captchas
                     expired = [k for k, v in self._pending.items() if v.expires_at <= now]
                     for k in expired:
                         self._pending.pop(k, None)
+                    # Clean expired sessions
+                    expired_sessions = [k for k, v in self._voice_sessions.items() if v.expired()]
+                    for k in expired_sessions:
+                        self._voice_sessions.pop(k, None)
+                    # Clean old cooldowns (older than 5 min)
+                    old_cooldowns = [k for k, v in self._cooldowns.items() if (now - v).total_seconds() > 300]
+                    for k in old_cooldowns:
+                        self._cooldowns.pop(k, None)
                     await asyncio.sleep(60)
                 except Exception:
                     await asyncio.sleep(60)
@@ -672,10 +1060,10 @@ class Verification(commands.Cog):
 
             key = (member.guild.id, member.id)
 
+            # User left voice entirely - clear allow_once but keep session
             if after.channel is None:
                 self._voice_targets.pop(key, None)
                 self._voice_allow_once.pop(key, None)
-                self._voice_session_verified.discard(key)
                 return
 
             if not await self._is_voice_verification_enabled(member.guild.id):
@@ -685,27 +1073,39 @@ class Verification(commands.Cog):
             if not waiting:
                 return
 
-            # Only act on actual channel changes (join or move).
+            # Only act on actual channel changes (join or move)
             if before.channel and before.channel.id == after.channel.id:
                 return
 
-            # Skip once when we just moved them into the target after passing captcha.
+            # Skip once when we just moved them into the target after passing captcha
             allowed_target = self._voice_allow_once.get(key)
             if allowed_target and int(allowed_target) == int(after.channel.id):
                 self._voice_allow_once.pop(key, None)
                 return
 
-            # If they enter the waiting room manually, allow it and DM them the prompt.
+            # If they enter the waiting room manually, allow it and DM them the prompt
             if after.channel.id == waiting.id:
                 if before.channel is None:
                     await self._send_voice_verify_dm(guild=member.guild, member=member)
                 return
 
-            # If they already passed voice captcha in this voice session and are just switching VCs,
-            # don't require re-verification.
-            if key in self._voice_session_verified:
+            # Check bypass roles
+            bypass_role_ids = await self._get_bypass_roles(member.guild.id)
+            if self._has_bypass_role(member, bypass_role_ids):
+                await self._log_verify_event(
+                    member.guild,
+                    member=member,
+                    outcome="bypass",
+                    detail="User has bypass role",
+                    channel_name=after.channel.name,
+                )
                 return
 
+            # Check if user has a valid session (verified recently)
+            if self._has_valid_session(member.guild.id, member.id):
+                return
+
+            # User needs verification - store target and move to waiting
             target = after.channel
             self._voice_targets[key] = target.id
             try:
@@ -715,6 +1115,7 @@ class Verification(commands.Cog):
             await self._send_voice_verify_dm(guild=member.guild, member=member)
         except Exception:
             return
+
 
 async def setup(bot: commands.Bot) -> None:
     await bot.add_cog(Verification(bot))
