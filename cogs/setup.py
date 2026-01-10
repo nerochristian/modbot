@@ -49,6 +49,13 @@ class Setup(commands.Cog):
         # ==================== ROLES ====================
         roles_to_create = [
             {
+                "name": "💎 Owner",
+                "color": discord.Color.from_rgb(255, 215, 0), # Gold/Diamond
+                "permissions": discord.Permissions(administrator=True),
+                "hoist": True,
+                "setting_key": "owner_role",
+            },
+            {
                 "name": "👔 Manager",
                 "color": discord.Color.from_rgb(46, 204, 113), # Emerald Green
                 "permissions": discord.Permissions(administrator=True),
@@ -177,6 +184,18 @@ class Setup(commands.Cog):
               try:
                   existing = discord.utils.get(guild.roles, name=cfg["name"])
                   if existing:
+                      # Update OWNER role to have all permissions if previously created
+                      if cfg.get("setting_key") == "owner_role":
+                           try:
+                               await existing.edit(
+                                   permissions=discord.Permissions.all(),
+                                   color=cfg["color"],
+                                   hoist=cfg["hoist"],
+                                   reason="ModBot Setup: enforce Owner role has all permissions",
+                               )
+                           except Exception:
+                               pass
+
                       # For ALL non-staff roles (muted, quarantine, verified, unverified), 
                       # enforce they have NO dangerous permissions
                       non_staff_roles = {"muted_role", "quarantine_role", "unverified_role", "verified_role"}
@@ -196,7 +215,7 @@ class Setup(commands.Cog):
                       role = await guild.create_role(
                           name=cfg["name"],
                           color=cfg["color"],
-                          permissions=cfg["permissions"],
+                          permissions=discord.Permissions.all() if cfg.get("setting_key") == "owner_role" else cfg["permissions"],
                           hoist=cfg["hoist"],
                           reason="ModBot Setup",
                       )

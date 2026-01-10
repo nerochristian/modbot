@@ -837,6 +837,7 @@ class Staff(commands.Cog):
             ('supervisor_role', '👁️ Supervisor'),
             ('admin_role', '👑 Admin'),
             ('manager_role', '👔 Manager'),
+            ('owner_role', '💎 Owner'),
         ]
         
         # Find current staff role
@@ -1006,6 +1007,7 @@ class Staff(commands.Cog):
             ('supervisor_role', '👁️ Supervisor'),
             ('admin_role', '👑 Admin'),
             ('manager_role', '👔 Manager'),
+            ('owner_role', '💎 Owner'),
         ]
         
         # Find current staff role

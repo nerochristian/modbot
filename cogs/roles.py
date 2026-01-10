@@ -190,6 +190,7 @@ class Roles(commands.Cog):
         user_role_ids = {r.id for r in member.roles}
         
         role_hierarchy = {
+            'owner_role': 8,
             'manager_role': 7,
             'admin_role': 6,
             'supervisor_role': 5,
