@@ -1294,6 +1294,10 @@ class Moderation(commands.Cog):
             if not isinstance(m.author, discord.Member):
                 return True # Allow deleting messages from departed users
             
+            # BYPASS: Server Owner and Bot Owner can delete ANYTHING
+            if is_bot_owner_id(author.id) or author.id == author.guild.owner_id:
+                return True
+
             # Allow deleting own messages
             if m.author.id == author.id:
                 return True

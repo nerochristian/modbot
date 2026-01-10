@@ -1,6 +1,8 @@
+
 """
 Staff System - Staff guide, rules, and staff sanctions (SUPERVISOR SYSTEM)
 Consolidated into single commands with action parameters
+Includes promote/demote functionality with staff updates
 """
 
 import discord
@@ -352,7 +354,7 @@ class Staff(commands.Cog):
         )
         commands_embed.add_field(
             name="Supervisor Only",
-            value="`/sanction action:warn`\n`/sanction action:strike`\n`/sanction action:status`",
+            value="`/sanction action:warn`\n`/sanction action:strike`\n`/sanction action:status`\n`/promote` `/demote`",
             inline=True
         )
         await channel.send(embed=commands_embed)
@@ -697,7 +699,7 @@ class Staff(commands.Cog):
         )
         embed.set_thumbnail(url=staff.display_avatar.url)
 
-        for s in sanctions[:15]: 
+        for s in sanctions[:15]:
             issuer = interaction.guild.get_member(s['issuer_id'])
             issuer_name = issuer.display_name if issuer else "Unknown"
             type_emoji = "⚠️" if s['sanction_type'] == 'warn' else "🔴"
@@ -727,7 +729,7 @@ class Staff(commands.Cog):
 
         settings = await self.bot.db.get_settings(interaction.guild_id)
         log_id = settings.get('staff_sanctions_channel')
-        if log_id: 
+        if log_id:
             log_channel = interaction.guild.get_channel(log_id)
             if log_channel:
                 log_embed = discord.Embed(
@@ -929,21 +931,35 @@ class Staff(commands.Cog):
         
         # Send public announcement
         staff_updates_channel_id = settings.get('staff_updates_channel')
+        channel = None
+        
         if staff_updates_channel_id:
             channel = interaction.guild.get_channel(staff_updates_channel_id)
+            
+        # Fallback: Search by name
+        if not channel:
+            channel = discord.utils.get(interaction.guild.text_channels, name="staff-updates")
             if channel:
-                try:
-                    msg = await channel.send(
-                        f"Congratulations {member.mention}, you have been promoted from **{current_role.name}** to **{target_role.name}**!"
-                    )
-                    await msg.add_reaction("🎉")
-                except Exception as e:
-                    # Log the error but don't fail the command
-                    print(f"Failed to send promotion announcement: {e}")
-            else:
-                print(f"Staff updates channel not found (ID: {staff_updates_channel_id})")
+                # Save it for next time
+                settings['staff_updates_channel'] = channel.id
+                await self.bot.db.update_settings(interaction.guild_id, settings)
+
+        if channel:
+            try:
+                msg = await channel.send(
+                    f"Congratulations {member.mention}, you have been promoted from **{current_role.name}** to **{target_role.name}**!"
+                )
+                await msg.add_reaction("🎉")
+            except Exception as e:
+                await interaction.followup.send(
+                    embed=ModEmbed.error("Logging Failed", f"Promotion successful, but failed to log to {channel.mention}: {e}"),
+                    ephemeral=True
+                )
         else:
-            print("Staff updates channel not configured")
+             await interaction.followup.send(
+                embed=ModEmbed.warning("Logging Warning", "Promotion successful, but no `staff-updates` channel found."),
+                ephemeral=True
+            )
     
     @app_commands.command(name="demote", description="👇 Demote a staff member to a lower role")
     @app_commands.describe(
@@ -1083,21 +1099,35 @@ class Staff(commands.Cog):
         
         # Send public announcement
         staff_updates_channel_id = settings.get('staff_updates_channel')
+        channel = None
+        
         if staff_updates_channel_id:
             channel = interaction.guild.get_channel(staff_updates_channel_id)
+
+        # Fallback: Search by name
+        if not channel:
+            channel = discord.utils.get(interaction.guild.text_channels, name="staff-updates")
             if channel:
-                try:
-                    msg = await channel.send(
-                        f"{member.mention}, you have been demoted from **{current_role.name}** to **{target_role.name}**."
-                    )
-                    await msg.add_reaction("🫡")
-                except Exception as e:
-                    # Log the error but don't fail the command
-                    print(f"Failed to send demotion announcement: {e}")
-            else:
-                print(f"Staff updates channel not found (ID: {staff_updates_channel_id})")
+                # Save it for next time
+                settings['staff_updates_channel'] = channel.id
+                await self.bot.db.update_settings(interaction.guild_id, settings)
+
+        if channel:
+            try:
+                msg = await channel.send(
+                    f"{member.mention}, you have been demoted from **{current_role.name}** to **{target_role.name}**."
+                )
+                await msg.add_reaction("🫡")
+            except Exception as e:
+                 await interaction.followup.send(
+                    embed=ModEmbed.error("Logging Failed", f"Demotion successful, but failed to log to {channel.mention}: {e}"),
+                    ephemeral=True
+                )
         else:
-            print("Staff updates channel not configured")
+            await interaction.followup.send(
+                embed=ModEmbed.warning("Logging Warning", "Demotion successful, but no `staff-updates` channel found."),
+                ephemeral=True
+            )
 
 
 async def setup(bot):
