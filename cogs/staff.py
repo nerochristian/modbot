@@ -836,6 +836,7 @@ class Staff(commands.Cog):
             ('senior_mod_role', '⚔️ Senior Moderator'),
             ('supervisor_role', '👁️ Supervisor'),
             ('admin_role', '👑 Admin'),
+            ('manager_role', '👔 Manager'),
         ]
         
         # Find current staff role
@@ -843,7 +844,7 @@ class Staff(commands.Cog):
         current_index = -1
         member_role_ids = [r.id for r in member.roles]
         
-        for idx, (key, name) in enumerate(staff_hierarchy):
+        for idx, (key, name) in reversed(list(enumerate(staff_hierarchy))):
             role_id = settings.get(key)
             if role_id and role_id in member_role_ids:
                 current_role = interaction.guild.get_role(role_id)
@@ -1004,6 +1005,7 @@ class Staff(commands.Cog):
             ('senior_mod_role', '⚔️ Senior Moderator'),
             ('supervisor_role', '👁️ Supervisor'),
             ('admin_role', '👑 Admin'),
+            ('manager_role', '👔 Manager'),
         ]
         
         # Find current staff role
@@ -1011,7 +1013,7 @@ class Staff(commands.Cog):
         current_index = -1
         member_role_ids = [r.id for r in member.roles]
         
-        for idx, (key, name) in enumerate(staff_hierarchy):
+        for idx, (key, name) in reversed(list(enumerate(staff_hierarchy))):
             role_id = settings.get(key)
             if role_id and role_id in member_role_ids:
                 current_role = interaction.guild.get_role(role_id)
