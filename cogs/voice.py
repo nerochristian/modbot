@@ -12,206 +12,171 @@ from utils.checks import is_mod, is_admin, is_bot_owner_id
 from config import Config
 
 
+class PresenceCheckView(discord.ui.View):
+    """View for presence check DMs."""
+    
+    def __init__(self, user_id: int, responded_set: set):
+        super().__init__(timeout=120)
+        self.user_id = user_id
+        self.responded_set = responded_set
+    
+    @discord.ui.button(label="I'm Here!", style=discord.ButtonStyle.success, emoji="👋")
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            return await interaction.response.send_message("This isn't for you!", ephemeral=True)
+        
+        self.responded_set.add(self.user_id)
+        button.disabled = True
+        button.label = "Confirmed!"
+        
+        await interaction.response.edit_message(view=self)
+        self.stop()
+
+
 class Voice(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
     
-    @app_commands.command(name="vc", description="🎤 Voice channel moderation commands")
-    @app_commands.describe(
-        action="The action to perform",
-        user="The user to target (required for most actions)",
-        user_id="User ID for unban or check (if user left server)",
-        channel="Target voice channel (for move/moveall/check_channel)",
-        from_channel="Source channel (for moveall)",
-        reason="Reason for the action",
-        state="Verification state: on/off/settings/bypass_add/bypass_remove/timeout/check_channel/check_user",
-        role="Role for bypass add/remove",
-        minutes="Minutes for session timeout",
-    )
+    # Create command group
+    vc_group = app_commands.Group(name="vc", description="🎤 Voice channel moderation commands")
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # Basic Voice Moderation Subcommands
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    @vc_group.command(name="mute", description="Server mute a user in voice")
+    @app_commands.describe(user="The user to mute", reason="Reason for muting")
     @is_mod()
-    async def vc(
-        self, 
-        interaction: discord.Interaction, 
-        action: Literal["mute", "unmute", "deafen", "undeafen", "kick", "move", "moveall", "ban", "unban", "verification"],
-        user: Optional[discord.Member] = None,
-        user_id: Optional[str] = None,
-        channel: Optional[discord.VoiceChannel] = None,
-        from_channel: Optional[discord.VoiceChannel] = None,
-        reason: Optional[str] = "No reason provided",
-        state: Optional[Literal["on", "off", "settings", "bypass_add", "bypass_remove", "timeout", "check_channel", "check_user"]] = None,
-        role: Optional[discord.Role] = None,
-        minutes: Optional[int] = None,
-    ):
-        # Handle verification separately (admin only)
-        if action == "verification":
-            # Check admin permission directly
-            is_admin_user = False
-            if is_bot_owner_id(interaction.user.id):
-                is_admin_user = True
-            elif interaction.user.guild_permissions.administrator:
-                is_admin_user = True
-            else:
-                # Check for admin/manager roles from database
-                settings = await self.bot.db.get_settings(interaction.guild_id)
-                admin_roles = settings.get("admin_roles", [])
-                manager_role = settings.get("manager_role")
-                user_role_ids = [r.id for r in interaction.user.roles]
-                if manager_role and manager_role in user_role_ids:
-                    is_admin_user = True
-                elif any(role_id in user_role_ids for role_id in admin_roles):
-                    is_admin_user = True
-            
-            if not is_admin_user:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Permission Denied", "You need administrator permissions for this action."),
-                    ephemeral=True
-                )
-            
-            verification_cog = self.bot.get_cog("Verification")
-            if not verification_cog:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Not Available", "Verification cog is not loaded."),
-                    ephemeral=True
-                )
-            
-            # Auto-detect state from provided parameters if state is None
-            if state is None:
-                if minutes is not None:
-                    state = "timeout"
-                elif role is not None:
-                    state = "bypass_add"
-                elif channel is not None:
-                    state = "check_channel"
-                elif user is not None or user_id is not None:
-                    state = "check_user"
-                else:
-                    return await interaction.response.send_message(
-                        embed=ModEmbed.error(
-                            "Missing Argument", 
-                            "**Usage:**\n"
-                            "• `state:on` / `state:off` - Enable/disable verification\n"
-                            "• `state:settings` - View current settings\n"
-                            "• `state:timeout minutes:30` - Set session TTL\n"
-                            "• `state:bypass_add role:@Role` - Add bypass role\n"
-                            "• `state:bypass_remove role:@Role` - Remove bypass role\n"
-                            "• `state:check_channel channel:#voice` - Force verify all users\n"
-                            "• `state:check_user user:@User` - Force verify specific user"
-                        ),
-                        ephemeral=True
-                    )
-            
-            # Handle verification sub-actions
-            if state == "settings":
-                await verification_cog.show_settings(interaction)
-                return
-            
-            if state == "bypass_add":
-                if role is None:
-                    return await interaction.response.send_message(
-                        embed=ModEmbed.error("Missing Argument", "Please specify a `role` to add as bypass."),
-                        ephemeral=True
-                    )
-                await verification_cog.add_bypass_role(interaction, role)
-                return
-            
-            if state == "bypass_remove":
-                if role is None:
-                    return await interaction.response.send_message(
-                        embed=ModEmbed.error("Missing Argument", "Please specify a `role` to remove from bypass."),
-                        ephemeral=True
-                    )
-                await verification_cog.remove_bypass_role(interaction, role)
-                return
-            
-            if state == "timeout":
-                if minutes is None:
-                    return await interaction.response.send_message(
-                        embed=ModEmbed.error("Missing Argument", "Please specify `minutes` for session timeout (1-1440)."),
-                        ephemeral=True
-                    )
-                await verification_cog.set_session_timeout(interaction, minutes)
-                return
-            
-            if state == "check_channel":
-                if channel is None:
-                    return await interaction.response.send_message(
-                        embed=ModEmbed.error("Missing Argument", "Please specify a voice `channel` to check."),
-                        ephemeral=True
-                    )
-                await self._manual_verify_channel(interaction, verification_cog, channel)
-                return
-            
-            if state == "check_user":
-                target_member = user
-                if target_member is None and user_id:
-                    try:
-                        uid = int(user_id)
-                        target_member = interaction.guild.get_member(uid)
-                    except ValueError:
-                        pass
-                
-                if target_member is None:
-                    return await interaction.response.send_message(
-                        embed=ModEmbed.error("Missing Argument", "Please specify a `user` or `user_id` to check."),
-                        ephemeral=True
-                    )
-                await self._manual_verify_user(interaction, verification_cog, target_member)
-                return
-            
-            # Handle on/off states
-            await self._verification(interaction, state)
-            return
-
-        
-        # All other actions require a user
-        if user is None:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Missing Argument", "Please specify a `user` for this action."),
-                ephemeral=True
-            )
-        
-        # Check bot owner protection
+    async def vc_mute(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
         if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
+            return await interaction.response.send_message(embed=ModEmbed.error("Permission Denied", "You cannot mute the bot owner."), ephemeral=True)
+        await self._mute(interaction, user, reason)
+    
+    @vc_group.command(name="unmute", description="Server unmute a user in voice")
+    @app_commands.describe(user="The user to unmute")
+    @is_mod()
+    async def vc_unmute(self, interaction: discord.Interaction, user: discord.Member):
+        await self._unmute(interaction, user)
+    
+    @vc_group.command(name="deafen", description="Server deafen a user in voice")
+    @app_commands.describe(user="The user to deafen", reason="Reason for deafening")
+    @is_mod()
+    async def vc_deafen(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
+            return await interaction.response.send_message(embed=ModEmbed.error("Permission Denied", "You cannot deafen the bot owner."), ephemeral=True)
+        await self._deafen(interaction, user, reason)
+    
+    @vc_group.command(name="undeafen", description="Server undeafen a user in voice")
+    @app_commands.describe(user="The user to undeafen")
+    @is_mod()
+    async def vc_undeafen(self, interaction: discord.Interaction, user: discord.Member):
+        await self._undeafen(interaction, user)
+    
+    @vc_group.command(name="kick", description="Disconnect a user from voice channel")
+    @app_commands.describe(user="The user to kick from VC", reason="Reason for kicking")
+    @is_mod()
+    async def vc_kick(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
+            return await interaction.response.send_message(embed=ModEmbed.error("Permission Denied", "You cannot kick the bot owner."), ephemeral=True)
+        await self._kick(interaction, user, reason)
+    
+    @vc_group.command(name="move", description="Move a user to another voice channel")
+    @app_commands.describe(user="The user to move", channel="Target voice channel")
+    @is_mod()
+    async def vc_move(self, interaction: discord.Interaction, user: discord.Member, channel: discord.VoiceChannel):
+        await self._move(interaction, user, channel)
+    
+    @vc_group.command(name="moveall", description="Move all users from one channel to another")
+    @app_commands.describe(from_channel="Source voice channel", to_channel="Target voice channel")
+    @is_mod()
+    async def vc_moveall(self, interaction: discord.Interaction, from_channel: discord.VoiceChannel, to_channel: discord.VoiceChannel):
+        await self._moveall(interaction, from_channel, to_channel)
+    
+    @vc_group.command(name="ban", description="Ban a user from all voice channels")
+    @app_commands.describe(user="The user to voice ban", reason="Reason for banning")
+    @is_mod()
+    async def vc_ban(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
+            return await interaction.response.send_message(embed=ModEmbed.error("Permission Denied", "You cannot ban the bot owner."), ephemeral=True)
+        await self._ban(interaction, user, reason)
+    
+    @vc_group.command(name="unban", description="Unban a user from voice channels")
+    @app_commands.describe(user="The user to unban", user_id="User ID if they left the server")
+    @is_mod()
+    async def vc_unban(self, interaction: discord.Interaction, user: Optional[discord.Member] = None, user_id: Optional[str] = None):
+        target_id = None
+        if user:
+            target_id = user.id
+        elif user_id:
+            try:
+                target_id = int(user_id)
+            except ValueError:
+                return await interaction.response.send_message(embed=ModEmbed.error("Invalid ID", "Please provide a valid user ID."), ephemeral=True)
+        else:
+            return await interaction.response.send_message(embed=ModEmbed.error("Missing Argument", "Please specify `user` or `user_id`."), ephemeral=True)
+        await self._unban(interaction, target_id)
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # Presence Check Subcommands
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    @vc_group.command(name="check", description="Presence check - verify users are active in voice")
+    @app_commands.describe(channel="Check all users in this channel", user="Check a specific user")
+    @is_mod()
+    async def vc_check(self, interaction: discord.Interaction, channel: Optional[discord.VoiceChannel] = None, user: Optional[discord.Member] = None):
+        verification_cog = self.bot.get_cog("Verification")
+        if not verification_cog:
+            return await interaction.response.send_message(embed=ModEmbed.error("Not Available", "Verification cog is not loaded."), ephemeral=True)
+        
+        if channel:
+            await self._manual_verify_channel(interaction, verification_cog, channel)
+        elif user:
+            await self._manual_verify_user(interaction, verification_cog, user)
+        else:
             return await interaction.response.send_message(
-                embed=ModEmbed.error("Permission Denied", f"You cannot {action} the bot owner."),
+                embed=ModEmbed.error("Missing Argument", "Specify `channel` to check all users or `user` to check one person."),
                 ephemeral=True
             )
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # Verification Settings Subcommands (Admin Only)
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    @vc_group.command(name="verify", description="Toggle voice verification requirement")
+    @app_commands.describe(state="Enable or disable voice verification")
+    @is_admin()
+    async def vc_verify(self, interaction: discord.Interaction, state: Literal["on", "off"]):
+        await self._verification(interaction, state)
+    
+    @vc_group.command(name="verify-settings", description="View voice verification settings")
+    @is_admin()
+    async def vc_verify_settings(self, interaction: discord.Interaction):
+        verification_cog = self.bot.get_cog("Verification")
+        if not verification_cog:
+            return await interaction.response.send_message(embed=ModEmbed.error("Not Available", "Verification cog is not loaded."), ephemeral=True)
+        await verification_cog.show_settings(interaction)
+    
+    @vc_group.command(name="verify-bypass", description="Add or remove a bypass role for verification")
+    @app_commands.describe(action="Add or remove the role", role="The role to add/remove from bypass list")
+    @is_admin()
+    async def vc_verify_bypass(self, interaction: discord.Interaction, action: Literal["add", "remove"], role: discord.Role):
+        verification_cog = self.bot.get_cog("Verification")
+        if not verification_cog:
+            return await interaction.response.send_message(embed=ModEmbed.error("Not Available", "Verification cog is not loaded."), ephemeral=True)
         
-        # Route to appropriate handler
-        if action == "mute":
-            await self._mute(interaction, user, reason)
-        elif action == "unmute":
-            await self._unmute(interaction, user)
-        elif action == "deafen":
-            await self._deafen(interaction, user, reason)
-        elif action == "undeafen":
-            await self._undeafen(interaction, user)
-        elif action == "kick":
-            await self._kick(interaction, user, reason)
-        elif action == "move":
-            if channel is None:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Missing Argument", "Please specify a `channel` to move the user to."),
-                    ephemeral=True
-                )
-            await self._move(interaction, user, channel)
-        elif action == "moveall":
-            if from_channel is None or channel is None:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Missing Arguments", "Please specify both `from_channel` and `channel` for moveall."),
-                    ephemeral=True
-                )
-            await self._moveall(interaction, from_channel, channel)
-        elif action == "ban":
-            await self._ban(interaction, user, reason)
-        elif action == "unban":
-            # Unban can work with either user or user_id
-            if user is None and user_id is None:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Missing Argument", "Please specify either `user` or `user_id` for unban."),
-                    ephemeral=True
-                )
-            await self._unban(interaction, user, user_id)
+        if action == "add":
+            await verification_cog.add_bypass_role(interaction, role)
+        else:
+            await verification_cog.remove_bypass_role(interaction, role)
+    
+    @vc_group.command(name="verify-timeout", description="Set verification session timeout")
+    @app_commands.describe(minutes="Session timeout in minutes (1-1440)")
+    @is_admin()
+    async def vc_verify_timeout(self, interaction: discord.Interaction, minutes: int):
+        verification_cog = self.bot.get_cog("Verification")
+        if not verification_cog:
+            return await interaction.response.send_message(embed=ModEmbed.error("Not Available", "Verification cog is not loaded."), ephemeral=True)
+        await verification_cog.set_session_timeout(interaction, minutes)
 
     async def _respond(self, source, embed=None, content=None, ephemeral=False, view=None):
         if isinstance(source, discord.Interaction):
@@ -223,133 +188,218 @@ class Voice(commands.Cog):
             return await source.send(content=content, embed=embed, view=view)
 
     async def _manual_verify_channel(self, interaction: discord.Interaction, verification_cog, channel: discord.VoiceChannel):
-        """Manually trigger verification for all users in a voice channel."""
-        await interaction.response.defer(ephemeral=True)
+        """Presence check: Bot joins VC, asks all users if they're there, kicks non-responders."""
+        import asyncio
         
         if not channel.members:
-            return await interaction.followup.send(
-                embed=ModEmbed.info("Empty Channel", f"{channel.mention} has no members to verify."),
+            return await interaction.response.send_message(
+                embed=ModEmbed.info("Empty Channel", f"{channel.mention} has no members to check."),
                 ephemeral=True
             )
         
-        # Get necessary resources
-        waiting_channel = await verification_cog._get_waiting_voice_channel(interaction.guild)
-        if not waiting_channel:
-            return await interaction.followup.send(
-                embed=ModEmbed.error("No Waiting Channel", "No waiting/verification channel is configured. Set one in `/setup`."),
+        # Filter to non-bot members
+        members_to_check = [m for m in channel.members if not m.bot]
+        if not members_to_check:
+            return await interaction.response.send_message(
+                embed=ModEmbed.info("No Users", f"{channel.mention} only has bots."),
                 ephemeral=True
             )
         
-        bypass_roles = await verification_cog._get_bypass_roles(interaction.guild.id)
+        await interaction.response.defer(ephemeral=True)
         
-        moved = 0
-        bypassed = 0
-        already_verified = 0
-        failed = 0
+        # Try to join the voice channel
+        voice_client = None
+        try:
+            voice_client = await channel.connect(timeout=10.0)
+        except Exception as e:
+            # Continue without voice connection if it fails
+            pass
         
-        for member in channel.members:
-            if member.bot:
-                continue
-            
-            # Check if has bypass role
-            if verification_cog._has_bypass_role(member, bypass_roles):
-                bypassed += 1
-                continue
-            
-            # Check if has valid session
-            if verification_cog._has_valid_session(interaction.guild.id, member.id):
-                already_verified += 1
-                continue
-            
-            # Move to waiting channel and send DM
+        # Track responses
+        responded = set()
+        check_timeout = 60  # 60 seconds to respond
+        
+        # Send DMs to all members
+        dm_sent = 0
+        dm_failed = []
+        
+        for member in members_to_check:
             try:
-                key = (interaction.guild.id, member.id)
-                verification_cog._voice_targets[key] = channel.id
-                await member.move_to(waiting_channel, reason=f"Manual verification check by {interaction.user}")
-                await verification_cog._send_voice_verify_dm(guild=interaction.guild, member=member)
-                moved += 1
+                view = PresenceCheckView(member.id, responded)
+                embed = discord.Embed(
+                    title="🎤 Presence Check",
+                    description=(
+                        f"**{interaction.guild.name}** is doing a presence check in **{channel.name}**.\n\n"
+                        f"Click the button below within **{check_timeout} seconds** to confirm you're there.\n\n"
+                        "⚠️ **If you don't respond, you will be disconnected from the voice channel.**"
+                    ),
+                    color=Config.COLOR_WARNING,
+                )
+                embed.set_footer(text=f"Requested by {interaction.user}")
+                await member.send(embed=embed, view=view)
+                dm_sent += 1
             except Exception:
-                failed += 1
+                dm_failed.append(member)
         
-        embed = discord.Embed(
-            title="🔍 Manual Verification Check",
-            description=f"Checked all members in {channel.mention}",
-            color=Config.COLOR_SUCCESS if moved > 0 else Config.COLOR_INFO
+        # Send initial status
+        status_embed = discord.Embed(
+            title="🔍 Presence Check Started",
+            description=f"Checking **{len(members_to_check)}** members in {channel.mention}",
+            color=Config.COLOR_INFO,
         )
-        embed.add_field(name="📤 Moved to Verify", value=str(moved), inline=True)
-        embed.add_field(name="⏭️ Bypassed", value=str(bypassed), inline=True)
-        embed.add_field(name="✅ Already Verified", value=str(already_verified), inline=True)
-        if failed > 0:
-            embed.add_field(name="❌ Failed", value=str(failed), inline=True)
+        status_embed.add_field(name="📨 DMs Sent", value=str(dm_sent), inline=True)
+        status_embed.add_field(name="⏱️ Timeout", value=f"{check_timeout}s", inline=True)
+        if dm_failed:
+            status_embed.add_field(
+                name="❌ DM Failed", 
+                value=", ".join(m.display_name for m in dm_failed[:5]) + ("..." if len(dm_failed) > 5 else ""),
+                inline=False
+            )
+        await interaction.followup.send(embed=status_embed, ephemeral=True)
         
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        # Wait for responses
+        await asyncio.sleep(check_timeout)
+        
+        # Process results
+        kicked = 0
+        present = 0
+        failed_kick = 0
+        
+        for member in members_to_check:
+            if member.id in responded:
+                present += 1
+                # Send thank you message
+                try:
+                    await member.send(
+                        embed=ModEmbed.success("Thanks!", f"Thanks for confirming your presence in **{channel.name}**! 👋")
+                    )
+                except Exception:
+                    pass
+            else:
+                # Kick from VC if still connected
+                if member.voice and member.voice.channel:
+                    try:
+                        await member.move_to(None, reason=f"Presence check: No response within {check_timeout}s")
+                        kicked += 1
+                    except Exception:
+                        failed_kick += 1
+        
+        # Disconnect bot from VC
+        if voice_client and voice_client.is_connected():
+            try:
+                await voice_client.disconnect()
+            except Exception:
+                pass
+        
+        # Final report
+        result_embed = discord.Embed(
+            title="✅ Presence Check Complete",
+            description=f"Finished checking {channel.mention}",
+            color=Config.COLOR_SUCCESS,
+        )
+        result_embed.add_field(name="✅ Present", value=str(present), inline=True)
+        result_embed.add_field(name="👢 Kicked", value=str(kicked), inline=True)
+        if failed_kick > 0:
+            result_embed.add_field(name="❌ Failed to Kick", value=str(failed_kick), inline=True)
+        if dm_failed:
+            result_embed.add_field(name="⚠️ Couldn't DM", value=str(len(dm_failed)), inline=True)
+        
+        await interaction.followup.send(embed=result_embed, ephemeral=True)
 
     async def _manual_verify_user(self, interaction: discord.Interaction, verification_cog, member: discord.Member):
-        """Manually trigger verification for a specific user."""
+        """Presence check for a single user: Bot joins, asks if they're there, thanks or kicks."""
+        import asyncio
+        
         if member.bot:
             return await interaction.response.send_message(
-                embed=ModEmbed.error("Invalid Target", "You cannot verify bots."),
+                embed=ModEmbed.error("Invalid Target", "You cannot check bots."),
                 ephemeral=True
             )
         
-        # Check if user is in voice
         if not member.voice or not member.voice.channel:
             return await interaction.response.send_message(
                 embed=ModEmbed.error("Not In Voice", f"{member.mention} is not in a voice channel."),
                 ephemeral=True
             )
         
-        original_channel = member.voice.channel
+        channel = member.voice.channel
+        await interaction.response.defer(ephemeral=True)
         
-        # Get waiting channel
-        waiting_channel = await verification_cog._get_waiting_voice_channel(interaction.guild)
-        if not waiting_channel:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("No Waiting Channel", "No waiting/verification channel is configured. Set one in `/setup`."),
-                ephemeral=True
-            )
-        
-        # Check bypass roles
-        bypass_roles = await verification_cog._get_bypass_roles(interaction.guild.id)
-        if verification_cog._has_bypass_role(member, bypass_roles):
-            return await interaction.response.send_message(
-                embed=ModEmbed.info("Has Bypass", f"{member.mention} has a bypass role and doesn't need verification."),
-                ephemeral=True
-            )
-        
-        # Check if already verified
-        if verification_cog._has_valid_session(interaction.guild.id, member.id):
-            return await interaction.response.send_message(
-                embed=ModEmbed.info("Already Verified", f"{member.mention} has an active verification session."),
-                ephemeral=True
-            )
-        
-        # Invalidate any existing session and force re-verification
-        key = (interaction.guild.id, member.id)
-        verification_cog._voice_sessions.pop(key, None)
-        verification_cog._voice_targets[key] = original_channel.id
-        
+        # Try to join the voice channel
+        voice_client = None
         try:
-            await member.move_to(waiting_channel, reason=f"Manual verification by {interaction.user}")
-            await verification_cog._send_voice_verify_dm(guild=interaction.guild, member=member)
-            
-            embed = ModEmbed.success(
-                "Verification Triggered",
-                f"{member.mention} has been moved to {waiting_channel.mention} for verification.\n"
-                f"They will return to {original_channel.mention} after completing the captcha."
+            voice_client = await channel.connect(timeout=10.0)
+        except Exception:
+            pass
+        
+        # Track response
+        responded = set()
+        check_timeout = 45  # 45 seconds for single user
+        
+        # Send DM
+        try:
+            view = PresenceCheckView(member.id, responded)
+            embed = discord.Embed(
+                title="🎤 Presence Check",
+                description=(
+                    f"A moderator in **{interaction.guild.name}** wants to verify you're active in **{channel.name}**.\n\n"
+                    f"Click the button below within **{check_timeout} seconds** to confirm.\n\n"
+                    "⚠️ **If you don't respond, you will be disconnected.**"
+                ),
+                color=Config.COLOR_WARNING,
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        except discord.Forbidden:
-            await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", "I don't have permission to move this user."),
+            embed.set_footer(text=f"Requested by {interaction.user}")
+            await member.send(embed=embed, view=view)
+        except Exception:
+            # Disconnect and report failure
+            if voice_client and voice_client.is_connected():
+                try:
+                    await voice_client.disconnect()
+                except Exception:
+                    pass
+            return await interaction.followup.send(
+                embed=ModEmbed.error("DM Failed", f"Could not send DM to {member.mention}. They may have DMs disabled."),
                 ephemeral=True
             )
-        except Exception as e:
-            await interaction.response.send_message(
-                embed=ModEmbed.error("Failed", f"Could not verify user: {e}"),
-                ephemeral=True
-            )
-
+        
+        # Initial status
+        await interaction.followup.send(
+            embed=ModEmbed.info("Checking...", f"Sent presence check to {member.mention}. Waiting {check_timeout}s for response..."),
+            ephemeral=True
+        )
+        
+        # Wait for response
+        await asyncio.sleep(check_timeout)
+        
+        # Check result
+        if member.id in responded:
+            # Thank them
+            try:
+                await member.send(
+                    embed=ModEmbed.success("Thanks!", f"Thanks for confirming you're there! 👋")
+                )
+            except Exception:
+                pass
+            result = ModEmbed.success("Present", f"{member.mention} confirmed they're there!")
+        else:
+            # Kick if still connected
+            if member.voice and member.voice.channel:
+                try:
+                    await member.move_to(None, reason=f"Presence check: No response within {check_timeout}s")
+                    result = ModEmbed.warning("Kicked", f"{member.mention} didn't respond and was disconnected.")
+                except Exception:
+                    result = ModEmbed.error("Failed", f"{member.mention} didn't respond but I couldn't kick them.")
+            else:
+                result = ModEmbed.info("Left", f"{member.mention} didn't respond but already left the channel.")
+        
+        # Disconnect bot
+        if voice_client and voice_client.is_connected():
+            try:
+                await voice_client.disconnect()
+            except Exception:
+                pass
+        
+        await interaction.followup.send(embed=result, ephemeral=True)
 
     async def _mute(self, source, user: discord.Member, reason: str):
         author = source.user if isinstance(source, discord.Interaction) else source.author
@@ -552,7 +602,8 @@ class Voice(commands.Cog):
             )
         await self._respond(source, embed=embed)
 
-    async def _unban(self, source, user: Optional[discord.Member], user_id: Optional[str]):
+    async def _unban(self, source, target_id: int):
+        """Unban a user from all voice channels by user ID."""
         if not source.guild:
             return await self._respond(source, embed=ModEmbed.error("Guild Only", "This command can only be used in a server."), ephemeral=True)
 
@@ -561,35 +612,12 @@ class Voice(commands.Cog):
             
         author = source.user if isinstance(source, discord.Interaction) else source.author
 
-        # Determine target - either from user object or user_id
+        # Try to fetch the user object for better display
         target_user = None
-        target_id = None
-        
-        if user:
-            target_user = user
-            target_id = user.id
-        elif user_id:
-            try:
-                target_id = int(user_id)
-                # Try to fetch the user object (works even if they left)
-                try:
-                    target_user = await self.bot.fetch_user(target_id)
-                except:
-                    # User doesn't exist, but we can still use ID to remove permissions
-                    target_user = await self.bot.get_or_fetch_member(source.guild, target_id)
-            except ValueError:
-                return await self._respond(
-                    source,
-                    embed=ModEmbed.error("Invalid ID", "Please provide a valid user ID."),
-                    ephemeral=True
-                )
-
-        if not target_id:
-            return await self._respond(
-                source,
-                embed=ModEmbed.error("Error", "Could not determine target user."),
-                ephemeral=True
-            )
+        try:
+            target_user = await self.bot.fetch_user(target_id)
+        except Exception:
+            pass
 
         # Remove voice ban overwrites from all voice channels
         removed = 0
@@ -776,13 +804,14 @@ class Voice(commands.Cog):
     @is_mod()
     async def vcunban(self, ctx: commands.Context, user: Union[discord.Member, discord.User, str]):
         """Unban a user from voice channels"""
-        user_obj = None
-        user_id = None
         if isinstance(user, (discord.Member, discord.User)):
-            user_obj = user
+            target_id = user.id
         else:
-            user_id = str(user)
-        await self._unban(ctx, user_obj, user_id)
+            try:
+                target_id = int(user)
+            except ValueError:
+                return await ctx.send(embed=ModEmbed.error("Invalid ID", "Please provide a valid user or user ID."))
+        await self._unban(ctx, target_id)
 
     @commands.command(name="vcverify")
     @is_admin()
