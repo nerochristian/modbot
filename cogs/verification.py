@@ -134,20 +134,31 @@ def _generate_captcha_image(code: str) -> Optional[bytes]:
 
 
 def _brand_assets(guild: Optional[discord.Guild]) -> tuple[Optional[str], Optional[str]]:
-    logo_url = (getattr(Config, "SERVER_LOGO_URL", "") or "").strip() or None
-    banner_url = (getattr(Config, "SERVER_BANNER_URL", "") or "").strip() or None
+    """Get logo and banner URLs, prioritizing the server's actual assets."""
+    logo_url = None
+    banner_url = None
 
-    if not logo_url and guild and getattr(guild, "icon", None):
-        try:
-            logo_url = str(guild.icon.url)
-        except Exception:
-            logo_url = None
-
-    if not banner_url and guild and getattr(guild, "banner", None):
+    # Prioritize server's actual banner over config
+    if guild and getattr(guild, "banner", None):
         try:
             banner_url = str(guild.banner.url)
         except Exception:
-            banner_url = None
+            pass
+
+    # Fallback to config banner if server has none
+    if not banner_url:
+        banner_url = (getattr(Config, "SERVER_BANNER_URL", "") or "").strip() or None
+
+    # Prioritize server icon for logo
+    if guild and getattr(guild, "icon", None):
+        try:
+            logo_url = str(guild.icon.url)
+        except Exception:
+            pass
+
+    # Fallback to config logo
+    if not logo_url:
+        logo_url = (getattr(Config, "SERVER_LOGO_URL", "") or "").strip() or None
 
     return logo_url, banner_url
 
