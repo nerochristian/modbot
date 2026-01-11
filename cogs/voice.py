@@ -3,6 +3,7 @@ Voice Moderation Commands
 """
 
 import discord
+import asyncio
 from discord import app_commands
 from discord.ext import commands
 from datetime import datetime
@@ -10,6 +11,21 @@ from typing import Optional, Literal, Union
 from utils.embeds import ModEmbed
 from utils.checks import is_mod, is_admin, is_bot_owner_id
 from config import Config
+
+# TTS for voice announcements
+try:
+    from utils.tts import speak_in_vc, Announcements, get_tts_engine
+    TTS_AVAILABLE = True
+except ImportError:
+    TTS_AVAILABLE = False
+    def get_tts_engine(): return "None"
+
+# Voice options: "male" or "female" - can be changed per server in future
+TTS_VOICE_GENDER = "female"  # Options: "male" or "female"
+TTS_VOICES = {
+    "male": "adam",      # ElevenLabs: deep authoritative / Edge: guy
+    "female": "rachel",  # ElevenLabs: professional female / Edge: aria
+}
 
 
 class PresenceCheckView(discord.ui.View):
@@ -31,6 +47,150 @@ class PresenceCheckView(discord.ui.View):
         
         await interaction.response.edit_message(view=self)
         self.stop()
+
+
+class VoiceSelectView(discord.ui.View):
+    """Interactive voice selection with preview and accept/deny."""
+    
+    SAMPLE_TEXT = "Hello! This is a sample of my voice. How do I sound?"
+    
+    VOICES = {
+        "adam": ("👨 Adam", "Deep, authoritative"),
+        "antoni": ("👨 Antoni", "Warm, friendly"),
+        "josh": ("👨 Josh", "Young professional"),
+        "rachel": ("👩 Rachel", "Professional"),
+        "bella": ("👩 Bella", "Soft, warm"),
+        "domi": ("👩 Domi", "Strong, confident"),
+    }
+    
+    def __init__(self, user_id: int, bot, current_voice: str):
+        super().__init__(timeout=180)
+        self.user_id = user_id
+        self.bot = bot
+        self.current_voice = current_voice
+        self.selected_voice = current_voice
+        self.previewing = False
+        
+        # Add voice selection dropdown
+        self.voice_select = discord.ui.Select(
+            placeholder=f"Select a voice (current: {current_voice})",
+            options=[
+                discord.SelectOption(label=name, value=voice_id, description=desc, default=(voice_id == current_voice))
+                for voice_id, (name, desc) in self.VOICES.items()
+            ]
+        )
+        self.voice_select.callback = self.on_voice_select
+        self.add_item(self.voice_select)
+    
+    async def on_voice_select(self, interaction: discord.Interaction):
+        """Handle voice selection - play preview."""
+        if interaction.user.id != self.user_id:
+            return await interaction.response.send_message("This isn't for you!", ephemeral=True)
+        
+        self.selected_voice = self.voice_select.values[0]
+        voice_name, voice_desc = self.VOICES[self.selected_voice]
+        
+        # Check if user is in a voice channel
+        if not interaction.user.voice or not interaction.user.voice.channel:
+            await interaction.response.send_message(
+                embed=ModEmbed.warning("Join a Voice Channel", "Join a voice channel first to hear the preview!"),
+                ephemeral=True
+            )
+            return
+        
+        await interaction.response.defer(ephemeral=True)
+        
+        # Connect to voice channel
+        channel = interaction.user.voice.channel
+        voice_client = None
+        try:
+            voice_client = interaction.guild.voice_client
+            if voice_client:
+                await voice_client.move_to(channel)
+            else:
+                voice_client = await channel.connect(timeout=10.0)
+        except Exception as e:
+            await interaction.followup.send(
+                embed=ModEmbed.error("Connection Failed", f"Couldn't join your voice channel: {e}"),
+                ephemeral=True
+            )
+            return
+        
+        # Play preview
+        try:
+            from utils.tts import speak_in_vc
+            await speak_in_vc(voice_client, self.SAMPLE_TEXT, voice=self.selected_voice)
+            
+            # Show confirmation view
+            confirm_embed = discord.Embed(
+                title=f"🔊 Preview: {voice_name}",
+                description=f"*\"{self.SAMPLE_TEXT}\"*\n\n{voice_desc}\n\n**Do you want to use this voice?**",
+                color=Config.COLOR_INFO,
+            )
+            
+            # Disconnect after preview
+            if voice_client and voice_client.is_connected():
+                await voice_client.disconnect()
+            
+            await interaction.followup.send(embed=confirm_embed, view=VoiceConfirmView(self.user_id, self.bot, self.selected_voice), ephemeral=True)
+            
+        except Exception as e:
+            if voice_client and voice_client.is_connected():
+                await voice_client.disconnect()
+            await interaction.followup.send(
+                embed=ModEmbed.error("Preview Failed", f"Couldn't play preview: {e}"),
+                ephemeral=True
+            )
+
+
+class VoiceConfirmView(discord.ui.View):
+    """Accept or deny the selected voice."""
+    
+    def __init__(self, user_id: int, bot, voice: str):
+        super().__init__(timeout=60)
+        self.user_id = user_id
+        self.bot = bot
+        self.voice = voice
+    
+    @discord.ui.button(label="Accept", style=discord.ButtonStyle.success, emoji="✅")
+    async def accept(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            return await interaction.response.send_message("This isn't for you!", ephemeral=True)
+        
+        # Save to database
+        await self.bot.db.update_settings(interaction.guild_id, {"tts_voice": self.voice})
+        
+        # Update embed
+        embed = discord.Embed(
+            title="✅ Voice Saved!",
+            description=f"TTS voice has been set to **{self.voice}**.\n\nThis voice will be used for all presence check announcements.",
+            color=Config.COLOR_SUCCESS,
+        )
+        
+        # Disable buttons
+        for item in self.children:
+            item.disabled = True
+        
+        await interaction.response.edit_message(embed=embed, view=self)
+        self.stop()
+    
+    @discord.ui.button(label="Try Another", style=discord.ButtonStyle.secondary, emoji="🔄")
+    async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id != self.user_id:
+            return await interaction.response.send_message("This isn't for you!", ephemeral=True)
+        
+        embed = discord.Embed(
+            title="🔄 Cancelled",
+            description="Voice not changed. Use `/vc voice` to try again.",
+            color=Config.COLOR_INFO,
+        )
+        
+        for item in self.children:
+            item.disabled = True
+        
+        await interaction.response.edit_message(embed=embed, view=self)
+        self.stop()
+
 
 
 class Voice(commands.Cog):
@@ -177,6 +337,51 @@ class Voice(commands.Cog):
         if not verification_cog:
             return await interaction.response.send_message(embed=ModEmbed.error("Not Available", "Verification cog is not loaded."), ephemeral=True)
         await verification_cog.set_session_timeout(interaction, minutes)
+    
+    # ─────────────────────────────────────────────────────────────────────────
+    # TTS Voice Settings
+    # ─────────────────────────────────────────────────────────────────────────
+    
+    @vc_group.command(name="voice", description="🔊 Configure TTS voice for announcements")
+    @is_admin()
+    async def vc_voice(self, interaction: discord.Interaction):
+        """Interactive voice selection with previews."""
+        if not TTS_AVAILABLE:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("TTS Unavailable", "Text-to-speech is not configured."),
+                ephemeral=True
+            )
+        
+        # Get current settings
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        current_voice = settings.get("tts_voice", "rachel")
+        
+        # Create voice selection embed
+        embed = discord.Embed(
+            title="🔊 TTS Voice Settings",
+            description=(
+                f"**Current Voice:** `{current_voice}`\n"
+                f"**TTS Engine:** `{get_tts_engine()}`\n\n"
+                "Select a voice below to preview it, then click **Accept** to save."
+            ),
+            color=Config.COLOR_INFO,
+        )
+        
+        # Add voice options
+        embed.add_field(
+            name="👨 Male Voices",
+            value="• **Adam** - Deep, authoritative\n• **Antoni** - Warm, friendly\n• **Josh** - Young professional",
+            inline=True
+        )
+        embed.add_field(
+            name="👩 Female Voices", 
+            value="• **Rachel** - Professional\n• **Bella** - Soft, warm\n• **Domi** - Strong, confident",
+            inline=True
+        )
+        
+        # Create view with voice buttons
+        view = VoiceSelectView(interaction.user.id, self.bot, current_voice)
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     async def _respond(self, source, embed=None, content=None, ephemeral=False, view=None):
         if isinstance(source, discord.Interaction):
@@ -188,8 +393,7 @@ class Voice(commands.Cog):
             return await source.send(content=content, embed=embed, view=view)
 
     async def _manual_verify_channel(self, interaction: discord.Interaction, verification_cog, channel: discord.VoiceChannel):
-        """Presence check: Bot joins VC, asks all users if they're there, kicks non-responders."""
-        import asyncio
+        """Presence check: Bot joins VC, announces via TTS, waits for responses, kicks non-responders."""
         
         if not channel.members:
             return await interaction.response.send_message(
@@ -211,9 +415,30 @@ class Voice(commands.Cog):
         voice_client = None
         try:
             voice_client = await channel.connect(timeout=10.0)
-        except Exception as e:
-            # Continue without voice connection if it fails
+        except discord.ClientException:
+            # Already connected somewhere, try to move
+            if interaction.guild.voice_client:
+                voice_client = interaction.guild.voice_client
+                await voice_client.move_to(channel)
+        except Exception:
             pass
+        
+        # Get saved voice from settings
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        tts_voice = settings.get("tts_voice", "rachel")
+        
+        # 🔊 TTS ANNOUNCEMENT - Presence check start
+        if voice_client and TTS_AVAILABLE:
+            try:
+                from utils.tts import speak_in_vc, Announcements
+                await speak_in_vc(
+                    voice_client, 
+                    Announcements.PRESENCE_CHECK_START,
+                    voice=tts_voice,
+                    rate="+5%"
+                )
+            except Exception as e:
+                print(f"TTS failed: {e}")
         
         # Track responses
         responded = set()
@@ -235,6 +460,7 @@ class Voice(commands.Cog):
                     ),
                     color=Config.COLOR_WARNING,
                 )
+                embed.set_thumbnail(url=interaction.guild.icon.url if interaction.guild.icon else None)
                 embed.set_footer(text=f"Requested by {interaction.user}")
                 await member.send(embed=embed, view=view)
                 dm_sent += 1
@@ -249,6 +475,7 @@ class Voice(commands.Cog):
         )
         status_embed.add_field(name="📨 DMs Sent", value=str(dm_sent), inline=True)
         status_embed.add_field(name="⏱️ Timeout", value=f"{check_timeout}s", inline=True)
+        status_embed.add_field(name="🔊 TTS", value="✅ Announced" if (voice_client and TTS_AVAILABLE) else "❌ Unavailable", inline=True)
         if dm_failed:
             status_embed.add_field(
                 name="❌ DM Failed", 
@@ -284,6 +511,14 @@ class Voice(commands.Cog):
                     except Exception:
                         failed_kick += 1
         
+        # 🔊 TTS ANNOUNCEMENT - Results
+        if voice_client and voice_client.is_connected() and TTS_AVAILABLE:
+            try:
+                result_message = Announcements.presence_kicks(kicked)
+                await speak_in_vc(voice_client, result_message, voice="guy", rate="+0%")
+            except Exception:
+                pass
+        
         # Disconnect bot from VC
         if voice_client and voice_client.is_connected():
             try:
@@ -307,8 +542,7 @@ class Voice(commands.Cog):
         await interaction.followup.send(embed=result_embed, ephemeral=True)
 
     async def _manual_verify_user(self, interaction: discord.Interaction, verification_cog, member: discord.Member):
-        """Presence check for a single user: Bot joins, asks if they're there, thanks or kicks."""
-        import asyncio
+        """Presence check for a single user: Bot joins, announces via TTS, waits for response."""
         
         if member.bot:
             return await interaction.response.send_message(
@@ -329,8 +563,24 @@ class Voice(commands.Cog):
         voice_client = None
         try:
             voice_client = await channel.connect(timeout=10.0)
+        except discord.ClientException:
+            if interaction.guild.voice_client:
+                voice_client = interaction.guild.voice_client
+                await voice_client.move_to(channel)
         except Exception:
             pass
+        
+        # 🔊 TTS ANNOUNCEMENT - Call out the user
+        if voice_client and TTS_AVAILABLE:
+            try:
+                await speak_in_vc(
+                    voice_client, 
+                    Announcements.USER_CHECK_START.format(member.display_name),
+                    voice="guy",
+                    rate="+0%"
+                )
+            except Exception:
+                pass
         
         # Track response
         responded = set()
@@ -348,6 +598,7 @@ class Voice(commands.Cog):
                 ),
                 color=Config.COLOR_WARNING,
             )
+            embed.set_thumbnail(url=interaction.guild.icon.url if interaction.guild.icon else None)
             embed.set_footer(text=f"Requested by {interaction.user}")
             await member.send(embed=embed, view=view)
         except Exception:
@@ -373,7 +624,14 @@ class Voice(commands.Cog):
         
         # Check result
         if member.id in responded:
-            # Thank them
+            # 🔊 TTS - Thank them
+            if voice_client and voice_client.is_connected() and TTS_AVAILABLE:
+                try:
+                    await speak_in_vc(voice_client, Announcements.USER_CHECK_THANKS, voice="guy")
+                except Exception:
+                    pass
+            
+            # Send DM thanks
             try:
                 await member.send(
                     embed=ModEmbed.success("Thanks!", f"Thanks for confirming you're there! 👋")
@@ -382,6 +640,13 @@ class Voice(commands.Cog):
                 pass
             result = ModEmbed.success("Present", f"{member.mention} confirmed they're there!")
         else:
+            # 🔊 TTS - Disconnecting
+            if voice_client and voice_client.is_connected() and TTS_AVAILABLE:
+                try:
+                    await speak_in_vc(voice_client, Announcements.USER_CHECK_TIMEOUT, voice="guy")
+                except Exception:
+                    pass
+            
             # Kick if still connected
             if member.voice and member.voice.channel:
                 try:

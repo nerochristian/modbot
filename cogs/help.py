@@ -183,19 +183,38 @@ def get_category_icon(category: str) -> str:
 # =============================================================================
 
 MOD_COMMANDS = {
-    "Unified Commands": [
-        ("`/mod action:<action>`", "warn|kick|ban|tempban|unban|softban|timeout|unmute|rename"),
-        ("`/channel action:<action>`", "lock|unlock|slowmode|nuke|glock|gunlock"),
-        ("`/info type:<type>`", "user|server|channel|members|bots"),
+    "Moderation (`/mod`)": [
+        ("`/mod warn`", "Warn a user"),
+        ("`/mod kick`", "Kick a user"),
+        ("`/mod ban`", "Ban a user (Senior Mod)"),
+        ("`/mod tempban`", "Temporary ban (Senior Mod)"),
+        ("`/mod timeout`", "Timeout/mute a user"),
+        ("`/mod untimeout`", "Remove timeout"),
+        ("`/mod unban`", "Unban by user ID"),
     ],
-    "Other Actions": [
-        ("`/purge`", "Bulk delete messages"),
-        ("`/vc action:<action>`", "Voice moderation"),
+    "Channel (`/channel`)": [
+        ("`/channel lock`", "Lock a channel"),
+        ("`/channel unlock`", "Unlock a channel"),
+        ("`/channel slowmode`", "Set slowmode"),
+        ("`/channel nuke`", "Clone and delete (Senior Mod)"),
     ],
-    "Info & History": [
+    "Voice (`/vc`)": [
+        ("`/vc mute`", "Server mute user"),
+        ("`/vc kick`", "Disconnect from VC"),
+        ("`/vc move`", "Move user to channel"),
+        ("`/vc moveall`", "Move all users"),
+        ("`/vc check`", "Presence check"),
+    ],
+    "Info (`/info`)": [
+        ("`/info user`", "User information"),
+        ("`/info server`", "Server information"),
+        ("`/info members`", "Member count stats"),
+    ],
+    "History": [
         ("`/history`", "View user history"),
         ("`/case`", "View specific case"),
         ("`/notes`", "View/add user notes"),
+        ("`/purge`", "Bulk delete messages"),
     ],
 }
 

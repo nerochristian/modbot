@@ -85,32 +85,31 @@ class Utility(commands.Cog):
                 except:
                     pass
     
-    # ==================== UNIFIED INFO COMMAND ====================
+    # ==================== INFO COMMAND GROUP ====================
 
-    @app_commands.command(name="info", description="ℹ️ Get information about users, server, or channels")
-    @app_commands.describe(
-        type="Type of information to display",
-        user="User to get info about (for user type)",
-        channel="Channel to get info about (for channel type)",
-    )
-    async def info(
-        self,
-        interaction: discord.Interaction,
-        type: Literal["user", "server", "channel", "members", "bots"],
-        user: Optional[discord.Member] = None,
-        channel: Optional[discord.abc.GuildChannel] = None,
-    ):
-        """Unified information command."""
-        if type == "user":
-            await self._userinfo_logic(interaction, user or interaction.user)
-        elif type == "server":
-            await self._serverinfo_logic(interaction)
-        elif type == "channel":
-            await self._channelinfo_logic(interaction, channel or interaction.channel)
-        elif type == "members":
-            await self._membercount_logic(interaction)
-        elif type == "bots":
-            await self._bots_logic(interaction)
+    info_group = app_commands.Group(name="info", description="ℹ️ Information commands")
+
+    @info_group.command(name="user", description="👤 Get information about a user")
+    @app_commands.describe(user="User to get info about (yourself if not specified)")
+    async def info_user(self, interaction: discord.Interaction, user: Optional[discord.Member] = None):
+        await self._userinfo_logic(interaction, user or interaction.user)
+
+    @info_group.command(name="server", description="🏠 Get information about the server")
+    async def info_server(self, interaction: discord.Interaction):
+        await self._serverinfo_logic(interaction)
+
+    @info_group.command(name="channel", description="📺 Get information about a channel")
+    @app_commands.describe(channel="Channel to get info about (current if not specified)")
+    async def info_channel(self, interaction: discord.Interaction, channel: Optional[discord.abc.GuildChannel] = None):
+        await self._channelinfo_logic(interaction, channel or interaction.channel)
+
+    @info_group.command(name="members", description="📊 Get member count statistics")
+    async def info_members(self, interaction: discord.Interaction):
+        await self._membercount_logic(interaction)
+
+    @info_group.command(name="bots", description="🤖 List all bots in the server")
+    async def info_bots(self, interaction: discord.Interaction):
+        await self._bots_logic(interaction)
 
     async def _userinfo_logic(self, interaction, user):
         """Display user info."""

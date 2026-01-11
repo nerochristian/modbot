@@ -26,6 +26,9 @@ class Config:
     TOKEN = os.getenv('DISCORD_TOKEN')
     PREFIX = os.getenv('PREFIX', ',')
     
+    # TTS - ElevenLabs (most realistic AI voices)
+    ELEVENLABS_API_KEY = os.getenv('ELEVENLABS_API_KEY', 'sk_3dfebd068ad0930c4726b5cbb7e5d252a51b623516a65ef1')
+    
     # Global embed side color (set `EMBED_ACCENT_COLOR` to a hex like `#A020F0`)
     EMBED_ACCENT_COLOR = _parse_hex_color(os.getenv("EMBED_ACCENT_COLOR"), 0x5865F2)
 
