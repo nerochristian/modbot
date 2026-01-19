@@ -1090,6 +1090,9 @@ class Moderation(commands.Cog):
         )
         embed.add_field(name="Reason", value=reason, inline=False)
         embed.add_field(name="Moderator", value=author.mention, inline=False)
+
+        if author.guild_permissions.administrator:
+            embed.set_footer(text="Note: You are an Administrator, so you can bypass this lock.")
         
         await self._respond(source, embed=embed)
         
@@ -1106,11 +1109,31 @@ class Moderation(commands.Cog):
         channel = channel or (source.channel if isinstance(source, discord.Interaction) else source.channel)
         
         try:
+            # Unlock for everyone
             await channel.set_permissions(
                 source.guild.default_role,
                 send_messages=None,
                 reason=f"{author}: {reason}"
             )
+
+            # Iterate through overrides to remove the deny we added
+            bot_member = source.guild.me
+            for target, overwrite in channel.overwrites.items():
+                if target == source.guild.default_role:
+                    continue
+                if isinstance(target, discord.Role) and target == bot_member.top_role:
+                    continue
+                if isinstance(target, discord.Member) and target.id == bot_member.id:
+                    continue
+
+                if overwrite.send_messages is False:
+                    allow, deny = overwrite.pair()
+                    deny.send_messages = False
+                    await channel.set_permissions(
+                        target,
+                        overwrite=discord.PermissionOverwrite.from_pair(allow, deny),
+                        reason=f"{author} (Unlock): {reason}"
+                    )
         except discord.Forbidden:
              return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to edit channel permissions."), ephemeral=True)
         
@@ -1537,11 +1560,9 @@ class Moderation(commands.Cog):
 
         return await self._respond(interaction, embed=embed, ephemeral=True)
 
-    # ==================== MOD COMMAND GROUP ====================
+    # ==================== MOD COMMANDS ====================
 
-    mod_group = app_commands.Group(name="mod", description="🛡️ Moderation commands")
-
-    @mod_group.command(name="warn", description="⚠️ Warn a user")
+    @app_commands.command(name="warn", description="⚠️ Warn a user")
     @app_commands.describe(user="User to warn", reason="Reason for warning")
     @is_mod()
     async def mod_warn(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
@@ -1549,7 +1570,7 @@ class Moderation(commands.Cog):
             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "You cannot warn the bot owner."), ephemeral=True)
         await self._warn_logic(interaction, user, reason)
 
-    @mod_group.command(name="kick", description="👢 Kick a user from the server")
+    @app_commands.command(name="kick", description="👢 Kick a user from the server")
     @app_commands.describe(user="User to kick", reason="Reason for kicking")
     @is_mod()
     async def mod_kick(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
@@ -1557,7 +1578,7 @@ class Moderation(commands.Cog):
             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "You cannot kick the bot owner."), ephemeral=True)
         await self._kick_logic(interaction, user, reason)
 
-    @mod_group.command(name="ban", description="🔨 Permanently ban a user")
+    @app_commands.command(name="ban", description="🔨 Permanently ban a user")
     @app_commands.describe(user="User to ban", reason="Reason for banning", delete_days="Days of messages to delete (0-7)")
     @is_mod()
     async def mod_ban(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided", delete_days: app_commands.Range[int, 0, 7] = 1):
@@ -1567,7 +1588,7 @@ class Moderation(commands.Cog):
             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "Ban requires Senior Moderator permissions."), ephemeral=True)
         await self._ban_logic(interaction, user, reason, delete_days)
 
-    @mod_group.command(name="tempban", description="⏱️ Temporarily ban a user")
+    @app_commands.command(name="tempban", description="⏱️ Temporarily ban a user")
     @app_commands.describe(user="User to tempban", duration="Ban duration (e.g., 1h, 1d, 7d)", reason="Reason for banning")
     @is_mod()
     async def mod_tempban(self, interaction: discord.Interaction, user: discord.Member, duration: str = "1d", reason: str = "No reason provided"):
@@ -1577,7 +1598,7 @@ class Moderation(commands.Cog):
             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "Tempban requires Senior Moderator permissions."), ephemeral=True)
         await self._tempban_logic(interaction, user, duration, reason)
 
-    @mod_group.command(name="unban", description="🔓 Unban a user")
+    @app_commands.command(name="unban", description="🔓 Unban a user")
     @app_commands.describe(user_id="User ID to unban", reason="Reason for unbanning")
     @is_mod()
     async def mod_unban(self, interaction: discord.Interaction, user_id: str, reason: str = "No reason provided"):
@@ -1587,7 +1608,7 @@ class Moderation(commands.Cog):
             return await self._respond(interaction, embed=ModEmbed.error("Invalid ID", "User ID must be a number."), ephemeral=True)
         await self._unban_logic(interaction, uid, reason)
 
-    @mod_group.command(name="softban", description="🧹 Ban and immediately unban to delete messages")
+    @app_commands.command(name="softban", description="🧹 Ban and immediately unban to delete messages")
     @app_commands.describe(user="User to softban", reason="Reason for softban", delete_days="Days of messages to delete (0-7)")
     @is_mod()
     async def mod_softban(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided", delete_days: app_commands.Range[int, 0, 7] = 1):
@@ -1597,7 +1618,7 @@ class Moderation(commands.Cog):
             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "Softban requires Senior Moderator permissions."), ephemeral=True)
         await self._softban_logic(interaction, user, reason, delete_days)
 
-    @mod_group.command(name="timeout", description="🔇 Timeout/mute a user")
+    @app_commands.command(name="timeout", description="🔇 Timeout/mute a user")
     @app_commands.describe(user="User to timeout", duration="Timeout duration (e.g., 1h, 1d)", reason="Reason for timeout")
     @is_mod()
     async def mod_timeout(self, interaction: discord.Interaction, user: discord.Member, duration: str = "1h", reason: str = "No reason provided"):
@@ -1605,13 +1626,13 @@ class Moderation(commands.Cog):
             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "You cannot timeout the bot owner."), ephemeral=True)
         await self._mute_logic(interaction, user, duration, reason)
 
-    @mod_group.command(name="untimeout", description="🔊 Remove timeout from a user")
+    @app_commands.command(name="untimeout", description="🔊 Remove timeout from a user")
     @app_commands.describe(user="User to untimeout", reason="Reason for removing timeout")
     @is_mod()
     async def mod_untimeout(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
         await self._unmute_logic(interaction, user, reason)
 
-    @mod_group.command(name="rename", description="📝 Change a user's nickname")
+    @app_commands.command(name="rename", description="📝 Change a user's nickname")
     @app_commands.describe(user="User to rename", nickname="New nickname (leave empty to reset)")
     @is_mod()
     async def mod_rename(self, interaction: discord.Interaction, user: discord.Member, nickname: Optional[str] = None):
@@ -1636,7 +1657,7 @@ class Moderation(commands.Cog):
         return False
 
     # ==================== WARNING COMMANDS ====================
-    # NOTE: Slash commands removed - use /mod action:warn instead
+    # NOTE: Prefix commands mirror slash commands for moderation actions.
 
 
     @commands.command(name="warn")
@@ -1668,7 +1689,7 @@ class Moderation(commands.Cog):
 
     # ==================== KICK & BAN COMMANDS ====================
 
-    # NOTE: /kick, /ban, /tempban, /unban, /softban, /timeout, /unmute removed - use /mod instead
+    # NOTE: Slash commands are available as /kick, /ban, /tempban, /unban, /softban, /timeout, /untimeout.
 
     @commands.command(name="kick")
     @is_mod()
@@ -1811,10 +1832,13 @@ class Moderation(commands.Cog):
 
     # ==================== TIMEOUT/MUTE COMMANDS ====================
 
-    # NOTE: /rename, /timeout, /unmute removed - use /mod instead
+    @commands.command(name="mute", aliases=["timeout"])
+    @is_mod()
+    async def mute_prefix(self, ctx: commands.Context, user: discord.Member, duration: str = "1h", *, reason: str = "No reason provided"):
+        """Timeout a user"""
+        await self._mute_logic(ctx, user, duration, reason)
 
-
-    @commands.command(name="unmute")
+    @commands.command(name="unmute", aliases=["untimeout"])
     @is_mod()
     async def unmute_prefix(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
         """Remove timeout from a user"""
@@ -1824,14 +1848,14 @@ class Moderation(commands.Cog):
 
     channel_group = app_commands.Group(name="channel", description="📺 Channel management commands")
 
-    @channel_group.command(name="lock", description="🔒 Lock a channel")
+    @app_commands.command(name="lock", description="🔒 Lock a channel")
     @app_commands.describe(channel="Channel to lock (current if not specified)", role="Role that can still talk", reason="Reason for locking")
     @is_mod()
     async def channel_lock(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None, role: Optional[discord.Role] = None, reason: str = "No reason provided"):
         target = channel or interaction.channel
         await self._lock_logic(interaction, target, reason, role=role)
 
-    @channel_group.command(name="unlock", description="🔓 Unlock a channel")
+    @app_commands.command(name="unlock", description="🔓 Unlock a channel")
     @app_commands.describe(channel="Channel to unlock (current if not specified)", reason="Reason for unlocking")
     @is_mod()
     async def channel_unlock(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None, reason: str = "No reason provided"):

@@ -207,9 +207,17 @@ class WelcomeCardOptions:
     avatar_size: int = 196
     margin: int = 28
     accent_color: int = getattr(Config, "EMBED_ACCENT_COLOR", Config.COLOR_EMBED)
-    server_name: str = "The Supreme People"
+    server_name: str = "8kstore"
     welcome_label: str = "WELCOME!"
     role_badge_fallback: bool = True
+    brand_banner_url: Optional[str] = (
+        "https://media.discordapp.net/attachments/1461045644813668534/1461046165796552774/"
+        "ChatGPT_Image_Jan_14_2026_11_38_25_AM.png?ex=696920c6&is=6967cf46&hm=c5411333a91339cf355a1f64d723e131b81e676aec7a1038ab07b0f038070c38&=&format=webp&quality=lossless&width=1249&height=499"
+    )
+    brand_logo_url: Optional[str] = (
+        "https://media.discordapp.net/attachments/1461045644813668534/1461046354204954868/"
+        "71ad111fcd062061bd30cde4b0230285.png?ex=696920f3&is=6967cf73&hm=23d85a81aad0f8541bef4818e9fd6bec179cd1caf99c47b0d61366664df48f99&=&format=webp&quality=lossless"
+    )
 
 
 async def build_welcome_card_png(
@@ -232,13 +240,14 @@ async def build_welcome_card_png(
         except Exception:
             avatar_url = str(avatar_asset.url)
 
-        banner_asset = getattr(full_user, "banner", None)
-        banner_url: Optional[str] = None
-        if banner_asset:
-            try:
-                banner_url = banner_asset.replace(size=1024).url
-            except Exception:
-                banner_url = str(banner_asset.url)
+        banner_url: Optional[str] = options.brand_banner_url
+        if not banner_url:
+            banner_asset = getattr(full_user, "banner", None)
+            if banner_asset:
+                try:
+                    banner_url = banner_asset.replace(size=1024).url
+                except Exception:
+                    banner_url = str(banner_asset.url)
 
         decoration_asset = getattr(full_user, "avatar_decoration", None)
         decoration_url: Optional[str] = None
@@ -251,6 +260,9 @@ async def build_welcome_card_png(
         bg_img = await _fetch_asset_image(session, banner_url) if banner_url else None
         avatar_img = await _fetch_asset_image(session, avatar_url)
         decoration_img = await _fetch_asset_image(session, decoration_url) if decoration_url else None
+        brand_logo_img = (
+            await _fetch_asset_image(session, options.brand_logo_url) if options.brand_logo_url else None
+        )
 
         badge_items: list[_BadgeItem] = []
         for label in _badge_labels(full_user, member=member):  # type: ignore[arg-type]
@@ -370,8 +382,20 @@ async def build_welcome_card_png(
     text_h = bbox[3] - bbox[1]
     pill_padding_x = 18
     pill_padding_y = 12
-    pill_w = text_w + pill_padding_x * 2
-    pill_h = text_h + pill_padding_y * 2
+    icon_gap = 10
+
+    pill_logo = None
+    logo_w = 0
+    logo_h = 0
+    if brand_logo_img is not None:
+        pill_logo = brand_logo_img.copy()
+        icon_size = text_h + 6
+        pill_logo.thumbnail((icon_size, icon_size), Image.Resampling.LANCZOS)
+        logo_w, logo_h = pill_logo.size
+
+    pill_w = text_w + pill_padding_x * 2 + (logo_w + icon_gap if pill_logo else 0)
+    content_h = max(text_h, logo_h) if pill_logo else text_h
+    pill_h = content_h + pill_padding_y * 2
     pill_x = w - options.margin - pill_w
     pill_y = h - options.margin - pill_h
     draw.rounded_rectangle(
@@ -381,8 +405,16 @@ async def build_welcome_card_png(
         outline=(*accent_rgb, 200),
         width=2,
     )
-    pill_text_x = pill_x + (pill_w - text_w) // 2 - bbox[0]
     pill_text_y = pill_y + (pill_h - text_h) // 2 - bbox[1]
+
+    if pill_logo and logo_w > 0 and logo_h > 0:
+        logo_x = pill_x + pill_padding_x
+        logo_y = pill_y + (pill_h - logo_h) // 2
+        card.alpha_composite(pill_logo, (logo_x, logo_y))
+        pill_text_x = logo_x + logo_w + icon_gap - bbox[0]
+    else:
+        pill_text_x = pill_x + (pill_w - text_w) // 2 - bbox[0]
+
     draw.text(
         (pill_text_x, pill_text_y),
         pill_text,
@@ -465,3 +497,4 @@ async def build_welcome_card_file(
 ) -> discord.File:
     png = await build_welcome_card_png(bot, member, options=options)
     return discord.File(io.BytesIO(png), filename=filename)
+

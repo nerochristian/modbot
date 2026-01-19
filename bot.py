@@ -339,6 +339,54 @@ class ModBot(commands.Bot):
         except Exception as e:
             logger.error(f"❌ Unexpected error syncing commands: {e}")
             self.errors_caught += 1
+
+        # Bind the global error handler
+        self.tree.on_error = self.on_tree_error
+    
+    async def on_tree_error(self, interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+        """Global error handler for application commands"""
+        self.errors_caught += 1
+        
+        # Handle Missing Permissions
+        if isinstance(error, discord.app_commands.MissingPermissions):
+            missing = [p.replace('_', ' ').replace('guild', 'server').title() for p in error.missing_permissions]
+            if len(missing) > 2:
+                fmt = f"{', '.join(missing[:-1])}, and {missing[-1]}"
+            else:
+                fmt = " and ".join(missing)
+                
+            embed = discord.Embed(
+                title="🚫 Permission Denied",
+                description=f"You are missing the following permission(s) to run this command:\n**{fmt}**",
+                color=0xFF0000
+            )
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                else:
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+            except Exception:
+                pass
+            return
+
+        # Handle other errors (BotMissingPermissions, etc.)
+        if isinstance(error, discord.app_commands.BotMissingPermissions):
+            missing = [p.replace('_', ' ').replace('guild', 'server').title() for p in error.missing_permissions]
+            embed = discord.Embed(
+                title="⚠️ I Need Permissions",
+                description=f"I am missing the following permission(s) to do that:\n**{', '.join(missing)}**",
+                color=0xFF0000
+            )
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                else:
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+            except: pass
+            return
+            
+        # Generic fallback
+        logger.error(f"Ignoring exception in command '{interaction.command.name if interaction.command else 'Unknown'}': {error}", exc_info=error)
     
     async def _check_global_blacklist(self, interaction: discord.Interaction) -> bool:
         """Global check for application commands - blocks blacklisted users"""

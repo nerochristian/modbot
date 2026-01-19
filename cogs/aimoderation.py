@@ -13,6 +13,9 @@ from groq import Groq
 from utils.checks import is_admin, is_bot_owner_id, is_mod
 from utils.cache import RateLimiter
 from utils.messages import Messages
+import logging
+
+logger = logging.getLogger("ModBot")
 
 # ========= CONFIG =========
 
@@ -946,6 +949,7 @@ class AIModeration(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
         """Main event handler for bot mentions."""
+        logger.info(f"DEBUG: on_message triggered for {message.id} | Content: {message.content[:20] if message.content else 'None'} | PID: {os.getpid()}")
         if message.author.bot or not message.guild:
             return
         if not self.bot.user:

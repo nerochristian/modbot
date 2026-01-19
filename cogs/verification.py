@@ -869,6 +869,30 @@ class Verification(commands.Cog):
 
         try:
             await channel.send(view=VerificationPanelLayout(self, guild=interaction.guild))
+        except discord.Forbidden:
+            # Self-healing: try to fix permissions if we are admin but locked out
+            try:
+                if isinstance(channel, discord.TextChannel):
+                    await channel.set_permissions(
+                        interaction.guild.me,
+                        view_channel=True,
+                        send_messages=True,
+                        manage_channels=True,
+                        manage_messages=True,
+                        reason="ModBot Auto-Fix: verify channel permissions",
+                    )
+                    await channel.send(view=VerificationPanelLayout(self, guild=interaction.guild))
+                else:
+                    raise
+            except Exception as e:
+                await interaction.response.send_message(
+                    embed=ModEmbed.error(
+                        "Permission Denied",
+                        f"I cannot post in {channel.mention}. Please ensure I have 'Manage Channel' and 'Send Messages' permissions there.\nError: {e}"
+                    ),
+                    ephemeral=True,
+                )
+                return
         except Exception as e:
             await interaction.response.send_message(
                 embed=ModEmbed.error("Failed", f"Could not post panel: {e}"),

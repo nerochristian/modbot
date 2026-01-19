@@ -1181,6 +1181,14 @@ class Setup(commands.Cog):
                             reason="ModBot Setup: lock verify channel",
                         )
                         await verify_channel.set_permissions(
+                            guild.me,
+                            view_channel=True,
+                            send_messages=True,
+                            manage_channels=True,
+                            manage_messages=True,
+                            reason="ModBot Setup: allow bot to manage verify channel",
+                        )
+                        await verify_channel.set_permissions(
                             unverified_role,
                             view_channel=True,
                             send_messages=False,
@@ -1223,6 +1231,14 @@ class Setup(commands.Cog):
                             guild.default_role,
                             view_channel=False,
                             reason="ModBot Setup: lock unverified-chat to unverified role",
+                        )
+                        await unverified_chat.set_permissions(
+                            guild.me,
+                            view_channel=True,
+                            send_messages=True,
+                            manage_channels=True,
+                            manage_messages=True,
+                            reason="ModBot Setup: allow bot to manage unverified chat",
                         )
                         await unverified_chat.set_permissions(
                             unverified_role,

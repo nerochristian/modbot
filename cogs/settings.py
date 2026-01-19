@@ -103,7 +103,7 @@ class GeneralSettingsView(BaseSettingsView):
         self.settings = settings
 
     def get_embed(self) -> discord.Embed:
-        embed = discord.Embed(title="⚙️ General Settings", color=Colors.info, timestamp=datetime.datetime.now(timezone.utc))
+        embed = discord.Embed(title="⚙️ General Settings", color=Colors.INFO, timestamp=datetime.datetime.now(timezone.utc))
         
         # Mute Role
         mute_role_id = self.settings.get("mute_role")
@@ -171,7 +171,7 @@ class AutoModSettingsView(BaseSettingsView):
         self.ai_btn.label = "AI: ON" if ai_enabled else "AI: OFF"
 
     def get_embed(self) -> discord.Embed:
-        embed = discord.Embed(title="🛡️ AutoMod Configuration", color=Colors.warning, timestamp=datetime.datetime.now(timezone.utc))
+        embed = discord.Embed(title="🛡️ AutoMod Configuration", color=Colors.WARNING, timestamp=datetime.datetime.now(timezone.utc))
         
         status = "✅ Enabled" if self.settings.get("automod_enabled") else "❌ Disabled"
         punishment = self.settings.get("automod_punishment", "warn").title()
@@ -194,7 +194,7 @@ class AutoModSettingsView(BaseSettingsView):
         self.settings["automod_enabled"] = new_state
         await self.cog.bot.db.update_settings(self.guild.id, self.settings)
         self._update_buttons()
-        interaction.message.embeds[0].color = Colors.success if new_state else Colors.error
+        interaction.message.embeds[0].color = Colors.SUCCESS if new_state else Colors.ERROR
         await interaction.response.edit_message(embed=self.get_embed(), view=self)
 
     @discord.ui.button(label="Toggle AI", custom_id="toggle_ai", row=1)
@@ -275,7 +275,7 @@ class LoggingSettingsView(BaseSettingsView):
         self.settings = settings
 
     def get_embed(self) -> discord.Embed:
-        embed = discord.Embed(title="📝 Logging Configuration", color=Colors.info, timestamp=datetime.datetime.now(timezone.utc))
+        embed = discord.Embed(title="📝 Logging Configuration", color=Colors.INFO, timestamp=datetime.datetime.now(timezone.utc))
         
         def get_ch(key):
             cid = self.settings.get(key)
@@ -332,7 +332,7 @@ class VoiceSettingsView(BaseSettingsView):
         self.afk_btn.label = "AFK Detection: ON" if enabled else "AFK Detection: OFF"
 
     def get_embed(self) -> discord.Embed:
-        embed = discord.Embed(title="🔊 Voice & AFK Settings", color=Colors.info, timestamp=datetime.datetime.now(timezone.utc))
+        embed = discord.Embed(title="🔊 Voice & AFK Settings", color=Colors.INFO, timestamp=datetime.datetime.now(timezone.utc))
         
         status = "✅ Enabled" if self.settings.get("afk_detection_enabled") else "❌ Disabled"
         timeout = f"{self.settings.get('afk_timeout_minutes', 15)} mins"

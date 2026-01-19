@@ -65,7 +65,7 @@ class Config:
     )
     SERVER_BANNER_URL = os.getenv(
         "SERVER_BANNER_URL",
-        "",
+        "https://images.unsplash.com/photo-1550751827-4bd374c3f58b",
     )
 
     # Verification

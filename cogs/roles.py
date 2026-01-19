@@ -92,7 +92,7 @@ class Roles(commands.Cog):
         return True, ""
 
     def can_manage_role(self, moderator: discord.Member, target_role: discord.Role) -> tuple[bool, str]:
-        if moderator.id == moderator.guild.owner_id:
+        if is_bot_owner_id(moderator.id) or moderator.id == moderator.guild.owner_id:
             return True, ""
         if target_role >= moderator.top_role:
             return False, "You cannot manage this role as it's higher than or equal to your highest role."
