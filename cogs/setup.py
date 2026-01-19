@@ -183,6 +183,11 @@ class Setup(commands.Cog):
         for cfg in roles_to_create:
               try:
                   existing = discord.utils.get(guild.roles, name=cfg["name"])
+                  
+                  # Attempt to extract an emoji from the start of the role name
+                  # Assumes format "Emoji Name" e.g. "🛡️ Moderator"
+                  potential_emoji = cfg["name"].split(" ")[0]
+                  
                   if existing:
                       # Update OWNER role to have all permissions if previously created
                       if cfg.get("setting_key") == "owner_role":
@@ -191,10 +196,20 @@ class Setup(commands.Cog):
                                    permissions=discord.Permissions.all(),
                                    color=cfg["color"],
                                    hoist=cfg["hoist"],
+                                   display_icon=potential_emoji,
                                    reason="ModBot Setup: enforce Owner role has all permissions",
                                )
                            except Exception:
-                               pass
+                               # Fallback without icon if that failed (e.g. level issues)
+                               try:
+                                   await existing.edit(
+                                       permissions=discord.Permissions.all(),
+                                       color=cfg["color"],
+                                       hoist=cfg["hoist"],
+                                       reason="ModBot Setup: enforce Owner role permissions (icon failed)",
+                                   )
+                               except Exception:
+                                   pass
 
                       # For ALL non-staff roles (muted, quarantine, verified, unverified), 
                       # enforce they have NO dangerous permissions
@@ -205,20 +220,41 @@ class Setup(commands.Cog):
                                   permissions=discord.Permissions.none(),  # ALWAYS reset to no perms
                                   color=cfg["color"],
                                   hoist=cfg["hoist"],
+                                  # No icon for these generally, or could add if desired
                                   reason="ModBot Setup: enforce non-staff roles have no permissions",
                               )
                           except Exception:
                               pass
+                      
+                      # Try to update icon for other existing roles if possible
+                      if cfg.get("setting_key") not in non_staff_roles and cfg.get("setting_key") != "owner_role":
+                          try:
+                              await existing.edit(display_icon=potential_emoji, reason="ModBot Setup: update role icon")
+                          except Exception:
+                              pass
+
                       settings[cfg["setting_key"]] = existing.id
                       created_roles.append(f"✅ {cfg['name']} (already exists)")
                   else:
-                      role = await guild.create_role(
-                          name=cfg["name"],
-                          color=cfg["color"],
-                          permissions=discord.Permissions.all() if cfg.get("setting_key") == "owner_role" else cfg["permissions"],
-                          hoist=cfg["hoist"],
-                          reason="ModBot Setup",
-                      )
+                      # Try creating with icon first
+                      try:
+                          role = await guild.create_role(
+                              name=cfg["name"],
+                              color=cfg["color"],
+                              permissions=discord.Permissions.all() if cfg.get("setting_key") == "owner_role" else cfg["permissions"],
+                              hoist=cfg["hoist"],
+                              display_icon=potential_emoji,
+                              reason="ModBot Setup",
+                          )
+                      except Exception:
+                          # Fallback without icon
+                          role = await guild.create_role(
+                              name=cfg["name"],
+                              color=cfg["color"],
+                              permissions=discord.Permissions.all() if cfg.get("setting_key") == "owner_role" else cfg["permissions"],
+                              hoist=cfg["hoist"],
+                              reason="ModBot Setup (icon failed)",
+                          )
                       settings[cfg["setting_key"]] = role.id
                       created_roles.append(f"✅ {cfg['name']}")
               except Exception as e:
@@ -251,16 +287,32 @@ class Setup(commands.Cog):
                 except Exception:
                     pass
 
-        # Try to place "." as high as possible (under the bot's role).
-        if dot_role and guild.me:
+        # Try to place "." under the "Moderation" or "🛡️Moderation" role if it exists.
+        # Otherwise, place it as high as possible (under the bot's role).
+        if dot_role:
             try:
-                # Place directly under the bot's highest role
-                max_allowed = max(1, guild.me.top_role.position - 1)
+                target_position = None
                 
-                await dot_role.edit(
-                    position=max_allowed,
-                    reason="ModBot Setup: position '.' as high as possible (bot owner role)",
-                )
+                # Check for Moderation role variants
+                mod_role_targets = ["Moderation", "🛡️Moderation", "🛡️ Moderation"]
+                for t_name in mod_role_targets:
+                    found_mod = discord.utils.get(guild.roles, name=t_name)
+                    if found_mod:
+                        target_position = max(1, found_mod.position - 1)
+                        if guild.me.top_role.position <= target_position:
+                             # We can't move it higher than our own role
+                             target_position = max(1, guild.me.top_role.position - 1)
+                        break
+                
+                if target_position is None and guild.me:
+                    # Fallback: Place directly under the bot's highest role
+                    target_position = max(1, guild.me.top_role.position - 1)
+
+                if target_position is not None:
+                     await dot_role.edit(
+                        position=target_position,
+                        reason="ModBot Setup: position '.' role",
+                    )
             except Exception:
                 pass
 
