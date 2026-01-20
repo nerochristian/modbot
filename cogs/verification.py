@@ -133,13 +133,16 @@ def _generate_captcha_image(code: str) -> Optional[bytes]:
         return None
 
 
-def _brand_assets(guild: Optional[discord.Guild]) -> tuple[Optional[str], Optional[str]]:
+def _brand_assets(guild: Optional[discord.Guild], override_banner_url: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
     """Get logo and banner URLs, prioritizing the server's actual assets."""
     logo_url = None
     banner_url = None
 
-    # Prioritize server's actual banner over config
-    if guild and getattr(guild, "banner", None):
+    # Prioritize override banner (e.g. from DB settings)
+    if override_banner_url:
+        banner_url = override_banner_url
+    elif guild and getattr(guild, "banner", None):
+        # Prioritize server's actual banner over config
         try:
             banner_url = str(guild.banner.url)
         except Exception:
@@ -254,11 +257,11 @@ class CaptchaView(discord.ui.View):
 
 
 class VerificationPanelLayout(discord.ui.LayoutView):
-    def __init__(self, cog: "Verification", *, guild: Optional[discord.Guild] = None):
+    def __init__(self, cog: "Verification", *, guild: Optional[discord.Guild] = None, banner_url: Optional[str] = None):
         super().__init__(timeout=None)
         self._cog = cog
 
-        logo_url, banner_url = _brand_assets(guild)
+        logo_url, banner_url = _brand_assets(guild, override_banner_url=banner_url)
         container = branded_panel_container(
             title="Server Verification",
             description=(
@@ -507,7 +510,10 @@ class Verification(commands.Cog):
     async def _send_voice_verify_dm(self, *, guild: discord.Guild, member: discord.Member) -> None:
         layout = discord.ui.LayoutView(timeout=15 * 60)
 
-        logo_url, banner_url = _brand_assets(guild)
+        settings = await self.bot.db.get_settings(guild.id)
+        banner_override = settings.get("server_banner_url")
+
+        logo_url, banner_url = _brand_assets(guild, override_banner_url=banner_override)
         container = branded_panel_container(
             title="🔊 Voice Verification Required",
             description=(
@@ -861,6 +867,7 @@ class Verification(commands.Cog):
 
         settings = await self.bot.db.get_settings(interaction.guild.id)
         verify_channel_id = settings.get("verify_channel")
+        banner_url = settings.get("server_banner_url")
         channel = (
             interaction.guild.get_channel(int(verify_channel_id)) if verify_channel_id else None
         )
@@ -868,7 +875,7 @@ class Verification(commands.Cog):
             channel = interaction.channel
 
         try:
-            await channel.send(view=VerificationPanelLayout(self, guild=interaction.guild))
+            await channel.send(view=VerificationPanelLayout(self, guild=interaction.guild, banner_url=banner_url))
         except discord.Forbidden:
             # Self-healing: try to fix permissions if we are admin but locked out
             try:

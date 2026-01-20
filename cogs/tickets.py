@@ -17,7 +17,7 @@ from utils.logging import send_log_embed
 from config import Config
 import io
 
-def _brand_assets(guild: Optional[discord.Guild]) -> tuple[Optional[str], Optional[str]]:
+def _brand_assets(guild: Optional[discord.Guild], override_banner_url: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
     logo_url = (Config.SERVER_LOGO_URL or "").strip() or None
     banner_url = (Config.SERVER_BANNER_URL or "").strip() or None
 
@@ -27,7 +27,10 @@ def _brand_assets(guild: Optional[discord.Guild]) -> tuple[Optional[str], Option
         except Exception:
             logo_url = None
 
-    if not banner_url and guild and getattr(guild, "banner", None):
+    # Prioritize override banner (e.g. from DB settings)
+    if override_banner_url:
+        banner_url = override_banner_url
+    elif not banner_url and guild and getattr(guild, "banner", None):
         try:
             banner_url = str(guild.banner.url)
         except Exception:
@@ -37,11 +40,11 @@ def _brand_assets(guild: Optional[discord.Guild]) -> tuple[Optional[str], Option
 
 
 class TicketPanelView(discord.ui.LayoutView):
-    def __init__(self, cog: "Tickets", *, guild: Optional[discord.Guild] = None):
+    def __init__(self, cog: "Tickets", *, guild: Optional[discord.Guild] = None, banner_url: Optional[str] = None):
         super().__init__(timeout=None)
         self.cog = cog
 
-        logo_url, banner_url = _brand_assets(guild)
+        logo_url, banner_url = _brand_assets(guild, override_banner_url=banner_url)
         title = f"{guild.name} Tickets" if guild else "Tickets"
         description = (
             "If you need help, click on the option corresponding to the type of ticket you want to open.\n"
@@ -791,7 +794,10 @@ class Tickets(commands.Cog):
         )
         embed.set_footer(text="Click the button below to open a ticket")
         
-        await interaction.channel.send(view=TicketPanelView(self, guild=interaction.guild))
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        banner_url = settings.get("server_banner_url")
+
+        await interaction.channel.send(view=TicketPanelView(self, guild=interaction.guild, banner_url=banner_url))
         await interaction.response.send_message(
             embed=ModEmbed. success("Panel Created", "Ticket panel has been created! "),
             ephemeral=True

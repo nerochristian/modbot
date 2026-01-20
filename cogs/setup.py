@@ -7,6 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 import asyncio
+import os
 from typing import Optional
 
 from utils.embeds import ModEmbed
@@ -43,35 +44,60 @@ class Setup(commands.Cog):
         errors: list[str] = []
 
         await interaction.followup.send(
-            embed=ModEmbed.info("Setup in Progress", "Creating roles...")
+            embed=ModEmbed.info("Setup in Progress", "Creating roles and applying branding...")
         )
+
+        # ==================== SERVER BRANDING ====================
+        branding_url = "https://media.discordapp.net/attachments/1430639019582034013/1454273701716693053/unbranded.jpg?ex=696f78ad&is=696e272d&hm=f3f879e6b8d5f7f66ebdecab9a91007957d1cf7e1949624342f4ad1bd5e5f8f5&=&format=webp"
+        banner_path = "assets/banner.jpg"
+        
+        try:
+            # Always save the URL to settings so panels can use it
+            await self.bot.db.update_setting(guild.id, "server_banner_url", branding_url)
+            
+            if os.path.exists(banner_path):
+                with open(banner_path, "rb") as f:
+                    banner_bytes = f.read()
+                
+                # Check guild features before attempting to set actual server assets
+                edit_kwargs = {}
+                if "BANNER" in guild.features:
+                    edit_kwargs["banner"] = banner_bytes
+                if "INVITE_SPLASH" in guild.features:
+                    edit_kwargs["splash"] = banner_bytes
+                
+                if edit_kwargs:
+                    await guild.edit(**edit_kwargs, reason="ModBot Setup: Branding")
+                    created_roles.append("✅ Updated Server Banner/Splash")
+        except Exception as e:
+            errors.append(f"⚠️ Failed to apply branding: {e}")
 
         # ==================== ROLES ====================
         roles_to_create = [
             {
                 "name": "💎 Owner",
-                "color": discord.Color.from_rgb(255, 215, 0), # Gold/Diamond
+                "color": discord.Color.from_rgb(74, 0, 0), # Darkest Blood Red (Rank 1)
                 "permissions": discord.Permissions(administrator=True),
                 "hoist": True,
                 "setting_key": "owner_role",
             },
             {
                 "name": "👔 Manager",
-                "color": discord.Color.from_rgb(46, 204, 113), # Emerald Green
+                "color": discord.Color.from_rgb(114, 0, 0), # Deep Crimson (Rank 2)
                 "permissions": discord.Permissions(administrator=True),
                 "hoist": True,
                 "setting_key": "manager_role",
             },
             {
                 "name": "👑 Admin",
-                "color": discord.Color.red(),
+                "color": discord.Color.from_rgb(153, 0, 0), # Strong Red (Rank 3)
                 "permissions": discord.Permissions(administrator=True),
                 "hoist": True,
                 "setting_key": "admin_role",
             },
             {
                 "name": "👁️ Supervisor",
-                "color": discord.Color.dark_purple(),
+                "color": discord.Color.from_rgb(204, 0, 0), # Pure Red (Rank 4)
                 "permissions": discord.Permissions(
                     view_audit_log=True,
                     manage_messages=True,
@@ -85,7 +111,7 @@ class Setup(commands.Cog):
             },
             {
                 "name": "⚔️ Senior Moderator",
-                "color": discord.Color.orange(),
+                "color": discord.Color.from_rgb(255, 0, 0), # Bright Red (Rank 5)
                 "permissions": discord.Permissions(
                     kick_members=True,
                     ban_members=True,
@@ -104,7 +130,7 @@ class Setup(commands.Cog):
             },
             {
                 "name": "🛡️ Moderator",
-                "color": discord.Color.blue(),
+                "color": discord.Color.from_rgb(255, 77, 77), # Light Red (Rank 6)
                 "permissions": discord.Permissions(
                     kick_members=True,
                     manage_messages=True,
@@ -120,7 +146,7 @@ class Setup(commands.Cog):
             },
             {
                 "name": "🔰 Trial Moderator",
-                "color": discord.Color.green(),
+                "color": discord.Color.from_rgb(255, 128, 128), # Soft Red (Rank 7)
                 "permissions": discord.Permissions(
                     manage_messages=True,
                     manage_nicknames=True,
@@ -132,7 +158,7 @@ class Setup(commands.Cog):
             },
             {
                 "name": "⭐ Staff",
-                "color": discord.Color.gold(),
+                "color": discord.Color.from_rgb(255, 179, 179), # Pale Red / Pinkish (Rank 8)
                 "permissions": discord.Permissions(
                     view_audit_log=True,
                     manage_messages=True,
@@ -184,10 +210,23 @@ class Setup(commands.Cog):
               try:
                   existing = discord.utils.get(guild.roles, name=cfg["name"])
                   
-                  # Attempt to extract an emoji from the start of the role name
+                  # Attempt to load custom icon
+                  icon_bytes = None
+                  icon_path = f"icons/{cfg.get('setting_key', 'unknown')}.png"
+                  if os.path.exists(icon_path):
+                      try:
+                          with open(icon_path, "rb") as f:
+                              icon_bytes = f.read()
+                      except Exception:
+                          pass
+
+                  # Fallback: Attempt to extract an emoji from the start of the role name
                   # Assumes format "Emoji Name" e.g. "🛡️ Moderator"
                   potential_emoji = cfg["name"].split(" ")[0]
                   
+                  # Determine which icon to use (prefer custom image > unicode emoji)
+                  final_icon = icon_bytes if icon_bytes else potential_emoji
+
                   if existing:
                       # Update OWNER role to have all permissions if previously created
                       if cfg.get("setting_key") == "owner_role":
@@ -196,7 +235,7 @@ class Setup(commands.Cog):
                                    permissions=discord.Permissions.all(),
                                    color=cfg["color"],
                                    hoist=cfg["hoist"],
-                                   display_icon=potential_emoji,
+                                   display_icon=final_icon,
                                    reason="ModBot Setup: enforce Owner role has all permissions",
                                )
                            except Exception:
@@ -229,7 +268,7 @@ class Setup(commands.Cog):
                       # Try to update icon for other existing roles if possible
                       if cfg.get("setting_key") not in non_staff_roles and cfg.get("setting_key") != "owner_role":
                           try:
-                              await existing.edit(display_icon=potential_emoji, reason="ModBot Setup: update role icon")
+                              await existing.edit(display_icon=final_icon, reason="ModBot Setup: update role icon")
                           except Exception:
                               pass
 
@@ -243,7 +282,7 @@ class Setup(commands.Cog):
                               color=cfg["color"],
                               permissions=discord.Permissions.all() if cfg.get("setting_key") == "owner_role" else cfg["permissions"],
                               hoist=cfg["hoist"],
-                              display_icon=potential_emoji,
+                              display_icon=final_icon,
                               reason="ModBot Setup",
                           )
                       except Exception:
