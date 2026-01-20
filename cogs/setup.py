@@ -75,42 +75,29 @@ class Setup(commands.Cog):
         # ==================== ROLES ====================
         roles_to_create = [
             {
-                "name": "💎 Owner",
+                "name": "Owner",
                 "color": discord.Color.from_rgb(74, 0, 0), # Darkest Blood Red (Rank 1)
                 "permissions": discord.Permissions(administrator=True),
                 "hoist": True,
                 "setting_key": "owner_role",
             },
             {
-                "name": "👔 Manager",
+                "name": "Manager",
                 "color": discord.Color.from_rgb(114, 0, 0), # Deep Crimson (Rank 2)
                 "permissions": discord.Permissions(administrator=True),
                 "hoist": True,
                 "setting_key": "manager_role",
             },
             {
-                "name": "👑 Admin",
+                "name": "Admin",
                 "color": discord.Color.from_rgb(153, 0, 0), # Strong Red (Rank 3)
                 "permissions": discord.Permissions(administrator=True),
                 "hoist": True,
                 "setting_key": "admin_role",
             },
+
             {
-                "name": "👁️ Supervisor",
-                "color": discord.Color.from_rgb(204, 0, 0), # Pure Red (Rank 4)
-                "permissions": discord.Permissions(
-                    view_audit_log=True,
-                    manage_messages=True,
-                    kick_members=True,
-                    ban_members=True,
-                    mute_members=True,
-                    moderate_members=True,
-                ),
-                "hoist": True,
-                "setting_key": "supervisor_role",
-            },
-            {
-                "name": "⚔️ Senior Moderator",
+                "name": "Senior Moderator",
                 "color": discord.Color.from_rgb(255, 0, 0), # Bright Red (Rank 5)
                 "permissions": discord.Permissions(
                     kick_members=True,
@@ -129,7 +116,7 @@ class Setup(commands.Cog):
                 "setting_key": "senior_mod_role",
             },
             {
-                "name": "🛡️ Moderator",
+                "name": "Moderator",
                 "color": discord.Color.from_rgb(255, 77, 77), # Light Red (Rank 6)
                 "permissions": discord.Permissions(
                     kick_members=True,
@@ -145,7 +132,7 @@ class Setup(commands.Cog):
                 "setting_key": "mod_role",
             },
             {
-                "name": "🔰 Trial Moderator",
+                "name": "Trial Moderator",
                 "color": discord.Color.from_rgb(255, 128, 128), # Soft Red (Rank 7)
                 "permissions": discord.Permissions(
                     manage_messages=True,
@@ -157,7 +144,7 @@ class Setup(commands.Cog):
                 "setting_key": "trial_mod_role",
             },
             {
-                "name": "⭐ Staff",
+                "name": "Staff",
                 "color": discord.Color.from_rgb(255, 179, 179), # Pale Red / Pinkish (Rank 8)
                 "permissions": discord.Permissions(
                     view_audit_log=True,
@@ -168,14 +155,14 @@ class Setup(commands.Cog):
                 "setting_key": "staff_role",
             },
             {
-                "name": "🔇 Muted",
+                "name": "Muted",
                 "color": discord.Color.dark_gray(),
                 "permissions": discord.Permissions.none(),
                 "hoist": False,
                 "setting_key": "muted_role",
             },
               {
-                  "name": "🔒 Quarantined",
+                  "name": "Quarantined",
                   "color": discord.Color.darker_grey(),
                   "permissions": discord.Permissions.none(),
                   "hoist": False,
@@ -220,12 +207,9 @@ class Setup(commands.Cog):
                       except Exception:
                           pass
 
-                  # Fallback: Attempt to extract an emoji from the start of the role name
-                  # Assumes format "Emoji Name" e.g. "🛡️ Moderator"
-                  potential_emoji = cfg["name"].split(" ")[0]
-                  
-                  # Determine which icon to use (prefer custom image > unicode emoji)
-                  final_icon = icon_bytes if icon_bytes else potential_emoji
+                  # No longer extracting emojis from names as they have been removed.
+                  # We rely solely on the image icon.
+                  final_icon = icon_bytes
 
                   if existing:
                       # Update OWNER role to have all permissions if previously created
@@ -239,7 +223,7 @@ class Setup(commands.Cog):
                                    reason="ModBot Setup: enforce Owner role has all permissions",
                                )
                            except Exception:
-                               # Fallback without icon if that failed (e.g. level issues)
+                               # Fallback without icon if that failed
                                try:
                                    await existing.edit(
                                        permissions=discord.Permissions.all(),
