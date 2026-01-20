@@ -18,23 +18,32 @@ from config import Config
 import io
 
 def _brand_assets(guild: Optional[discord.Guild], override_banner_url: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
-    logo_url = (Config.SERVER_LOGO_URL or "").strip() or None
-    banner_url = (Config.SERVER_BANNER_URL or "").strip() or None
+    logo_url = None
+    banner_url = None
 
-    if not logo_url and guild and getattr(guild, "icon", None):
-        try:
-            logo_url = str(guild.icon.url)
-        except Exception:
-            logo_url = None
-
-    # Prioritize override banner (e.g. from DB settings)
+    # Prioritize override banner
     if override_banner_url:
         banner_url = override_banner_url
-    elif not banner_url and guild and getattr(guild, "banner", None):
+    elif guild and getattr(guild, "banner", None):
         try:
             banner_url = str(guild.banner.url)
         except Exception:
-            banner_url = None
+            pass
+    
+    # Fallback to config banner
+    if not banner_url:
+        banner_url = (getattr(Config, "SERVER_BANNER_URL", "") or "").strip() or None
+
+    # Prioritize server icon for logo
+    if guild and getattr(guild, "icon", None):
+        try:
+            logo_url = str(guild.icon.url)
+        except Exception:
+            pass
+
+    # Fallback to config logo
+    if not logo_url:
+        logo_url = (getattr(Config, "SERVER_LOGO_URL", "") or "").strip() or None
 
     return logo_url, banner_url
 

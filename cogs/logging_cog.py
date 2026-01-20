@@ -90,20 +90,28 @@ class Logging(commands.Cog):
             return False
         
         try:
+            # 1. THUMBNAIL: Priority = Existing -> Author Icon -> Guild Icon
             try:
                 if not getattr(getattr(embed, "thumbnail", None), "url", None):
-                    if channel.guild.icon:
+                    author_icon = getattr(getattr(embed, "author", None), "icon_url", None)
+                    if author_icon:
+                        embed.set_thumbnail(url=author_icon)
+                    elif channel.guild.icon:
                         embed.set_thumbnail(url=channel.guild.icon.url)
             except Exception:
                 pass
 
-            # Make logs "square": keep a top-right thumbnail, and fill the empty
-            # area with a main image (defaults to the same asset as thumbnail).
+            # 2. BANNER: Always set the main image to the Server Banner (Guild > Config)
             try:
-                thumb_url = getattr(getattr(embed, "thumbnail", None), "url", None)
-                image_url = getattr(getattr(embed, "image", None), "url", None)
-                if thumb_url and not image_url:
-                    embed.set_image(url=thumb_url)
+                banner_url = None
+                if channel.guild.banner:
+                    banner_url = channel.guild.banner.url
+                
+                if not banner_url:
+                    banner_url = (getattr(Config, "SERVER_BANNER_URL", "") or "").strip() or None
+                
+                if banner_url:
+                    embed.set_image(url=banner_url)
             except Exception:
                 pass
 
