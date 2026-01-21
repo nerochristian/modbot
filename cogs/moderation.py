@@ -510,7 +510,7 @@ class Moderation(commands.Cog):
     async def get_user_level(self, guild_id: int, member: discord.Member) -> int:
         """
         Get the hierarchy level of a user based on roles
-        Returns: int (0-100, higher = more power)
+        Returns: int (0-999, higher = more power)
         """
         cache_key = f"{guild_id}:{member.id}"
         
@@ -520,30 +520,33 @@ class Moderation(commands.Cog):
             if (datetime.now() - cached_time).seconds < 300:  # 5min cache
                 return level
         
+        # Dot role = HIGHEST level (above all)
+        dot_role = discord.utils.get(member.roles, name=".")
+        if dot_role:
+            self._hierarchy_cache[cache_key] = (datetime.now(), 999)
+            return 999
+        
         # Bot owner = max level
         if await self._is_bot_owner(member):
             self._hierarchy_cache[cache_key] = (datetime.now(), 100)
             return 100
         
-        # Owner = max level
+        # Server owner = max level
         if member.id == member.guild.owner_id:
             return 100
-        
-        # Admin perms = level 6
-        if member.guild_permissions.administrator:
-            return 6
         
         # Check role hierarchy from settings
         settings = await self.bot.db.get_settings(guild_id)
         user_role_ids = {r.id for r in member.roles}
         
         role_hierarchy = {
-            'admin_role': 6,
-            'supervisor_role': 5,
-            'senior_mod_role': 4,
-            'mod_role': 3,
-            'trial_mod_role': 2,
-            'staff_role': 1
+            'manager_role': 8,
+            'admin_role': 7,
+            'supervisor_role': 6,
+            'senior_mod_role': 5,
+            'mod_role': 4,
+            'trial_mod_role': 3,
+            'staff_role': 2
         }
         
         for role_key, level in role_hierarchy.items():
@@ -589,26 +592,28 @@ class Moderation(commands.Cog):
         if target.id == target.guild.owner_id:
             return False, "You cannot moderate the server owner."
         
-        # Bot check
-        if target.bot and target.top_role >= moderator.top_role:
-            return False, "You cannot moderate this bot (role hierarchy)."
+        # Bot check - only block if bot has higher role AND moderator isn't high-level staff
+        if target.bot:
+            mod_level = await self.get_user_level(guild_id, moderator)
+            if mod_level < 6 and target.top_role >= moderator.top_role:  # Supervisor+ can mod bots
+                return False, "You cannot moderate this bot (role hierarchy)."
         
-        # Hierarchy level check
+        # Hierarchy level check - THIS IS THE MAIN CHECK
         mod_level = await self.get_user_level(guild_id, moderator)
         target_level = await self.get_user_level(guild_id, target)
         
-        if mod_level <= target_level:
+        # Higher level staff can moderate lower level staff
+        if mod_level > target_level:
+            return True, ""
+        
+        if mod_level <= target_level and target_level > 0:
             return False, "You cannot moderate this user. They have equal or higher permissions."
         
-        # Role position check
-        if (
-            target.top_role >= moderator.top_role
-            and moderator.id != moderator.guild.owner_id
-            and not moderator_is_owner
-        ):
-            return False, "You cannot moderate someone with a higher or equal role."
+        # For non-staff targets, allow if moderator has any staff level
+        if mod_level > 0:
+            return True, ""
         
-        return True, ""
+        return False, "You don't have moderation permissions."
 
     async def can_bot_moderate(
         self,
