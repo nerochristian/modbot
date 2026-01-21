@@ -24,12 +24,36 @@ class Utility(commands.Cog):
     # ==================== FUN / MIMIC ====================
 
     @commands.command(name="mimic")
-    @commands.check(is_admin)
     async def mimic(self, ctx: commands.Context, member: discord.Member, *, message: str):
         """
         Mimic a user using a webhook (Admin only).
         Usage: ,mimic @User <message>
         """
+        # Permission Check (Admin only)
+        is_owner = await self.bot.is_owner(ctx.author)
+        is_admin_perm = ctx.author.guild_permissions.administrator
+        
+        has_role = False
+        if not (is_owner or is_admin_perm):
+            settings = await self.bot.db.get_settings(ctx.guild.id)
+            admin_roles = settings.get("admin_roles", [])
+            manager_role = settings.get("manager_role")
+            user_roles = [r.id for r in ctx.author.roles]
+            
+            if manager_role and manager_role in user_roles:
+                has_role = True
+            elif any(rid in user_roles for rid in admin_roles):
+                has_role = True
+        
+        if not (is_owner or is_admin_perm or has_role):
+            # Silent fail or reply? "Admin only" usually implies silent or error.
+            # Let's reply to be helpful since they asked for it.
+            try:
+                await ctx.reply("❌ This command is restricted to Admins.", delete_after=5)
+            except:
+                pass
+            return
+
         if not isinstance(ctx.channel, discord.TextChannel):
             await ctx.reply("❌ This command can only be used in text channels.")
             return
