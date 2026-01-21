@@ -1575,7 +1575,7 @@ class Moderation(commands.Cog):
         embed = discord.Embed(
             title="📋 Moderation Commands",
             description="All moderation prefix commands. Use `,<command>` to run them.",
-            color=Colors.PRIMARY,
+            color=Colors.INFO,
             timestamp=datetime.now(timezone.utc)
         )
 
