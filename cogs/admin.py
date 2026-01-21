@@ -11,6 +11,7 @@ import math
 import asyncio
 from utils.embeds import ModEmbed
 from utils. checks import is_admin, is_mod
+from utils.time_parser import parse_time
 from config import Config
 
 
@@ -385,12 +386,16 @@ class Admin(commands.Cog):
         self.bot = bot
         self.bot.add_view(GiveawayInteractionView(self.bot))
         self._giveaway_watcher.start()
+        self.spam_tasks: dict[int, asyncio.Task] = {}
 
     def cog_unload(self):
         try:
             self._giveaway_watcher.cancel()
         except Exception:
             pass
+        
+        for task in self.spam_tasks.values():
+            task.cancel()
 
     @staticmethod
     def _parse_db_datetime(value: str) -> Optional[datetime]:
@@ -1148,46 +1153,90 @@ class Admin(commands.Cog):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-    @app_commands.command(name="spam", description="⚠️ Send a message repeatedly for a duration")
+
+
+    @app_commands.command(name="spam", description="⚠️ Send a message repeatedly (use /stopspam to stop)")
     @app_commands.describe(
         message="The message to send",
-        interval="Seconds between messages (can be decimal, e.g. 0.5)",
-        duration="Total duration in seconds to run for"
+        interval="Seconds between messages",
+        duration="Duration (e.g. 10s, 5m, 1h). Default: until stopped."
     )
     @is_admin()
-    async def spam(self, interaction: discord.Interaction, message: str, interval: float, duration: float):
+    async def spam(self, interaction: discord.Interaction, message: str, interval: float, duration: str = None):
+        target_channel_id = interaction.channel.id
+        
         if interval <= 0:
             return await interaction.response.send_message(
-                embed=ModEmbed.error("Invalid Interval", "Interval must be greater than 0."),
-                ephemeral=True
-            )
-        if duration <= 0:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Invalid Duration", "Duration must be greater than 0."),
+                "❌ Interval must be greater than 0.",
                 ephemeral=True
             )
         
-        # Limit duration to prevent infinite spam
-        MAX_DURATION = 300  # 5 minutes
-        if duration > MAX_DURATION:
-             return await interaction.response.send_message(
-                embed=ModEmbed.error("Duration Too Long", f"Max duration is {MAX_DURATION} seconds."),
+        if target_channel_id in self.spam_tasks:
+            return await interaction.response.send_message(
+                "❌ A spam task is already running in this channel. Use `/stopspam` first.",
                 ephemeral=True
             )
-            
+
+        duration_seconds = None
+        if duration:
+            parsed = parse_time(duration)
+            if parsed:
+                duration_seconds = parsed[0].total_seconds()
+            else:
+                 try:
+                     duration_seconds = float(duration)
+                 except ValueError:
+                     return await interaction.response.send_message(
+                         "❌ Invalid duration format. Use '10s', '5m', '1h' etc.",
+                         ephemeral=True
+                     )
+
         await interaction.response.send_message(
-            embed=ModEmbed.success("Spam Started", f"Sending '{message}' every {interval}s for {duration}s."),
+            f"✅ Spam started. Sending '{message}' every {interval}s.",
             ephemeral=True
         )
-        
-        end_time = asyncio.get_running_loop().time() + duration
-        
-        while asyncio.get_running_loop().time() < end_time:
-            await interaction.channel.send(message)
-            await asyncio.sleep(interval)
 
-        await interaction.followup.send(
-            embed=ModEmbed.info("Spam Finished", "The spam task has completed."),
+        async def spam_loop():
+            try:
+                end_time = (asyncio.get_running_loop().time() + duration_seconds) if duration_seconds else None
+                
+                while True:
+                    if end_time and asyncio.get_running_loop().time() >= end_time:
+                        break
+                    
+                    await interaction.channel.send(message)
+                    await asyncio.sleep(interval)
+                
+                await interaction.followup.send(
+                    "ℹ️ The spam task has completed.",
+                    ephemeral=True
+                )
+            except asyncio.CancelledError:
+                 await interaction.followup.send(
+                    "🛑 The spam task was manually stopped.",
+                    ephemeral=True
+                )
+            except Exception as e:
+                print(f"Spam error: {e}")
+            finally:
+                self.spam_tasks.pop(target_channel_id, None)
+
+        task = asyncio.create_task(spam_loop())
+        self.spam_tasks[target_channel_id] = task
+
+    @app_commands.command(name="stopspam", description="🛑 Stop the running spam task in this channel")
+    @is_admin()
+    async def stopspam(self, interaction: discord.Interaction):
+        task = self.spam_tasks.get(interaction.channel.id)
+        if not task:
+            return await interaction.response.send_message(
+                "❌ No spam task is running in this channel.",
+                ephemeral=True
+            )
+        
+        task.cancel()
+        await interaction.response.send_message(
+            "✅ Stopped the spam task.",
             ephemeral=True
         )
 
