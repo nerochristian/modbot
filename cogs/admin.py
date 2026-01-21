@@ -8,6 +8,7 @@ from discord.ext import commands, tasks
 from datetime import datetime, timezone
 from typing import Optional, Literal, Any
 import math
+import asyncio
 from utils.embeds import ModEmbed
 from utils. checks import is_admin, is_mod
 from config import Config
@@ -1145,6 +1146,50 @@ class Admin(commands.Cog):
 
         embed = ModEmbed.success("Giveaway Rerolled", f"New winner: {winner.mention}")
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+    @app_commands.command(name="spam", description="⚠️ Send a message repeatedly for a duration")
+    @app_commands.describe(
+        message="The message to send",
+        interval="Seconds between messages (can be decimal, e.g. 0.5)",
+        duration="Total duration in seconds to run for"
+    )
+    @is_admin()
+    async def spam(self, interaction: discord.Interaction, message: str, interval: float, duration: float):
+        if interval <= 0:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Invalid Interval", "Interval must be greater than 0."),
+                ephemeral=True
+            )
+        if duration <= 0:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Invalid Duration", "Duration must be greater than 0."),
+                ephemeral=True
+            )
+        
+        # Limit duration to prevent infinite spam
+        MAX_DURATION = 300  # 5 minutes
+        if duration > MAX_DURATION:
+             return await interaction.response.send_message(
+                embed=ModEmbed.error("Duration Too Long", f"Max duration is {MAX_DURATION} seconds."),
+                ephemeral=True
+            )
+            
+        await interaction.response.send_message(
+            embed=ModEmbed.success("Spam Started", f"Sending '{message}' every {interval}s for {duration}s."),
+            ephemeral=True
+        )
+        
+        end_time = asyncio.get_running_loop().time() + duration
+        
+        while asyncio.get_running_loop().time() < end_time:
+            await interaction.channel.send(message)
+            await asyncio.sleep(interval)
+
+        await interaction.followup.send(
+            embed=ModEmbed.info("Spam Finished", "The spam task has completed."),
+            ephemeral=True
+        )
 
 
 async def setup(bot):
