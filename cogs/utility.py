@@ -20,7 +20,53 @@ class Utility(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.afk_users = {}  # {user_id: {"reason": str, "since": datetime}}
+
+    # ==================== FUN / MIMIC ====================
+
+    @commands.command(name="mimic")
+    @commands.check(is_admin)
+    async def mimic(self, ctx: commands.Context, member: discord.Member, *, message: str):
+        """
+        Mimic a user using a webhook (Admin only).
+        Usage: ,mimic @User <message>
+        """
+        if not isinstance(ctx.channel, discord.TextChannel):
+            await ctx.reply("❌ This command can only be used in text channels.")
+            return
+
+        # Delete the command message to keep it seamless
+        try:
+            await ctx.message.delete()
+        except Exception:
+            pass
+
+        # Create webhook
+        webhook = None
+        try:
+            webhook = await ctx.channel.create_webhook(name=member.display_name)
+        except Exception as e:
+            await ctx.send(f"❌ Failed to create webhook: {e}", delete_after=5)
+            return
+
+        # Send mimic message
+        try:
+            await webhook.send(
+                content=message,
+                username=member.display_name,
+                avatar_url=member.display_avatar.url,
+                wait=True # Wait to ensure it sends before deleting
+            )
+        except Exception as e:
+            await ctx.send(f"❌ Failed to send mimic message: {e}", delete_after=5)
         
+        # Cleanup
+        finally:
+            if webhook:
+                try:
+                    await webhook.delete()
+                except Exception:
+                    pass
+
     # ==================== AFK SYSTEM ====================
     
     @app_commands.command(name="afk", description="⏸️ Set your AFK status")

@@ -1259,7 +1259,7 @@ class Moderation(commands.Cog):
             description=f"This channel has been nuked by {user.mention}.",
             color=Colors.ERROR
         )
-        embed.set_image(url="https://media1.tenor.com/m/OMQvHj3-AsMAAAAd/kaboom-boom.gif")
+        embed.set_image(url="https://media1.tenor.com/m/giN2CZ60D70AAAAC/explosion-mushroom-cloud.gif")
         
         await new_channel.send(embed=embed)
 
