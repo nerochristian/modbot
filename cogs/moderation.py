@@ -4,6 +4,7 @@ Comprehensive moderation toolkit with hierarchy checks, logging, and database in
 """
 
 import discord
+from discord import app_commands
 from discord.ext import commands, tasks
 from datetime import datetime, timezone, timedelta
 from typing import Optional
