@@ -2,6 +2,7 @@ import os
 import re
 import json
 import asyncio
+import random
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Union, Literal
 
@@ -21,8 +22,8 @@ logger = logging.getLogger("ModBot")
 
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-USER_MEMORY_WINDOW = 20  # how many past exchanges to keep per user
-USER_MEMORY_MAX_CHARS = 8000  # hard cap on memory string length per user
+USER_MEMORY_WINDOW = 50  # Increased from 20 for "ultra memory"
+USER_MEMORY_MAX_CHARS = 32000  # Increased from 8000
 
 DEFAULT_AIMOD_SETTINGS: Dict[str, Any] = {
     "aimod_enabled": True,
@@ -31,6 +32,7 @@ DEFAULT_AIMOD_SETTINGS: Dict[str, Any] = {
     "aimod_confirm_enabled": False,
     "aimod_confirm_timeout_seconds": 25,
     "aimod_confirm_actions": ["ban_member", "kick_member", "purge_messages"],
+    "aimod_proactive_chance": 0.02,  # 2% chance to reply proactively
 }
 
 # ========= SYSTEM PROMPT FOR ROUTING =========
@@ -98,7 +100,7 @@ Mapping language:
 - "ban", "permaban", "banish", "exile"        => ban_member
 - "warn", "note", "slap on the wrist"         => warn_member
 - "purge", "clear", "wipe", "nuke" + count    => purge_messages
-- help / "what can you do"                    => show_help
+- "help", "what can you do"                   => show_help
 
 User / role permissions:
 - You are given booleans like "can_timeout_members", "can_kick_members" etc.
@@ -136,12 +138,13 @@ CRITICAL:
 
 
 class GroqClientWrapper:
-    def __init__(self) -> None:
+    def __init__(self, bot: commands.Bot) -> None:
+        self.bot = bot
         api_key = os.getenv("GROQ_API_KEY")
         self.client: Optional[Groq] = Groq(api_key=api_key) if api_key else None
 
-        # Per-user memory: user_id -> str
-        self._user_memory: Dict[int, str] = {}
+        # Memory is now persistent via DB, but we keep a small in-memory LRU cache if needed
+        # For now, we'll just fetch from DB to ensure persistence.
         
         # Rate limiting: 30 calls per minute per user
         self._rate_limiter = RateLimiter(max_calls=30, window_seconds=60)
@@ -323,6 +326,8 @@ Decide what to do and respond ONLY with JSON using the schema from the system me
 
     # ========= CONVERSATION: remembers past exchanges per user =========
 
+    # ========= CONVERSATION: remembers past exchanges per user =========
+
     async def converse(
         self,
         *,
@@ -344,7 +349,13 @@ Decide what to do and respond ONLY with JSON using the schema from the system me
             )
 
         loop = asyncio.get_running_loop()
-        past_memory = self._user_memory.get(author.id, "").strip()
+        
+        # Load memory from database
+        try:
+            past_memory = await self.bot.db.get_ai_memory(author.id)
+        except Exception:
+            past_memory = ""
+        past_memory = past_memory.strip()
 
         history_lines: List[str] = []
         for msg in recent_messages[-USER_MEMORY_WINDOW:]:
@@ -353,23 +364,25 @@ Decide what to do and respond ONLY with JSON using the schema from the system me
         channel_snippet = "\n".join(history_lines) or "None"
 
         convo_system = (
-            "You are an intelligent, witty, and highly capable AI assistant for this Discord server. "
-            "Your personality is helpful, observant, and slightly sophisticated but still conversational. "
-            "You can discuss complex topics, offer moderation advice, or just chat. "
-            "Use the provided context (memory and recent messages) to give relevant, coherent answers. "
-            "Keep responses concise (usually 1-3 sentences) unless a detailed explanation is requested. "
-            "Avoid generic bot-like answers; show personality."
+            "You are an ultra-smart, witty, and fun AI assistant for this Discord server. "
+            "Your personality is lively, observant, and engaging. You are NOT a boring robot. "
+            "You have excellent memory of past conversations with this user. "
+            "You can banter, make jokes, discuss complex topics, or give serious advice when needed. "
+            "Always be helpful, but do it with style and personality. "
+            "Use the provided context (memory and recent messages) to give highly relevant, coherent answers. "
+            "Keep responses concise (1-3 sentences) unless a detailed explanation is requested. "
+            "If the user is joking, joke back. If they are serious, be supportive."
         )
 
         user_prompt = (
             f"Server: {guild.name} (ID: {guild.id})\n"
             f"User: {author} (ID: {author.id})\n"
             f"User message: {user_content}\n\n"
-            f"Past memory with this user (previous conversations):\n"
+            f"Past memory with this user (PERSISTENT):\n"
             f"{past_memory or 'None'}\n\n"
             f"Recent channel messages:\n"
             f"{channel_snippet}\n\n"
-            "Reply as a short, natural message."
+            "Reply as a fun, smart, and natural message."
         )
 
         messages = [
@@ -381,7 +394,7 @@ Decide what to do and respond ONLY with JSON using the schema from the system me
             return self.client.chat.completions.create(
                 model=model or GROQ_MODEL,
                 messages=messages,
-                temperature=0.7,
+                temperature=0.8, # Increased for more fun/creativity
                 max_tokens=512,
             )
 
@@ -400,11 +413,19 @@ Decide what to do and respond ONLY with JSON using the schema from the system me
                 return None
 
             content = self._strip_code_fences(content)
+            
+            # Update memory in background
             mem_piece = f"\n[user] {author}: {user_content[:200]}\n[bot] {content[:200]}"
             new_mem = (past_memory + mem_piece).strip()
             if len(new_mem) > USER_MEMORY_MAX_CHARS:
+                # Keep the oldest part (summary) if possible? For now, sliding window
+                # To be smarter: we could ask AI to summarize the memory if it gets too full.
+                # For now, simplistic sliding window from end.
                 new_mem = new_mem[-USER_MEMORY_MAX_CHARS:]
-            self._user_memory[author.id] = new_mem
+            
+            # Save to DB asynchronously
+            asyncio.create_task(self.bot.db.update_ai_memory(author.id, new_mem))
+            
             return content
         except Exception:
             return None
@@ -948,22 +969,39 @@ class AIModeration(commands.Cog):
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):
-        """Main event handler for bot mentions."""
-        logger.info(f"DEBUG: on_message triggered for {message.id} | Content: {message.content[:20] if message.content else 'None'} | PID: {os.getpid()}")
+        """Main event handler for bot mentions or proactive responses."""
         if message.author.bot or not message.guild:
             return
         if not self.bot.user:
-            return
-        if self.bot.user not in message.mentions:
             return
 
         settings = await self._get_aimod_settings(message.guild.id)
         if not settings.get("aimod_enabled", True):
             return
 
+        is_mentioned = self.bot.user in message.mentions
+        is_proactive = False
+
+        if not is_mentioned:
+            # Check for proactive chance
+            chance = settings.get("aimod_proactive_chance", 0.0)
+            if chance <= 0:
+                return
+            
+            # Simple cooldown check: don't proactive reply if one happened recently in this channel
+            # We can use the ratelimiter or a simple cache
+            # For now, let's just roll the dice.
+            if random.random() > chance:
+                return
+            
+            # Additional check: don't interrupt active conversations too much?
+            # Or just go for it.
+            is_proactive = True
+
         cleaned = self._clean_content(message)
         if not cleaned:
-            await self._send_help_embed(message)
+            if is_mentioned:
+                await self._send_help_embed(message)
             return
 
         if isinstance(message.author, discord.Member):

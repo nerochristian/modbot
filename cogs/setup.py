@@ -95,6 +95,25 @@ class Setup(commands.Cog):
                 "hoist": True,
                 "setting_key": "admin_role",
             },
+            {
+                "name": "Supervisor",
+                "color": discord.Color.from_rgb(204, 0, 0), # Medium Red (Rank 4)
+                "permissions": discord.Permissions(
+                    kick_members=True,
+                    ban_members=True,
+                    manage_messages=True,
+                    manage_channels=True,
+                    manage_nicknames=True,
+                    mute_members=True,
+                    deafen_members=True,
+                    move_members=True,
+                    view_audit_log=True,
+                    manage_threads=True,
+                    moderate_members=True,
+                ),
+                "hoist": True,
+                "setting_key": "supervisor_role",
+            },
 
             {
                 "name": "Senior Moderator",

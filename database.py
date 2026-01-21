@@ -398,6 +398,15 @@ class Database:
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
+
+                # ===== AI MEMORY =====
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS ai_memory (
+                        user_id INTEGER PRIMARY KEY,
+                        memory_text TEXT,
+                        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
                 
                 # Auto-migrate missing columns
                 await self._migrate_schema(db)
