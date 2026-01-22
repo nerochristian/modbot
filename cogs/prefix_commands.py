@@ -509,15 +509,16 @@ class PrefixCommands(commands.Cog):
     # STAFF COMMANDS (10+)
     # ═══════════════════════════════════════════════════════════════
 
-    @commands.command(name="modstats", aliases=["ms"])
-    @commands.has_permissions(manage_messages=True)
-    async def modstats_cmd(self, ctx, member: discord.Member = None):
-        """View moderation stats"""
-        member = member or ctx.author
-        cases = await self.bot.db.get_cases_by_moderator(ctx.guild.id, member.id)
-        embed = discord.Embed(title=f"📊 Mod Stats: {member}", color=Colors.INFO)
-        embed.add_field(name="Total Actions", value=len(cases) if cases else 0)
-        await ctx.send(embed=embed)
+    # NOTE: modstats is defined in moderation.py with more comprehensive features
+    # @commands.command(name="modstats", aliases=["ms"])
+    # @commands.has_permissions(manage_messages=True)
+    # async def modstats_cmd(self, ctx, member: discord.Member = None):
+    #     """View moderation stats"""
+    #     member = member or ctx.author
+    #     cases = await self.bot.db.get_cases_by_moderator(ctx.guild.id, member.id)
+    #     embed = discord.Embed(title=f"📊 Mod Stats: {member}", color=Colors.INFO)
+    #     embed.add_field(name="Total Actions", value=len(cases) if cases else 0)
+    #     await ctx.send(embed=embed)
 
     @commands.command(name="cases")
     @commands.has_permissions(manage_messages=True)

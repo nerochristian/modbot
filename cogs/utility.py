@@ -796,6 +796,138 @@ class Utility(commands.Cog):
             )
         
         await interaction.response.send_message(embed=embed)
+    
+    # ==================== RULE34 SEARCH ====================
+    
+    @commands.command(name="r34", aliases=["rule34"])
+    async def r34_search(self, ctx: commands.Context, *, query: str):
+        """
+        Search Rule34 for images (NSFW channels only)
+        Usage: ,r34 <search terms>
+        """
+        # NSFW Channel Check
+        if not isinstance(ctx.channel, discord.TextChannel) or not ctx.channel.nsfw:
+            return await ctx.reply(
+                embed=ModEmbed.error(
+                    "NSFW Channel Required",
+                    "This command can only be used in NSFW channels."
+                ),
+                delete_after=5
+            )
+        
+        # Import here to avoid loading unless needed
+        import aiohttp
+        import xml.etree.ElementTree as ET
+        
+        # Clean up query
+        tags = query.strip().replace(" ", "+")
+        
+        # Rule34 API endpoint
+        api_url = f"https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&tags={tags}&limit=100"
+        
+        await ctx.typing()
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                    if response.status != 200:
+                        return await ctx.reply(
+                            embed=ModEmbed.error(
+                                "API Error",
+                                f"Failed to fetch results (Status: {response.status})"
+                            )
+                        )
+                    
+                    xml_data = await response.text()
+                    
+                    # Parse XML
+                    try:
+                        root = ET.fromstring(xml_data)
+                    except ET.ParseError:
+                        return await ctx.reply(
+                            embed=ModEmbed.error(
+                                "Parse Error",
+                                "Failed to parse API response."
+                            )
+                        )
+                    
+                    # Get all posts
+                    posts = root.findall('post')
+                    
+                    if not posts:
+                        return await ctx.reply(
+                            embed=ModEmbed.info(
+                                "No Results",
+                                f"No results found for: **{query}**"
+                            )
+                        )
+                    
+                    # Randomly select a post
+                    post = random.choice(posts)
+                    
+                    # Extract data
+                    file_url = post.get('file_url')
+                    score = post.get('score', '0')
+                    post_id = post.get('id', 'unknown')
+                    tags_str = post.get('tags', '')
+                    
+                    if not file_url:
+                        return await ctx.reply(
+                            embed=ModEmbed.error(
+                                "Invalid Post",
+                                "Selected post has no valid image URL."
+                            )
+                        )
+                    
+                    # Create embed
+                    embed = discord.Embed(
+                        title=f"🔞 Rule34 - {query}",
+                        color=Colors.EMBED,
+                        timestamp=datetime.now(timezone.utc)
+                    )
+                    
+                    embed.set_image(url=file_url)
+                    
+                    # Add metadata
+                    embed.add_field(name="Post ID", value=f"`{post_id}`", inline=True)
+                    embed.add_field(name="Score", value=f"⭐ {score}", inline=True)
+                    
+                    # Show some tags (truncate if too long)
+                    tags_list = tags_str.split()[:10]
+                    if tags_list:
+                        tags_display = ", ".join([f"`{tag}`" for tag in tags_list])
+                        if len(tags_str.split()) > 10:
+                            tags_display += f" (+{len(tags_str.split()) - 10} more)"
+                        embed.add_field(name="Tags", value=tags_display, inline=False)
+                    
+                    embed.set_footer(text=f"Rule34.xxx • Requested by {ctx.author}")
+                    
+                    # Add view post button
+                    view = discord.ui.View()
+                    view.add_item(
+                        discord.ui.Button(
+                            label="View on Rule34",
+                            url=f"https://rule34.xxx/index.php?page=post&s=view&id={post_id}",
+                            style=discord.ButtonStyle.link
+                        )
+                    )
+                    
+                    await ctx.reply(embed=embed, view=view)
+                    
+        except aiohttp.ClientError as e:
+            await ctx.reply(
+                embed=ModEmbed.error(
+                    "Connection Error",
+                    f"Failed to connect to Rule34 API: {type(e).__name__}"
+                )
+            )
+        except Exception as e:
+            await ctx.reply(
+                embed=ModEmbed.error(
+                    "Error",
+                    f"An unexpected error occurred: {type(e).__name__}"
+                )
+            )
 
 async def setup(bot):
     await bot.add_cog(Utility(bot))
