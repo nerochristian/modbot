@@ -33,13 +33,11 @@ except ImportError:
 # Forces all embeds (side color) to use Config.EMBED_ACCENT_COLOR.
 _ORIGINAL_EMBED_INIT = discord.Embed.__init__
 
-
 def _embed_init_force_accent(self, *args, **kwargs):
     kwargs.pop("colour", None)
     kwargs.pop("timestamp", None)
     kwargs["color"] = getattr(Config, "EMBED_ACCENT_COLOR", 0x5865F2)
     return _ORIGINAL_EMBED_INIT(self, *args, **kwargs)
-
 
 discord.Embed.__init__ = _embed_init_force_accent
 
@@ -75,12 +73,12 @@ class ColoredFormatter(logging.Formatter):
     """Custom formatter with ANSI colors"""
     
     COLORS = {
-        "DEBUG": "\033[36m",
-        "INFO": "\033[32m",
-        "WARNING": "\033[33m",
-        "ERROR": "\033[31m",
-        "CRITICAL": "\033[35m",
-        "RESET": "\033[0m",
+        "DEBUG": "[36m",
+        "INFO": "[32m",
+        "WARNING": "[33m",
+        "ERROR": "[31m",
+        "CRITICAL": "[35m",
+        "RESET": "[0m",
     }
     
     EMOJI_FALLBACK = {
@@ -139,7 +137,6 @@ def setup_logging() -> logging.Logger:
     logging.getLogger("discord.client").setLevel(logging.WARNING)
     
     return logger
-
 
 logger = setup_logging()
 
@@ -205,7 +202,7 @@ class ModBot(commands.Bot):
         owner_ids_str = os.getenv("OWNER_IDS") or os.getenv("OWNER_ID") or ""
         try:
             owner_ids = {1269772767516033025}
-            for part in re.split(r"[,\s]+", owner_ids_str.strip()):
+            for part in re.split(r"[,s]+", owner_ids_str.strip()):
                 part = part.strip()
                 if not part:
                     continue
@@ -286,6 +283,7 @@ class ModBot(commands.Bot):
             "cogs.prefix_commands",
             "cogs.voice_afk",
             "cogs.settings",
+            "cogs.gelbooru_loop",
         ]
         
         loaded: list[str] = []
