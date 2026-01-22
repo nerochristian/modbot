@@ -530,17 +530,18 @@ class PrefixCommands(commands.Cog):
         desc = "\n".join([f"**#{c.get('id', '?')}** - {c.get('action', 'Unknown')}" for c in cases[:10]])
         await ctx.send(embed=ModEmbed.info(f"📋 Cases for {member}", desc))
 
-    @commands.command(name="case")
-    @commands.has_permissions(manage_messages=True)
-    async def case_cmd(self, ctx, case_id: int):
-        """View a specific case"""
-        case = await self.bot.db.get_case(ctx.guild.id, case_id)
-        if not case:
-            return await ctx.send(embed=ModEmbed.error("Not Found", "Case not found."))
-        embed = discord.Embed(title=f"📋 Case #{case_id}", color=Colors.INFO)
-        embed.add_field(name="Action", value=case.get("action", "Unknown"))
-        embed.add_field(name="Reason", value=case.get("reason", "No reason"))
-        await ctx.send(embed=embed)
+    # NOTE: case is defined in moderation.py with more comprehensive features
+    # @commands.command(name="case")
+    # @commands.has_permissions(manage_messages=True)
+    # async def case_cmd(self, ctx, case_id: int):
+    #     """View a specific case"""
+    #     case = await self.bot.db.get_case(ctx.guild.id, case_id)
+    #     if not case:
+    #         return await ctx.send(embed=ModEmbed.error("Not Found", "Case not found."))
+    #     embed = discord.Embed(title=f"📋 Case #{case_id}", color=Colors.INFO)
+    #     embed.add_field(name="Action", value=case.get("action", "Unknown"))
+    #     embed.add_field(name="Reason", value=case.get("reason", "No reason"))
+    #     await ctx.send(embed=embed)
 
     @commands.command(name="history", aliases=["h"])
     @commands.has_permissions(manage_messages=True)

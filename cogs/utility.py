@@ -819,17 +819,17 @@ class Utility(commands.Cog):
         import aiohttp
         import xml.etree.ElementTree as ET
         
-        # Clean up query
-        tags = query.strip().replace(" ", "+")
+        # Clean up query - replace spaces with underscores for tags
+        tags = query.strip().replace(" ", "_")
         
         # Rule34 API endpoint
-        api_url = f"https://api.rule34.xxx/index.php?page=dapi&s=post&q=index&tags={tags}&limit=100"
+        api_url = f"https://rule34.xxx/index.php?page=dapi&s=post&q=index&tags={tags}&limit=100"
         
         await ctx.typing()
         
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                async with session.get(api_url, timeout=aiohttp.ClientTimeout(total=15)) as response:
                     if response.status != 200:
                         return await ctx.reply(
                             embed=ModEmbed.error(
@@ -840,14 +840,23 @@ class Utility(commands.Cog):
                     
                     xml_data = await response.text()
                     
+                    # Check if we got valid data
+                    if not xml_data or len(xml_data) < 10:
+                        return await ctx.reply(
+                            embed=ModEmbed.error(
+                                "API Error",
+                                "Received empty response from API."
+                            )
+                        )
+                    
                     # Parse XML
                     try:
                         root = ET.fromstring(xml_data)
-                    except ET.ParseError:
+                    except ET.ParseError as e:
                         return await ctx.reply(
                             embed=ModEmbed.error(
                                 "Parse Error",
-                                "Failed to parse API response."
+                                f"Failed to parse API response: {str(e)[:100]}"
                             )
                         )
                     
@@ -858,7 +867,7 @@ class Utility(commands.Cog):
                         return await ctx.reply(
                             embed=ModEmbed.info(
                                 "No Results",
-                                f"No results found for: **{query}**"
+                                f"No results found for: **{query}**\nTry different tags or check spelling."
                             )
                         )
                     
@@ -867,17 +876,32 @@ class Utility(commands.Cog):
                     
                     # Extract data
                     file_url = post.get('file_url')
-                    score = post.get('score', '0')
-                    post_id = post.get('id', 'unknown')
-                    tags_str = post.get('tags', '')
+                    sample_url = post.get('sample_url')
+                    preview_url = post.get('preview_url')
                     
-                    if not file_url:
+                    # Use sample if file_url is not available
+                    image_url = file_url or sample_url or preview_url
+                    
+                    if not image_url:
                         return await ctx.reply(
                             embed=ModEmbed.error(
                                 "Invalid Post",
-                                "Selected post has no valid image URL."
+                                "Selected post has no valid image URL. Trying again might help."
                             )
                         )
+                    
+                    score = post.get('score', '0')
+                    post_id = post.get('id', 'unknown')
+                    tags_str = post.get('tags', '')
+                    rating = post.get('rating', 'u')
+                    
+                    # Rating emojis
+                    rating_display = {
+                        's': '🔞 Explicit',
+                        'q': '⚠️ Questionable',
+                        'e': '🔞 Explicit',
+                        'u': '❓ Unknown'
+                    }.get(rating, '❓ Unknown')
                     
                     # Create embed
                     embed = discord.Embed(
@@ -886,18 +910,19 @@ class Utility(commands.Cog):
                         timestamp=datetime.now(timezone.utc)
                     )
                     
-                    embed.set_image(url=file_url)
+                    embed.set_image(url=image_url)
                     
                     # Add metadata
                     embed.add_field(name="Post ID", value=f"`{post_id}`", inline=True)
                     embed.add_field(name="Score", value=f"⭐ {score}", inline=True)
+                    embed.add_field(name="Rating", value=rating_display, inline=True)
                     
                     # Show some tags (truncate if too long)
-                    tags_list = tags_str.split()[:10]
-                    if tags_list:
+                    if tags_str:
+                        tags_list = tags_str.split()[:15]
                         tags_display = ", ".join([f"`{tag}`" for tag in tags_list])
-                        if len(tags_str.split()) > 10:
-                            tags_display += f" (+{len(tags_str.split()) - 10} more)"
+                        if len(tags_str.split()) > 15:
+                            tags_display += f" (+{len(tags_str.split()) - 15} more)"
                         embed.add_field(name="Tags", value=tags_display, inline=False)
                     
                     embed.set_footer(text=f"Rule34.xxx • Requested by {ctx.author}")
@@ -925,9 +950,10 @@ class Utility(commands.Cog):
             await ctx.reply(
                 embed=ModEmbed.error(
                     "Error",
-                    f"An unexpected error occurred: {type(e).__name__}"
+                    f"An unexpected error occurred: {type(e).__name__}\n{str(e)[:100]}"
                 )
             )
+
 
 async def setup(bot):
     await bot.add_cog(Utility(bot))
