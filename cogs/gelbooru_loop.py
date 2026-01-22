@@ -22,7 +22,7 @@ class GelbooruLoop(commands.Cog):
     def cog_unload(self):
         self.gelbooru_task.cancel()
 
-    @tasks.loop(seconds=30)
+    @tasks.loop(seconds=10)
     async def gelbooru_task(self):
         await self.bot.wait_until_ready()
         
