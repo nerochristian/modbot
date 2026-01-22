@@ -11,7 +11,7 @@ class Rule34Loop(commands.Cog):
         self.bot = bot
         self.channel_id = 1463001859345354968
         
-        # Rule34 simplified Ecchi tags: 'femboy' + 'rating:q' (Questionable)
+        # Optimized tags: 'rating:q' is the specific tag for Ecchi on Rule34.
         self.tags = "femboy rating:q"
         
         self.api_key = "4b5d1fd9db037eeb8b534b57f7d3d5e7f58f8ad8d3045fb75bd4f11f3db95345bef64f2551fd74a43b62b3f544996df06b01fec2cbb4b4cae335168f207855f2"
@@ -31,9 +31,8 @@ class Rule34Loop(commands.Cog):
             except:
                 return
 
-        # We use 'pid' (page ID) for randomness instead of 'sort:random' 
-        # to ensure the API doesn't return an empty list.
-        random_page = random.randint(0, 10)
+        # Randomize by skipping to a random page (pid)
+        random_page = random.randint(0, 20)
 
         url = "https://api.rule34.xxx/index.php"
         params = {
@@ -48,6 +47,7 @@ class Rule34Loop(commands.Cog):
             "user_id": self.user_id
         }
         
+        # Headers prevent Rule34 from blocking the request
         headers = {"User-Agent": "ModBot/3.3.0 (Discord Bot)"}
 
         try:
@@ -58,7 +58,6 @@ class Rule34Loop(commands.Cog):
                     data = await response.json()
                     
             if not data or not isinstance(data, list):
-                # Fallback: If 'rating:q' fails, try 'rating:s' for Sensitive
                 return
 
             post = random.choice(data)
@@ -73,7 +72,7 @@ class Rule34Loop(commands.Cog):
                 color=0xffa500 
             )
             embed.set_image(url=file_url)
-            embed.set_footer(text=f"ID: {post['id']} • 10s Loop")
+            embed.set_footer(text=f"ID: {post['id']} • 10s Loop • Rating: {post['rating']}")
             
             await channel.send(embed=embed)
             
