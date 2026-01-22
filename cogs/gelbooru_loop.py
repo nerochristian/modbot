@@ -14,9 +14,10 @@ class Rule34Loop(commands.Cog):
         self.api_key = "4b5d1fd9db037eeb8b534b57f7d3d5e7f58f8ad8d3045fb75bd4f11f3db95345bef64f2551fd74a43b62b3f544996df06b01fec2cbb4b4cae335168f207855f2"
         self.user_id = "1900224"
         
-        # CHANGED HERE: 'rating:safe' guarantees no porn/nudity.
-        # I added 'score:>10' to ensure you get high-quality images.
-        self.tags = "femboy rating:safe score:>10"
+        # FIXED TAGS:
+        # rating:safe = Guaranteed SFW (No porn/nudity)
+        # score:>5 = Quality filter (lowered from 10 to ensure results found)
+        self.tags = "femboy rating:safe score:>5"
         
         self.session = None
         self.rule34_task.start()
@@ -33,7 +34,7 @@ class Rule34Loop(commands.Cog):
     async def rule34_task(self):
         channel = self.bot.get_channel(self.channel_id)
         
-        # Debug: Try to fetch if not in cache
+        # Fallback if channel isn't in cache
         if not channel:
             try:
                 channel = await self.bot.fetch_channel(self.channel_id)
@@ -41,8 +42,10 @@ class Rule34Loop(commands.Cog):
                 print(f"Error finding channel: {e}")
                 return
 
-        # Lowered page limit because 'safe' content is rarer than NSFW content
-        random_pid = random.randint(0, 5)
+        # FIXED: Set pid to 0. 
+        # The error "No safe images found on Page X" happened because 
+        # there aren't enough safe images to fill 5 pages. We strictly check Page 0.
+        pid = 0 
 
         url = "https://api.rule34.xxx/index.php"
         params = {
@@ -50,8 +53,8 @@ class Rule34Loop(commands.Cog):
             "s": "post",
             "q": "index",
             "json": "1",
-            "limit": "100", 
-            "pid": random_pid,
+            "limit": "100", # We fetch 100 images to shuffle through
+            "pid": pid,
             "tags": self.tags,
             "api_key": self.api_key,
             "user_id": self.user_id
@@ -71,9 +74,10 @@ class Rule34Loop(commands.Cog):
                     return
 
             if not data or not isinstance(data, list):
-                print(f"No safe images found on Page {random_pid}. Retrying next loop.")
+                print(f"No images found. Try removing 'score:>5' from tags.")
                 return
 
+            # Pick a random image from the 100 we fetched
             post = random.choice(data)
             file_url = post.get("file_url")
             
@@ -83,7 +87,7 @@ class Rule34Loop(commands.Cog):
             embed = discord.Embed(
                 title="✅ Safe Femboy Drop",
                 url=f"https://rule34.xxx/index.php?page=post&s=view&id={post.get('id')}",
-                color=0x00ff00 # Green for Safe
+                color=0x00ff00 # Green for SFW
             )
             embed.set_image(url=file_url)
             embed.set_footer(text=f"ID: {post.get('id')} • Rating: Safe")
