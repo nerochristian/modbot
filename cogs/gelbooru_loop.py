@@ -4,7 +4,7 @@ import aiohttp
 import random
 import logging
 
-logger = logging.getLogger("modbot")
+logger = logging.getLogger("ModBot")
 
 class GelbooruLoop(commands.Cog):
     """Background task to send images from Gelbooru every 30 seconds"""
@@ -43,7 +43,7 @@ class GelbooruLoop(commands.Cog):
                     data = await response.json()
                     
             if not data or "post" not in data:
-                logger.warning("No posts found for tags: " + self.tags)
+                logger.warning(f"No posts found for tags: {self.tags}")
                 return
 
             posts = data["post"]
@@ -52,7 +52,6 @@ class GelbooruLoop(commands.Cog):
             
             embed = discord.Embed(
                 title="✨ New Femboy Drop",
-                color=0xFF69B4, # Hot Pink
                 url=f"https://gelbooru.com/index.php?page=post&s=view&id={post['id']}"
             )
             embed.set_image(url=file_url)
