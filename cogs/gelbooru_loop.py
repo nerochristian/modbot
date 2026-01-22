@@ -11,9 +11,8 @@ class GelbooruLoop(commands.Cog):
         self.bot = bot
         self.channel_id = 1463001859345354968
         
-        # 'rating:sensitive' and 'rating:questionable' cover the "Ecchi" spectrum.
-        # '-rating:explicit' ensures no full porn is sent.
-        self.tags = "femboy rating:sensitive rating:questionable -rating:explicit sort:random"
+        # FIXED: Added parentheses for the OR logic between ratings
+        self.tags = "femboy ( rating:sensitive rating:questionable ) -rating:explicit sort:random"
         
         self.api_key = "4b5d1fd9db037eeb8b534b57f7d3d5e7f58f8ad8d3045fb75bd4f11f3db95345bef64f2551fd74a43b62b3f544996df06b01fec2cbb4b4cae335168f207855f2"
         self.user_id = "1900224"
@@ -52,8 +51,8 @@ class GelbooruLoop(commands.Cog):
                     data = await response.json()
                     
             if not data or "post" not in data:
-                # If nothing is found, we broaden the search slightly
-                logger.warning("No ecchi posts found with current tags.")
+                # Fallback: try removing 'animated' if 'animated ecchi' is too rare
+                logger.warning("No posts found. If this keeps happening, try removing 'animated' from tags.")
                 return
 
             post = data["post"][0]
@@ -62,10 +61,11 @@ class GelbooruLoop(commands.Cog):
             embed = discord.Embed(
                 title="🔥 Ecchi Femboy Drop",
                 url=f"https://gelbooru.com/index.php?page=post&s=view&id={post['id']}",
-                color=0xe91e63 # Hot pink color
+                color=0xe91e63 
             )
             embed.set_image(url=file_url)
-            embed.set_footer(text=f"Gelbooru ID: {post['id']} • Rating: {post['rating']}")
+            # Shows the specific rating in the footer so you can verify it's working
+            embed.set_footer(text=f"ID: {post['id']} • Rating: {post['rating']} • Sort: Random")
             
             await channel.send(embed=embed)
             
