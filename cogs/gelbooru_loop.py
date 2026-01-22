@@ -14,7 +14,7 @@ class SafebooruLoop(commands.Cog):
         self.channel_id = 1463001859345354968
         
         # Using SFW tags and adding rating:general for extra safety
-        self.tags = "animated femboy rating:general"
+        self.tags = "femboy"
         
         # Your API Credentials
         self.api_key = "4b5d1fd9db037eeb8b534b57f7d3d5e7f58f8ad8d3045fb75bd4f11f3db95345bef64f2551fd74a43b62b3f544996df06b01fec2cbb4b4cae335168f207855f2"
