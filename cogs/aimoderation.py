@@ -554,7 +554,7 @@ class AIModeration(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.ai = GroqClientWrapper()
+        self.ai = GroqClientWrapper(bot)
 
     # ========= UTILITY HELPERS =========
 
