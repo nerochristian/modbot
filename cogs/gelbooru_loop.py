@@ -25,7 +25,7 @@ class SafebooruLoop(commands.Cog):
     def cog_unload(self):
         self.safebooru_task.cancel()
 
-    @tasks.loop(seconds=30)
+    @tasks.loop(seconds=10)
     async def safebooru_task(self):
         """Fetch and send a random SFW image/gif"""
         await self.bot.wait_until_ready()
