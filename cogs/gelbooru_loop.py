@@ -11,8 +11,8 @@ class GelbooruLoop(commands.Cog):
         self.bot = bot
         self.channel_id = 1463001859345354968
         
-        # FIXED: Added parentheses for the OR logic between ratings
-        self.tags = "femboy ( rating:sensitive rating:questionable ) -rating:explicit sort:random"
+        # Simplified Ecchi logic: Femboy, not safe, not porn.
+        self.tags = "femboy -rating:general -rating:explicit sort:random"
         
         self.api_key = "4b5d1fd9db037eeb8b534b57f7d3d5e7f58f8ad8d3045fb75bd4f11f3db95345bef64f2551fd74a43b62b3f544996df06b01fec2cbb4b4cae335168f207855f2"
         self.user_id = "1900224"
@@ -31,7 +31,6 @@ class GelbooruLoop(commands.Cog):
             return
 
         url = "https://gelbooru.com/index.php"
-        
         params = {
             "page": "dapi",
             "s": "post",
@@ -46,13 +45,10 @@ class GelbooruLoop(commands.Cog):
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.get(url, params=params) as response:
-                    if response.status != 200:
-                        return
                     data = await response.json()
                     
             if not data or "post" not in data:
-                # Fallback: try removing 'animated' if 'animated ecchi' is too rare
-                logger.warning("No posts found. If this keeps happening, try removing 'animated' from tags.")
+                logger.warning(f"No posts found for: {self.tags}")
                 return
 
             post = data["post"][0]
@@ -64,13 +60,12 @@ class GelbooruLoop(commands.Cog):
                 color=0xe91e63 
             )
             embed.set_image(url=file_url)
-            # Shows the specific rating in the footer so you can verify it's working
-            embed.set_footer(text=f"ID: {post['id']} • Rating: {post['rating']} • Sort: Random")
+            embed.set_footer(text=f"ID: {post['id']} | Rating: {post['rating']}")
             
             await channel.send(embed=embed)
             
         except Exception as e:
-            logger.error(f"Loop error: {e}")
+            logger.error(f"Error in Gelbooru loop: {e}")
 
 async def setup(bot):
     await bot.add_cog(GelbooruLoop(bot))
