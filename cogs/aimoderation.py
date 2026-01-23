@@ -33,6 +33,8 @@ DEFAULT_AIMOD_SETTINGS: Dict[str, Any] = {
     "aimod_confirm_timeout_seconds": 25,
     "aimod_confirm_actions": ["ban_member", "kick_member", "purge_messages"],
     "aimod_proactive_chance": 0.02,  # 2% chance to reply proactively
+    "aimod_proactive_cooldown": 30,  # Seconds between proactive responses per channel
+    "aimod_ignore_spam": True,  # Ignore obvious spam messages
 }
 
 # ========= SYSTEM PROMPT FOR ROUTING =========
@@ -555,6 +557,7 @@ class AIModeration(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.ai = GroqClientWrapper(bot)
+        self.proactive_cooldowns: Dict[int, datetime] = {}  # channel_id -> last_response_time
 
     # ========= UTILITY HELPERS =========
 
@@ -684,6 +687,27 @@ class AIModeration(commands.Cog):
         if actor.top_role <= target.top_role and actor.id != actor.guild.owner_id:
             return False
         return True
+
+    def _is_obvious_spam(self, content: str) -> bool:
+        """Check if message is obvious spam that shouldn't trigger AI."""
+        if not content:
+            return True
+        
+        content = content.strip()
+        
+        # Empty or whitespace only
+        if len(content) == 0:
+            return True
+        
+        # Single character repeated
+        if len(content) <= 2 and len(set(content)) == 1:
+            return True
+        
+        # Very short message with repeated characters
+        if len(content) <= 5 and len(set(content.lower())) <= 2:
+            return True
+        
+        return False
 
     async def _log_ai_action(
         self,
@@ -979,7 +1003,12 @@ class AIModeration(commands.Cog):
         if not settings.get("aimod_enabled", True):
             return
 
+        # Check if message is obvious spam (unless explicitly mentioned)
         is_mentioned = self.bot.user in message.mentions
+        if not is_mentioned and settings.get("aimod_ignore_spam", True):
+            if self._is_obvious_spam(message.content):
+                return
+
         is_proactive = False
 
         if not is_mentioned:
@@ -988,15 +1017,20 @@ class AIModeration(commands.Cog):
             if chance <= 0:
                 return
             
-            # Simple cooldown check: don't proactive reply if one happened recently in this channel
-            # We can use the ratelimiter or a simple cache
-            # For now, let's just roll the dice.
+            # Check cooldown
+            cooldown_seconds = settings.get("aimod_proactive_cooldown", 30)
+            now = datetime.now(timezone.utc)
+            if message.channel.id in self.proactive_cooldowns:
+                last_time = self.proactive_cooldowns[message.channel.id]
+                if (now - last_time).total_seconds() < cooldown_seconds:
+                    return
+            
             if random.random() > chance:
                 return
             
-            # Additional check: don't interrupt active conversations too much?
-            # Or just go for it.
             is_proactive = True
+            # Update cooldown
+            self.proactive_cooldowns[message.channel.id] = now
 
         cleaned = self._clean_content(message)
         if not cleaned:
@@ -1084,10 +1118,16 @@ class AIModeration(commands.Cog):
                 else:
                     await self._reply(message, content=reply)
             else:
-                await self._reply(
-                    message,
-                    content="uhh my brain lagged for a sec, try again?",
-                )
+                # Silent failure for proactive mode
+                if not is_proactive:
+                    # Only show error if explicitly mentioned
+                    logger.warning(f"AI failed to generate response for message {message.id}")
+                    await self._reply(
+                        message,
+                        content="I couldn't process that request. Please try again.",
+                        delete_after=10,
+                    )
+                # Otherwise fail silently
             return
 
         reason = decision.get("reason", "Request could not be processed.")
