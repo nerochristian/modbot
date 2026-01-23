@@ -689,7 +689,24 @@ class AIModeration(commands.Cog):
         return True
 
     def _is_obvious_spam(self, content: str) -> bool:
-        """Check if message is obvious spam that shouldn't trigger AI."""
+        """
+        Check if message is obvious spam that shouldn't trigger AI.
+        
+        Detects:
+        - Empty or whitespace-only messages
+        - Single character repeated (e.g., "s", "ss")
+        - Very short messages (3-5 chars) with only 1 unique character (e.g., "sss", "!!!!")
+        
+        Does NOT flag:
+        - Valid short words with different characters (e.g., "hi", "ok", "no")
+        - Longer messages with variety
+        
+        Args:
+            content: The message content to check
+            
+        Returns:
+            True if the message is obvious spam, False otherwise
+        """
         if not content:
             return True
         
@@ -1022,7 +1039,12 @@ class AIModeration(commands.Cog):
             now = datetime.now(timezone.utc)
             if message.channel.id in self.proactive_cooldowns:
                 last_time = self.proactive_cooldowns[message.channel.id]
-                if (now - last_time).total_seconds() < cooldown_seconds:
+                elapsed = (now - last_time).total_seconds()
+                if elapsed < cooldown_seconds:
+                    logger.debug(
+                        f"Proactive response skipped due to cooldown in channel {message.channel.id} "
+                        f"(elapsed: {elapsed:.1f}s < {cooldown_seconds}s)"
+                    )
                     return
             
             if random.random() > chance:
