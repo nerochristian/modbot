@@ -696,6 +696,7 @@ class AIModeration(commands.Cog):
         - Empty or whitespace-only messages
         - Single character repeated (e.g., "s", "ss")
         - Very short messages (3-5 chars) with only 1 unique character (e.g., "sss", "!!!!")
+        - Same character repeated with spaces (e.g., "s s s s", "a a a")
         
         Does NOT flag:
         - Valid short words with different characters (e.g., "hi", "ok", "no")
@@ -722,6 +723,12 @@ class AIModeration(commands.Cog):
         
         # Very short message with only 1 unique character (3-5 chars)
         if 3 <= len(content) <= 5 and len(set(content.lower())) == 1:
+            return True
+        
+        # Same character repeated with spaces (e.g., "s s s s", "a a a a a")
+        # Remove all spaces and check if it's the same character repeated
+        no_spaces = content.replace(" ", "")
+        if len(no_spaces) > 0 and len(no_spaces) <= 10 and len(set(no_spaces.lower())) == 1:
             return True
         
         return False
