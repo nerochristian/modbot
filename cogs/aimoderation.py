@@ -703,8 +703,8 @@ class AIModeration(commands.Cog):
         if len(content) <= 2 and len(set(content)) == 1:
             return True
         
-        # Very short message with repeated characters
-        if len(content) <= 5 and len(set(content.lower())) <= 2:
+        # Very short message with only 1 unique character (3-5 chars)
+        if 3 <= len(content) <= 5 and len(set(content.lower())) == 1:
             return True
         
         return False
