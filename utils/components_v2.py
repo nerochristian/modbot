@@ -1,21 +1,29 @@
 """
-Discord Components v2 helpers (LayoutView + layout items).
+Discord Components v2 migration utilities.
 
-This module provides:
-- Embed -> Components v2 "card" conversion
-- Optional runtime monkeypatch so existing embed-based code sends v2 layouts
+Provides automatic conversion from embeds to Components v2 layouts with opt-in/opt-out
+controls. Supports both global and per-message configuration.
+
+Features:
+- Convert discord.Embed → Components v2 Container
+- Optional monkeypatch for transparent v2 adoption
+- Granular control: global settings, per-message flags, or manual conversion
+- Preserves interactive components (buttons, selects) in ActionRows
 """
 
 from __future__ import annotations
 
 from datetime import datetime
 import re
-from typing import Any, Optional
+from typing import Any, Optional, Literal
 
 import discord
 
 
+# Component types that can appear at the top level of a LayoutView
 _V2_TOP_LEVEL_TYPES = {1, 9, 10, 12, 13, 14, 17}
+
+# Regex to detect timestamp-only footer text (excluded from v2 cards)
 _TS_ONLY_RE = re.compile(
     r"^(?:"
     r"<t:\d+(?::[tTdDfFR])?>"
@@ -25,7 +33,25 @@ _TS_ONLY_RE = re.compile(
 )
 
 
+class ComponentsV2Config:
+    """Global configuration for Components v2 behavior."""
+    
+    enabled: bool = True
+    """Whether to convert embeds to v2 layouts by default."""
+    
+    @classmethod
+    def enable(cls) -> None:
+        """Enable automatic v2 conversion globally."""
+        cls.enabled = True
+    
+    @classmethod
+    def disable(cls) -> None:
+        """Disable automatic v2 conversion globally."""
+        cls.enabled = False
+
+
 def _component_type(item: discord.ui.Item[Any]) -> Optional[int]:
+    """Extract the component type from a UI item."""
     try:
         data = item.to_component_dict()
         t = data.get("type")
@@ -36,12 +62,18 @@ def _component_type(item: discord.ui.Item[Any]) -> Optional[int]:
 
 def ensure_layout_view_action_rows(view: discord.ui.LayoutView) -> discord.ui.LayoutView:
     """
-    Ensure a Components v2 LayoutView only has valid top-level item types.
+    Ensure a Components v2 LayoutView has valid top-level structure.
 
-    Discord Components v2 requires top-level items to be layout components (e.g. Container/Section/TextDisplay)
-    or ActionRow. Interactive components like Button/Select must be wrapped inside an ActionRow.
+    Discord Components v2 requires interactive components (Button, Select) to be wrapped
+    in ActionRows. This function automatically wraps any loose interactive components
+    and places ActionRows inside the last Container for better visual cohesion.
+
+    Args:
+        view: The LayoutView to normalize
+
+    Returns:
+        The same view with properly structured children
     """
-
     children = list(getattr(view, "children", []))
     if not children:
         return view
@@ -53,6 +85,7 @@ def ensure_layout_view_action_rows(view: discord.ui.LayoutView) -> discord.ui.La
     action_rows: dict[int, list[discord.ui.Item[Any]]] = {}
     layout_items: list[discord.ui.Item[Any]] = []
 
+    # Separate layout components from interactive components
     for child in children:
         t = _component_type(child)
         if t in _V2_TOP_LEVEL_TYPES:
@@ -63,25 +96,27 @@ def ensure_layout_view_action_rows(view: discord.ui.LayoutView) -> discord.ui.La
         row_index = row if isinstance(row, int) and row >= 0 else 0
         action_rows.setdefault(row_index, []).append(child)
 
+    # Rebuild view with layout items first, then ActionRows
     view.clear_items()
     for item in layout_items:
         view.add_item(item)
     for row_index in sorted(action_rows.keys()):
         view.add_item(discord.ui.ActionRow(*action_rows[row_index]))
 
-    # Prefer placing action rows inside the last container, so buttons render "inside the card".
-    # This keeps existing v1-style Views looking more like native v2 panels.
+    # Move ActionRows inside the last container for better appearance
     try:
         children = list(getattr(view, "children", []))
         containers = [c for c in children if isinstance(c, discord.ui.Container)]
         action_row_items = [c for c in children if isinstance(c, discord.ui.ActionRow)]
+        
         if containers and action_row_items:
             last_container = containers[-1]
             view.clear_items()
+            
             for item in children:
-                if isinstance(item, discord.ui.ActionRow):
-                    continue
-                view.add_item(item)
+                if not isinstance(item, discord.ui.ActionRow):
+                    view.add_item(item)
+            
             for row in action_row_items:
                 last_container.add_item(row)
     except Exception:
@@ -100,15 +135,26 @@ def branded_panel_container(
     banner_separated: bool = False,
 ) -> discord.ui.Container:
     """
-    Build a Components v2 "panel" container with an optional banner and logo thumbnail.
-    """
+    Create a branded panel with optional banner and logo.
 
+    Args:
+        title: Panel title (bolded automatically)
+        description: Panel description text
+        banner_url: URL for banner image (displayed at top)
+        logo_url: URL for thumbnail logo (displayed alongside header)
+        accent_color: Sidebar accent color (RGB integer)
+        banner_separated: Add separator between banner and content
+
+    Returns:
+        A Container with the branded panel layout
+    """
     children: list[discord.ui.Item[Any]] = []
 
     title = (title or "").strip()
     description = (description or "").strip()
     header = "\n".join([x for x in [f"**{title}**" if title else "", description] if x]).strip()
 
+    # Add banner if provided
     has_banner = False
     if banner_url:
         banner_url = (banner_url or "").strip()
@@ -116,12 +162,14 @@ def branded_panel_container(
             children.append(discord.ui.MediaGallery(discord.MediaGalleryItem(banner_url)))
             has_banner = True
 
+    # Add separator after banner if requested
     if has_banner and banner_separated and header:
         children.append(discord.ui.Separator(spacing=discord.SeparatorSpacing.large))
 
+    # Add header with optional logo thumbnail
     if header:
-        if logo_url:
-            logo_url = (logo_url or "").strip()
+        logo_url = (logo_url or "").strip() if logo_url else None
+        
         if logo_url:
             children.append(
                 discord.ui.Section(
@@ -138,6 +186,7 @@ def branded_panel_container(
 
 
 def _get_embed_thumbnail_url(embed: discord.Embed) -> Optional[str]:
+    """Extract thumbnail URL from embed."""
     try:
         url = getattr(embed.thumbnail, "url", None)
         return url or None
@@ -146,6 +195,7 @@ def _get_embed_thumbnail_url(embed: discord.Embed) -> Optional[str]:
 
 
 def _get_embed_image_url(embed: discord.Embed) -> Optional[str]:
+    """Extract image URL from embed."""
     try:
         url = getattr(embed.image, "url", None)
         return url or None
@@ -154,6 +204,7 @@ def _get_embed_image_url(embed: discord.Embed) -> Optional[str]:
 
 
 def _get_embed_footer_text(embed: discord.Embed) -> Optional[str]:
+    """Extract footer text from embed, excluding timestamp-only footers."""
     try:
         text = getattr(embed.footer, "text", None)
         text = (text or "").strip()
@@ -165,6 +216,7 @@ def _get_embed_footer_text(embed: discord.Embed) -> Optional[str]:
 
 
 def _accent_color_from_embed(embed: discord.Embed) -> Optional[int]:
+    """Extract accent color from embed."""
     try:
         color = embed.color
         if isinstance(color, discord.Colour):
@@ -177,22 +229,34 @@ def _accent_color_from_embed(embed: discord.Embed) -> Optional[int]:
     return None
 
 
-def _format_timestamp(ts: Any) -> Optional[str]:
-    if not ts:
-        return None
-    if isinstance(ts, datetime):
-        return ts.isoformat(sep=" ", timespec="seconds")
-    return None
-
-
 def container_from_embed(embed: discord.Embed) -> discord.ui.Container:
+    """
+    Convert a discord.Embed to a Components v2 Container.
+
+    Mapping:
+    - embed.author.name → Bold header text
+    - embed.title → Bold header text
+    - embed.description → Header text
+    - embed.thumbnail → Section accessory
+    - embed.fields → Separated TextDisplay items
+    - embed.image → MediaGallery at bottom
+    - embed.footer → Italicized metadata (if not timestamp-only)
+    - embed.color → Container accent color
+
+    Args:
+        embed: The embed to convert
+
+    Returns:
+        A Container representing the embed
+    """
     accent = _accent_color_from_embed(embed)
     children: list[discord.ui.Item[Any]] = []
 
+    # Build header from author, title, and description
     title = (embed.title or "").strip()
     desc = (embed.description or "").strip()
-
     author_name = ""
+    
     try:
         author_name = (getattr(embed.author, "name", "") or "").strip()
     except Exception:
@@ -206,8 +270,10 @@ def container_from_embed(embed: discord.Embed) -> discord.ui.Container:
     if desc:
         header_lines.append(desc)
 
+    # Add header with optional thumbnail
     header_text = "\n".join(header_lines).strip()
     thumb_url = _get_embed_thumbnail_url(embed)
+    
     if header_text:
         if thumb_url:
             children.append(
@@ -219,12 +285,15 @@ def container_from_embed(embed: discord.Embed) -> discord.ui.Container:
         else:
             children.append(discord.ui.TextDisplay(header_text))
 
+    # Add fields with separators
     for field in embed.fields:
         name = (field.name or "").strip()
         value = (field.value or "").strip()
         if not name and not value:
             continue
+            
         children.append(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
+        
         if name and value:
             children.append(discord.ui.TextDisplay(f"**{name}**\n{value}"))
         elif name:
@@ -232,19 +301,17 @@ def container_from_embed(embed: discord.Embed) -> discord.ui.Container:
         else:
             children.append(discord.ui.TextDisplay(value))
 
+    # Add image gallery if present
     image_url = _get_embed_image_url(embed)
     if image_url:
         children.append(discord.ui.Separator(spacing=discord.SeparatorSpacing.large))
-        children.append(
-            discord.ui.MediaGallery(discord.MediaGalleryItem(image_url))
-        )
+        children.append(discord.ui.MediaGallery(discord.MediaGalleryItem(image_url)))
 
+    # Add footer metadata (excluding timestamp-only footers)
     footer_text = _get_embed_footer_text(embed)
-    # Don't surface embed timestamps in Components v2 cards.
-    meta = footer_text
-    if meta:
+    if footer_text:
         children.append(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
-        children.append(discord.ui.TextDisplay(f"*{meta}*"))
+        children.append(discord.ui.TextDisplay(f"*{footer_text}*"))
 
     if accent is not None:
         return discord.ui.Container(*children, accent_color=accent)
@@ -256,6 +323,7 @@ def _normalize_embeds(
     embed: Any = None,
     embeds: Any = None,
 ) -> list[discord.Embed]:
+    """Normalize embed/embeds arguments into a list of Embeds."""
     out: list[discord.Embed] = []
     if embed and isinstance(embed, discord.Embed):
         out.append(embed)
@@ -273,6 +341,18 @@ async def layout_view_from_embeds(
     embeds: Any = None,
     existing_view: Optional[discord.ui.BaseView] = None,
 ) -> discord.ui.LayoutView:
+    """
+    Create a LayoutView from embeds and optional content.
+
+    Args:
+        content: Message content (moved into a Container)
+        embed: Single embed to convert
+        embeds: List of embeds to convert
+        existing_view: Existing view whose items should be preserved
+
+    Returns:
+        A LayoutView with Containers for each embed and preserved view items
+    """
     if existing_view is None:
         view = discord.ui.LayoutView()
         existing_children: list[discord.ui.Item[Any]] = []
@@ -287,6 +367,7 @@ async def layout_view_from_embeds(
     if existing_children:
         view.clear_items()
 
+    # Add content as a TextDisplay if provided
     if content not in (None, discord.utils.MISSING, ...):
         try:
             content_text = content if isinstance(content, str) else str(content)
@@ -297,29 +378,50 @@ async def layout_view_from_embeds(
         if content_text:
             view.add_item(discord.ui.Container(discord.ui.TextDisplay(content_text)))
 
+    # Convert each embed to a Container
     for e in _normalize_embeds(embed=embed, embeds=embeds):
         container = container_from_embed(e)
         if container.children:
             view.add_item(container)
 
+    # Preserve existing view items
     for child in existing_children:
         view.add_item(child)
+        
     return ensure_layout_view_action_rows(view)
 
 
 def patch_components_v2() -> None:
     """
-    Monkeypatch discord.py send methods to convert embeds into Components v2 layouts.
+    Monkeypatch discord.py to auto-convert embeds to Components v2.
 
-    This lets existing code continue creating embeds, while the library sends LayoutView cards.
-    It also patches common edit methods so code editing messages with embeds keeps working.
+    This allows existing embed-based code to work with Components v2 without changes.
+    Respects ComponentsV2Config.enabled and per-message use_v2 flags.
+
+    Control behavior:
+    - Global: ComponentsV2Config.enable() / .disable()
+    - Per-message: pass use_v2=False to any send/edit method
+
+    Example:
+        # Enable globally
+        patch_components_v2()
+        ComponentsV2Config.enable()
+
+        # This sends v2
+        await ctx.send(embed=my_embed)
+
+        # This sends v1
+        await ctx.send(embed=my_embed, use_v2=False)
+
+        # This sends plain message
+        await ctx.send("Hello")
     """
-
     if getattr(patch_components_v2, "_patched", False):
         return
 
     from discord.utils import MISSING
 
+    # Store original methods
     original_interaction_send = discord.InteractionResponse.send_message
     original_webhook_send = discord.Webhook.send
     original_messageable_send = discord.abc.Messageable.send
@@ -329,7 +431,26 @@ def patch_components_v2() -> None:
     original_webhook_edit_message = discord.Webhook.edit_message
     original_webhook_message_edit = discord.WebhookMessage.edit
 
+    def _should_use_v2(kwargs: dict[str, Any]) -> bool:
+        """Determine if v2 conversion should be applied based on config and flags."""
+        use_v2 = kwargs.pop("use_v2", None)
+        
+        # Explicit per-message control
+        if use_v2 is False:
+            return False
+        if use_v2 is True:
+            return True
+        
+        # Fall back to global config
+        return ComponentsV2Config.enabled
+
     async def patched_interaction_send_message(self, *args, **kwargs):
+        if not _should_use_v2(kwargs):
+            content = args[0] if args else kwargs.get("content", MISSING)
+            if args:
+                return await original_interaction_send(self, *args, **kwargs)
+            return await original_interaction_send(self, **kwargs)
+
         content = args[0] if args else kwargs.pop("content", MISSING)
         kwargs.pop("content", None)
         embed = kwargs.get("embed", MISSING)
@@ -353,10 +474,8 @@ def patch_components_v2() -> None:
             kwargs["view"] = layout
             kwargs.pop("embed", None)
             kwargs.pop("embeds", None)
-            # Components v2 messages cannot include a content field.
             content = MISSING
         elif isinstance(view, discord.ui.LayoutView) and content is not MISSING:
-            # Components v2 messages cannot include a content field; move it into a TextDisplay.
             layout = await layout_view_from_embeds(
                 content=content,
                 embed=None,
@@ -373,19 +492,20 @@ def patch_components_v2() -> None:
             return await original_interaction_send(self, **kwargs)
         return await original_interaction_send(self, content=content, **kwargs)
 
-    async def _coerce_to_v2_view(*, content: Any, embed: Any, embeds: Any, view: Any) -> tuple[Any, Any, Any, Any]:
-        """
-        Convert embed(s)/content into a LayoutView so the request is compatible with Components v2.
-
-        Returns (content, embed, embeds, view) with embeds removed and content moved into the view.
-        """
+    async def _coerce_to_v2_view(
+        *, content: Any, embed: Any, embeds: Any, view: Any, use_v2: bool
+    ) -> tuple[Any, Any, Any, Any]:
+        """Convert embed(s)/content to LayoutView if v2 is enabled."""
+        if not use_v2:
+            return (content, embed, embeds, view)
 
         has_embed = embed is not MISSING and embed is not None
         has_embeds = embeds is not MISSING and bool(embeds)
-
         has_content = content is not MISSING and content not in (None, "", ...)
 
-        if (has_embed or has_embeds or has_content) and (view in (MISSING, None) or hasattr(view, "children")):
+        if (has_embed or has_embeds or has_content) and (
+            view in (MISSING, None) or hasattr(view, "children")
+        ):
             layout = await layout_view_from_embeds(
                 content=content,
                 embed=None if embed is MISSING else embed,
@@ -403,14 +523,35 @@ def patch_components_v2() -> None:
                 existing_view=view,
             )
             layout = ensure_layout_view_action_rows(layout)
-            return (MISSING, embed if embed is not MISSING else None, embeds if embeds is not MISSING else None, layout)
+            return (
+                MISSING,
+                embed if embed is not MISSING else None,
+                embeds if embeds is not MISSING else None,
+                layout,
+            )
 
         if isinstance(view, discord.ui.LayoutView):
-            return (content, embed if embed is not MISSING else None, embeds if embeds is not MISSING else None, ensure_layout_view_action_rows(view))
+            return (
+                content,
+                embed if embed is not MISSING else None,
+                embeds if embeds is not MISSING else None,
+                ensure_layout_view_action_rows(view),
+            )
 
-        return (content, embed if embed is not MISSING else None, embeds if embeds is not MISSING else None, view)
+        return (
+            content,
+            embed if embed is not MISSING else None,
+            embeds if embeds is not MISSING else None,
+            view,
+        )
 
     async def patched_webhook_send(self, *args, **kwargs):
+        if not _should_use_v2(kwargs):
+            content = args[0] if args else kwargs.get("content", MISSING)
+            if args:
+                return await original_webhook_send(self, *args, **kwargs)
+            return await original_webhook_send(self, **kwargs)
+
         content = args[0] if args else kwargs.pop("content", MISSING)
         kwargs.pop("content", None)
         embed = kwargs.get("embed", MISSING)
@@ -453,6 +594,9 @@ def patch_components_v2() -> None:
         return await original_webhook_send(self, content=content, **kwargs)
 
     async def patched_messageable_send(self, *args, **kwargs):
+        if not _should_use_v2(kwargs):
+            return await original_messageable_send(self, *args, **kwargs)
+
         content = args[0] if args else kwargs.pop("content", MISSING)
         kwargs.pop("content", None)
         embed = kwargs.get("embed", None)
@@ -493,6 +637,8 @@ def patch_components_v2() -> None:
         return await original_messageable_send(self, content=content, **kwargs)
 
     async def patched_interaction_edit_original_response(self, *args, **kwargs):
+        use_v2 = _should_use_v2(kwargs)
+        
         content = kwargs.get("content", MISSING)
         kwargs.pop("content", None)
         embed = kwargs.get("embed", MISSING)
@@ -504,6 +650,7 @@ def patch_components_v2() -> None:
             embed=embed,
             embeds=embeds,
             view=view,
+            use_v2=use_v2,
         )
 
         if view is not MISSING:
@@ -518,6 +665,8 @@ def patch_components_v2() -> None:
         return await original_interaction_edit_original(self, content=content, **kwargs)
 
     async def patched_interaction_response_edit_message(self, *args, **kwargs):
+        use_v2 = _should_use_v2(kwargs)
+        
         content = kwargs.get("content", MISSING)
         kwargs.pop("content", None)
         embed = kwargs.get("embed", MISSING)
@@ -529,6 +678,7 @@ def patch_components_v2() -> None:
             embed=embed,
             embeds=embeds,
             view=view,
+            use_v2=use_v2,
         )
 
         if view is not MISSING:
@@ -543,6 +693,8 @@ def patch_components_v2() -> None:
         return await original_interaction_response_edit(self, content=content, **kwargs)
 
     async def patched_message_edit(self, *args, **kwargs):
+        use_v2 = _should_use_v2(kwargs)
+        
         content = kwargs.get("content", MISSING)
         kwargs.pop("content", None)
         embed = kwargs.get("embed", MISSING)
@@ -554,6 +706,7 @@ def patch_components_v2() -> None:
             embed=embed,
             embeds=embeds,
             view=view,
+            use_v2=use_v2,
         )
 
         if view is not MISSING:
@@ -568,6 +721,8 @@ def patch_components_v2() -> None:
         return await original_message_edit(self, content=content, **kwargs)
 
     async def patched_webhook_edit_message(self, *args, **kwargs):
+        use_v2 = _should_use_v2(kwargs)
+        
         content = kwargs.get("content", MISSING)
         kwargs.pop("content", None)
         embed = kwargs.get("embed", MISSING)
@@ -579,6 +734,7 @@ def patch_components_v2() -> None:
             embed=embed,
             embeds=embeds,
             view=view,
+            use_v2=use_v2,
         )
 
         if view is not MISSING:
@@ -593,6 +749,8 @@ def patch_components_v2() -> None:
         return await original_webhook_edit_message(self, *args, content=content, **kwargs)
 
     async def patched_webhook_message_edit(self, *args, **kwargs):
+        use_v2 = _should_use_v2(kwargs)
+        
         content = kwargs.get("content", MISSING)
         kwargs.pop("content", None)
         embed = kwargs.get("embed", MISSING)
@@ -604,6 +762,7 @@ def patch_components_v2() -> None:
             embed=embed,
             embeds=embeds,
             view=view,
+            use_v2=use_v2,
         )
 
         if view is not MISSING:
@@ -617,13 +776,14 @@ def patch_components_v2() -> None:
             return await original_webhook_message_edit(self, *args, **kwargs)
         return await original_webhook_message_edit(self, *args, content=content, **kwargs)
 
-    discord.InteractionResponse.send_message = patched_interaction_send_message  # type: ignore[assignment]
-    discord.Webhook.send = patched_webhook_send  # type: ignore[assignment]
-    discord.abc.Messageable.send = patched_messageable_send  # type: ignore[assignment]
-    discord.Interaction.edit_original_response = patched_interaction_edit_original_response  # type: ignore[assignment]
-    discord.InteractionResponse.edit_message = patched_interaction_response_edit_message  # type: ignore[assignment]
-    discord.Message.edit = patched_message_edit  # type: ignore[assignment]
-    discord.Webhook.edit_message = patched_webhook_edit_message  # type: ignore[assignment]
-    discord.WebhookMessage.edit = patched_webhook_message_edit  # type: ignore[assignment]
+    # Apply patches
+    discord.InteractionResponse.send_message = patched_interaction_send_message  # type: ignore
+    discord.Webhook.send = patched_webhook_send  # type: ignore
+    discord.abc.Messageable.send = patched_messageable_send  # type: ignore
+    discord.Interaction.edit_original_response = patched_interaction_edit_original_response  # type: ignore
+    discord.InteractionResponse.edit_message = patched_interaction_response_edit_message  # type: ignore
+    discord.Message.edit = patched_message_edit  # type: ignore
+    discord.Webhook.edit_message = patched_webhook_edit_message  # type: ignore
+    discord.WebhookMessage.edit = patched_webhook_message_edit  # type: ignore
 
-    patch_components_v2._patched = True  # type: ignore[attr-defined]
+    patch_components_v2._patched = True  # type: ignore
