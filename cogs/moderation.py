@@ -33,6 +33,9 @@ ADD_EMOJI_TUTORIAL_GIF_PATH = Path(__file__).resolve().parents[1] / "assets" / A
 # Legacy single-server fallback. Prefer per-guild `emoji_command_channel` in DB settings.
 EMOJI_COMMAND_CHANNEL_ID = 0
 
+# Rate limiting delay between mass kicks (seconds)
+MASS_KICK_DELAY_SECONDS = 1.0
+
 _TUTORIAL_VIDEO_BYTES: Optional[bytes] = None
 _TUTORIAL_VIDEO_LOCK = asyncio.Lock()
 _ADD_EMOJI_TUTORIAL_GIF_BYTES: Optional[bytes] = None
@@ -280,6 +283,62 @@ class AddEmojiTutorialView(discord.ui.View):
                 content=f"Couldn't fetch the tutorial video. Here is the link:\n{TUTORIAL_VIDEO_URL}",
                 ephemeral=True,
             )
+
+
+class MassKickConfirmView(discord.ui.View):
+    """Confirmation view for mass kick operations"""
+    def __init__(self, *, cog: "Moderation", source, role: discord.Role, reason: str, members_to_kick: list[discord.Member]):
+        super().__init__(timeout=60)  # 60 second timeout
+        self.cog = cog
+        self.source = source
+        self.role = role
+        self.reason = reason
+        self.members_to_kick = members_to_kick
+        self.confirmed = False
+        
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger)
+    async def confirm_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Only allow the person who initiated the command to confirm
+        original_user = self.source.user if isinstance(self.source, discord.Interaction) else self.source.author
+        if interaction.user.id != original_user.id:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not For You", "Only the moderator who initiated this command can confirm."),
+                ephemeral=True,
+            )
+        
+        self.confirmed = True
+        self.stop()
+        
+        # Disable buttons
+        for item in self.children:
+            item.disabled = True
+        
+        await interaction.response.edit_message(view=self)
+        await interaction.followup.send(
+            embed=ModEmbed.info("Processing", f"Starting mass kick for {len(self.members_to_kick)} members..."),
+            ephemeral=True
+        )
+    
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        # Only allow the person who initiated the command to cancel
+        original_user = self.source.user if isinstance(self.source, discord.Interaction) else self.source.author
+        if interaction.user.id != original_user.id:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not For You", "Only the moderator who initiated this command can cancel."),
+                ephemeral=True,
+            )
+        
+        self.stop()
+        
+        # Disable buttons
+        for item in self.children:
+            item.disabled = True
+        
+        await interaction.response.edit_message(
+            embed=ModEmbed.info("Cancelled", "Mass kick operation cancelled."),
+            view=self
+        )
 
 
 class ModerationError(Exception):
@@ -780,6 +839,174 @@ class Moderation(commands.Cog):
         embed = await self.create_mod_embed(title="👢 User Kicked", user=user, moderator=moderator, reason=reason, color=Colors.ERROR, case_num=case_num)
         await self._respond(source, embed=embed)
         await self.log_action(guild, embed)
+
+    async def _kickrole_logic(self, source, role: discord.Role, reason: str):
+        """Handle mass kick by role with confirmation and safety checks"""
+        guild = source.guild
+        moderator = source.user if isinstance(source, discord.Interaction) else source.author
+        
+        # Check if role has members
+        if not role.members:
+            return await self._respond(source, embed=ModEmbed.error("No Members", f"No members found with the role {role.mention}."), ephemeral=True)
+        
+        # Pre-filter members based on permissions and hierarchy
+        kickable_members = []
+        failed_precheck = []
+        
+        for member in role.members:
+            # Check if moderator can moderate this member (includes bot owner check)
+            can_mod, error = await self.can_moderate(guild.id, moderator, member)
+            if not can_mod:
+                failed_precheck.append((member, "higher role/permissions"))
+                continue
+            
+            # Check if bot can moderate this member
+            can_bot, bot_error = await self.can_bot_moderate(member, moderator=moderator)
+            if not can_bot:
+                failed_precheck.append((member, "bot lacks permissions"))
+                continue
+            
+            kickable_members.append(member)
+        
+        if not kickable_members:
+            error_msg = f"Cannot kick any members with role {role.mention}.\n"
+            if failed_precheck:
+                reasons = {}
+                for _, reason_text in failed_precheck:
+                    reasons[reason_text] = reasons.get(reason_text, 0) + 1
+                error_msg += "Reasons:\n" + "\n".join([f"• {count} member(s): {reason}" for reason, count in reasons.items()])
+            return await self._respond(source, embed=ModEmbed.error("Cannot Proceed", error_msg), ephemeral=True)
+        
+        # Show confirmation prompt
+        warning_text = ""
+        if len(kickable_members) >= 10:
+            warning_text = f"\n\n⚠️ **WARNING**: This will kick {len(kickable_members)} members!"
+        
+        confirm_embed = discord.Embed(
+            title="⚠️ Mass Kick Confirmation",
+            description=(
+                f"You are about to kick **{len(kickable_members)}** member(s) with the role {role.mention}\n"
+                f"**Reason:** {reason}{warning_text}"
+            ),
+            color=Colors.WARNING,
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+        if failed_precheck:
+            failed_count = len(failed_precheck)
+            confirm_embed.add_field(
+                name="⚠️ Members Skipped",
+                value=f"{failed_count} member(s) will be skipped (higher role/permissions or bot owner)",
+                inline=False
+            )
+        
+        view = MassKickConfirmView(
+            cog=self,
+            source=source,
+            role=role,
+            reason=reason,
+            members_to_kick=kickable_members
+        )
+        
+        # Send confirmation message
+        response = await self._respond(source, embed=confirm_embed, ephemeral=False)
+        
+        # Get the message to attach the view
+        if isinstance(source, discord.Interaction):
+            message = await source.original_response()
+        else:
+            # For Context, _respond returns the reply message
+            message = response
+        
+        if message:
+            await message.edit(view=view)
+        else:
+            logger.warning("Could not attach view to confirmation message")
+            return await self._respond(source, embed=ModEmbed.error("Error", "Failed to display confirmation buttons."), ephemeral=True)
+        
+        # Wait for confirmation
+        await view.wait()
+        
+        if not view.confirmed:
+            return  # User cancelled or timed out
+        
+        # Execute mass kick
+        kicked_members = []
+        failed_members = []
+        
+        for member in kickable_members:
+            try:
+                # Create case with consistent formatting
+                case_reason = f"[MASS KICK] Role: {role.name} | {reason}"
+                case_num = await self.bot.db.create_case(
+                    guild.id, member.id, moderator.id, "Kick", case_reason
+                )
+                
+                # DM user
+                dm_embed = discord.Embed(
+                    title=f"👢 Kicked from {guild.name}",
+                    description=f"**Reason:** {reason}\n**Role:** {role.name}",
+                    color=Colors.ERROR
+                )
+                await self.dm_user(member, dm_embed)
+                
+                # Kick the member
+                await member.kick(reason=f"[MASS KICK] {moderator}: {reason}")
+                
+                kicked_members.append(member)
+                
+                # Rate limiting delay
+                await asyncio.sleep(MASS_KICK_DELAY_SECONDS)
+                
+            except discord.Forbidden:
+                failed_members.append((member, "permission denied"))
+            except discord.HTTPException as e:
+                failed_members.append((member, str(e)))
+            except Exception as e:
+                logger.error(f"Failed to kick {member} in mass kick: {e}")
+                failed_members.append((member, "unexpected error"))
+        
+        # Create summary embed
+        summary_embed = discord.Embed(
+            title="✅ Mass Kick Complete",
+            color=Colors.SUCCESS if not failed_members else Colors.WARNING,
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+        summary_embed.add_field(
+            name="✅ Successfully Kicked",
+            value=f"**{len(kicked_members)}** / {len(kickable_members)} members",
+            inline=True
+        )
+        
+        if failed_members:
+            summary_embed.add_field(
+                name="❌ Failed",
+                value=f"**{len(failed_members)}** member(s)",
+                inline=True
+            )
+        
+        summary_embed.add_field(name="Role", value=role.mention, inline=True)
+        summary_embed.add_field(name="Reason", value=reason, inline=False)
+        summary_embed.add_field(name="Moderator", value=moderator.mention, inline=True)
+        
+        if kicked_members:
+            kicked_list = "\n".join([f"• {member.mention} (`{member.id}`)" for member in kicked_members[:10]])
+            if len(kicked_members) > 10:
+                kicked_list += f"\n*...and {len(kicked_members) - 10} more*"
+            summary_embed.add_field(name="Kicked Members", value=kicked_list, inline=False)
+        
+        if failed_members:
+            failed_list = "\n".join([f"• {member.mention}: {reason}" for member, reason in failed_members[:5]])
+            if len(failed_members) > 5:
+                failed_list += f"\n*...and {len(failed_members) - 5} more*"
+            summary_embed.add_field(name="Failed Members", value=failed_list, inline=False)
+        
+        # Send summary
+        await self._respond(source, embed=summary_embed)
+        
+        # Log the action
+        await self.log_action(guild, summary_embed)
 
     async def _ban_logic(self, source, user: discord.Member, reason: str, delete_days: int = 1):
         guild = source.guild
@@ -1593,6 +1820,7 @@ class Moderation(commands.Cog):
                 "`,delwarn <id>` - Delete a warning\n"
                 "`,clearwarnings <user> [reason]` - Clear all warnings\n"
                 "`,kick <user> [reason]` - Kick a user\n"
+                "`,kickrole <role> [reason]` - Mass kick by role\n"
                 "`,ban <user> [reason]` - Ban a user\n"
                 "`,tempban <user> <duration> [reason]` - Temp ban\n"
                 "`,unban <user_id> [reason]` - Unban a user\n"
@@ -1720,6 +1948,15 @@ class Moderation(commands.Cog):
         if is_bot_owner_id(user.id) and not is_bot_owner_id(ctx.author.id):
             return await self._respond(ctx, embed=ModEmbed.error("Permission Denied", "You cannot kick the bot owner."), ephemeral=True)
         await self._kick_logic(ctx, user, reason)
+
+    @commands.command(name="kickrole", description="👢 Kick all members with a specific role")
+    @is_mod()
+    async def mod_kickrole(self, ctx: commands.Context, role: discord.Role, *, reason: str = "No reason provided"):
+        """
+        Mass kick all members who have a specific role
+        Usage: ,kickrole @RoleName [reason]
+        """
+        await self._kickrole_logic(ctx, role, reason)
 
     @commands.command(name="ban", description="🔨 Permanently ban a user")
     @is_mod()
@@ -3173,6 +3410,24 @@ class Moderation(commands.Cog):
             ),
             ephemeral=True,
         )
+
+    @app_commands.command(name="kickrole", description="👢 Kick all members with a specific role")
+    @app_commands.describe(
+        role="The role whose members should be kicked",
+        reason="Reason for the mass kick"
+    )
+    @is_mod()
+    async def slash_kickrole(
+        self,
+        interaction: discord.Interaction,
+        role: discord.Role,
+        reason: str = "No reason provided"
+    ):
+        """
+        Mass kick all members who have a specific role
+        Usage: /kickrole @RoleName [reason]
+        """
+        await self._kickrole_logic(interaction, role, reason)
 
 
 async def setup(bot):
