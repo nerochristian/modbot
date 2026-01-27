@@ -34,7 +34,7 @@ ADD_EMOJI_TUTORIAL_GIF_PATH = Path(__file__).resolve().parents[1] / "assets" / A
 EMOJI_COMMAND_CHANNEL_ID = 0
 
 # Rate limiting delay between mass kicks (seconds)
-MASS_KICK_DELAY_SECONDS = 0.5
+MASS_KICK_DELAY_SECONDS = 1.0
 
 _TUTORIAL_VIDEO_BYTES: Optional[bytes] = None
 _TUTORIAL_VIDEO_LOCK = asyncio.Lock()
@@ -908,17 +908,21 @@ class Moderation(commands.Cog):
             members_to_kick=kickable_members
         )
         
-        # Send confirmation message and attach view
-        message = await self._respond(source, embed=confirm_embed, ephemeral=False)
+        # Send confirmation message
+        response = await self._respond(source, embed=confirm_embed, ephemeral=False)
         
         # Get the message to attach the view
         if isinstance(source, discord.Interaction):
             message = await source.original_response()
         else:
-            # For Context, the reply is returned by _respond
-            message = message or source.message
+            # For Context, _respond returns the reply message
+            message = response
         
-        await message.edit(view=view)
+        if message:
+            await message.edit(view=view)
+        else:
+            logger.warning("Could not attach view to confirmation message")
+            return await self._respond(source, embed=ModEmbed.error("Error", "Failed to display confirmation buttons."), ephemeral=True)
         
         # Wait for confirmation
         await view.wait()
