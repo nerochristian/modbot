@@ -33,6 +33,9 @@ ADD_EMOJI_TUTORIAL_GIF_PATH = Path(__file__).resolve().parents[1] / "assets" / A
 # Legacy single-server fallback. Prefer per-guild `emoji_command_channel` in DB settings.
 EMOJI_COMMAND_CHANNEL_ID = 0
 
+# Rate limiting delay between mass kicks (seconds)
+MASS_KICK_DELAY_SECONDS = 0.5
+
 _TUTORIAL_VIDEO_BYTES: Optional[bytes] = None
 _TUTORIAL_VIDEO_LOCK = asyncio.Lock()
 _ADD_EMOJI_TUTORIAL_GIF_BYTES: Optional[bytes] = None
@@ -842,23 +845,16 @@ class Moderation(commands.Cog):
         guild = source.guild
         moderator = source.user if isinstance(source, discord.Interaction) else source.author
         
-        # Get all members with the role
-        members_to_kick = [member for member in role.members]
-        
-        if not members_to_kick:
+        # Check if role has members
+        if not role.members:
             return await self._respond(source, embed=ModEmbed.error("No Members", f"No members found with the role {role.mention}."), ephemeral=True)
         
         # Pre-filter members based on permissions and hierarchy
         kickable_members = []
         failed_precheck = []
         
-        for member in members_to_kick:
-            # Check if bot owner
-            if is_bot_owner_id(member.id) and not is_bot_owner_id(moderator.id):
-                failed_precheck.append((member, "bot owner"))
-                continue
-            
-            # Check if moderator can moderate this member
+        for member in role.members:
+            # Check if moderator can moderate this member (includes bot owner check)
             can_mod, error = await self.can_moderate(guild.id, moderator, member)
             if not can_mod:
                 failed_precheck.append((member, "higher role/permissions"))
@@ -912,18 +908,15 @@ class Moderation(commands.Cog):
             members_to_kick=kickable_members
         )
         
-        await self._respond(source, embed=confirm_embed, ephemeral=False)
+        # Send confirmation message and attach view
+        message = await self._respond(source, embed=confirm_embed, ephemeral=False)
         
         # Get the message to attach the view
         if isinstance(source, discord.Interaction):
             message = await source.original_response()
         else:
-            # For Context, we need to find the last message (the reply)
-            message = source.message
-            async for msg in source.channel.history(limit=5):
-                if msg.author == self.bot.user and msg.reference and msg.reference.message_id == source.message.id:
-                    message = msg
-                    break
+            # For Context, the reply is returned by _respond
+            message = message or source.message
         
         await message.edit(view=view)
         
@@ -939,9 +932,10 @@ class Moderation(commands.Cog):
         
         for member in kickable_members:
             try:
-                # Create case
+                # Create case with consistent formatting
+                case_reason = f"[MASS KICK] Role: {role.name} | {reason}"
                 case_num = await self.bot.db.create_case(
-                    guild.id, member.id, moderator.id, "Kick", f"[MASS KICK - Role: {role.name}] {reason}"
+                    guild.id, member.id, moderator.id, "Kick", case_reason
                 )
                 
                 # DM user
@@ -957,8 +951,8 @@ class Moderation(commands.Cog):
                 
                 kicked_members.append(member)
                 
-                # Small delay to avoid rate limits
-                await asyncio.sleep(0.5)
+                # Rate limiting delay
+                await asyncio.sleep(MASS_KICK_DELAY_SECONDS)
                 
             except discord.Forbidden:
                 failed_members.append((member, "permission denied"))
