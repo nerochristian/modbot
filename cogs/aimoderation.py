@@ -4,7 +4,7 @@ import json
 import asyncio
 import random
 from datetime import datetime, timezone, timedelta
-from typing import Any, Dict, List, Optional, Union, Literal
+from typing import Any, Dict, List, Optional, Tuple, Union, Literal, Set
 
 import discord
 from discord import app_commands
@@ -323,8 +323,6 @@ Decide what to do and respond ONLY with JSON using the schema from the system me
                 "tool": None,
                 "arguments": {},
             }
-
-    # ========= CONVERSATION: remembers past exchanges per user =========
 
     # ========= CONVERSATION: remembers past exchanges per user =========
 
@@ -1869,5 +1867,1396 @@ class AIModeration(commands.Cog):
         await interaction.followup.send(embed=embed, ephemeral=True)
 
 
+# ========= INTEGRATION WITH EXISTING COGS =========
+# NOTE: AutoMod functionality is in automod.py (AIModerationHelper, AutoMod cog)
+# NOTE: Raid detection is in antiraid.py (AIRaidAnalyzer, AntiRaid cog)
+# These wrappers provide a unified interface for the AI moderation system
+
+class AutoModIntegration:
+    """Thin wrapper to interact with the existing AutoMod cog."""
+    
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+    
+    @property
+    def cog(self):
+        """Get the AutoMod cog if loaded."""
+        return self.bot.get_cog("AutoMod")
+    
+    async def is_enabled(self, guild_id: int) -> bool:
+        """Check if AutoMod is enabled for a guild."""
+        if not self.cog:
+            return False
+        try:
+            settings = await self.bot.db.get_settings(guild_id)
+            return settings.get("automod_enabled", False)
+        except Exception:
+            return False
+    
+    async def get_settings(self, guild_id: int) -> Dict[str, Any]:
+        """Get AutoMod settings for a guild."""
+        try:
+            return await self.bot.db.get_settings(guild_id)
+        except Exception:
+            return {}
+
+
+class AntiRaidIntegration:
+    """Thin wrapper to interact with the existing AntiRaid cog."""
+    
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+    
+    @property
+    def cog(self):
+        """Get the AntiRaid cog if loaded."""
+        return self.bot.get_cog("AntiRaid")
+    
+    async def is_raid_mode_active(self, guild_id: int) -> bool:
+        """Check if raid mode is currently active."""
+        if not self.cog:
+            return False
+        return guild_id in getattr(self.cog, '_raid_mode_active', set())
+    
+    async def trigger_lockdown(self, guild: discord.Guild, reason: str) -> bool:
+        """Trigger lockdown via the AntiRaid cog."""
+        if not self.cog:
+            return False
+        try:
+            # Delegate to existing cog
+            settings = await self.bot.db.get_settings(guild.id)
+            await self.cog.trigger_raid_response(guild, settings, action="lockdown")
+            return True
+        except Exception as e:
+            logger.error(f"Lockdown delegation failed: {e}")
+            return False
+
+
+# ========= AI CONTENT ANALYSIS =========
+
+class ContentAnalyzer:
+    """AI-powered content analysis for toxicity, sentiment, and intent."""
+    
+    ANALYSIS_PROMPT = """Analyze this Discord message for moderation purposes.
+
+Message: "{content}"
+Author: {author}
+Context: {context}
+
+Respond with JSON only:
+{{
+  "toxicity_score": 0.0-1.0,
+  "sentiment": "positive" | "neutral" | "negative",
+  "intent": "friendly" | "spam" | "harassment" | "threat" | "scam" | "unknown",
+  "contains_pii": true/false,
+  "language": "en" | "es" | ...,
+  "summary": "brief description"
+}}"""
+
+    def __init__(self, client: Optional[Groq]):
+        self.client = client
+    
+    async def analyze(
+        self,
+        content: str,
+        author: str,
+        context: str = "",
+        model: str = GROQ_MODEL,
+    ) -> Dict[str, Any]:
+        """Analyze content using AI."""
+        if not self.client:
+            return {"error": "No AI client"}
+        
+        prompt = self.ANALYSIS_PROMPT.format(
+            content=content[:500],
+            author=author,
+            context=context[:300],
+        )
+        
+        try:
+            response = await asyncio.to_thread(
+                self.client.chat.completions.create,
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=300,
+            )
+            
+            raw = response.choices[0].message.content
+            # Strip markdown if present
+            if raw.startswith("```"):
+                raw = re.sub(r"^```\w*\s*", "", raw)
+                raw = re.sub(r"\s*```$", "", raw)
+            
+            return json.loads(raw)
+        except Exception as e:
+            logger.error(f"Content analysis failed: {e}")
+            return {"error": str(e)}
+
+
+# ========= USER RISK SCORING =========
+
+@dataclass
+class UserRiskProfile:
+    """Risk profile for a user."""
+    user_id: int
+    guild_id: int
+    base_score: float = 0.0
+    warning_count: int = 0
+    timeout_count: int = 0
+    kick_count: int = 0
+    ban_count: int = 0
+    automod_flags: int = 0
+    last_violation: Optional[datetime] = None
+    notes: List[str] = field(default_factory=list)
+    
+    @property
+    def risk_score(self) -> float:
+        """Calculate current risk score (0-100)."""
+        score = self.base_score
+        score += self.warning_count * 5
+        score += self.timeout_count * 10
+        score += self.kick_count * 20
+        score += self.ban_count * 40
+        score += self.automod_flags * 3
+        
+        # Decay over time
+        if self.last_violation:
+            days_since = (datetime.now(timezone.utc) - self.last_violation).days
+            decay = min(0.5, days_since * 0.02)
+            score *= (1 - decay)
+        
+        return min(100.0, max(0.0, score))
+    
+    @property
+    def risk_level(self) -> str:
+        """Get human-readable risk level."""
+        score = self.risk_score
+        if score < 10:
+            return "Low"
+        elif score < 30:
+            return "Moderate"
+        elif score < 60:
+            return "High"
+        else:
+            return "Critical"
+
+
+class RiskScorer:
+    """Manages user risk scoring."""
+    
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self._profiles: Dict[Tuple[int, int], UserRiskProfile] = {}
+    
+    async def get_profile(self, user_id: int, guild_id: int) -> UserRiskProfile:
+        """Get or create risk profile for user."""
+        key = (user_id, guild_id)
+        if key not in self._profiles:
+            # Try to load from DB
+            profile = UserRiskProfile(user_id=user_id, guild_id=guild_id)
+            
+            try:
+                warnings = await self.bot.db.get_warnings(guild_id, user_id)
+                profile.warning_count = len(warnings)
+                
+                cases = await self.bot.db.get_user_cases(guild_id, user_id)
+                for case in cases:
+                    action = case.get("action", "").lower()
+                    if "timeout" in action or "mute" in action:
+                        profile.timeout_count += 1
+                    elif "kick" in action:
+                        profile.kick_count += 1
+                    elif "ban" in action:
+                        profile.ban_count += 1
+            except Exception:
+                pass
+            
+            self._profiles[key] = profile
+        
+        return self._profiles[key]
+    
+    async def record_violation(
+        self,
+        user_id: int,
+        guild_id: int,
+        violation_type: str,
+        severity: float = 1.0,
+    ) -> UserRiskProfile:
+        """Record a violation and update risk score."""
+        profile = await self.get_profile(user_id, guild_id)
+        profile.base_score += severity * 5
+        profile.last_violation = datetime.now(timezone.utc)
+        profile.notes.append(f"{violation_type} at {profile.last_violation.isoformat()}")
+        
+        if violation_type == "automod":
+            profile.automod_flags += 1
+        
+        return profile
+    
+    async def get_recommendations(self, profile: UserRiskProfile) -> List[str]:
+        """Get moderation recommendations based on risk profile."""
+        recommendations = []
+        score = profile.risk_score
+        
+        if score >= 80:
+            recommendations.append("Consider permanent ban - user is extremely high risk")
+        elif score >= 60:
+            recommendations.append("Extended timeout (24h+) recommended")
+            recommendations.append("Review recent activity carefully")
+        elif score >= 40:
+            recommendations.append("Issue formal warning")
+            recommendations.append("Monitor user activity")
+        elif score >= 20:
+            recommendations.append("Note for future reference")
+        
+        if profile.automod_flags >= 3:
+            recommendations.append("Multiple AutoMod flags - review message history")
+        
+        return recommendations
+
+
+# ========= SCHEDULED ACTIONS =========
+
+@dataclass
+class ScheduledAction:
+    """A scheduled moderation action."""
+    id: str
+    guild_id: int
+    user_id: int
+    action_type: str
+    scheduled_for: datetime
+    created_by: int
+    reason: str
+    executed: bool = False
+    cancelled: bool = False
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "guild_id": self.guild_id,
+            "user_id": self.user_id,
+            "action_type": self.action_type,
+            "scheduled_for": self.scheduled_for.isoformat(),
+            "created_by": self.created_by,
+            "reason": self.reason,
+            "executed": self.executed,
+            "cancelled": self.cancelled,
+        }
+
+
+class ActionScheduler:
+    """Manages scheduled/delayed moderation actions."""
+    
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self._actions: Dict[str, ScheduledAction] = {}
+        self._task: Optional[asyncio.Task] = None
+    
+    def start(self):
+        """Start the scheduler background task."""
+        if self._task is None or self._task.done():
+            self._task = asyncio.create_task(self._scheduler_loop())
+    
+    def stop(self):
+        """Stop the scheduler."""
+        if self._task and not self._task.done():
+            self._task.cancel()
+    
+    async def _scheduler_loop(self):
+        """Background loop to execute scheduled actions."""
+        while True:
+            try:
+                await asyncio.sleep(30)
+                now = datetime.now(timezone.utc)
+                
+                for action_id, action in list(self._actions.items()):
+                    if action.executed or action.cancelled:
+                        continue
+                    
+                    if action.scheduled_for <= now:
+                        await self._execute_action(action)
+                
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"Scheduler error: {e}")
+    
+    async def _execute_action(self, action: ScheduledAction):
+        """Execute a scheduled action."""
+        try:
+            guild = self.bot.get_guild(action.guild_id)
+            if not guild:
+                action.cancelled = True
+                return
+            
+            member = guild.get_member(action.user_id)
+            
+            if action.action_type == "unban":
+                user = discord.Object(id=action.user_id)
+                await guild.unban(user, reason=f"[Scheduled] {action.reason}")
+            elif action.action_type == "untimeout" and member:
+                await member.timeout(None, reason=f"[Scheduled] {action.reason}")
+            elif action.action_type == "timeout" and member:
+                until = datetime.now(timezone.utc) + timedelta(hours=1)
+                await member.timeout(until, reason=f"[Scheduled] {action.reason}")
+            elif action.action_type == "kick" and member:
+                await member.kick(reason=f"[Scheduled] {action.reason}")
+            elif action.action_type == "ban" and member:
+                await guild.ban(member, reason=f"[Scheduled] {action.reason}")
+            
+            action.executed = True
+            logger.info(f"Executed scheduled action {action.id}")
+            
+        except Exception as e:
+            logger.error(f"Failed to execute scheduled action {action.id}: {e}")
+    
+    async def schedule(
+        self,
+        guild_id: int,
+        user_id: int,
+        action_type: str,
+        delay_seconds: int,
+        created_by: int,
+        reason: str,
+    ) -> ScheduledAction:
+        """Schedule a new action."""
+        import uuid
+        action = ScheduledAction(
+            id=str(uuid.uuid4())[:8],
+            guild_id=guild_id,
+            user_id=user_id,
+            action_type=action_type,
+            scheduled_for=datetime.now(timezone.utc) + timedelta(seconds=delay_seconds),
+            created_by=created_by,
+            reason=reason,
+        )
+        self._actions[action.id] = action
+        return action
+    
+    async def cancel(self, action_id: str) -> bool:
+        """Cancel a scheduled action."""
+        if action_id in self._actions:
+            self._actions[action_id].cancelled = True
+            return True
+        return False
+    
+    def list_pending(self, guild_id: int) -> List[ScheduledAction]:
+        """List pending actions for a guild."""
+        return [
+            a for a in self._actions.values()
+            if a.guild_id == guild_id and not a.executed and not a.cancelled
+        ]
+
+
+# ========= APPEAL SYSTEM =========
+
+@dataclass
+class Appeal:
+    """A moderation appeal."""
+    id: str
+    guild_id: int
+    user_id: int
+    case_id: int
+    reason: str
+    submitted_at: datetime
+    status: Literal["pending", "approved", "denied", "reviewing"] = "pending"
+    reviewer_id: Optional[int] = None
+    reviewer_notes: Optional[str] = None
+    ai_recommendation: Optional[str] = None
+
+
+class AppealSystem:
+    """Manages moderation appeals with AI review assistance."""
+    
+    def __init__(self, bot: commands.Bot, ai_client: Optional[Groq]):
+        self.bot = bot
+        self.ai_client = ai_client
+        self._appeals: Dict[str, Appeal] = {}
+    
+    async def submit_appeal(
+        self,
+        guild_id: int,
+        user_id: int,
+        case_id: int,
+        reason: str,
+    ) -> Appeal:
+        """Submit a new appeal."""
+        import uuid
+        appeal = Appeal(
+            id=str(uuid.uuid4())[:8],
+            guild_id=guild_id,
+            user_id=user_id,
+            case_id=case_id,
+            reason=reason,
+            submitted_at=datetime.now(timezone.utc),
+        )
+        
+        # Get AI recommendation
+        if self.ai_client:
+            try:
+                case = await self.bot.db.get_case(guild_id, case_id)
+                case_info = json.dumps(case) if case else "Unknown case"
+                
+                prompt = f"""Review this moderation appeal:
+Case: {case_info}
+Appeal reason: {reason}
+
+Should this appeal be approved? Respond with JSON:
+{{"recommendation": "approve" | "deny" | "review", "confidence": 0.0-1.0, "reasoning": "..."}}"""
+
+                response = await asyncio.to_thread(
+                    self.ai_client.chat.completions.create,
+                    model=GROQ_MODEL,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.2,
+                    max_tokens=200,
+                )
+                
+                appeal.ai_recommendation = response.choices[0].message.content
+            except Exception as e:
+                logger.error(f"AI appeal review failed: {e}")
+        
+        self._appeals[appeal.id] = appeal
+        return appeal
+    
+    async def review_appeal(
+        self,
+        appeal_id: str,
+        reviewer_id: int,
+        decision: Literal["approved", "denied"],
+        notes: str = "",
+    ) -> Optional[Appeal]:
+        """Review and decide on an appeal."""
+        if appeal_id not in self._appeals:
+            return None
+        
+        appeal = self._appeals[appeal_id]
+        appeal.status = decision
+        appeal.reviewer_id = reviewer_id
+        appeal.reviewer_notes = notes
+        
+        # If approved, potentially reverse the action
+        if decision == "approved":
+            try:
+                case = await self.bot.db.get_case(appeal.guild_id, appeal.case_id)
+                if case:
+                    action = case.get("action", "").lower()
+                    guild = self.bot.get_guild(appeal.guild_id)
+                    
+                    if guild and "ban" in action:
+                        user = discord.Object(id=appeal.user_id)
+                        await guild.unban(user, reason=f"[Appeal Approved] {notes}")
+                    elif guild and ("timeout" in action or "mute" in action):
+                        member = guild.get_member(appeal.user_id)
+                        if member:
+                            await member.timeout(None, reason=f"[Appeal Approved] {notes}")
+            except Exception as e:
+                logger.error(f"Failed to reverse action for appeal {appeal_id}: {e}")
+        
+        return appeal
+    
+    def get_pending(self, guild_id: int) -> List[Appeal]:
+        """Get pending appeals for a guild."""
+        return [
+            a for a in self._appeals.values()
+            if a.guild_id == guild_id and a.status == "pending"
+        ]
+
+
+# ========= ANALYTICS & REPORTING =========
+
+@dataclass
+class ModerationStats:
+    """Statistics for moderation activity."""
+    period_start: datetime
+    period_end: datetime
+    total_actions: int = 0
+    warnings: int = 0
+    timeouts: int = 0
+    kicks: int = 0
+    bans: int = 0
+    unbans: int = 0
+    purges: int = 0
+    automod_actions: int = 0
+    ai_actions: int = 0
+    appeals_submitted: int = 0
+    appeals_approved: int = 0
+    most_active_moderators: Dict[int, int] = field(default_factory=dict)
+    most_actioned_users: Dict[int, int] = field(default_factory=dict)
+
+
+class AnalyticsEngine:
+    """Generates moderation analytics and reports."""
+    
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self._action_log: List[Dict[str, Any]] = []
+    
+    def log_action(
+        self,
+        guild_id: int,
+        action_type: str,
+        moderator_id: int,
+        target_id: Optional[int] = None,
+        source: str = "manual",
+    ):
+        """Log a moderation action for analytics."""
+        self._action_log.append({
+            "timestamp": datetime.now(timezone.utc),
+            "guild_id": guild_id,
+            "action_type": action_type,
+            "moderator_id": moderator_id,
+            "target_id": target_id,
+            "source": source,
+        })
+        
+        # Keep only last 10000 entries
+        if len(self._action_log) > 10000:
+            self._action_log = self._action_log[-10000:]
+    
+    def get_stats(
+        self,
+        guild_id: int,
+        period_hours: int = 24,
+    ) -> ModerationStats:
+        """Get moderation statistics for a period."""
+        now = datetime.now(timezone.utc)
+        start = now - timedelta(hours=period_hours)
+        
+        stats = ModerationStats(period_start=start, period_end=now)
+        
+        for entry in self._action_log:
+            if entry["guild_id"] != guild_id:
+                continue
+            if entry["timestamp"] < start:
+                continue
+            
+            stats.total_actions += 1
+            action = entry["action_type"].lower()
+            
+            if "warn" in action:
+                stats.warnings += 1
+            elif "timeout" in action or "mute" in action:
+                stats.timeouts += 1
+            elif "kick" in action:
+                stats.kicks += 1
+            elif "ban" in action and "unban" not in action:
+                stats.bans += 1
+            elif "unban" in action:
+                stats.unbans += 1
+            elif "purge" in action:
+                stats.purges += 1
+            
+            if entry["source"] == "automod":
+                stats.automod_actions += 1
+            elif entry["source"] == "ai":
+                stats.ai_actions += 1
+            
+            # Track moderator activity
+            mod_id = entry["moderator_id"]
+            stats.most_active_moderators[mod_id] = stats.most_active_moderators.get(mod_id, 0) + 1
+            
+            # Track user actions
+            target_id = entry.get("target_id")
+            if target_id:
+                stats.most_actioned_users[target_id] = stats.most_actioned_users.get(target_id, 0) + 1
+        
+        return stats
+    
+    def generate_report_embed(self, stats: ModerationStats) -> discord.Embed:
+        """Generate a report embed from stats."""
+        embed = discord.Embed(
+            title="📊 Moderation Report",
+            description=f"Period: {stats.period_start.strftime('%Y-%m-%d %H:%M')} to {stats.period_end.strftime('%Y-%m-%d %H:%M')} UTC",
+            color=discord.Color.blue(),
+            timestamp=datetime.now(timezone.utc),
+        )
+        
+        embed.add_field(
+            name="Total Actions",
+            value=str(stats.total_actions),
+            inline=True,
+        )
+        
+        actions_breakdown = (
+            f"⚠️ Warnings: {stats.warnings}\n"
+            f"🔇 Timeouts: {stats.timeouts}\n"
+            f"👢 Kicks: {stats.kicks}\n"
+            f"🔨 Bans: {stats.bans}\n"
+            f"✅ Unbans: {stats.unbans}\n"
+            f"🗑️ Purges: {stats.purges}"
+        )
+        embed.add_field(
+            name="Breakdown",
+            value=actions_breakdown,
+            inline=True,
+        )
+        
+        source_info = (
+            f"🤖 AI Actions: {stats.ai_actions}\n"
+            f"⚡ AutoMod: {stats.automod_actions}\n"
+            f"👤 Manual: {stats.total_actions - stats.ai_actions - stats.automod_actions}"
+        )
+        embed.add_field(
+            name="Sources",
+            value=source_info,
+            inline=True,
+        )
+        
+        # Top moderators
+        if stats.most_active_moderators:
+            top_mods = sorted(
+                stats.most_active_moderators.items(),
+                key=lambda x: x[1],
+                reverse=True,
+            )[:5]
+            mods_text = "\n".join([f"<@{uid}>: {count}" for uid, count in top_mods])
+            embed.add_field(
+                name="Top Moderators",
+                value=mods_text or "None",
+                inline=False,
+            )
+        
+        return embed
+
+
+# ========= SUBSYSTEM INITIALIZATION =========
+# All subsystems are initialized in the extended __init__ below
+
+
+# Extend the AIModeration class with new commands
+_orig_init = AIModeration.__init__
+
+def _new_init(self, bot: commands.Bot):
+    _orig_init(self, bot)
+    # Add subsystems - use integration wrappers for AutoMod and AntiRaid
+    self.automod_integration = AutoModIntegration(bot)
+    self.antiraid_integration = AntiRaidIntegration(bot)
+    self.content_analyzer = ContentAnalyzer(self.ai.client if hasattr(self, 'ai') else None)
+    self.risk_scorer = RiskScorer(bot)
+    self.scheduler = ActionScheduler(bot)
+    self.appeal_system = AppealSystem(bot, self.ai.client if hasattr(self, 'ai') else None)
+    self.analytics = AnalyticsEngine(bot)
+    self.localization = LocalizationManager(bot)
+    self.macro_engine = MacroEngine(bot)
+    self.audit_logger = EnhancedAuditLogger(bot)
+    self.scheduler.start()
+
+AIModeration.__init__ = _new_init
+
+
+# ========= NEW SLASH COMMANDS =========
+
+@app_commands.command(name="riskcheck", description="Check a user's risk score")
+@app_commands.describe(user="The user to check")
+async def riskcheck(interaction: discord.Interaction, user: discord.Member):
+    """Check a user's risk profile."""
+    if not interaction.guild:
+        return await interaction.response.send_message("Use this in a server.", ephemeral=True)
+    
+    cog: AIModeration = interaction.client.get_cog("AIModeration")
+    if not cog:
+        return await interaction.response.send_message("AI Moderation not loaded.", ephemeral=True)
+    
+    profile = await cog.risk_scorer.get_profile(user.id, interaction.guild.id)
+    recommendations = await cog.risk_scorer.get_recommendations(profile)
+    
+    embed = discord.Embed(
+        title=f"🔍 Risk Profile: {user}",
+        color=discord.Color.orange() if profile.risk_score > 30 else discord.Color.green(),
+    )
+    embed.add_field(name="Risk Score", value=f"{profile.risk_score:.1f}/100", inline=True)
+    embed.add_field(name="Risk Level", value=profile.risk_level, inline=True)
+    embed.add_field(name="Warnings", value=str(profile.warning_count), inline=True)
+    embed.add_field(name="Timeouts", value=str(profile.timeout_count), inline=True)
+    embed.add_field(name="Kicks", value=str(profile.kick_count), inline=True)
+    embed.add_field(name="AutoMod Flags", value=str(profile.automod_flags), inline=True)
+    
+    if recommendations:
+        embed.add_field(
+            name="Recommendations",
+            value="\n".join(f"• {r}" for r in recommendations),
+            inline=False,
+        )
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+@app_commands.command(name="modstats", description="View moderation statistics")
+@app_commands.describe(hours="Time period in hours (default: 24)")
+async def modstats(interaction: discord.Interaction, hours: int = 24):
+    """View moderation statistics."""
+    if not interaction.guild:
+        return await interaction.response.send_message("Use this in a server.", ephemeral=True)
+    
+    cog: AIModeration = interaction.client.get_cog("AIModeration")
+    if not cog:
+        return await interaction.response.send_message("AI Moderation not loaded.", ephemeral=True)
+    
+    stats = cog.analytics.get_stats(interaction.guild.id, hours)
+    embed = cog.analytics.generate_report_embed(stats)
+    
+    await interaction.response.send_message(embed=embed)
+
+
+@app_commands.command(name="lockdown", description="Enable/disable server lockdown")
+@app_commands.describe(enable="Enable or disable lockdown")
+async def lockdown(interaction: discord.Interaction, enable: bool):
+    """Toggle server lockdown mode."""
+    if not interaction.guild:
+        return await interaction.response.send_message("Use this in a server.", ephemeral=True)
+    
+    if not interaction.user.guild_permissions.administrator:
+        return await interaction.response.send_message("Admin only.", ephemeral=True)
+    
+    cog: AIModeration = interaction.client.get_cog("AIModeration")
+    if not cog:
+        return await interaction.response.send_message("AI Moderation not loaded.", ephemeral=True)
+    
+    if enable:
+        success = await cog.antiraid_integration.trigger_lockdown(interaction.guild, "Manual lockdown")
+        msg = "🔒 Server is now in lockdown mode." if success else "Lockdown failed - AntiRaid cog may not be loaded."
+    else:
+        # Disabling lockdown - this would need to be added to the AntiRaid integration
+        # For now, just inform the user to use the AntiRaid cog directly
+        msg = "🔓 To disable lockdown, use the AntiRaid cog commands directly."
+    
+    await interaction.response.send_message(msg)
+
+
+@app_commands.command(name="schedule", description="Schedule a delayed moderation action")
+@app_commands.describe(
+    action="Action to schedule",
+    user="Target user",
+    delay="Delay in minutes",
+    reason="Reason for the action",
+)
+async def schedule_action(
+    interaction: discord.Interaction,
+    action: Literal["timeout", "untimeout", "kick", "ban", "unban"],
+    user: discord.Member,
+    delay: int,
+    reason: str = "No reason provided",
+):
+    """Schedule a delayed moderation action."""
+    if not interaction.guild:
+        return await interaction.response.send_message("Use this in a server.", ephemeral=True)
+    
+    cog: AIModeration = interaction.client.get_cog("AIModeration")
+    if not cog:
+        return await interaction.response.send_message("AI Moderation not loaded.", ephemeral=True)
+    
+    scheduled = await cog.scheduler.schedule(
+        guild_id=interaction.guild.id,
+        user_id=user.id,
+        action_type=action,
+        delay_seconds=delay * 60,
+        created_by=interaction.user.id,
+        reason=reason,
+    )
+    
+    embed = discord.Embed(
+        title="⏰ Action Scheduled",
+        description=f"**Action:** {action}\n**Target:** {user.mention}\n**In:** {delay} minutes\n**ID:** `{scheduled.id}`",
+        color=discord.Color.blue(),
+    )
+    
+    await interaction.response.send_message(embed=embed)
+
+
+@app_commands.command(name="analyze", description="AI analysis of a message or user")
+@app_commands.describe(content="Message content or user mention to analyze")
+async def analyze_content(interaction: discord.Interaction, content: str):
+    """Analyze content using AI."""
+    if not interaction.guild:
+        return await interaction.response.send_message("Use this in a server.", ephemeral=True)
+    
+    cog: AIModeration = interaction.client.get_cog("AIModeration")
+    if not cog:
+        return await interaction.response.send_message("AI Moderation not loaded.", ephemeral=True)
+    
+    await interaction.response.defer(ephemeral=True)
+    
+    result = await cog.content_analyzer.analyze(
+        content=content,
+        author=str(interaction.user),
+    )
+    
+    if "error" in result:
+        return await interaction.followup.send(f"Analysis failed: {result['error']}")
+    
+    embed = discord.Embed(
+        title="🔬 Content Analysis",
+        color=discord.Color.red() if result.get("toxicity_score", 0) > 0.5 else discord.Color.green(),
+    )
+    embed.add_field(name="Toxicity", value=f"{result.get('toxicity_score', 0):.0%}", inline=True)
+    embed.add_field(name="Sentiment", value=result.get("sentiment", "unknown"), inline=True)
+    embed.add_field(name="Intent", value=result.get("intent", "unknown"), inline=True)
+    embed.add_field(name="Language", value=result.get("language", "unknown"), inline=True)
+    embed.add_field(name="Contains PII", value="Yes" if result.get("contains_pii") else "No", inline=True)
+    embed.add_field(name="Summary", value=result.get("summary", "N/A"), inline=False)
+    
+    await interaction.followup.send(embed=embed)
+
+
+# Register new commands
 async def setup(bot: commands.Bot):
-    await bot.add_cog(AIModeration(bot))
+    cog = AIModeration(bot)
+    await bot.add_cog(cog)
+    
+    # Add new commands
+    bot.tree.add_command(riskcheck)
+    bot.tree.add_command(modstats)
+    bot.tree.add_command(lockdown)
+    bot.tree.add_command(schedule_action)
+    bot.tree.add_command(analyze_content)
+
+
+# ========= MULTI-LANGUAGE SUPPORT =========
+
+class LanguageStrings:
+    """Multi-language string definitions."""
+    
+    STRINGS = {
+        "en": {
+            "warn_dm": "You have been warned in **{guild}**.\nReason: {reason}",
+            "timeout_dm": "You have been timed out in **{guild}** for {duration}.\nReason: {reason}",
+            "kick_dm": "You have been kicked from **{guild}**.\nReason: {reason}",
+            "ban_dm": "You have been banned from **{guild}**.\nReason: {reason}",
+            "appeal_info": "To appeal, contact a moderator.",
+            "action_success": "Action completed successfully.",
+            "action_failed": "Action failed: {error}",
+            "no_permission": "You don't have permission to do that.",
+            "target_not_found": "Target user not found.",
+            "hierarchy_error": "You cannot moderate this user due to role hierarchy.",
+            "rate_limited": "You're doing that too fast. Wait {seconds} seconds.",
+            "ai_thinking": "Let me think about that...",
+            "ai_error": "I had trouble processing that request.",
+        },
+        "es": {
+            "warn_dm": "Has recibido una advertencia en **{guild}**.\nRazón: {reason}",
+            "timeout_dm": "Has sido silenciado en **{guild}** por {duration}.\nRazón: {reason}",
+            "kick_dm": "Has sido expulsado de **{guild}**.\nRazón: {reason}",
+            "ban_dm": "Has sido baneado de **{guild}**.\nRazón: {reason}",
+            "appeal_info": "Para apelar, contacta a un moderador.",
+            "action_success": "Acción completada exitosamente.",
+            "action_failed": "Acción fallida: {error}",
+            "no_permission": "No tienes permiso para hacer eso.",
+            "target_not_found": "Usuario objetivo no encontrado.",
+            "hierarchy_error": "No puedes moderar a este usuario por jerarquía de roles.",
+            "rate_limited": "Estás haciendo eso muy rápido. Espera {seconds} segundos.",
+            "ai_thinking": "Déjame pensar en eso...",
+            "ai_error": "Tuve problemas procesando esa solicitud.",
+        },
+        "pt": {
+            "warn_dm": "Você recebeu um aviso em **{guild}**.\nMotivo: {reason}",
+            "timeout_dm": "Você foi silenciado em **{guild}** por {duration}.\nMotivo: {reason}",
+            "kick_dm": "Você foi expulso de **{guild}**.\nMotivo: {reason}",
+            "ban_dm": "Você foi banido de **{guild}**.\nMotivo: {reason}",
+            "appeal_info": "Para apelar, contate um moderador.",
+            "action_success": "Ação concluída com sucesso.",
+            "action_failed": "Ação falhou: {error}",
+            "no_permission": "Você não tem permissão para isso.",
+            "target_not_found": "Usuário alvo não encontrado.",
+            "hierarchy_error": "Você não pode moderar este usuário devido à hierarquia de cargos.",
+            "rate_limited": "Você está fazendo isso muito rápido. Aguarde {seconds} segundos.",
+            "ai_thinking": "Deixe-me pensar nisso...",
+            "ai_error": "Tive problemas ao processar essa solicitação.",
+        },
+        "de": {
+            "warn_dm": "Du wurdest in **{guild}** verwarnt.\nGrund: {reason}",
+            "timeout_dm": "Du wurdest in **{guild}** für {duration} stummgeschaltet.\nGrund: {reason}",
+            "kick_dm": "Du wurdest aus **{guild}** gekickt.\nGrund: {reason}",
+            "ban_dm": "Du wurdest aus **{guild}** gebannt.\nGrund: {reason}",
+            "appeal_info": "Um Einspruch einzulegen, kontaktiere einen Moderator.",
+            "action_success": "Aktion erfolgreich abgeschlossen.",
+            "action_failed": "Aktion fehlgeschlagen: {error}",
+            "no_permission": "Du hast keine Berechtigung dafür.",
+            "target_not_found": "Zielbenutzer nicht gefunden.",
+            "hierarchy_error": "Du kannst diesen Benutzer aufgrund der Rollenhierarchie nicht moderieren.",
+            "rate_limited": "Du machst das zu schnell. Warte {seconds} Sekunden.",
+            "ai_thinking": "Lass mich darüber nachdenken...",
+            "ai_error": "Ich hatte Probleme bei der Verarbeitung dieser Anfrage.",
+        },
+        "fr": {
+            "warn_dm": "Vous avez reçu un avertissement dans **{guild}**.\nRaison: {reason}",
+            "timeout_dm": "Vous avez été mis en sourdine dans **{guild}** pour {duration}.\nRaison: {reason}",
+            "kick_dm": "Vous avez été expulsé de **{guild}**.\nRaison: {reason}",
+            "ban_dm": "Vous avez été banni de **{guild}**.\nRaison: {reason}",
+            "appeal_info": "Pour faire appel, contactez un modérateur.",
+            "action_success": "Action terminée avec succès.",
+            "action_failed": "Action échouée: {error}",
+            "no_permission": "Vous n'avez pas la permission de faire cela.",
+            "target_not_found": "Utilisateur cible non trouvé.",
+            "hierarchy_error": "Vous ne pouvez pas modérer cet utilisateur en raison de la hiérarchie des rôles.",
+            "rate_limited": "Vous faites cela trop vite. Attendez {seconds} secondes.",
+            "ai_thinking": "Laisse-moi réfléchir à ça...",
+            "ai_error": "J'ai eu du mal à traiter cette demande.",
+        },
+    }
+    
+    @classmethod
+    def get(cls, lang: str, key: str, **kwargs) -> str:
+        """Get a localized string."""
+        strings = cls.STRINGS.get(lang, cls.STRINGS["en"])
+        template = strings.get(key, cls.STRINGS["en"].get(key, key))
+        try:
+            return template.format(**kwargs)
+        except KeyError:
+            return template
+
+
+class LocalizationManager:
+    """Manages per-guild language settings."""
+    
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self._guild_langs: Dict[int, str] = {}
+    
+    async def get_lang(self, guild_id: int) -> str:
+        """Get the language for a guild."""
+        if guild_id not in self._guild_langs:
+            try:
+                settings = await self.bot.db.get_settings(guild_id)
+                self._guild_langs[guild_id] = settings.get("aimod_language", "en")
+            except Exception:
+                self._guild_langs[guild_id] = "en"
+        return self._guild_langs[guild_id]
+    
+    async def set_lang(self, guild_id: int, lang: str) -> bool:
+        """Set the language for a guild."""
+        if lang not in LanguageStrings.STRINGS:
+            return False
+        
+        self._guild_langs[guild_id] = lang
+        try:
+            await self.bot.db.set_setting(guild_id, "aimod_language", lang)
+        except Exception:
+            pass
+        return True
+    
+    async def localize(self, guild_id: int, key: str, **kwargs) -> str:
+        """Get a localized string for a guild."""
+        lang = await self.get_lang(guild_id)
+        return LanguageStrings.get(lang, key, **kwargs)
+
+
+# ========= CUSTOM ACTION MACROS =========
+
+@dataclass
+class ActionMacro:
+    """A custom action macro that combines multiple actions."""
+    id: str
+    guild_id: int
+    name: str
+    description: str
+    created_by: int
+    actions: List[Dict[str, Any]]  # List of action definitions
+    trigger_words: List[str] = field(default_factory=list)
+    cooldown_seconds: int = 0
+    last_used: Optional[datetime] = None
+    use_count: int = 0
+    
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "id": self.id,
+            "guild_id": self.guild_id,
+            "name": self.name,
+            "description": self.description,
+            "created_by": self.created_by,
+            "actions": self.actions,
+            "trigger_words": self.trigger_words,
+            "cooldown_seconds": self.cooldown_seconds,
+            "use_count": self.use_count,
+        }
+
+
+class MacroEngine:
+    """Manages and executes custom action macros."""
+    
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self._macros: Dict[str, ActionMacro] = {}
+        self._guild_macros: Dict[int, List[str]] = {}
+    
+    async def create_macro(
+        self,
+        guild_id: int,
+        name: str,
+        description: str,
+        actions: List[Dict[str, Any]],
+        created_by: int,
+        trigger_words: List[str] = None,
+    ) -> ActionMacro:
+        """Create a new action macro."""
+        import uuid
+        macro = ActionMacro(
+            id=str(uuid.uuid4())[:8],
+            guild_id=guild_id,
+            name=name,
+            description=description,
+            created_by=created_by,
+            actions=actions,
+            trigger_words=trigger_words or [],
+        )
+        
+        self._macros[macro.id] = macro
+        
+        if guild_id not in self._guild_macros:
+            self._guild_macros[guild_id] = []
+        self._guild_macros[guild_id].append(macro.id)
+        
+        return macro
+    
+    async def delete_macro(self, macro_id: str) -> bool:
+        """Delete a macro."""
+        if macro_id not in self._macros:
+            return False
+        
+        macro = self._macros[macro_id]
+        if macro.guild_id in self._guild_macros:
+            self._guild_macros[macro.guild_id].remove(macro_id)
+        del self._macros[macro_id]
+        return True
+    
+    def get_macro(self, macro_id: str) -> Optional[ActionMacro]:
+        """Get a macro by ID."""
+        return self._macros.get(macro_id)
+    
+    def list_macros(self, guild_id: int) -> List[ActionMacro]:
+        """List all macros for a guild."""
+        macro_ids = self._guild_macros.get(guild_id, [])
+        return [self._macros[mid] for mid in macro_ids if mid in self._macros]
+    
+    async def execute_macro(
+        self,
+        macro_id: str,
+        message: discord.Message,
+        target: discord.Member,
+        reason: str = "Macro execution",
+    ) -> Dict[str, Any]:
+        """Execute a macro's actions."""
+        macro = self.get_macro(macro_id)
+        if not macro:
+            return {"success": False, "error": "Macro not found"}
+        
+        # Check cooldown
+        if macro.cooldown_seconds > 0 and macro.last_used:
+            elapsed = (datetime.now(timezone.utc) - macro.last_used).total_seconds()
+            if elapsed < macro.cooldown_seconds:
+                return {"success": False, "error": f"Cooldown: {int(macro.cooldown_seconds - elapsed)}s remaining"}
+        
+        results = {"success": True, "actions_executed": 0, "actions_failed": 0}
+        
+        for action_def in macro.actions:
+            try:
+                action_type = action_def.get("type")
+                
+                if action_type == "warn":
+                    await self.bot.db.add_warning(
+                        message.guild.id,
+                        target.id,
+                        message.author.id,
+                        action_def.get("reason", reason),
+                    )
+                elif action_type == "timeout":
+                    duration = action_def.get("duration", 3600)
+                    until = datetime.now(timezone.utc) + timedelta(seconds=duration)
+                    await target.timeout(until, reason=f"[Macro] {reason}")
+                elif action_type == "kick":
+                    await target.kick(reason=f"[Macro] {reason}")
+                elif action_type == "ban":
+                    await message.guild.ban(target, reason=f"[Macro] {reason}")
+                elif action_type == "dm":
+                    try:
+                        await target.send(action_def.get("message", reason))
+                    except discord.Forbidden:
+                        pass
+                elif action_type == "reply":
+                    await message.reply(action_def.get("message", "Action executed."))
+                
+                results["actions_executed"] += 1
+                
+            except Exception as e:
+                logger.error(f"Macro action failed: {e}")
+                results["actions_failed"] += 1
+        
+        macro.last_used = datetime.now(timezone.utc)
+        macro.use_count += 1
+        
+        return results
+
+
+# ========= ENHANCED AUDIT LOGGING =========
+
+@dataclass
+class AuditLogEntry:
+    """An enhanced audit log entry."""
+    id: str
+    guild_id: int
+    action_type: str
+    actor_id: int
+    target_id: Optional[int]
+    reason: str
+    timestamp: datetime
+    source: str  # "manual", "ai", "automod", "scheduled", "macro"
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    
+    def to_embed(self) -> discord.Embed:
+        """Convert to a Discord embed."""
+        color_map = {
+            "warn": discord.Color.yellow(),
+            "timeout": discord.Color.orange(),
+            "kick": discord.Color.red(),
+            "ban": discord.Color.dark_red(),
+            "unban": discord.Color.green(),
+            "purge": discord.Color.blue(),
+        }
+        
+        embed = discord.Embed(
+            title=f"📋 {self.action_type.upper()}",
+            description=self.reason,
+            color=color_map.get(self.action_type.lower(), discord.Color.greyple()),
+            timestamp=self.timestamp,
+        )
+        
+        embed.add_field(name="Actor", value=f"<@{self.actor_id}>", inline=True)
+        if self.target_id:
+            embed.add_field(name="Target", value=f"<@{self.target_id}>", inline=True)
+        embed.add_field(name="Source", value=self.source.title(), inline=True)
+        
+        if self.metadata:
+            meta_str = "\n".join([f"**{k}:** {v}" for k, v in self.metadata.items()])
+            embed.add_field(name="Details", value=meta_str[:1024], inline=False)
+        
+        embed.set_footer(text=f"ID: {self.id}")
+        
+        return embed
+
+
+class EnhancedAuditLogger:
+    """Enhanced audit logging with search and export capabilities."""
+    
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self._entries: Dict[str, AuditLogEntry] = {}
+        self._guild_entries: Dict[int, List[str]] = {}
+    
+    async def log(
+        self,
+        guild_id: int,
+        action_type: str,
+        actor_id: int,
+        target_id: Optional[int] = None,
+        reason: str = "No reason",
+        source: str = "manual",
+        metadata: Dict[str, Any] = None,
+    ) -> AuditLogEntry:
+        """Create a new audit log entry."""
+        import uuid
+        entry = AuditLogEntry(
+            id=str(uuid.uuid4())[:12],
+            guild_id=guild_id,
+            action_type=action_type,
+            actor_id=actor_id,
+            target_id=target_id,
+            reason=reason,
+            timestamp=datetime.now(timezone.utc),
+            source=source,
+            metadata=metadata or {},
+        )
+        
+        self._entries[entry.id] = entry
+        
+        if guild_id not in self._guild_entries:
+            self._guild_entries[guild_id] = []
+        self._guild_entries[guild_id].append(entry.id)
+        
+        # Keep only last 1000 entries per guild
+        if len(self._guild_entries[guild_id]) > 1000:
+            old_id = self._guild_entries[guild_id].pop(0)
+            if old_id in self._entries:
+                del self._entries[old_id]
+        
+        # Try to send to log channel
+        await self._send_to_log_channel(entry)
+        
+        return entry
+    
+    async def _send_to_log_channel(self, entry: AuditLogEntry):
+        """Send an entry to the guild's log channel."""
+        try:
+            logging_cog = self.bot.get_cog("Logging")
+            if not logging_cog:
+                return
+            
+            guild = self.bot.get_guild(entry.guild_id)
+            if not guild:
+                return
+            
+            channel = await logging_cog.get_log_channel(guild, "automod")
+            if channel:
+                await logging_cog.safe_send_log(channel, entry.to_embed())
+        except Exception as e:
+            logger.error(f"Failed to send audit log: {e}")
+    
+    def search(
+        self,
+        guild_id: int,
+        action_type: Optional[str] = None,
+        actor_id: Optional[int] = None,
+        target_id: Optional[int] = None,
+        source: Optional[str] = None,
+        limit: int = 50,
+    ) -> List[AuditLogEntry]:
+        """Search audit log entries."""
+        entry_ids = self._guild_entries.get(guild_id, [])
+        results = []
+        
+        for eid in reversed(entry_ids):  # Most recent first
+            if len(results) >= limit:
+                break
+            
+            entry = self._entries.get(eid)
+            if not entry:
+                continue
+            
+            if action_type and entry.action_type.lower() != action_type.lower():
+                continue
+            if actor_id and entry.actor_id != actor_id:
+                continue
+            if target_id and entry.target_id != target_id:
+                continue
+            if source and entry.source.lower() != source.lower():
+                continue
+            
+            results.append(entry)
+        
+        return results
+    
+    def export_csv(self, guild_id: int, limit: int = 100) -> str:
+        """Export audit log to CSV format."""
+        entries = self.search(guild_id, limit=limit)
+        
+        lines = ["id,timestamp,action,actor_id,target_id,reason,source"]
+        for entry in entries:
+            reason_escaped = entry.reason.replace('"', '""')
+            lines.append(
+                f'{entry.id},{entry.timestamp.isoformat()},{entry.action_type},'
+                f'{entry.actor_id},{entry.target_id or ""},"{reason_escaped}",{entry.source}'
+            )
+        
+        return "\n".join(lines)
+
+
+# ========= ADDITIONAL SLASH COMMANDS =========
+
+@app_commands.command(name="setlang", description="Set the bot's language for this server")
+@app_commands.describe(language="Language code (en, es, pt, de, fr)")
+@app_commands.checks.has_permissions(administrator=True)
+async def set_language(interaction: discord.Interaction, language: str):
+    """Set the server's language."""
+    cog: AIModeration = interaction.client.get_cog("AIModeration")
+    if not cog or not hasattr(cog, "localization"):
+        return await interaction.response.send_message("Feature not available.", ephemeral=True)
+    
+    if language not in LanguageStrings.STRINGS:
+        langs = ", ".join(LanguageStrings.STRINGS.keys())
+        return await interaction.response.send_message(f"Available languages: {langs}", ephemeral=True)
+    
+    await cog.localization.set_lang(interaction.guild_id, language)
+    await interaction.response.send_message(f"Language set to: {language}")
+
+
+@app_commands.command(name="macro", description="Manage action macros")
+@app_commands.describe(action="Action to perform", name="Macro name")
+async def macro_command(
+    interaction: discord.Interaction,
+    action: Literal["list", "create", "delete", "run"],
+    name: Optional[str] = None,
+):
+    """Manage action macros."""
+    cog: AIModeration = interaction.client.get_cog("AIModeration")
+    if not cog or not hasattr(cog, "macro_engine"):
+        return await interaction.response.send_message("Feature not available.", ephemeral=True)
+    
+    if action == "list":
+        macros = cog.macro_engine.list_macros(interaction.guild_id)
+        if not macros:
+            return await interaction.response.send_message("No macros configured.", ephemeral=True)
+        
+        embed = discord.Embed(title="📜 Action Macros", color=discord.Color.blue())
+        for m in macros[:10]:
+            embed.add_field(
+                name=f"{m.name} (`{m.id}`)",
+                value=f"{m.description}\nUsed: {m.use_count} times",
+                inline=False,
+            )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+    
+    elif action == "delete" and name:
+        success = await cog.macro_engine.delete_macro(name)
+        msg = "Macro deleted." if success else "Macro not found."
+        await interaction.response.send_message(msg, ephemeral=True)
+    
+    else:
+        await interaction.response.send_message("Use /macro list, /macro delete <id>", ephemeral=True)
+
+
+@app_commands.command(name="auditlog", description="Search the moderation audit log")
+@app_commands.describe(
+    action_type="Filter by action type",
+    user="Filter by actor or target",
+    limit="Maximum results (default 10)",
+)
+async def audit_log_search(
+    interaction: discord.Interaction,
+    action_type: Optional[str] = None,
+    user: Optional[discord.Member] = None,
+    limit: int = 10,
+):
+    """Search the audit log."""
+    cog: AIModeration = interaction.client.get_cog("AIModeration")
+    if not cog or not hasattr(cog, "audit_logger"):
+        return await interaction.response.send_message("Feature not available.", ephemeral=True)
+    
+    entries = cog.audit_logger.search(
+        guild_id=interaction.guild_id,
+        action_type=action_type,
+        target_id=user.id if user else None,
+        limit=min(limit, 25),
+    )
+    
+    if not entries:
+        return await interaction.response.send_message("No entries found.", ephemeral=True)
+    
+    embed = discord.Embed(
+        title="📋 Audit Log Results",
+        description=f"Found {len(entries)} entries",
+        color=discord.Color.blue(),
+    )
+    
+    for entry in entries[:10]:
+        embed.add_field(
+            name=f"{entry.action_type.upper()} - {entry.timestamp.strftime('%m/%d %H:%M')}",
+            value=f"Actor: <@{entry.actor_id}> | Target: <@{entry.target_id}>\n{entry.reason[:100]}",
+            inline=False,
+        )
+    
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+# These features are already initialized in _new_init above
+
+
+# Register additional commands in setup
+_orig_setup = setup
+
+async def extended_setup(bot: commands.Bot):
+    await _orig_setup(bot)
+    bot.tree.add_command(set_language)
+    bot.tree.add_command(macro_command)
+    bot.tree.add_command(audit_log_search)
+
+setup = extended_setup

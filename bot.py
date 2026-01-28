@@ -257,7 +257,9 @@ class ModBot(commands.Bot):
             logger.warning("⚠️ Cogs directory not found, creating...")
             cogs_path.mkdir(exist_ok=True)
         
-        # Cog list
+        # Cog list - CORE MODERATION BOT ONLY
+        # AI cogs are in bot_ai.py
+        # Support cogs are in bot_support.py
         cogs = [
             "cogs.help",
             "cogs.setup",
@@ -265,25 +267,11 @@ class ModBot(commands.Bot):
             "cogs.moderation",
             "cogs.roles",
             "cogs.logging_cog",
-            "cogs.automod",
-            "cogs.tickets",
-            "cogs.reports",
-            "cogs.utility",
             "cogs.pin",
-            "cogs.voice",
-            "cogs.antiraid",
-            "cogs.admin",
-            "cogs.staff",
-            "cogs.court",
-            "cogs.aimoderation",
-            "cogs.modmail",
+            "cogs.reports",
             "cogs.blacklist",
             "cogs.forum_moderation",
-            "cogs.polls",
             "cogs.prefix_commands",
-            "cogs.voice_afk",
-            "cogs.settings",
-            "cogs.gelbooru_loop",
         ]
         
         loaded: list[str] = []

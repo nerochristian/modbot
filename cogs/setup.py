@@ -208,6 +208,13 @@ class Setup(commands.Cog):
                 "hoist": False,
                 "setting_key": "log_access_role",
             },
+            {
+                "name": "Whitelisted",
+                "color": discord.Color.gold(),
+                "permissions": discord.Permissions.none(),
+                "hoist": False,
+                "setting_key": "whitelisted_role",
+            },
         ]
 
         settings = await self.bot.db.get_settings(guild.id)
