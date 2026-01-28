@@ -2208,7 +2208,60 @@ class Moderation(commands.Cog):
         
         await ctx.reply(embed=embed)
 
+
     # ==================== TIMEOUT/MUTE COMMANDS ====================
+
+    @commands.command(name="mute", aliases=["timeout"], description="🔇 Timeout/mute a user")
+    @is_mod()
+    async def mute_prefix(self, ctx: commands.Context, user: discord.Member, duration: str = "1h", *, reason: str = "No reason provided"):
+        if is_bot_owner_id(user.id) and not is_bot_owner_id(ctx.author.id):
+            return await self._respond(ctx, embed=ModEmbed.error("Permission Denied", "You cannot timeout the bot owner."), ephemeral=True)
+        await self._mute_logic(ctx, user, duration, reason)
+
+    @app_commands.command(name="mute", description="Timeout/mute a user")
+    @app_commands.describe(user="User to mute", duration="Duration (e.g. 1h, 1d)", reason="Reason for mute")
+    @is_mod()
+    async def mute_slash(self, interaction: discord.Interaction, user: discord.Member, duration: str = "1h", reason: str = "No reason provided"):
+        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
+             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "You cannot timeout the bot owner."), ephemeral=True)
+        await self._mute_logic(interaction, user, duration, reason)
+    
+    @commands.command(name="timeout", description="🔇 Timeout/mute a user")
+    @is_mod()
+    async def timeout_prefix(self, ctx: commands.Context, user: discord.Member, duration: str = "1h", *, reason: str = "No reason provided"):
+        if is_bot_owner_id(user.id) and not is_bot_owner_id(ctx.author.id):
+            return await self._respond(ctx, embed=ModEmbed.error("Permission Denied", "You cannot timeout the bot owner."), ephemeral=True)
+        await self._mute_logic(ctx, user, duration, reason)
+
+    @app_commands.command(name="timeout", description="Timeout/mute a user")
+    @app_commands.describe(user="User to timeout", duration="Duration (e.g. 1h, 1d)", reason="Reason for timeout")
+    @is_mod()
+    async def timeout_slash(self, interaction: discord.Interaction, user: discord.Member, duration: str = "1h", reason: str = "No reason provided"):
+        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
+             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "You cannot timeout the bot owner."), ephemeral=True)
+        await self._mute_logic(interaction, user, duration, reason)
+
+    @commands.command(name="unmute", aliases=["untimeout"], description="🔊 Remove timeout from a user")
+    @is_mod()
+    async def unmute_prefix(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
+        await self._unmute_logic(ctx, user, reason)
+
+    @app_commands.command(name="unmute", description="Remove timeout from a user")
+    @app_commands.describe(user="User to unmute", reason="Reason for unmute")
+    @is_mod()
+    async def unmute_slash(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+        await self._unmute_logic(interaction, user, reason)
+
+    @commands.command(name="untimeout", description="🔊 Remove timeout from a user")
+    @is_mod()
+    async def untimeout_prefix(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
+        await self._unmute_logic(ctx, user, reason)
+
+    @app_commands.command(name="untimeout", description="Remove timeout from a user")
+    @app_commands.describe(user="User to untimeout", reason="Reason for untimeout")
+    @is_mod()
+    async def untimeout_slash(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+        await self._unmute_logic(interaction, user, reason)
 
 
 
