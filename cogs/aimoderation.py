@@ -152,12 +152,21 @@ class GroqClientWrapper:
 
     @staticmethod
     def _strip_code_fences(raw: str) -> str:
-        """Remove markdown code fences if present."""
+        """Remove markdown code fences and extract JSON object."""
         text = raw.strip()
+        
+        # Remove markdown code fences
         if text.startswith("```"):
             text = re.sub(r"^```[a-zA-Z0-9]*\s*", "", text)
         text = re.sub(r"\s*```$", "", text)
-        return text.strip()
+        text = text.strip()
+        
+        # Improved: Extract JSON object using regex to handle LLM preamble/postamble
+        match = re.search(r"(\{.*\})", text, re.DOTALL)
+        if match:
+            return match.group(1)
+        
+        return text
 
     # ========= ROUTER: decides tool_call / chat / error =========
 
@@ -554,6 +563,10 @@ class AIModeration(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.ai = GroqClientWrapper(bot)
+        
+        # Database safety check
+        if not hasattr(bot, "db"):
+            logger.warning("Bot.db is missing! AI Moderation database features will be unavailable.")
 
     # ========= UTILITY HELPERS =========
 
@@ -3151,7 +3164,7 @@ class EnhancedAuditLogger:
         return "\n".join(lines)
 
 
-# ========= ADDITIONAL SLASH COMMANDS =========
+# ========= ADDITIONAL SLASH COMMANDS (Standalone for tree registration) =========
 
 @app_commands.command(name="setlang", description="Set the bot's language for this server")
 @app_commands.describe(language="Language code (en, es, pt, de, fr)")
@@ -3248,16 +3261,17 @@ async def audit_log_search(
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-# These features are already initialized in _new_init above
+# ========= PROPER SETUP FUNCTION =========
 
-
-# Register additional commands in setup
-_orig_setup = setup
-
-async def extended_setup(bot: commands.Bot):
-    await _orig_setup(bot)
+async def setup(bot: commands.Bot):
+    """Load the AIModeration cog and register additional commands."""
+    # Add the main cog
+    await bot.add_cog(AIModeration(bot))
+    
+    # Register standalone slash commands
     bot.tree.add_command(set_language)
     bot.tree.add_command(macro_command)
     bot.tree.add_command(audit_log_search)
+    
+    logger.info("AIModeration cog loaded successfully")
 
-setup = extended_setup

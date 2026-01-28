@@ -209,11 +209,11 @@ class Setup(commands.Cog):
                 "setting_key": "log_access_role",
             },
             {
-                "name": "Whitelisted",
-                "color": discord.Color.gold(),
-                "permissions": discord.Permissions.none(),
-                "hoist": False,
-                "setting_key": "whitelisted_role",
+                  "name": "Whitelisted",
+                  "color": discord.Color.gold(),
+                  "permissions": discord.Permissions.none(),
+                  "hoist": False,
+                  "setting_key": "whitelisted_role",
             },
         ]
 

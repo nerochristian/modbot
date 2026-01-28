@@ -446,6 +446,34 @@ class Moderation(commands.Cog):
         except Exception as e:
             logger.error(f"Failed to initialize quarantine system: {e}")
 
+    async def _respond(
+        self,
+        source: Union[commands.Context, discord.Interaction],
+        content: str = None,
+        *,
+        embed: discord.Embed = None,
+        ephemeral: bool = False,
+        **kwargs,
+    ):
+        """
+        Helper to respond to either a Context or an Interaction.
+        
+        Handles:
+        - Context: Uses ctx.reply()
+        - Interaction (not responded): Uses response.send_message()
+        - Interaction (already responded/deferred): Uses followup.send()
+        """
+        if isinstance(source, discord.Interaction):
+            try:
+                if source.response.is_done():
+                    await source.followup.send(content=content, embed=embed, ephemeral=ephemeral, **kwargs)
+                else:
+                    await source.response.send_message(content=content, embed=embed, ephemeral=ephemeral, **kwargs)
+            except discord.InteractionResponded:
+                await source.followup.send(content=content, embed=embed, ephemeral=ephemeral, **kwargs)
+        else:
+            await source.reply(content=content, embed=embed, **kwargs)
+
 
 
     @tasks.loop(minutes=1)
@@ -1720,8 +1748,14 @@ class Moderation(commands.Cog):
         if not active:
              return await self._respond(source, embed=ModEmbed.error("Not Quarantined", "This user is not quarantined."), ephemeral=True)
 
-        # Restore roles
-        restored, failed = await self._restore_roles(user, active['roles'])
+        # Restore roles - FIX: access 'roles_backup' key and parse JSON
+        try:
+            role_ids = json.loads(active['roles_backup'])
+        except (json.JSONDecodeError, TypeError, KeyError):
+            role_ids = []
+            logger.error(f"Failed to decode roles for quarantine {active.get('id', 'unknown')}")
+        
+        restored, failed = await self._restore_roles(user, role_ids)
         
         # Remove quarantine role
         settings = await self.bot.db.get_settings(source.guild.id)
@@ -1977,11 +2011,25 @@ class Moderation(commands.Cog):
             return await self._respond(ctx, embed=ModEmbed.error("Permission Denied", "You cannot warn the bot owner."), ephemeral=True)
         await self._warn_logic(ctx, user, reason)
 
+    @app_commands.command(name="warn", description="Warn a user")
+    @app_commands.describe(user="User to warn", reason="Reason for warning")
+    @is_mod()
+    async def warn_slash(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
+             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "You cannot warn the bot owner."), ephemeral=True)
+        await self._warn_logic(interaction, user, reason)
+
     @commands.command(name="warnings", description="⚠️ View warnings for a user")
     @is_mod()
     async def mod_warnings(self, ctx: commands.Context, user: discord.Member):
         """View warnings for a user"""
         await self._warnings_logic(ctx, user)
+
+    @app_commands.command(name="warnings", description="View warnings for a user")
+    @app_commands.describe(user="User to view warnings for")
+    @is_mod()
+    async def warnings_slash(self, interaction: discord.Interaction, user: discord.Member):
+        await self._warnings_logic(interaction, user)
 
     @commands.command(name="delwarn", description="🗑️ Delete a warning")
     @is_mod()
@@ -1989,11 +2037,23 @@ class Moderation(commands.Cog):
         """Delete a specific warning by ID"""
         await self._delwarn_logic(ctx, warning_id)
 
+    @app_commands.command(name="delwarn", description="Delete a warning")
+    @app_commands.describe(warning_id="ID of the warning to delete")
+    @is_mod()
+    async def delwarn_slash(self, interaction: discord.Interaction, warning_id: int):
+        await self._delwarn_logic(interaction, warning_id)
+
     @commands.command(name="clearwarnings", description="🧹 Clear all warnings for a user")
     @is_mod()
     async def mod_clearwarnings(self, ctx: commands.Context, user: discord.Member, *, reason: str = "Cleared by moderator"):
         """Clear all warnings for a user"""
         await self._clearwarnings_logic(ctx, user, reason)
+
+    @app_commands.command(name="clearwarnings", description="Clear all warnings for a user")
+    @app_commands.describe(user="User to clear warnings for", reason="Reason for clearing")
+    @is_mod()
+    async def clearwarnings_slash(self, interaction: discord.Interaction, user: discord.Member, reason: str = "Cleared by moderator"):
+        await self._clearwarnings_logic(interaction, user, reason)
 
     @commands.command(name="kick", description="👢 Kick a user from the server")
     @is_mod()
@@ -2001,6 +2061,14 @@ class Moderation(commands.Cog):
         if is_bot_owner_id(user.id) and not is_bot_owner_id(ctx.author.id):
             return await self._respond(ctx, embed=ModEmbed.error("Permission Denied", "You cannot kick the bot owner."), ephemeral=True)
         await self._kick_logic(ctx, user, reason)
+
+    @app_commands.command(name="kick", description="Kick a user from the server")
+    @app_commands.describe(user="User to kick", reason="Reason for kick")
+    @is_mod()
+    async def kick_slash(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
+             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "You cannot kick the bot owner."), ephemeral=True)
+        await self._kick_logic(interaction, user, reason)
 
     @commands.command(name="ban", description="🔨 Permanently ban a user")
     @is_mod()
@@ -2030,12 +2098,28 @@ class Moderation(commands.Cog):
         # Most users just want to ban.
         await self._ban_logic(ctx, user, reason, delete_days=1)
 
+    @app_commands.command(name="ban", description="Permanently ban a user")
+    @app_commands.describe(user="User to ban", reason="Reason for ban", delete_days="Days of messages to delete (default 1)")
+    @is_mod()
+    async def ban_slash(self, interaction: discord.Interaction, user: discord.Member, delete_days: int = 1, reason: str = "No reason provided"):
+        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
+             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "You cannot ban the bot owner."), ephemeral=True)
+        await self._ban_logic(interaction, user, reason, delete_days=delete_days)
+
     @commands.command(name="tempban", description="⏱️ Temporarily ban a user")
     @is_mod()
     async def mod_tempban(self, ctx: commands.Context, user: discord.Member, duration: str = "1d", *, reason: str = "No reason provided"):
         if is_bot_owner_id(user.id) and not is_bot_owner_id(ctx.author.id):
             return await self._respond(ctx, embed=ModEmbed.error("Permission Denied", "You cannot ban the bot owner."), ephemeral=True)
         await self._tempban_logic(ctx, user, duration, reason)
+
+    @app_commands.command(name="tempban", description="Temporarily ban a user")
+    @app_commands.describe(user="User to tempban", duration="Duration (e.g. 1d, 7d)", reason="Reason for tempban")
+    @is_mod()
+    async def tempban_slash(self, interaction: discord.Interaction, user: discord.Member, duration: str = "1d", reason: str = "No reason provided"):
+        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
+             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "You cannot ban the bot owner."), ephemeral=True)
+        await self._tempban_logic(interaction, user, duration, reason)
 
     @commands.command(name="unban", description="🔓 Unban a user")
     @is_mod()
@@ -2046,6 +2130,16 @@ class Moderation(commands.Cog):
             return await self._respond(ctx, embed=ModEmbed.error("Invalid ID", "User ID must be a number."), ephemeral=True)
         await self._unban_logic(ctx, uid, reason)
 
+    @app_commands.command(name="unban", description="Unban a user")
+    @app_commands.describe(user_id="ID of the user to unban", reason="Reason for unban")
+    @is_mod()
+    async def unban_slash(self, interaction: discord.Interaction, user_id: str, reason: str = "No reason provided"):
+        try:
+            uid = int(user_id)
+        except ValueError:
+             return await self._respond(interaction, embed=ModEmbed.error("Invalid ID", "User ID must be a number."), ephemeral=True)
+        await self._unban_logic(interaction, uid, reason)
+
     @commands.command(name="softban", description="🧹 Ban and immediately unban to delete messages")
     @is_mod()
     async def mod_softban(self, ctx: commands.Context, user: discord.Member, delete_days: Optional[int] = 1, *, reason: str = "No reason provided"):
@@ -2054,6 +2148,16 @@ class Moderation(commands.Cog):
         if not await self._check_senior_mod(ctx):
             return await self._respond(ctx, embed=ModEmbed.error("Permission Denied", "Softban requires Senior Moderator permissions."), ephemeral=True)
         await self._softban_logic(ctx, user, reason, delete_days)
+
+    @app_commands.command(name="softban", description="Ban and immediately unban to delete messages")
+    @app_commands.describe(user="User to softban", reason="Reason for softban")
+    @is_mod()
+    async def softban_slash(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
+        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
+             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "You cannot softban the bot owner."), ephemeral=True)
+        if not await self._check_senior_mod(interaction):
+            return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "Softban requires Senior Moderator permissions."), ephemeral=True)
+        await self._softban_logic(interaction, user, reason)
 
     @commands.command(name="timeout", aliases=["mute"], description="🔇 Timeout/mute a user")
     @is_mod()
@@ -2071,6 +2175,12 @@ class Moderation(commands.Cog):
     @is_mod()
     async def mod_rename(self, ctx: commands.Context, user: discord.Member, *, nickname: Optional[str] = None):
         await self._rename_logic(ctx, user, nickname)
+
+    @app_commands.command(name="rename", description="Change a user's nickname")
+    @app_commands.describe(user="User to rename", nickname="New nickname (empty to reset)")
+    @is_mod()
+    async def rename_slash(self, interaction: discord.Interaction, user: discord.Member, nickname: Optional[str] = None):
+        await self._rename_logic(interaction, user, nickname)
 
     async def _check_senior_mod(self, source: discord.Interaction | commands.Context) -> bool:
         """Check if user has senior mod permissions."""
@@ -2091,52 +2201,59 @@ class Moderation(commands.Cog):
             return True
         return False
 
-    @commands.command(name="massban", description="🔨 Ban multiple users at once")
-    @is_admin()
-    async def massban(self, ctx: commands.Context, *, args: str):
-        """
-        Ban multiple users by ID
-        Usage: ,massban <id1> <id2> ... [reason]
-        """
-        await ctx.typing()
-        
-        parts = args.split()
+    async def _massban_logic(self, source, user_ids_str: str, reason: str):
+        if isinstance(source, discord.Interaction):
+            await source.response.defer()
+        else:
+            await source.typing()
+
+        parts = user_ids_str.split()
         user_ids = []
-        reason_parts = []
+        # If reason is mixed in args for prefix command, it's already handled by caller splitting logic? 
+        # Actually prefix command passed everything as 'args'.
+        # For slash command, we prompt for IDs string properly.
+        # But wait, original prefix logic tried to guess which parts were IDs and which were reason.
+        # So I'll keep that logic here or let caller handle it?
+        # Let's preserve the "smart" parsing if possible, or simplifying.
+        # Original: split args, if part.isdigit and len > 15 -> ID. Else -> part of reason.
         
-        # Simple parsing: grab all leading integers as IDs, rest is reason
-        # Or just try to parse every word as int. If valid int, treat as ID?
-        # Standard massban usually puts IDs then reason.
+        # If called from slash command, user_ids_str should ideally ONLY be IDs, and reason passed separately.
+        # If called from prefix, it's mixed.
+        # I'll adapt the logic to support both "mixed string" (from prefix) and "ids string" (from slash).
+        # Actually, if reason is passed separately (slash), we use it. If not, we derive it (prefix).
+        
+        parsed_ids = []
+        parsed_reason_parts = []
         
         for part in parts:
-            if part.isdigit() and len(part) > 15: # rudimentary ID check
-                user_ids.append(part)
+            if part.isdigit() and len(part) > 15:
+                parsed_ids.append(part)
             else:
-                reason_parts.append(part)
+                parsed_reason_parts.append(part)
         
-        reason = " ".join(reason_parts) if reason_parts else "Mass ban"
+        if reason == "Mass ban" and parsed_reason_parts:
+             reason = " ".join(parsed_reason_parts)
+        
+        # If slash command passed explicit reason, we prefer it over parsed parts? 
+        # Slash command usually separates them.
         
         banned = []
         failed = []
         
-        for uid in user_ids:
+        for uid in parsed_ids:
             try:
                 user_id = int(uid)
-                # fetch_user might not find it if not cached? No, fetch_user makes API call.
-                # But we can just ban by Object to save API calls if we trust ID.
-                # But standard behavior is fetch to get name.
                 try:
                     user = await self.bot.fetch_user(user_id)
                     user_str = f"{user} (`{user.id}`)"
                     ban_target = user
                 except discord.NotFound:
-                    # User not found, try banning by ID blindly
                     user_str = f"User {user_id}"
                     ban_target = discord.Object(id=user_id)
 
-                await ctx.guild.ban(
+                await source.guild.ban(
                     ban_target,
-                    reason=f"[MASSBAN] {ctx.author}: {reason}"
+                    reason=f"[MASSBAN] {source.user if isinstance(source, discord.Interaction) else source.author}: {reason}"
                 )
                 banned.append(user_str)
             except ValueError:
@@ -2170,25 +2287,34 @@ class Moderation(commands.Cog):
                 inline=False
             )
         
-        await ctx.reply(embed=embed)
-        await self.log_action(ctx.guild, embed)
+        await self._respond(source, embed=embed)
+        await self.log_action(source.guild, embed)
 
-    @commands.command(name="banlist", description="📋 View all banned users")
-    @is_mod()
-    async def banlist(self, ctx: commands.Context):
-        """Display list of banned users"""
+    @commands.command(name="massban", description="🔨 Ban multiple users at once")
+    @is_admin()
+    async def massban(self, ctx: commands.Context, *, args: str):
+        """
+        Ban multiple users by ID
+        Usage: ,massban <id1> <id2> ... [reason]
+        """
+        await self._massban_logic(ctx, args, "Mass ban")
+
+    @app_commands.command(name="massban", description="Ban multiple users (paste IDs separated by spaces)")
+    @app_commands.describe(user_ids="User IDs separated by spaces", reason="Reason for ban")
+    @is_admin()
+    async def massban_slash(self, interaction: discord.Interaction, user_ids: str, reason: str = "Mass ban"):
+        await self._massban_logic(interaction, user_ids, reason)
+
+    async def _banlist_logic(self, source):
+        # source: commands.Context or discord.Interaction
+        guild = source.guild
         try:
-            # ctx.guild.bans() is an async iterator in discord.py 2.0+
-            bans = [entry async for entry in ctx.guild.bans(limit=50)]
+            bans = [entry async for entry in guild.bans(limit=50)]
         except discord.Forbidden:
-            return await ctx.reply(
-                embed=ModEmbed.error("Permission Denied", "I don't have permission to view bans.")
-            )
+            return await self._respond(source, embed=ModEmbed.error("Permission Denied", "I don't have permission to view bans."))
         
         if not bans:
-            return await ctx.reply(
-                embed=ModEmbed.info("No Bans", "No users are currently banned.")
-            )
+            return await self._respond(source, embed=ModEmbed.info("No Bans", "No users are currently banned."))
         
         embed = discord.Embed(
             title=f"🔨 Ban List ({len(bans)} total)",
@@ -2206,7 +2332,18 @@ class Moderation(commands.Cog):
         if len(bans) > 20:
             embed.set_footer(text=f"Showing 20 of {len(bans)} bans")
         
-        await ctx.reply(embed=embed)
+        await self._respond(source, embed=embed)
+
+    @commands.command(name="banlist", description="📋 View all banned users")
+    @is_mod()
+    async def banlist(self, ctx: commands.Context):
+        """Display list of banned users"""
+        await self._banlist_logic(ctx)
+
+    @app_commands.command(name="banlist", description="View all banned users")
+    @is_mod()
+    async def banlist_slash(self, interaction: discord.Interaction):
+        await self._banlist_logic(interaction)
 
 
     # ==================== TIMEOUT/MUTE COMMANDS ====================
@@ -2277,6 +2414,13 @@ class Moderation(commands.Cog):
         target = channel or ctx.channel
         await self._lock_logic(ctx, target, reason)
 
+    @app_commands.command(name="lock", description="Lock a channel")
+    @app_commands.describe(channel="Channel to lock", reason="Reason for lock")
+    @is_mod()
+    async def lock_slash(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None, reason: str = "No reason provided"):
+        target = channel or interaction.channel
+        await self._lock_logic(interaction, target, reason)
+
     @commands.command(name="unlock", description="🔓 Unlock a channel")
     @is_mod()
     async def unlock(self, ctx: commands.Context, channel: Optional[discord.TextChannel] = None, *, reason: str = "No reason provided"):
@@ -2286,6 +2430,13 @@ class Moderation(commands.Cog):
         """
         target = channel or ctx.channel
         await self._unlock_logic(ctx, target, reason)
+
+    @app_commands.command(name="unlock", description="Unlock a channel")
+    @app_commands.describe(channel="Channel to unlock", reason="Reason for unlock")
+    @is_mod()
+    async def unlock_slash(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None, reason: str = "No reason provided"):
+        target = channel or interaction.channel
+        await self._unlock_logic(interaction, target, reason)
 
     @commands.command(name="slowmode", description="🐌 Set channel slowmode")
     @is_mod()
@@ -2305,9 +2456,74 @@ class Moderation(commands.Cog):
         
         await self._slowmode_logic(ctx, seconds, target)
 
+    @app_commands.command(name="slowmode", description="Set channel slowmode")
+    @app_commands.describe(duration="Slowmode duration (e.g. 5s, 1m, 0 to disable)", channel="Channel to set slowmode for")
+    @is_mod()
+    async def slowmode_slash(self, interaction: discord.Interaction, duration: str, channel: Optional[discord.TextChannel] = None):
+        target = channel or interaction.channel
+        seconds = 0
+        parsed = parse_time(duration)
+        if parsed:
+            seconds = int(parsed[0].total_seconds())
+        elif duration.isdigit():
+             seconds = int(duration)
+        await self._slowmode_logic(interaction, seconds, target)
+
     # ==================== CHANNEL MANAGEMENT ====================
     # NOTE: /lock, /unlock, /glock, /gunlock, /slowmode, /nuke removed - use /channel instead
 
+
+    async def _glock_logic(self, source, channel: discord.TextChannel = None, role: discord.Role = None, reason: str = "No reason provided"):
+        author_id = source.user.id if isinstance(source, discord.Interaction) else source.author.id
+        guild = source.guild
+        
+        settings = await self.bot.db.get_settings(guild.id)
+        configured_role_id = settings.get("glock_role_id") or settings.get("glock_role")
+        glock_role = (
+            role
+            or (guild.get_role(int(configured_role_id)) if configured_role_id else None)
+            or discord.utils.get(guild.roles, name="Glock")
+        )
+        if glock_role is None:
+            return await self._respond(source,
+                embed=ModEmbed.error(
+                    "Missing Role",
+                    "No glock role is configured for this server. Create a role named `Glock`, or pass `role:`.",
+                ), ephemeral=True
+            )
+
+        if role is None and (not configured_role_id) and glock_role is not None:
+            settings["glock_role_id"] = glock_role.id
+            try:
+                await self.bot.db.update_settings(guild.id, settings)
+            except Exception:
+                pass
+
+        try:
+            target = channel or (source.channel if isinstance(source, discord.Interaction) else source.channel)
+            author_name = source.user if isinstance(source, discord.Interaction) else source.author
+            
+            await target.set_permissions(
+                guild.default_role,
+                send_messages=False,
+                send_messages_in_threads=False,
+                reason=f"[GLOCK] {author_name}: {reason}",
+            )
+            await target.set_permissions(
+                glock_role,
+                send_messages=True,
+                send_messages_in_threads=True,
+                reason=f"[GLOCK] {author_name}: {reason}",
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            return await self._respond(source, embed=ModEmbed.error("Failed", "I couldn't edit permissions for that channel."), ephemeral=True)
+
+        return await self._respond(source,
+            embed=ModEmbed.success(
+                "Glocked",
+                f"{target.mention} is now restricted to {glock_role.mention}.",
+            )
+        )
 
     @commands.command(name="glock", description="🔒 Only the Glock role can talk in the channel")
     @is_mod()
@@ -2316,61 +2532,62 @@ class Moderation(commands.Cog):
         Restrict chatting so only members with the Glock role can send messages.
         Usage: ,glock [channel] [role] [reason]
         """
-        interaction = ctx # Shim for logic reuse ease, though we should really use ctx
-        
-        settings = await self.bot.db.get_settings(ctx.guild.id)
+        await self._glock_logic(ctx, channel, role, reason)
+
+    @app_commands.command(name="glock", description="Only the Glock role can talk in the channel")
+    @app_commands.describe(channel="Channel to glock", role="Role to allow (optional, defaults to configured/Glock)", reason="Reason for glock")
+    @is_mod()
+    async def glock_slash(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None, role: Optional[discord.Role] = None, reason: str = "No reason provided"):
+        await self._glock_logic(interaction, channel, role, reason)
+
+    async def _gunlock_logic(self, source, channel: discord.TextChannel = None, role: discord.Role = None, reason: str = "No reason provided"):
+        guild = source.guild
+        settings = await self.bot.db.get_settings(guild.id)
         configured_role_id = settings.get("glock_role_id") or settings.get("glock_role")
         glock_role = (
             role
-            or (ctx.guild.get_role(int(configured_role_id)) if configured_role_id else None)
-            or discord.utils.get(ctx.guild.roles, name="Glock")
+            or (guild.get_role(int(configured_role_id)) if configured_role_id else None)
+            or discord.utils.get(guild.roles, name="Glock")
         )
         if glock_role is None:
-            return await ctx.reply(
+             return await self._respond(source,
                 embed=ModEmbed.error(
                     "Missing Role",
-                    "No glock role is configured for this server. Create a role named `Glock`, or pass `role:`.",
-                )
+                    "No glock role is configured for this server.",
+                ), ephemeral=True
             )
 
-        if role is None and (not configured_role_id) and glock_role is not None:
-            settings["glock_role_id"] = glock_role.id
-            try:
-                await self.bot.db.update_settings(ctx.guild.id, settings)
-            except Exception:
-                pass
+        target = channel or (source.channel if isinstance(source, discord.Interaction) else source.channel)
+        author_name = source.user if isinstance(source, discord.Interaction) else source.author
 
-        async def _apply(ch: discord.TextChannel) -> bool:
-            try:
-                await ch.set_permissions(
-                    ctx.guild.default_role,
-                    send_messages=False,
-                    send_messages_in_threads=False,
-                    reason=f"[GLOCK] {ctx.author}: {reason}",
-                )
-                await ch.set_permissions(
-                    glock_role,
-                    send_messages=True,
-                    send_messages_in_threads=True,
-                    reason=f"[GLOCK] {ctx.author}: {reason}",
-                )
-                return True
-            except (discord.Forbidden, discord.HTTPException):
-                return False
+        try:
+            everyone_overwrite = target.overwrites_for(guild.default_role)
+            glock_overwrite = target.overwrites_for(glock_role)
 
-        target = channel or ctx.channel
-        
-        if not await _apply(target):
-            return await ctx.reply(
-                embed=ModEmbed.error("Failed", "I couldn't edit permissions for that channel.")
+            looks_like_glocked = (
+                everyone_overwrite.send_messages is False
+                and glock_overwrite.send_messages is True
             )
+            
+            if not looks_like_glocked:
+                 return await self._respond(source, embed=ModEmbed.info("Not Glocked", f"{target.mention} doesn't look glocked."), ephemeral=True)
 
-        return await ctx.reply(
-            embed=ModEmbed.success(
-                "Glocked",
-                f"{target.mention} is now restricted to {glock_role.mention}.",
+            await target.set_permissions(
+                guild.default_role,
+                send_messages=None,
+                send_messages_in_threads=None,
+                reason=f"[GUNLOCK] {author_name}: {reason}",
             )
-        )
+            await target.set_permissions(
+                glock_role,
+                send_messages=None,
+                send_messages_in_threads=None,
+                reason=f"[GUNLOCK] {author_name}: {reason}",
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            return await self._respond(source, embed=ModEmbed.error("Failed", "I couldn't edit permissions for that channel."), ephemeral=True)
+
+        return await self._respond(source, embed=ModEmbed.success("Gunlocked", f"{target.mention} is unlocked."))
 
     @commands.command(name="gunlock", description="🔓 Remove Glock-role-only channel restriction")
     @is_mod()
@@ -2379,62 +2596,13 @@ class Moderation(commands.Cog):
         Remove glock restrictions.
         Usage: ,gunlock [channel] [role] [reason]
         """
-        settings = await self.bot.db.get_settings(ctx.guild.id)
-        configured_role_id = settings.get("glock_role_id") or settings.get("glock_role")
-        glock_role = (
-            role
-            or (ctx.guild.get_role(int(configured_role_id)) if configured_role_id else None)
-            or discord.utils.get(ctx.guild.roles, name="Glock")
-        )
-        if glock_role is None:
-             return await ctx.reply(
-                embed=ModEmbed.error(
-                    "Missing Role",
-                    "No glock role is configured for this server.",
-                )
-            )
+        await self._gunlock_logic(ctx, channel, role, reason)
 
-        async def _revert(ch: discord.TextChannel) -> bool:
-            try:
-                everyone_overwrite = ch.overwrites_for(ctx.guild.default_role)
-                glock_overwrite = ch.overwrites_for(glock_role)
-
-                looks_like_glocked = (
-                    everyone_overwrite.send_messages is False
-                    and glock_overwrite.send_messages is True
-                )
-                # If not explicitly glocked, we can still try to reset if needed?
-                # But logic says return False if not.
-                if not looks_like_glocked:
-                    return False
-
-                await ch.set_permissions(
-                    ctx.guild.default_role,
-                    send_messages=None,
-                    send_messages_in_threads=None,
-                    reason=f"[GUNLOCK] {ctx.author}: {reason}",
-                )
-                await ch.set_permissions(
-                    glock_role,
-                    send_messages=None,
-                    send_messages_in_threads=None,
-                    reason=f"[GUNLOCK] {ctx.author}: {reason}",
-                )
-                return True
-            except (discord.Forbidden, discord.HTTPException):
-                return False
-
-        target = channel or ctx.channel
-        
-        reverted = await _revert(target)
-        if not reverted:
-            return await ctx.reply(
-                embed=ModEmbed.info("Not Glocked", f"{target.mention} doesn't look glocked.")
-            )
-
-        return await ctx.reply(
-            embed=ModEmbed.success("Gunlocked", f"{target.mention} is unlocked.")
-        )
+    @app_commands.command(name="gunlock", description="Remove Glock-role-only channel restriction")
+    @app_commands.describe(channel="Channel to gunlock", role="Role to revert (if custom)", reason="Reason for gunlock")
+    @is_mod()
+    async def gunlock_slash(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None, role: Optional[discord.Role] = None, reason: str = "No reason provided"):
+        await self._gunlock_logic(interaction, channel, role, reason)
 
 
 
@@ -2444,17 +2612,35 @@ class Moderation(commands.Cog):
         """Lock all text channels"""
         await self._lockdown_logic(ctx, reason)
 
+    @app_commands.command(name="lockdown", description="Lock all text channels")
+    @app_commands.describe(reason="Reason for lockdown")
+    @is_admin()
+    async def lockdown_slash(self, interaction: discord.Interaction, reason: str = "Server lockdown"):
+        await self._lockdown_logic(interaction, reason)
+
     @commands.command(name="unlockdown")
     @is_admin()
     async def unlockdown(self, ctx: commands.Context, *, reason: str = "Lockdown lifted"):
         """Unlock all text channels"""
         await self._unlockdown_logic(ctx, reason)
 
+    @app_commands.command(name="unlockdown", description="Unlock all text channels")
+    @app_commands.describe(reason="Reason for lifting lockdown")
+    @is_admin()
+    async def unlockdown_slash(self, interaction: discord.Interaction, reason: str = "Lockdown lifted"):
+        await self._unlockdown_logic(interaction, reason)
+
     @commands.command(name="nuke")
     @is_admin()
     async def nuke(self, ctx: commands.Context, channel: Optional[discord.TextChannel] = None):
         """Clone and delete a channel"""
         await self._nuke_logic(ctx, channel)
+
+    @app_commands.command(name="nuke", description="Clone and delete a channel (clear all messages)")
+    @app_commands.describe(channel="Channel to nuke")
+    @is_admin()
+    async def nuke_slash(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None):
+        await self._nuke_logic(interaction, channel)
 
     # ==================== MESSAGE PURGE COMMANDS ====================
 
@@ -2466,11 +2652,25 @@ class Moderation(commands.Cog):
              return await ctx.send("Amount must be between 1 and 100.")
         await self._purge_logic(ctx, amount, user)
 
+    @app_commands.command(name="purge", description="Bulk delete messages")
+    @app_commands.describe(amount="Number of messages to delete (1-100)", user="Optional user to filter by")
+    @is_mod()
+    async def purge_slash(self, interaction: discord.Interaction, amount: int, user: Optional[discord.Member] = None):
+        if amount < 1 or amount > 100:
+             return await interaction.response.send_message("Amount must be between 1 and 100.", ephemeral=True)
+        await self._purge_logic(interaction, amount, user)
+
     @commands.command(name="purgebots")
     @is_mod()
     async def purgebots(self, ctx: commands.Context, amount: int = 100):
         """Delete messages from bots"""
         await self._purge_logic(ctx, amount, check=lambda m: m.author.bot)
+
+    @app_commands.command(name="purgebots", description="Delete messages from bots")
+    @app_commands.describe(amount="Number of messages to check (default 100)")
+    @is_mod()
+    async def purgebots_slash(self, interaction: discord.Interaction, amount: int = 100):
+        await self._purge_logic(interaction, amount, check=lambda m: m.author.bot)
 
     @commands.command(name="purgecontains")
     @is_mod()
@@ -2478,11 +2678,23 @@ class Moderation(commands.Cog):
         """Delete messages containing text"""
         await self._purge_logic(ctx, amount, check=lambda m: text.lower() in m.content.lower())
 
+    @app_commands.command(name="purgecontains", description="Delete messages containing text")
+    @app_commands.describe(text="Text to search for", amount="Number of messages to check")
+    @is_mod()
+    async def purgecontains_slash(self, interaction: discord.Interaction, text: str, amount: int = 100):
+        await self._purge_logic(interaction, amount, check=lambda m: text.lower() in m.content.lower())
+
     @commands.command(name="purgeembeds")
     @is_mod()
     async def purgeembeds(self, ctx: commands.Context, amount: int = 100):
         """Delete messages with embeds"""
         await self._purge_logic(ctx, amount, check=lambda m: len(m.embeds) > 0)
+
+    @app_commands.command(name="purgeembeds", description="Delete messages with embeds")
+    @app_commands.describe(amount="Number of messages to check")
+    @is_mod()
+    async def purgeembeds_slash(self, interaction: discord.Interaction, amount: int = 100):
+        await self._purge_logic(interaction, amount, check=lambda m: len(m.embeds) > 0)
 
     @commands.command(name="purgeimages")
     @is_mod()
@@ -2490,12 +2702,25 @@ class Moderation(commands.Cog):
         """Delete messages with attachments"""
         await self._purge_logic(ctx, amount, check=lambda m: len(m.attachments) > 0)
 
+    @app_commands.command(name="purgeimages", description="Delete messages with attachments")
+    @app_commands.describe(amount="Number of messages to check")
+    @is_mod()
+    async def purgeimages_slash(self, interaction: discord.Interaction, amount: int = 100):
+        await self._purge_logic(interaction, amount, check=lambda m: len(m.attachments) > 0)
+
     @commands.command(name="purgelinks")
     @is_mod()
     async def purgelinks(self, ctx: commands.Context, amount: int = 100):
         """Delete messages with links"""
         url_pattern = re.compile(r'https?://')
         await self._purge_logic(ctx, amount, check=lambda m: url_pattern.search(m.content))
+
+    @app_commands.command(name="purgelinks", description="Delete messages with links")
+    @app_commands.describe(amount="Number of messages to check")
+    @is_mod()
+    async def purgelinks_slash(self, interaction: discord.Interaction, amount: int = 100):
+        url_pattern = re.compile(r'https?://')
+        await self._purge_logic(interaction, amount, check=lambda m: url_pattern.search(m.content))
 
     # ==================== ROLE MANAGEMENT ====================
 
@@ -2582,40 +2807,41 @@ class Moderation(commands.Cog):
         return [app_commands.Choice(name=r.name, value=str(r.id)) for r in roles[:25]]
 
 
-    @commands.command(name="roleall", description="🏷️ Give a role to all members")
-    @is_admin()
-    async def roleall(self, ctx: commands.Context, *, role: discord.Role):
-        """
-        Give a role to all server members
-        Usage: ,roleall <role>
-        """
-        # Security checks
-        if role >= ctx.guild.me.top_role:
-            return await ctx.reply(embed=ModEmbed.error("Bot Error", "I cannot manage this role as it's higher than or equal to my highest role."))
+    async def _roleall_logic(self, source, role: discord.Role):
+        guild = source.guild
+        author = source.user if isinstance(source, discord.Interaction) else source.author
         
-        if role >= ctx.author.top_role and ctx.author.id != ctx.guild.owner_id and not is_bot_owner_id(ctx.author.id):
-            return await ctx.reply(embed=ModEmbed.error("Permission Denied", "You cannot assign a role higher than or equal to your highest role."))
+        # Security checks
+        if role >= guild.me.top_role:
+             return await self._respond(source, embed=ModEmbed.error("Bot Error", "I cannot manage this role as it's higher than or equal to my highest role."))
+        
+        if role >= author.top_role and author.id != guild.owner_id and not is_bot_owner_id(author.id):
+             return await self._respond(source, embed=ModEmbed.error("Permission Denied", "You cannot assign a role higher than or equal to your highest role."))
         
         if role.managed:
-            return await ctx.reply(embed=ModEmbed.error("Managed Role", "This role is managed by an integration and cannot be manually assigned."))
+             return await self._respond(source, embed=ModEmbed.error("Managed Role", "This role is managed by an integration and cannot be manually assigned."))
         
         if role.permissions.administrator or role.permissions.manage_guild or role.permissions.manage_roles or role.permissions.ban_members or role.permissions.kick_members:
-            return await ctx.reply(embed=ModEmbed.error("Dangerous Role", "You cannot mass-assign dangerous permissions."))
+             return await self._respond(source, embed=ModEmbed.error("Dangerous Role", "You cannot mass-assign dangerous permissions."))
         
-        await ctx.typing()
+        if isinstance(source, discord.Interaction):
+            await source.response.defer()
+        else:
+            await source.typing()
         
         success = []
         failed = []
         
-        for member in ctx.guild.members:
-            if is_bot_owner_id(member.id) and not is_bot_owner_id(ctx.author.id):
+        for member in guild.members:
+            if is_bot_owner_id(member.id) and not is_bot_owner_id(author.id):
                 continue
             if role in member.roles:
                 continue
             
             try:
-                await member.add_roles(role, reason=f"Mass role assignment by {ctx.author}")
+                await member.add_roles(role, reason=f"Mass role assignment by {author}")
                 success.append(member.mention)
+                await asyncio.sleep(1.0)  # Rate limit protection
             except (discord.Forbidden, discord.HTTPException):
                 failed.append(member.mention)
         
@@ -2629,22 +2855,37 @@ class Moderation(commands.Cog):
         embed.add_field(name="❌ Failed", value=f"**{len(failed)}** members", inline=True)
         embed.add_field(name="Role", value=role.mention, inline=False)
         
-        await ctx.reply(embed=embed)
+        await self._respond(source, embed=embed)
 
-    @commands.command(name="removeall", description="🗑️ Remove a role from all members")
+    @commands.command(name="roleall", description="🏷️ Give a role to all members")
     @is_admin()
-    async def removeall(self, ctx: commands.Context, *, role: discord.Role):
+    async def roleall(self, ctx: commands.Context, *, role: discord.Role):
         """
-        Remove a role from all members who have it
-        Usage: ,removeall <role>
+        Give a role to all server members
+        Usage: ,roleall <role>
         """
-        await ctx.typing()
+        await self._roleall_logic(ctx, role)
+
+    @app_commands.command(name="roleall", description="Give a role to all members")
+    @app_commands.describe(role="Role to assign")
+    @is_admin()
+    async def roleall_slash(self, interaction: discord.Interaction, role: discord.Role):
+        await self._roleall_logic(interaction, role)
+
+    async def _removeall_logic(self, source, role: discord.Role):
+        guild = source.guild
+        author = source.user if isinstance(source, discord.Interaction) else source.author
+        
+        if isinstance(source, discord.Interaction):
+            await source.response.defer()
+        else:
+            await source.typing()
         
         success = []
         failed = []
         
-        for member in ctx.guild.members:
-            if is_bot_owner_id(member.id) and not is_bot_owner_id(ctx.author.id):
+        for member in guild.members:
+            if is_bot_owner_id(member.id) and not is_bot_owner_id(author.id):
                 continue
             if role not in member.roles:
                 continue
@@ -2652,6 +2893,7 @@ class Moderation(commands.Cog):
             try:
                 await member.remove_roles(role)
                 success.append(member.mention)
+                await asyncio.sleep(1.0)  # Rate limit protection
             except (discord.Forbidden, discord.HTTPException):
                 failed.append(member.mention)
         
@@ -2665,9 +2907,44 @@ class Moderation(commands.Cog):
         embed.add_field(name="❌ Failed", value=f"**{len(failed)}** members", inline=True)
         embed.add_field(name="Role", value=role.mention, inline=False)
         
-        await ctx.reply(embed=embed)
+        await self._respond(source, embed=embed)
+
+    @commands.command(name="removeall", description="🗑️ Remove a role from all members")
+    @is_admin()
+    async def removeall(self, ctx: commands.Context, *, role: discord.Role):
+        """
+        Remove a role from all members who have it
+        Usage: ,removeall <role>
+        """
+        await self._removeall_logic(ctx, role)
+
+    @app_commands.command(name="removeall", description="Remove a role from all members")
+    @app_commands.describe(role="Role to remove")
+    @is_admin()
+    async def removeall_slash(self, interaction: discord.Interaction, role: discord.Role):
+        await self._removeall_logic(interaction, role)
 
     # ==================== UTILITY COMMANDS ====================
+
+    async def _setnick_logic(self, source, user: discord.Member, nickname: str = None):
+        author = source.user if isinstance(source, discord.Interaction) else source.author
+        can_mod, error = await self.can_moderate(source.guild.id, author, user)
+        if not can_mod:
+             return await self._respond(source, embed=ModEmbed.error("Cannot Change", error))
+        
+        old_nick = user.display_name
+        
+        try:
+            await user.edit(nick=nickname)
+        except discord.Forbidden:
+             return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to change nicknames."))
+        
+        new_nick = nickname or user.name
+        embed = ModEmbed.success(
+            "Nickname Changed",
+            f"**{old_nick}** → **{new_nick}**"
+        )
+        await self._respond(source, embed=embed)
 
     @commands.command(name="setnick", description="✏️ Change a user's nickname")
     @is_mod()
@@ -2676,42 +2953,30 @@ class Moderation(commands.Cog):
         Change or reset a user's nickname
         Usage: ,setnick <user> [nickname]
         """
-        can_mod, error = await self.can_moderate(ctx.guild.id, ctx.author, user)
-        if not can_mod:
-            return await ctx.reply(embed=ModEmbed.error("Cannot Change", error))
-        
-        old_nick = user.display_name
-        
-        try:
-            await user.edit(nick=nickname)
-        except discord.Forbidden:
-            return await ctx.reply(embed=ModEmbed.error("Failed", "I don't have permission to change nicknames."))
-        
-        new_nick = nickname or user.name
-        embed = ModEmbed.success(
-            "Nickname Changed",
-            f"**{old_nick}** → **{new_nick}**"
-        )
-        await ctx.reply(embed=embed)
+        await self._setnick_logic(ctx, user, nickname)
 
-    @commands.command(name="nicknameall", description="✏️ Change all members' nicknames")
-    @is_admin()
-    async def nicknameall(self, ctx: commands.Context, *, nickname: str):
-        """
-        Bulk change nicknames for all members
-        Usage: ,nicknameall <nickname_template>
-        """
-        await ctx.typing()
+    @app_commands.command(name="setnick", description="Change a user's nickname")
+    @app_commands.describe(user="User to change nickname", nickname="New nickname (empty to reset)")
+    @is_mod()
+    async def setnick_slash(self, interaction: discord.Interaction, user: discord.Member, nickname: Optional[str] = None):
+        await self._setnick_logic(interaction, user, nickname)
+
+    async def _nicknameall_logic(self, source, nickname_template: str):
+        guild = source.guild
+        if isinstance(source, discord.Interaction):
+            await source.response.defer()
+        else:
+            await source.typing()
         
         changed = []
         failed = []
         
-        for member in ctx.guild.members:
+        for member in guild.members:
             if member.bot:
                 continue
             
             try:
-                new_nick = nickname.replace('{user}', member.name)
+                new_nick = nickname_template.replace('{user}', member.name)
                 await member.edit(nick=new_nick)
                 changed.append(member.mention)
             except (discord.Forbidden, discord.HTTPException):
@@ -2726,21 +2991,34 @@ class Moderation(commands.Cog):
         embed.add_field(name="✅ Changed", value=f"**{len(changed)}** members", inline=True)
         embed.add_field(name="❌ Failed", value=f"**{len(failed)}** members", inline=True)
         
-        await ctx.reply(embed=embed)
+        await self._respond(source, embed=embed)
 
-    @commands.command(name="resetnicks", description="🔄 Reset all nicknames")
+    @commands.command(name="nicknameall", description="✏️ Change all members' nicknames")
     @is_admin()
-    async def resetnicks(self, ctx: commands.Context):
+    async def nicknameall(self, ctx: commands.Context, *, nickname: str):
         """
-        Reset all nicknames to default
-        Usage: ,resetnicks
+        Bulk change nicknames for all members
+        Usage: ,nicknameall <nickname_template>
         """
-        await ctx.typing()
+        await self._nicknameall_logic(ctx, nickname)
+
+    @app_commands.command(name="nicknameall", description="Change all members' nicknames")
+    @app_commands.describe(nickname="Nickname template (use {user} for username)")
+    @is_admin()
+    async def nicknameall_slash(self, interaction: discord.Interaction, nickname: str):
+        await self._nicknameall_logic(interaction, nickname)
+
+    async def _resetnicks_logic(self, source):
+        guild = source.guild
+        if isinstance(source, discord.Interaction):
+            await source.response.defer()
+        else:
+            await source.typing()
         
         reset = []
         failed = []
         
-        for member in ctx.guild.members:
+        for member in guild.members:
             if not member.nick:
                 continue
             
@@ -2759,7 +3037,21 @@ class Moderation(commands.Cog):
         embed.add_field(name="✅ Reset", value=f"**{len(reset)}** members", inline=True)
         embed.add_field(name="❌ Failed", value=f"**{len(failed)}** members", inline=True)
         
-        await ctx.reply(embed=embed)
+        await self._respond(source, embed=embed)
+
+    @commands.command(name="resetnicks", description="🔄 Reset all nicknames")
+    @is_admin()
+    async def resetnicks(self, ctx: commands.Context):
+        """
+        Reset all nicknames to default
+        Usage: ,resetnicks
+        """
+        await self._resetnicks_logic(ctx)
+
+    @app_commands.command(name="resetnicks", description="Reset all nicknames")
+    @is_admin()
+    async def resetnicks_slash(self, interaction: discord.Interaction):
+        await self._resetnicks_logic(interaction)
 
     @commands.command(name="quarantine")
     @is_senior_mod()
@@ -2770,6 +3062,12 @@ class Moderation(commands.Cog):
         """
         await self._quarantine_logic(ctx, user, duration, reason)
 
+    @app_commands.command(name="quarantine", description="Quarantine a user (remove all roles)")
+    @app_commands.describe(user="User to quarantine", duration="Duration (optional)", reason="Reason for quarantine")
+    @is_senior_mod()
+    async def quarantine_slash(self, interaction: discord.Interaction, user: discord.Member, duration: Optional[str] = None, reason: str = "No reason provided"):
+        await self._quarantine_logic(interaction, user, duration, reason)
+
     @commands.command(name="unquarantine")
     @is_mod()
     async def unquarantine(self, ctx: commands.Context, user: discord.Member, *, reason: str = "Quarantine lifted"):
@@ -2779,18 +3077,18 @@ class Moderation(commands.Cog):
         """
         await self._unquarantine_logic(ctx, user, reason)
 
-
-    @commands.command(name="inrole", description="👥 List members with a specific role")
+    @app_commands.command(name="unquarantine", description="Unquarantine a user")
+    @app_commands.describe(user="User to unquarantine", reason="Reason for lifting quarantine")
     @is_mod()
-    async def inrole(self, ctx: commands.Context, *, role: discord.Role):
-        """
-        Display all members with a specific role
-        Usage: ,inrole <role>
-        """
+    async def unquarantine_slash(self, interaction: discord.Interaction, user: discord.Member, reason: str = "Quarantine lifted"):
+        await self._unquarantine_logic(interaction, user, reason)
+
+
+    async def _inrole_logic(self, source, role: discord.Role):
         members = role.members
         
         if not members:
-            return await ctx.reply(
+            return await self._respond(source,
                 embed=ModEmbed.info("No Members", f"No one has the {role.mention} role.")
             )
         
@@ -2808,7 +3106,154 @@ class Moderation(commands.Cog):
         else:
             embed.set_footer(text=f"{len(members)} total members")
         
-        await ctx.reply(embed=embed)
+        await self._respond(source, embed=embed)
+
+    @commands.command(name="inrole", description="👥 List members with a specific role")
+    @is_mod()
+    async def inrole(self, ctx: commands.Context, *, role: discord.Role):
+        """
+        Display all members with a specific role
+        Usage: ,inrole <role>
+        """
+        await self._inrole_logic(ctx, role)
+
+    @app_commands.command(name="inrole", description="List members with a specific role")
+    @app_commands.describe(role="Role to list members for")
+    @is_mod()
+    async def inrole_slash(self, interaction: discord.Interaction, role: discord.Role):
+        await self._inrole_logic(interaction, role)
+
+    # ==================== WHITELIST SYSTEM ====================
+
+    async def _whitelist_logic(self, source, user: Union[discord.Member, discord.User]):
+        guild = source.guild
+        settings = await self.bot.db.get_settings(guild.id)
+        whitelisted_ids = settings.get("whitelisted_ids", [])
+        
+        if user.id not in whitelisted_ids:
+            whitelisted_ids.append(user.id)
+            settings["whitelisted_ids"] = whitelisted_ids
+            await self.bot.db.update_settings(guild.id, settings)
+        
+        # Assign role if configured and user is in guild
+        role_added = False
+        role_id = settings.get("whitelisted_role")
+        if role_id and isinstance(user, discord.Member):
+            role = guild.get_role(int(role_id))
+            if role:
+                try:
+                    await user.add_roles(role, reason="Whitelisted by admin")
+                    role_added = True
+                except Exception:
+                    pass
+        
+        msg = f"**{user}** added to whitelist."
+        if role_added:
+            msg += f" Assigned {role.mention}."
+        
+        await self._respond(source, embed=ModEmbed.success("Whitelisted", msg))
+
+    async def _unwhitelist_logic(self, source, user: Union[discord.Member, discord.User]):
+        guild = source.guild
+        settings = await self.bot.db.get_settings(guild.id)
+        whitelisted_ids = settings.get("whitelisted_ids", [])
+        
+        if user.id in whitelisted_ids:
+            whitelisted_ids.remove(user.id)
+            settings["whitelisted_ids"] = whitelisted_ids
+            await self.bot.db.update_settings(guild.id, settings)
+        
+        # Remove role if configured
+        role_removed = False
+        role_id = settings.get("whitelisted_role")
+        if role_id and isinstance(user, discord.Member):
+            role = guild.get_role(int(role_id))
+            if role:
+                try:
+                    await user.remove_roles(role, reason="Unwhitelisted by admin")
+                    role_removed = True
+                except Exception:
+                    pass
+
+        msg = f"**{user}** removed from whitelist."
+        if role_removed:
+            msg += f" Removed {role.mention}."
+        
+        await self._respond(source, embed=ModEmbed.success("Unwhitelisted", msg))
+
+    async def _toggle_whitelist_mode(self, source, enable: bool):
+        guild = source.guild
+        settings = await self.bot.db.get_settings(guild.id)
+        
+        if enable:
+            settings["whitelist_mode"] = True
+            await self.bot.db.update_settings(guild.id, settings)
+            
+            await self._respond(source, embed=ModEmbed.warning("Whitelist Enabled", "🔒 Whitelist mode enabled. Scanning for non-whitelisted members..."))
+            
+            whitelisted_ids = set(settings.get("whitelisted_ids", []))
+            kicked = 0
+            
+            for member in guild.members:
+                if member.bot: continue
+                if member.id not in whitelisted_ids and not member.guild_permissions.administrator:
+                    try:
+                        await member.kick(reason="Server lockdown: Not whitelisted")
+                        kicked += 1
+                    except Exception:
+                        pass
+            
+            await self._respond(source, embed=ModEmbed.success("Scan Complete", f"Kicked **{kicked}** non-whitelisted members."))
+        else:
+            settings["whitelist_mode"] = False
+            await self.bot.db.update_settings(guild.id, settings)
+            await self._respond(source, embed=ModEmbed.success("Whitelist Disabled", "🔓 Whitelist mode disabled. Regular joins allowed."))
+
+    @commands.command(name="whitelist")
+    @is_admin()
+    async def whitelist(self, ctx: commands.Context, user: Union[discord.Member, discord.User]):
+        """Add a user to the whitelist"""
+        await self._whitelist_logic(ctx, user)
+
+    @app_commands.command(name="whitelist", description="Add a user to the whitelist")
+    @app_commands.describe(user="User to whitelist")
+    @is_admin()
+    async def whitelist_slash(self, interaction: discord.Interaction, user: discord.User):
+        await self._whitelist_logic(interaction, user)
+
+    @commands.command(name="unwhitelist")
+    @is_admin()
+    async def unwhitelist(self, ctx: commands.Context, user: Union[discord.Member, discord.User]):
+        """Remove a user from the whitelist"""
+        await self._unwhitelist_logic(ctx, user)
+
+    @app_commands.command(name="unwhitelist", description="Remove a user from the whitelist")
+    @app_commands.describe(user="User to unwhitelist")
+    @is_admin()
+    async def unwhitelist_slash(self, interaction: discord.Interaction, user: discord.User):
+        await self._unwhitelist_logic(interaction, user)
+
+    @commands.command(name="whitelisted")
+    @is_admin()
+    async def whitelisted(self, ctx: commands.Context):
+        """Enable whitelist mode (lockdown)"""
+        await self._toggle_whitelist_mode(ctx, True)
+
+    @app_commands.command(name="whitelisted", description="Enable whitelist mode (lockdown)")
+    @is_admin()
+    async def whitelisted_slash(self, interaction: discord.Interaction):
+        await self._toggle_whitelist_mode(interaction, True)
+
+    @commands.command(name="unwhitelisted")
+    @is_admin()
+    async def unwhitelisted(self, ctx: commands.Context):
+        """Disable whitelist mode"""
+        await self._toggle_whitelist_mode(ctx, False)
+
+    @app_commands.command(name="unwhitelisted", description="Disable whitelist mode")
+    @is_admin()
+    async def unwhitelisted_slash(self, interaction: discord.Interaction):
+        await self._toggle_whitelist_mode(interaction, False)
 
     # ==================== EMOJI/STICKER MANAGEMENT ====================
 
@@ -3010,14 +3455,12 @@ class Moderation(commands.Cog):
 
     # ==================== MODERATION HISTORY ====================
 
-    @commands.command(name="case", description="📋 View a specific moderation case")
-    @is_mod()
-    async def case(self, ctx: commands.Context, case_number: int):
-        """Display information about a specific case"""
-        case = await self.bot.db.get_case(ctx.guild.id, case_number)
+    async def _case_logic(self, source, case_number: int):
+        guild_id = source.guild.id
+        case = await self.bot.db.get_case(guild_id, case_number)
         
         if not case:
-            return await ctx.reply(embed=ModEmbed.error("Not Found", f"Case #{case_number} does not exist."))
+            return await self._respond(source, embed=ModEmbed.error("Not Found", f"Case #{case_number} does not exist."))
         
         try:
             user = await self.bot.fetch_user(case['user_id'])
@@ -3039,34 +3482,54 @@ class Moderation(commands.Cog):
         if hasattr(user, 'display_avatar'):
             embed.set_thumbnail(url=user.display_avatar.url)
         
-        await ctx.reply(embed=embed)
+        await self._respond(source, embed=embed)
 
-    @commands.command(name="editcase", description="✏️ Edit a case's reason")
+    @commands.command(name="case", description="📋 View a specific moderation case")
     @is_mod()
-    async def editcase(self, ctx: commands.Context, case_number: int, *, reason: str):
-        """Update the reason for a moderation case"""
-        case = await self.bot.db.get_case(ctx.guild.id, case_number)
+    async def case(self, ctx: commands.Context, case_number: int):
+        """Display information about a specific case"""
+        await self._case_logic(ctx, case_number)
+
+    @app_commands.command(name="case", description="View a specific moderation case")
+    @app_commands.describe(case_number="Case number to lookup")
+    @is_mod()
+    async def case_slash(self, interaction: discord.Interaction, case_number: int):
+        await self._case_logic(interaction, case_number)
+
+    async def _editcase_logic(self, source, case_number: int, reason: str):
+        guild_id = source.guild.id
+        case = await self.bot.db.get_case(guild_id, case_number)
         
         if not case:
-            return await ctx.reply(embed=ModEmbed.error("Not Found", f"Case #{case_number} does not exist."))
+             return await self._respond(source, embed=ModEmbed.error("Not Found", f"Case #{case_number} does not exist."))
         
-        await self.bot.db.update_case(ctx.guild.id, case_number, reason)
+        await self.bot.db.update_case(guild_id, case_number, reason)
         
         embed = ModEmbed.success(
             "Case Updated",
             f"Case #{case_number} reason has been updated to:\n``````"
         )
         
-        await ctx.reply(embed=embed)
+        await self._respond(source, embed=embed)
 
-    @commands.command(name="history", description="📜 View a user's moderation history")
+    @commands.command(name="editcase", description="✏️ Edit a case's reason")
     @is_mod()
-    async def history(self, ctx: commands.Context, user: discord.Member):
-        """Display all moderation cases for a user"""
-        cases = await self.bot.db.get_user_cases(ctx.guild.id, user.id)
+    async def editcase(self, ctx: commands.Context, case_number: int, *, reason: str):
+        """Update the reason for a moderation case"""
+        await self._editcase_logic(ctx, case_number, reason)
+
+    @app_commands.command(name="editcase", description="Edit a case's reason")
+    @app_commands.describe(case_number="Case number to edit", reason="New reason")
+    @is_mod()
+    async def editcase_slash(self, interaction: discord.Interaction, case_number: int, reason: str):
+        await self._editcase_logic(interaction, case_number, reason)
+
+    async def _history_logic(self, source, user: discord.Member):
+        guild = source.guild
+        cases = await self.bot.db.get_user_cases(guild.id, user.id)
         
         if not cases:
-            return await ctx.reply(embed=ModEmbed.info("No History", f"{user.mention} has no moderation history."))
+             return await self._respond(source, embed=ModEmbed.info("No History", f"{user.mention} has no moderation history."))
         
         embed = discord.Embed(
             title=f"📜 Moderation History: {user.display_name}",
@@ -3077,7 +3540,7 @@ class Moderation(commands.Cog):
         embed.set_thumbnail(url=user.display_avatar.url)
         
         for case in cases[:10]:
-            moderator = ctx.guild.get_member(case['moderator_id'])
+            moderator = guild.get_member(case['moderator_id'])
             mod_display = moderator.display_name if moderator else f"ID: {case['moderator_id']}"
             
             embed.add_field(
@@ -3089,15 +3552,28 @@ class Moderation(commands.Cog):
         if len(cases) > 10:
             embed.set_footer(text=f"Showing 10 of {len(cases)} cases")
         
-        await ctx.reply(embed=embed)
+        await self._respond(source, embed=embed)
 
-    @commands.command(name="modlogs", description="📋 View comprehensive moderation logs")
+    @commands.command(name="history", description="📜 View a user's moderation history")
     @is_mod()
-    async def modlogs(self, ctx: commands.Context, user: discord.Member):
-        """View full moderation logs including warnings and notes"""
-        await ctx.typing()
+    async def history(self, ctx: commands.Context, user: discord.Member):
+        """Display all moderation cases for a user"""
+        await self._history_logic(ctx, user)
+
+    @app_commands.command(name="history", description="View a user's moderation history")
+    @app_commands.describe(user="User to view history for")
+    @is_mod()
+    async def history_slash(self, interaction: discord.Interaction, user: discord.Member):
+        await self._history_logic(interaction, user)
+
+    async def _modlogs_logic(self, source, user: discord.Member):
+        if isinstance(source, discord.Interaction):
+            await source.response.defer()
+        else:
+            await source.typing()
         
-        guild_id = ctx.guild.id
+        guild = source.guild
+        guild_id = guild.id
         
         # Fetch all data concurrently
         cases = await self.bot.db.get_user_cases(guild_id, user.id)
@@ -3140,7 +3616,7 @@ class Moderation(commands.Cog):
             })
         
         if not all_logs:
-            return await ctx.reply(embed=ModEmbed.info("No Logs", f"{user.mention} has no moderation logs."))
+             return await self._respond(source, embed=ModEmbed.info("No Logs", f"{user.mention} has no moderation logs."))
             
         # Sort by timestamp (newest first)
         def parse_ts(x):
@@ -3177,7 +3653,7 @@ class Moderation(commands.Cog):
             ts_obj = parse_ts(log)
             time_str = f"<t:{int(ts_obj.timestamp())}:R>" if ts_obj != datetime.min else "Unknown"
             
-            mod_user = ctx.guild.get_member(log['mod_id'])
+            mod_user = guild.get_member(log['mod_id'])
             mod_name = mod_user.name if mod_user else f"ID:{log['mod_id']}"
             
             # Format line
@@ -3197,29 +3673,49 @@ class Moderation(commands.Cog):
         if len(all_logs) > 15:
             embed.set_footer(text=f"Showing recent 15 of {len(all_logs)} entries")
         
-        await ctx.reply(embed=embed)
+        await self._respond(source, embed=embed)
 
-    @commands.command(name="note", description="📝 Add a note to a user")
+    @commands.command(name="modlogs", description="📋 View comprehensive moderation logs")
     @is_mod()
-    async def note(self, ctx: commands.Context, user: discord.Member, *, note: str):
-        """Add a moderator note to a user"""
-        await self.bot.db.add_note(ctx.guild.id, user.id, ctx.author.id, note)
+    async def modlogs(self, ctx: commands.Context, user: discord.Member):
+        """View full moderation logs including warnings and notes"""
+        await self._modlogs_logic(ctx, user)
+
+    @app_commands.command(name="modlogs", description="View comprehensive moderation logs")
+    @app_commands.describe(user="User to view logs for")
+    @is_mod()
+    async def modlogs_slash(self, interaction: discord.Interaction, user: discord.Member):
+        await self._modlogs_logic(interaction, user)
+
+    async def _note_logic(self, source, user: discord.Member, note: str):
+        author_id = source.user.id if isinstance(source, discord.Interaction) else source.author.id
+        await self.bot.db.add_note(source.guild.id, user.id, author_id, note)
         
         embed = ModEmbed.success(
             "Note Added",
             f"Added note to {user.mention}:\n``````"
         )
         
-        await ctx.reply(embed=embed)
+        await self._respond(source, embed=embed)
 
-    @commands.command(name="notes", description="📋 View notes for a user")
+    @commands.command(name="note", description="📝 Add a note to a user")
     @is_mod()
-    async def notes(self, ctx: commands.Context, user: discord.Member):
-        """Display all notes for a user"""
-        notes = await self.bot.db.get_notes(ctx.guild.id, user.id)
+    async def note(self, ctx: commands.Context, user: discord.Member, *, note: str):
+        """Add a moderator note to a user"""
+        await self._note_logic(ctx, user, note)
+
+    @app_commands.command(name="note", description="Add a note to a user")
+    @app_commands.describe(user="User to add note to", note="Note content")
+    @is_mod()
+    async def note_slash(self, interaction: discord.Interaction, user: discord.Member, note: str):
+        await self._note_logic(interaction, user, note)
+
+    async def _notes_logic(self, source, user: discord.Member):
+        guild = source.guild
+        notes = await self.bot.db.get_notes(guild.id, user.id)
         
         if not notes:
-            return await ctx.reply(embed=ModEmbed.info("No Notes", f"{user.mention} has no notes."))
+             return await self._respond(source, embed=ModEmbed.info("No Notes", f"{user.mention} has no notes."))
         
         embed = discord.Embed(
             title=f"📋 Notes: {user.display_name}",
@@ -3229,7 +3725,7 @@ class Moderation(commands.Cog):
         embed.set_thumbnail(url=user.display_avatar.url)
         
         for n in notes[:10]:
-            moderator = ctx.guild.get_member(n['moderator_id'])
+            moderator = guild.get_member(n['moderator_id'])
             mod_display = moderator.display_name if moderator else f"ID: {n['moderator_id']}"
             
             embed.add_field(
@@ -3241,16 +3737,26 @@ class Moderation(commands.Cog):
         if len(notes) > 10:
             embed.set_footer(text=f"Showing 10 of {len(notes)} notes")
         
-        await ctx.reply(embed=embed)
+        await self._respond(source, embed=embed)
+
+    @commands.command(name="notes", description="📋 View notes for a user")
+    @is_mod()
+    async def notes(self, ctx: commands.Context, user: discord.Member):
+        """Display all notes for a user"""
+        await self._notes_logic(ctx, user)
+
+    @app_commands.command(name="notes", description="View notes for a user")
+    @app_commands.describe(user="User to view notes for")
+    @is_mod()
+    async def notes_slash(self, interaction: discord.Interaction, user: discord.Member):
+        await self._notes_logic(interaction, user)
 
     # ==================== MODERATION STATS ====================
 
-    @commands.command(name="modstats", description="📊 View moderation statistics")
-    @is_mod()
-    async def modstats(self, ctx: commands.Context, moderator: Optional[discord.Member] = None):
-        """Display moderation statistics"""
+    async def _modstats_logic(self, source, moderator: Optional[discord.Member] = None):
+        guild = source.guild
         if moderator:
-            stats = await self.bot.db.get_moderator_stats(ctx.guild.id, moderator.id)
+            stats = await self.bot.db.get_moderator_stats(guild.id, moderator.id)
             
             embed = discord.Embed(
                 title=f"📊 Mod Stats: {moderator.display_name}",
@@ -3259,7 +3765,7 @@ class Moderation(commands.Cog):
             )
             embed.set_thumbnail(url=moderator.display_avatar.url)
         else:
-            stats = await self.bot.db.get_guild_mod_stats(ctx.guild.id)
+            stats = await self.bot.db.get_guild_mod_stats(guild.id)
             
             embed = discord.Embed(
                 title=f"📊 Server Moderation Stats",
@@ -3283,7 +3789,19 @@ class Moderation(commands.Cog):
         total_actions = sum(action_fields.values())
         embed.add_field(name="📈 Total Actions", value=str(total_actions), inline=False)
         
-        await ctx.reply(embed=embed)
+        await self._respond(source, embed=embed)
+
+    @commands.command(name="modstats", description="📊 View moderation statistics")
+    @is_mod()
+    async def modstats(self, ctx: commands.Context, moderator: Optional[discord.Member] = None):
+        """Display moderation statistics"""
+        await self._modstats_logic(ctx, moderator)
+
+    @app_commands.command(name="modstats", description="View moderation statistics")
+    @app_commands.describe(moderator="Moderator to view stats for (empty for server stats)")
+    @is_mod()
+    async def modstats_slash(self, interaction: discord.Interaction, moderator: Optional[discord.Member] = None):
+        await self._modstats_logic(interaction, moderator)
 
     # ==================== WELCOME SYSTEM ====================
 
@@ -3346,6 +3864,28 @@ class Moderation(commands.Cog):
     async def on_member_join(self, member: discord.Member):
         """Send a branded welcome card to the configured welcome channel."""
         settings = await self.bot.db.get_settings(member.guild.id)
+        
+        # Whitelist Check
+        if settings.get("whitelist_mode"):
+            whitelisted_ids = settings.get("whitelisted_ids", [])
+            # Also allow bots if desired? usually bots need whitelist too or are exempt. Allow bots for now to avoid locking out bots.
+            if member.id not in whitelisted_ids and not member.bot:
+                try:
+                    await member.kick(reason="Server is in whitelist mode. You are not on the whitelist.")
+                except Exception:
+                    pass
+                return
+
+            # Assign whitelist role if they are allowed
+            role_id = settings.get("whitelisted_role")
+            if role_id:
+                role = member.guild.get_role(int(role_id))
+                if role:
+                    try:
+                        await member.add_roles(role, reason="Whitelist auto-assign")
+                    except Exception:
+                        pass
+
         channel_id = settings.get("welcome_channel")
         if not channel_id:
             return
