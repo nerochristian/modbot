@@ -20,6 +20,9 @@ logger = logging.getLogger(__name__)
 
 class Logging(commands.Cog):
     """Event logging system with configurable channels"""
+    
+    # Command group for logging configuration
+    log_group = app_commands.Group(name="log", description="📝 Logging configuration")
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -1117,13 +1120,13 @@ class Logging(commands.Cog):
 
     # ==================== CONFIGURATION COMMAND ====================
     
-    @app_commands.command(name="logging", description="⚙️ Configure logging channels")
+    @log_group.command(name="set", description="⚙️ Configure logging channels")
     @app_commands.describe(
         log_type="Type of log to configure",
         channel="Channel to send logs to (leave empty to disable)"
     )
     @is_admin()
-    async def logging(
+    async def log_set(
         self,
         interaction: discord.Interaction,
         log_type: Literal['mod', 'audit', 'message', 'voice', 'automod', 'report', 'ticket'],
@@ -1168,9 +1171,9 @@ class Logging(commands.Cog):
                 ephemeral=True
             )
 
-    @app_commands.command(name="logconfig", description="📋 View current logging configuration")
+    @log_group.command(name="config", description="📋 View current logging configuration")
     @is_admin()
-    async def logconfig(self, interaction: discord.Interaction):
+    async def log_config(self, interaction: discord.Interaction):
         """View all configured logging channels"""
         try:
             settings = await self.bot.db.get_settings(interaction.guild_id)

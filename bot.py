@@ -272,6 +272,20 @@ class ModBot(commands.Bot):
             "cogs.blacklist",
             "cogs.forum_moderation",
             "cogs.prefix_commands",
+            # AI & Automation (Merged)
+            "cogs.aimoderation",
+            "cogs.automod",
+            "cogs.antiraid",
+            "cogs.voice",
+            "cogs.settings",
+            "cogs.polls",
+            # Support & Tickets (Merged)
+            "cogs.tickets",
+            "cogs.modmail",
+            "cogs.utility",
+            "cogs.admin",
+            "cogs.staff",
+            "cogs.court",
         ]
         
         loaded: list[str] = []
@@ -315,10 +329,18 @@ class ModBot(commands.Bot):
         self.tree.interaction_check = self._check_global_blacklist
         
         # Sync slash commands
+        sync_guild_id = os.getenv("SYNC_GUILD_ID")
         try:
-            logger.info("⚡ Syncing slash commands...")
-            synced = await self.tree.sync()
-            logger.info(f"⚡ Successfully synced {len(synced)} slash commands")
+            if sync_guild_id:
+                guild_object = discord.Object(id=int(sync_guild_id))
+                logger.info(f"⚡ Syncing slash commands to specific guild: {sync_guild_id}...")
+                self.tree.copy_global_to(guild=guild_object)
+                synced = await self.tree.sync(guild=guild_object)
+                logger.info(f"⚡ Successfully synced {len(synced)} slash commands to guild {sync_guild_id}")
+            else:
+                logger.info("⚡ Syncing slash commands globally (this may take up to 1 hour)...")
+                synced = await self.tree.sync()
+                logger.info(f"⚡ Successfully synced {len(synced)} slash commands globally")
         except discord.HTTPException as e:
             logger.error(f"❌ Failed to sync commands: {e}")
             self.errors_caught += 1

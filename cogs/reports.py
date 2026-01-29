@@ -13,12 +13,17 @@ from utils.logging import send_log_embed
 from config import Config
 
 class Reports(commands.Cog):
+    """User report management system"""
+    
+    # Command group for reports
+    report_group = app_commands.Group(name="report", description="📝 Report management")
+    
     def __init__(self, bot):
         self.bot = bot
     
-    @app_commands.command(name="report", description="📝 Report a user to the moderation team")
+    @report_group.command(name="user", description="📝 Report a user to the moderation team")
     @app_commands.describe(user="The user to report", reason="Reason for the report")
-    async def report(self, interaction: discord.Interaction, user: discord. Member, reason: str):
+    async def report_user(self, interaction: discord.Interaction, user: discord.Member, reason: str):
         if user.id == interaction.user.id:
             return await interaction.response.send_message(
                 embed=ModEmbed.error("Cannot Report", "You cannot report yourself."),
@@ -31,25 +36,25 @@ class Reports(commands.Cog):
                 ephemeral=True
             )
         
-        report_id = await self.bot.db. create_report(
+        report_id = await self.bot.db.create_report(
             interaction.guild_id, interaction.user.id, user.id, reason
         )
         
         # Send to report log channel
-        settings = await self. bot.db.get_settings(interaction.guild_id)
+        settings = await self.bot.db.get_settings(interaction.guild_id)
         if settings.get('report_log_channel'):
             channel = interaction.guild.get_channel(settings['report_log_channel'])
             if channel:
                 embed = discord.Embed(
                     title=f"📝 New Report #{report_id}",
                     color=Config.COLOR_WARNING,
-                    timestamp=datetime. utcnow()
+                    timestamp=datetime.utcnow()
                 )
                 embed.add_field(name="Reported User", value=f"{user.mention} ({user})", inline=True)
                 embed.add_field(name="Reporter", value=f"{interaction.user.mention}", inline=True)
-                embed. add_field(name="Reason", value=reason, inline=False)
+                embed.add_field(name="Reason", value=reason, inline=False)
                 embed.set_thumbnail(url=user.display_avatar.url)
-                embed.set_footer(text=f"Report ID: {report_id} | Use /report-resolve {report_id} to resolve")
+                embed.set_footer(text=f"Report ID: {report_id} | Use /report resolve {report_id} to resolve")
                 
                 await send_log_embed(channel, embed)
         
@@ -57,13 +62,13 @@ class Reports(commands.Cog):
             "Report Submitted",
             f"Your report against {user.mention} has been submitted.\n**Report ID:** #{report_id}"
         )
-        await interaction. response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
     
-    @app_commands.command(name="reports", description="📋 View reports for a user or all unresolved reports")
+    @report_group.command(name="list", description="📋 View reports for a user or all unresolved reports")
     @app_commands.describe(user="User to view reports for (leave empty for all unresolved)")
     @is_mod()
-    async def reports(self, interaction: discord. Interaction, user: Optional[discord.Member] = None):
-        if user: 
+    async def report_list(self, interaction: discord.Interaction, user: Optional[discord.Member] = None):
+        if user:
             reports = await self.bot.db.get_reports(interaction.guild_id, user.id)
             title = f"📋 Reports for {user}"
         else:
@@ -72,13 +77,13 @@ class Reports(commands.Cog):
         
         if not reports:
             return await interaction.response.send_message(
-                embed=ModEmbed.info("No Reports", "No reports found. "),
+                embed=ModEmbed.info("No Reports", "No reports found."),
                 ephemeral=True
             )
         
         embed = discord.Embed(title=title, color=Config.COLOR_INFO)
         
-        for report in reports[: 15]: 
+        for report in reports[:15]:
             reporter = interaction.guild.get_member(report['reporter_id'])
             reported = interaction.guild.get_member(report['reported_id'])
             
@@ -89,7 +94,7 @@ class Reports(commands.Cog):
             
             embed.add_field(
                 name=f"#{report['id']} - {status}",
-                value=f"**Reported:** {reported_name}\n**By:** {reporter_name}\n**Reason:** {report['reason'][: 100]}",
+                value=f"**Reported:** {reported_name}\n**By:** {reporter_name}\n**Reason:** {report['reason'][:100]}",
                 inline=False
             )
         
@@ -98,15 +103,15 @@ class Reports(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
     
-    @app_commands.command(name="report-resolve", description="✅ Resolve a report")
+    @report_group.command(name="resolve", description="✅ Resolve a report")
     @app_commands.describe(report_id="The report ID to resolve")
     @is_mod()
-    async def report_resolve(self, interaction: discord. Interaction, report_id: int):
-        success = await self.bot.db. resolve_report(
+    async def report_resolve(self, interaction: discord.Interaction, report_id: int):
+        success = await self.bot.db.resolve_report(
             interaction.guild_id, report_id, interaction.user.id
         )
         
-        if success: 
+        if success:
             embed = ModEmbed.success("Report Resolved", f"Report #{report_id} has been marked as resolved.")
             
             # Log the resolution
@@ -128,3 +133,4 @@ class Reports(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Reports(bot))
+

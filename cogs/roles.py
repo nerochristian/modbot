@@ -26,6 +26,7 @@ def _is_server_admin_check(interaction: discord.Interaction) -> bool:
 class Roles(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self.role_group.add_command(self.allowlist_group)
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
@@ -239,74 +240,73 @@ class Roles(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="ownerallow", description="🔐 Configure roles bot owners may assign")
-    @app_commands.describe(
-        action="The action to perform",
-        role="Target role (for add/remove)",
-        enabled="Enable or disable (for manage_others)",
-    )
-    async def ownerallow(
-        self,
-        interaction: discord.Interaction,
-        action: Literal["add", "remove", "list", "manage_others"],
-        role: Optional[discord.Role] = None,
-        enabled: Optional[bool] = None,
-    ):
+    # ==================== ALLOWLIST SUBGROUP ====================
+    allowlist_group = app_commands.Group(name="allowlist", description="🔐 Configure roles bot owners may assign")
+
+    @allowlist_group.command(name="add", description="Allow a role to be assigned by owners")
+    @app_commands.describe(role="Role to allowlist")
+    async def allowlist_add(self, interaction: discord.Interaction, role: discord.Role):
         # Check server admin permission
         if not _is_server_admin_check(interaction):
             return await interaction.response.send_message(
                 embed=ModEmbed.error("Permission Denied", "You need to be a server admin to use this command."),
                 ephemeral=True
             )
+        
+        if role.permissions.administrator:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not Allowed", "Administrator roles cannot be allowlisted."),
+                ephemeral=True,
+            )
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        allowlist = settings.get("owner_role_allowlist", [])
+        if not isinstance(allowlist, list): allowlist = []
+        if role.id not in allowlist:
+            allowlist.append(role.id)
+            settings["owner_role_allowlist"] = allowlist
+            await self.bot.db.update_settings(interaction.guild_id, settings)
+        await interaction.response.send_message(
+            embed=ModEmbed.success("Allowlisted", f"Bot owners can now assign {role.mention}."),
+            ephemeral=True,
+        )
 
-        if action == "add":
-            if not role:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Missing Argument", "Please specify a `role` to allowlist."),
-                    ephemeral=True
-                )
-            if role.permissions.administrator:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Not Allowed", "Administrator roles cannot be allowlisted."),
-                    ephemeral=True,
-                )
-            settings = await self.bot.db.get_settings(interaction.guild_id)
-            allowlist = settings.get("owner_role_allowlist", [])
-            if not isinstance(allowlist, list): allowlist = []
-            if role.id not in allowlist:
-                allowlist.append(role.id)
-                settings["owner_role_allowlist"] = allowlist
-                await self.bot.db.update_settings(interaction.guild_id, settings)
-            await interaction.response.send_message(
-                embed=ModEmbed.success("Allowlisted", f"Bot owners can now assign {role.mention}."),
-                ephemeral=True,
+    @allowlist_group.command(name="remove", description="Remove a role from the allowlist")
+    @app_commands.describe(role="Role to remove")
+    async def allowlist_remove(self, interaction: discord.Interaction, role: discord.Role):
+        # Check server admin permission
+        if not _is_server_admin_check(interaction):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", "You need to be a server admin to use this command."),
+                ephemeral=True
             )
-        elif action == "remove":
-            if not role:
-                return await interaction.response.send_message(
-                    embed=ModEmbed.error("Missing Argument", "Please specify a `role` to remove."),
-                    ephemeral=True
-                )
-            settings = await self.bot.db.get_settings(interaction.guild_id)
-            allowlist = settings.get("owner_role_allowlist", [])
-            if role.id in allowlist:
-                allowlist.remove(role.id)
-                settings["owner_role_allowlist"] = allowlist
-                await self.bot.db.update_settings(interaction.guild_id, settings)
-            await interaction.response.send_message(
-                embed=ModEmbed.success("Removed", f"{role.mention} removed from allowlist."),
-                ephemeral=True,
+            
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        allowlist = settings.get("owner_role_allowlist", [])
+        if role.id in allowlist:
+            allowlist.remove(role.id)
+            settings["owner_role_allowlist"] = allowlist
+            await self.bot.db.update_settings(interaction.guild_id, settings)
+        await interaction.response.send_message(
+            embed=ModEmbed.success("Removed", f"{role.mention} removed from allowlist."),
+            ephemeral=True,
+        )
+
+    @allowlist_group.command(name="list", description="List allowlisted roles")
+    async def allowlist_list(self, interaction: discord.Interaction):
+        # Check server admin permission (optional for list? keeping it consistent)
+        if not _is_server_admin_check(interaction):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", "You need to be a server admin to use this command."),
+                ephemeral=True
             )
-        elif action == "list":
-            settings = await self.bot.db.get_settings(interaction.guild_id)
-            allowlist = settings.get("owner_role_allowlist", [])
-            if not allowlist:
-                return await interaction.response.send_message(embed=ModEmbed.info("Allowlist", "No roles allowlisted."), ephemeral=True)
-            roles = [interaction.guild.get_role(rid) for rid in allowlist]
-            roles_str = ", ".join([r.mention for r in roles if r])
-            await interaction.response.send_message(embed=ModEmbed.info("Allowlisted Roles", roles_str), ephemeral=True)
-        elif action == "manage_others":
-            await interaction.response.send_message(embed=ModEmbed.info("Info", "This feature is not fully implemented yet."), ephemeral=True)
+
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        allowlist = settings.get("owner_role_allowlist", [])
+        if not allowlist:
+            return await interaction.response.send_message(embed=ModEmbed.info("Allowlist", "No roles allowlisted."), ephemeral=True)
+        roles = [interaction.guild.get_role(rid) for rid in allowlist]
+        roles_str = ", ".join([r.mention for r in roles if r])
+        await interaction.response.send_message(embed=ModEmbed.info("Allowlisted Roles", roles_str), ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(Roles(bot))

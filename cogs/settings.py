@@ -405,9 +405,12 @@ class Settings(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    @app_commands.command(name="settings", description="⚙️ Configure all bot settings in one place")
+    # ==================== CONFIG GROUP ====================
+    config_group = app_commands.Group(name="config", description="⚙️ Bot configuration")
+
+    @config_group.command(name="dashboard", description="Open the interactive settings dashboard")
     @is_admin()
-    async def settings(self, interaction: discord.Interaction):
+    async def dashboard(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         settings = await self.bot.db.get_settings(interaction.guild_id)
         view = GeneralSettingsView(self, interaction.guild, settings)

@@ -93,7 +93,7 @@ class Utility(commands.Cog):
 
     # ==================== AFK SYSTEM ====================
     
-    @app_commands.command(name="afk", description="⏸️ Set your AFK status")
+    @utility_group.command(name="afk", description="⏸️ Set your AFK status")
     @app_commands.describe(reason="Reason for being AFK")
     async def afk(self, interaction: discord.Interaction, reason: Optional[str] = "AFK"):
         """Set AFK status with auto-reply"""
@@ -157,104 +157,12 @@ class Utility(commands.Cog):
     
     # ==================== INFO COMMAND GROUP ====================
 
-    info_group = app_commands.Group(name="info", description="ℹ️ Information commands")
-
-    @info_group.command(name="user", description="👤 Get information about a user")
-    @app_commands.describe(user="User to get info about (yourself if not specified)")
-    async def info_user(self, interaction: discord.Interaction, user: Optional[discord.Member] = None):
-        await self._userinfo_logic(interaction, user or interaction.user)
-
-    @info_group.command(name="server", description="🏠 Get information about the server")
-    async def info_server(self, interaction: discord.Interaction):
-        await self._serverinfo_logic(interaction)
-
-    @info_group.command(name="channel", description="📺 Get information about a channel")
-    @app_commands.describe(channel="Channel to get info about (current if not specified)")
-    async def info_channel(self, interaction: discord.Interaction, channel: Optional[discord.abc.GuildChannel] = None):
-        await self._channelinfo_logic(interaction, channel or interaction.channel)
-
-    @info_group.command(name="members", description="📊 Get member count statistics")
-    async def info_members(self, interaction: discord.Interaction):
-        await self._membercount_logic(interaction)
-
-    @info_group.command(name="bots", description="🤖 List all bots in the server")
-    async def info_bots(self, interaction: discord.Interaction):
-        await self._bots_logic(interaction)
-
-    async def _userinfo_logic(self, interaction, user):
-        """Display user info."""
-        embed = discord.Embed(
-            title=f"User Information - {user}",
-            color=user.color if user.color != discord.Color.default() else Colors.INFO,
-            timestamp=datetime.now(timezone.utc)
-        )
-        embed.set_thumbnail(url=user.display_avatar.url)
-        embed.add_field(name="ID", value=f"`{user.id}`", inline=True)
-        embed.add_field(name="Nickname", value=user.nick or "None", inline=True)
-        embed.add_field(name="Bot", value="Yes" if user.bot else "No", inline=True)
-        embed.add_field(name="Created", value=f"<t:{int(user.created_at.timestamp())}:R>", inline=True)
-        if user.joined_at:
-            embed.add_field(name="Joined", value=f"<t:{int(user.joined_at.timestamp())}:R>", inline=True)
-        roles = [r.mention for r in user.roles[1:][:10]]
-        roles.reverse()
-        embed.add_field(name=f"Roles [{len(user.roles)-1}]", value=", ".join(roles) if roles else "None", inline=False)
-        await interaction.response.send_message(embed=embed)
-
-    async def _serverinfo_logic(self, interaction):
-        """Display server info."""
-        guild = interaction.guild
-        embed = discord.Embed(title=f"Server - {guild.name}", color=Colors.INFO, timestamp=datetime.now(timezone.utc))
-        if guild.icon:
-            embed.set_thumbnail(url=guild.icon.url)
-        embed.add_field(name="Owner", value=guild.owner.mention if guild.owner else "Unknown", inline=True)
-        embed.add_field(name="ID", value=f"`{guild.id}`", inline=True)
-        embed.add_field(name="Members", value=f"{guild.member_count:,}", inline=True)
-        embed.add_field(name="Created", value=f"<t:{int(guild.created_at.timestamp())}:R>", inline=True)
-        embed.add_field(name="Channels", value=f"{len(guild.channels)}", inline=True)
-        embed.add_field(name="Roles", value=f"{len(guild.roles)}", inline=True)
-        embed.add_field(name="Boost Level", value=f"{guild.premium_tier} ({guild.premium_subscription_count or 0} boosts)", inline=True)
-        await interaction.response.send_message(embed=embed)
-
-    async def _channelinfo_logic(self, interaction, channel):
-        """Display channel info."""
-        embed = discord.Embed(title=f"Channel - {channel.name}", color=Colors.INFO, timestamp=datetime.now(timezone.utc))
-        embed.add_field(name="ID", value=f"`{channel.id}`", inline=True)
-        embed.add_field(name="Type", value=str(channel.type).replace("_", " ").title(), inline=True)
-        embed.add_field(name="Created", value=f"<t:{int(channel.created_at.timestamp())}:R>", inline=True)
-        if hasattr(channel, 'topic') and channel.topic:
-            embed.add_field(name="Topic", value=channel.topic[:200], inline=False)
-        await interaction.response.send_message(embed=embed)
-
-    async def _membercount_logic(self, interaction):
-        """Display member count."""
-        guild = interaction.guild
-        total = guild.member_count
-        humans = len([m for m in guild.members if not m.bot])
-        bots = total - humans
-        online = len([m for m in guild.members if m.status != discord.Status.offline])
-        embed = discord.Embed(title=f"📊 {guild.name} Members", color=Colors.INFO)
-        embed.add_field(name="Total", value=f"{total:,}", inline=True)
-        embed.add_field(name="Humans", value=f"{humans:,}", inline=True)
-        embed.add_field(name="Bots", value=f"{bots:,}", inline=True)
-        embed.add_field(name="Online", value=f"{online:,}", inline=True)
-        await interaction.response.send_message(embed=embed)
-
-    async def _bots_logic(self, interaction):
-        """Display server bots."""
-        guild = interaction.guild
-        bots = [m for m in guild.members if m.bot]
-        if not bots:
-            return await interaction.response.send_message(embed=ModEmbed.info("No Bots", "No bots in server."), ephemeral=True)
-        embed = discord.Embed(title=f"🤖 Server Bots ({len(bots)})", color=Colors.INFO)
-        bot_list = [f"{b.mention} - {'🟢' if b.status != discord.Status.offline else '⚫'}" for b in bots[:20]]
-        embed.description = "\n".join(bot_list)
-        if len(bots) > 20:
-            embed.set_footer(text=f"+{len(bots)-20} more")
-        await interaction.response.send_message(embed=embed)
+    # ==================== UTILITY GROUP ====================
+    utility_group = app_commands.Group(name="utility", description="🛠️ Utility commands")
 
     # ==================== TIMESTAMP GENERATOR ====================
     
-    @app_commands.command(name="timestamp", description="⏰ Generate Discord timestamp formats")
+    @utility_group.command(name="timestamp", description="⏰ Generate Discord timestamp formats")
     @app_commands.describe(
         time="Time in format: YYYY-MM-DD HH:MM or use 'now'",
         timezone_offset="Timezone offset (e.g., -5 for EST, +1 for CET)"
@@ -326,7 +234,7 @@ class Utility(commands.Cog):
     
     # ==================== PERMISSIONS CHECKER ====================
     
-    @app_commands.command(name="permissions", description="🔐 Check user permissions in channel")
+    @utility_group.command(name="permissions", description="🔐 Check user permissions in channel")
     @app_commands.describe(
         user="User to check (defaults to you)",
         channel="Channel to check (defaults to current)"
@@ -417,7 +325,7 @@ class Utility(commands.Cog):
     
     # ==================== MEMBER COUNT ====================
     
-    @app_commands.command(name="membercount", description="📊 Detailed member count breakdown")
+    @utility_group.command(name="members", description="📊 Detailed member count breakdown")
     async def membercount(self, interaction: discord.Interaction):
         """Show detailed member statistics"""
         guild = interaction.guild
@@ -504,7 +412,7 @@ class Utility(commands.Cog):
     
     # ==================== BOTS ====================
     
-    @app_commands.command(name="bots", description="🤖 List all bots in the server")
+    @utility_group.command(name="bots", description="🤖 List all bots in the server")
     @app_commands.describe(show_permissions="Show key permissions for each bot")
     async def bots(self, interaction: discord.Interaction, show_permissions: bool = False):
         """List all bots with details"""
@@ -581,7 +489,7 @@ class Utility(commands.Cog):
     
     # ==================== CHANNEL INFO ====================
     
-    @app_commands.command(name="channelinfo", description="📺 Detailed channel information")
+    @utility_group.command(name="channel", description="📺 Detailed channel information")
     @app_commands.describe(channel="Channel to get info about (defaults to current)")
     async def channelinfo(
         self,
@@ -634,7 +542,7 @@ class Utility(commands.Cog):
     
     # ==================== USER INFO ====================
     
-    @app_commands.command(name="userinfo", description="📋 Detailed information about a user")
+    @utility_group.command(name="user", description="📋 Detailed information about a user")
     @app_commands.describe(user="The user to get info about")
     async def userinfo(self, interaction: discord.Interaction, user: Optional[discord.Member] = None):
         user = user or interaction.user
@@ -721,7 +629,7 @@ class Utility(commands.Cog):
     
     # ==================== SERVER INFO ====================
     
-    @app_commands.command(name="serverinfo", description="📊 Detailed server information")
+    @utility_group.command(name="server", description="📊 Detailed server information")
     async def serverinfo(self, interaction: discord.Interaction):
         guild = interaction.guild
         
