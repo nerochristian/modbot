@@ -1017,72 +1017,72 @@ class Voice(commands.Cog):
             ephemeral=True,
         )
 
-    @commands.command(name="vcmute")
-    @is_mod()
-    async def vcmute(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
-        """Mute a user in voice"""
-        await self._mute(ctx, user, reason)
+    # @commands.command(name="vcmute")
+    # @is_mod()
+    # async def vcmute(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
+    #     """Mute a user in voice"""
+    #     await self._mute(ctx, user, reason)
 
-    @commands.command(name="vcunmute")
-    @is_mod()
-    async def vcunmute(self, ctx: commands.Context, user: discord.Member):
-        """Unmute a user in voice"""
-        await self._unmute(ctx, user)
+    # @commands.command(name="vcunmute")
+    # @is_mod()
+    # async def vcunmute(self, ctx: commands.Context, user: discord.Member):
+    #     """Unmute a user in voice"""
+    #     await self._unmute(ctx, user)
 
-    @commands.command(name="vcdeafen")
-    @is_mod()
-    async def vcdeafen(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
-        """Deafen a user in voice"""
-        await self._deafen(ctx, user, reason)
+    # @commands.command(name="vcdeafen")
+    # @is_mod()
+    # async def vcdeafen(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
+    #     """Deafen a user in voice"""
+    #     await self._deafen(ctx, user, reason)
 
-    @commands.command(name="vcundeafen")
-    @is_mod()
-    async def vcundeafen(self, ctx: commands.Context, user: discord.Member):
-        """Undeafen a user in voice"""
-        await self._undeafen(ctx, user)
+    # @commands.command(name="vcundeafen")
+    # @is_mod()
+    # async def vcundeafen(self, ctx: commands.Context, user: discord.Member):
+    #     """Undeafen a user in voice"""
+    #     await self._undeafen(ctx, user)
 
-    @commands.command(name="vckick")
-    @is_mod()
-    async def vckick(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
-        """Kick a user from voice channel"""
-        await self._kick(ctx, user, reason)
+    # @commands.command(name="vckick")
+    # @is_mod()
+    # async def vckick(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
+    #     """Kick a user from voice channel"""
+    #     await self._kick(ctx, user, reason)
 
-    @commands.command(name="vcmove")
-    @is_mod()
-    async def vcmove(self, ctx: commands.Context, user: discord.Member, channel: discord.VoiceChannel):
-        """Move a user to another voice channel"""
-        await self._move(ctx, user, channel)
+    # @commands.command(name="vcmove")
+    # @is_mod()
+    # async def vcmove(self, ctx: commands.Context, user: discord.Member, channel: discord.VoiceChannel):
+    #     """Move a user to another voice channel"""
+    #     await self._move(ctx, user, channel)
 
-    @commands.command(name="vcmoveall")
-    @is_mod()
-    async def vcmoveall(self, ctx: commands.Context, from_channel: discord.VoiceChannel, to_channel: discord.VoiceChannel):
-        """Move all users from one channel to another"""
-        await self._moveall(ctx, from_channel, to_channel)
+    # @commands.command(name="vcmoveall")
+    # @is_mod()
+    # async def vcmoveall(self, ctx: commands.Context, from_channel: discord.VoiceChannel, to_channel: discord.VoiceChannel):
+    #     """Move all users from one channel to another"""
+    #     await self._moveall(ctx, from_channel, to_channel)
 
-    @commands.command(name="vcban")
-    @is_mod()
-    async def vcban(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
-        """Ban a user from all voice channels"""
-        await self._ban(ctx, user, reason)
+    # @commands.command(name="vcban")
+    # @is_mod()
+    # async def vcban(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
+    #     """Ban a user from all voice channels"""
+    #     await self._ban(ctx, user, reason)
 
-    @commands.command(name="vcunban")
-    @is_mod()
-    async def vcunban(self, ctx: commands.Context, user: Union[discord.Member, discord.User, str]):
-        """Unban a user from voice channels"""
-        if isinstance(user, (discord.Member, discord.User)):
-            target_id = user.id
-        else:
-            try:
-                target_id = int(user)
-            except ValueError:
-                return await ctx.send(embed=ModEmbed.error("Invalid ID", "Please provide a valid user or user ID."))
-        await self._unban(ctx, target_id)
+    # @commands.command(name="vcunban")
+    # @is_mod()
+    # async def vcunban(self, ctx: commands.Context, user: Union[discord.Member, discord.User, str]):
+    #     """Unban a user from voice channels"""
+    #     if isinstance(user, (discord.Member, discord.User)):
+    #         target_id = user.id
+    #     else:
+    #         try:
+    #             target_id = int(user)
+    #         except ValueError:
+    #             return await ctx.send(embed=ModEmbed.error("Invalid ID", "Please provide a valid user or user ID."))
+    #     await self._unban(ctx, target_id)
 
-    @commands.command(name="vcverify")
-    @is_admin()
-    async def vcverify(self, ctx: commands.Context, state: Literal["on", "off"]):
-        """Enable/disable voice verification requirement"""
-        await self._verification(ctx, state)
+    # @commands.command(name="vcverify")
+    # @is_admin()
+    # async def vcverify(self, ctx: commands.Context, state: Literal["on", "off"]):
+    #     """Enable/disable voice verification requirement"""
+    #     await self._verification(ctx, state)
 
 
 async def setup(bot):

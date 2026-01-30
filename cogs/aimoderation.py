@@ -5,7 +5,7 @@ import asyncio
 import random
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional, Tuple, Union, Literal, Set
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import discord
 from discord import app_commands

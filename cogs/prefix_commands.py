@@ -27,113 +27,121 @@ class PrefixCommands(commands.Cog):
     # MODERATION COMMANDS (30+)
     # ═══════════════════════════════════════════════════════════════
 
-    @commands.command(name="warn", aliases=["w"])
-    @commands.has_permissions(manage_messages=True)
-    async def warn_cmd(self, ctx, member: discord.Member, *, reason="No reason"):
-        """Warn a user"""
-        case = await self.bot.db.create_case(ctx.guild.id, member.id, ctx.author.id, "Warn", reason)
-        embed = ModEmbed.success("⚠️ User Warned", f"{member.mention} has been warned.\n**Reason:** {reason}")
-        embed.set_footer(text=f"Case #{case}")
-        await ctx.send(embed=embed)
+    # ============== COMMENTED OUT - Duplicates of moderation.py commands ==============
+    # These commands are implemented in moderation.py with proper role hierarchy checks
+    # 
+    # @commands.command(name="warn", aliases=["w"])
+    # @commands.has_permissions(manage_messages=True)
+    # async def warn_cmd(self, ctx, member: discord.Member, *, reason="No reason"):
+    #     """Warn a user"""
+    #     case = await self.bot.db.create_case(ctx.guild.id, member.id, ctx.author.id, "Warn", reason)
+    #     embed = ModEmbed.success("⚠️ User Warned", f"{member.mention} has been warned.\n**Reason:** {reason}")
+    #     embed.set_footer(text=f"Case #{case}")
+    #     await ctx.send(embed=embed)
+    #
+    # @commands.command(name="kick", aliases=["k"])
+    # @commands.has_permissions(kick_members=True)
+    # async def kick_cmd(self, ctx, member: discord.Member, *, reason="No reason"):
+    #     """Kick a user from the server"""
+    #     await member.kick(reason=f"{ctx.author}: {reason}")
+    #     await self.bot.db.create_case(ctx.guild.id, member.id, ctx.author.id, "Kick", reason)
+    #     await ctx.send(embed=ModEmbed.success("👢 User Kicked", f"{member} has been kicked.\n**Reason:** {reason}"))
+    #
+    # @commands.command(name="ban", aliases=["b"])
+    # @commands.has_permissions(ban_members=True)
+    # async def ban_cmd(self, ctx, member: discord.Member, *, reason="No reason"):
+    #     """Ban a user from the server"""
+    #     await member.ban(reason=f"{ctx.author}: {reason}")
+    #     await self.bot.db.create_case(ctx.guild.id, member.id, ctx.author.id, "Ban", reason)
+    #     await ctx.send(embed=ModEmbed.success("🔨 User Banned", f"{member} has been banned.\n**Reason:** {reason}"))
+    #
+    # @commands.command(name="unban")
+    # @commands.has_permissions(ban_members=True)
+    # async def unban_cmd(self, ctx, user_id: int, *, reason="No reason"):
+    #     """Unban a user by ID"""
+    #     user = discord.Object(id=user_id)
+    #     await ctx.guild.unban(user, reason=reason)
+    #     await ctx.send(embed=ModEmbed.success("✅ User Unbanned", f"<@{user_id}> has been unbanned."))
+    #
+    # @commands.command(name="mute", aliases=["timeout", "to"])
+    # @commands.has_permissions(moderate_members=True)
+    # async def mute_cmd(self, ctx, member: discord.Member, duration: str = "1h", *, reason="No reason"):
+    #     """Timeout a user"""
+    #     units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
+    #     try:
+    #         unit = duration[-1].lower()
+    #         amount = int(duration[:-1])
+    #         seconds = amount * units.get(unit, 60)
+    #     except:
+    #         seconds = 3600
+    #     until = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+    #     await member.timeout(until, reason=reason)
+    #     await ctx.send(embed=ModEmbed.success("🔇 User Muted", f"{member.mention} muted for {duration}.\n**Reason:** {reason}"))
+    #
+    # @commands.command(name="unmute", aliases=["untimeout", "uto"])
+    # @commands.has_permissions(moderate_members=True)
+    # async def unmute_cmd(self, ctx, member: discord.Member):
+    #     """Remove timeout from a user"""
+    #     await member.timeout(None)
+    #     await ctx.send(embed=ModEmbed.success("🔊 User Unmuted", f"{member.mention} has been unmuted."))
+    #
+    # @commands.command(name="tempban", aliases=["tb"])
+    # @commands.has_permissions(ban_members=True)
+    # async def tempban_cmd(self, ctx, member: discord.Member, duration: str, *, reason="No reason"):
+    #     """Temporarily ban a user"""
+    #     await member.ban(reason=f"[TEMPBAN] {reason}")
+    #     await ctx.send(embed=ModEmbed.success("⏰ Temp Banned", f"{member} temp banned for {duration}.\n**Reason:** {reason}"))
+    #
+    # @commands.command(name="softban", aliases=["sb"])
+    # @commands.has_permissions(ban_members=True)
+    # async def softban_cmd(self, ctx, member: discord.Member, *, reason="No reason"):
+    #     """Ban and immediately unban to delete messages"""
+    #     await member.ban(reason=reason, delete_message_days=7)
+    #     await ctx.guild.unban(member, reason="Softban complete")
+    #     await ctx.send(embed=ModEmbed.success("🧹 Softbanned", f"{member} softbanned (messages deleted)."))
+    # ============== END COMMENTED DUPLICATES ==============
 
-    @commands.command(name="kick", aliases=["k"])
-    @commands.has_permissions(kick_members=True)
-    async def kick_cmd(self, ctx, member: discord.Member, *, reason="No reason"):
-        """Kick a user from the server"""
-        await member.kick(reason=f"{ctx.author}: {reason}")
-        await self.bot.db.create_case(ctx.guild.id, member.id, ctx.author.id, "Kick", reason)
-        await ctx.send(embed=ModEmbed.success("👢 User Kicked", f"{member} has been kicked.\n**Reason:** {reason}"))
+    # ============== COMMENTED OUT - Duplicates of moderation.py command ==============
+    # @commands.command(name="purge", aliases=["clear", "prune"])
+    # @commands.has_permissions(manage_messages=True)
+    # async def purge_cmd(self, ctx, amount: int = 10):
+    #     """Delete messages in bulk"""
+    #     deleted = await ctx.channel.purge(limit=amount + 1)
+    #     msg = await ctx.send(embed=ModEmbed.success("🗑️ Purged", f"Deleted {len(deleted)-1} messages."))
+    #     await msg.delete(delay=3)
 
-    @commands.command(name="ban", aliases=["b"])
-    @commands.has_permissions(ban_members=True)
-    async def ban_cmd(self, ctx, member: discord.Member, *, reason="No reason"):
-        """Ban a user from the server"""
-        await member.ban(reason=f"{ctx.author}: {reason}")
-        await self.bot.db.create_case(ctx.guild.id, member.id, ctx.author.id, "Ban", reason)
-        await ctx.send(embed=ModEmbed.success("🔨 User Banned", f"{member} has been banned.\n**Reason:** {reason}"))
+    # @commands.command(name="purgeuser", aliases=["pu"])
+    # @commands.has_permissions(manage_messages=True)
+    # async def purgeuser_cmd(self, ctx, member: discord.Member, amount: int = 50):
+    #     """Delete messages from a specific user"""
+    #     deleted = await ctx.channel.purge(limit=amount, check=lambda m: m.author == member)
+    #     await ctx.send(embed=ModEmbed.success("🗑️ Purged", f"Deleted {len(deleted)} messages from {member}."), delete_after=3)
+    # ============== END COMMENTED DUPLICATE ==============
 
-    @commands.command(name="unban")
-    @commands.has_permissions(ban_members=True)
-    async def unban_cmd(self, ctx, user_id: int, *, reason="No reason"):
-        """Unban a user by ID"""
-        user = discord.Object(id=user_id)
-        await ctx.guild.unban(user, reason=reason)
-        await ctx.send(embed=ModEmbed.success("✅ User Unbanned", f"<@{user_id}> has been unbanned."))
+    # Duplicate of moderation/extensions/chat.py slowmode command.
+    # @commands.command(name="slowmode", aliases=["slow"])
+    # @commands.has_permissions(manage_channels=True)
+    # async def slowmode_cmd(self, ctx, seconds: int = 0):
+    #     """Set channel slowmode"""
+    #     await ctx.channel.edit(slowmode_delay=seconds)
+    #     await ctx.send(embed=ModEmbed.success("🐌 Slowmode Set", f"Slowmode: {seconds}s"))
 
-    @commands.command(name="mute", aliases=["timeout", "to"])
-    @commands.has_permissions(moderate_members=True)
-    async def mute_cmd(self, ctx, member: discord.Member, duration: str = "1h", *, reason="No reason"):
-        """Timeout a user"""
-        units = {"s": 1, "m": 60, "h": 3600, "d": 86400}
-        try:
-            unit = duration[-1].lower()
-            amount = int(duration[:-1])
-            seconds = amount * units.get(unit, 60)
-        except:
-            seconds = 3600
-        until = datetime.now(timezone.utc) + timedelta(seconds=seconds)
-        await member.timeout(until, reason=reason)
-        await ctx.send(embed=ModEmbed.success("🔇 User Muted", f"{member.mention} muted for {duration}.\n**Reason:** {reason}"))
-
-    @commands.command(name="unmute", aliases=["untimeout", "uto"])
-    @commands.has_permissions(moderate_members=True)
-    async def unmute_cmd(self, ctx, member: discord.Member):
-        """Remove timeout from a user"""
-        await member.timeout(None)
-        await ctx.send(embed=ModEmbed.success("🔊 User Unmuted", f"{member.mention} has been unmuted."))
-
-    @commands.command(name="tempban", aliases=["tb"])
-    @commands.has_permissions(ban_members=True)
-    async def tempban_cmd(self, ctx, member: discord.Member, duration: str, *, reason="No reason"):
-        """Temporarily ban a user"""
-        await member.ban(reason=f"[TEMPBAN] {reason}")
-        await ctx.send(embed=ModEmbed.success("⏰ Temp Banned", f"{member} temp banned for {duration}.\n**Reason:** {reason}"))
-
-    @commands.command(name="softban", aliases=["sb"])
-    @commands.has_permissions(ban_members=True)
-    async def softban_cmd(self, ctx, member: discord.Member, *, reason="No reason"):
-        """Ban and immediately unban to delete messages"""
-        await member.ban(reason=reason, delete_message_days=7)
-        await ctx.guild.unban(member, reason="Softban complete")
-        await ctx.send(embed=ModEmbed.success("🧹 Softbanned", f"{member} softbanned (messages deleted)."))
-
-    @commands.command(name="purge", aliases=["clear", "prune"])
-    @commands.has_permissions(manage_messages=True)
-    async def purge_cmd(self, ctx, amount: int = 10):
-        """Delete messages in bulk"""
-        deleted = await ctx.channel.purge(limit=amount + 1)
-        msg = await ctx.send(embed=ModEmbed.success("🗑️ Purged", f"Deleted {len(deleted)-1} messages."))
-        await msg.delete(delay=3)
-
-    @commands.command(name="purgeuser", aliases=["pu"])
-    @commands.has_permissions(manage_messages=True)
-    async def purgeuser_cmd(self, ctx, member: discord.Member, amount: int = 50):
-        """Delete messages from a specific user"""
-        deleted = await ctx.channel.purge(limit=amount, check=lambda m: m.author == member)
-        await ctx.send(embed=ModEmbed.success("🗑️ Purged", f"Deleted {len(deleted)} messages from {member}."), delete_after=3)
-
-    @commands.command(name="slowmode", aliases=["slow"])
-    @commands.has_permissions(manage_channels=True)
-    async def slowmode_cmd(self, ctx, seconds: int = 0):
-        """Set channel slowmode"""
-        await ctx.channel.edit(slowmode_delay=seconds)
-        await ctx.send(embed=ModEmbed.success("🐌 Slowmode Set", f"Slowmode: {seconds}s"))
-
-    @commands.command(name="lock", aliases=["lockdown"])
-    @commands.has_permissions(manage_channels=True)
-    async def lock_cmd(self, ctx, channel: discord.TextChannel = None):
-        """Lock a channel"""
-        channel = channel or ctx.channel
-        await channel.set_permissions(ctx.guild.default_role, send_messages=False)
-        await ctx.send(embed=ModEmbed.success("🔒 Locked", f"{channel.mention} is now locked."))
-
-    @commands.command(name="unlock")
-    @commands.has_permissions(manage_channels=True)
-    async def unlock_cmd(self, ctx, channel: discord.TextChannel = None):
-        """Unlock a channel"""
-        channel = channel or ctx.channel
-        await channel.set_permissions(ctx.guild.default_role, send_messages=None)
-        await ctx.send(embed=ModEmbed.success("🔓 Unlocked", f"{channel.mention} is now unlocked."))
+    # Duplicate of moderation/extensions/chat.py lock/unlock commands.
+    # @commands.command(name="lock", aliases=["lockdown"])
+    # @commands.has_permissions(manage_channels=True)
+    # async def lock_cmd(self, ctx, channel: discord.TextChannel = None):
+    #     """Lock a channel"""
+    #     channel = channel or ctx.channel
+    #     await channel.set_permissions(ctx.guild.default_role, send_messages=False)
+    #     await ctx.send(embed=ModEmbed.success("🔒 Locked", f"{channel.mention} is now locked."))
+    #
+    # @commands.command(name="unlock")
+    # @commands.has_permissions(manage_channels=True)
+    # async def unlock_cmd(self, ctx, channel: discord.TextChannel = None):
+    #     """Unlock a channel"""
+    #     channel = channel or ctx.channel
+    #     await channel.set_permissions(ctx.guild.default_role, send_messages=None)
+    #     await ctx.send(embed=ModEmbed.success("🔓 Unlocked", f"{channel.mention} is now unlocked."))
 
     @commands.command(name="nick", aliases=["setnick"])
     @commands.has_permissions(manage_nicknames=True)
@@ -208,15 +216,16 @@ class PrefixCommands(commands.Cog):
         await channel.set_permissions(ctx.guild.default_role, view_channel=None)
         await ctx.send(embed=ModEmbed.success("👁️ Visible", f"{channel.mention} is now visible."))
 
-    @commands.command(name="nuke")
-    @commands.has_permissions(administrator=True)
-    async def nuke_cmd(self, ctx):
-        """Delete and recreate a channel"""
-        pos = ctx.channel.position
-        new = await ctx.channel.clone(reason=f"Nuked by {ctx.author}")
-        await ctx.channel.delete()
-        await new.edit(position=pos)
-        await new.send(embed=ModEmbed.success("💣 Nuked", "Channel has been nuked."))
+    # Duplicate of moderation/extensions/chat.py nuke command.
+    # @commands.command(name="nuke")
+    # @commands.has_permissions(administrator=True)
+    # async def nuke_cmd(self, ctx):
+    #     """Delete and recreate a channel"""
+    #     pos = ctx.channel.position
+    #     new = await ctx.channel.clone(reason=f"Nuked by {ctx.author}")
+    #     await ctx.channel.delete()
+    #     await new.edit(position=pos)
+    #     await new.send(embed=ModEmbed.success("💣 Nuked", "Channel has been nuked."))
 
     @commands.command(name="massban", aliases=["mb"])
     @commands.has_permissions(administrator=True)
@@ -884,5 +893,13 @@ class PrefixCommands(commands.Cog):
 
 
 async def setup(bot):
-    await bot.add_cog(PrefixCommands(bot))
+    cog = PrefixCommands(bot)
+    existing = set(bot.all_commands.keys())
+    filtered = []
+    for command in cog.get_commands():
+        names = {command.name, *command.aliases}
+        if not (names & existing):
+            filtered.append(command)
+    cog.__cog_commands__ = filtered
+    await bot.add_cog(cog)
 

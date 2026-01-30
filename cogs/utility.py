@@ -21,6 +21,9 @@ class Utility(commands.Cog):
         self.bot = bot
         self.afk_users = {}  # {user_id: {"reason": str, "since": datetime}}
 
+    # ==================== UTILITY GROUP ====================
+    utility_group = app_commands.Group(name="utility", description="🛠️ Utility commands")
+
     # ==================== FUN / MIMIC ====================
 
     @commands.command(name="mimic")
@@ -157,8 +160,7 @@ class Utility(commands.Cog):
     
     # ==================== INFO COMMAND GROUP ====================
 
-    # ==================== UTILITY GROUP ====================
-    utility_group = app_commands.Group(name="utility", description="🛠️ Utility commands")
+
 
     # ==================== TIMESTAMP GENERATOR ====================
     

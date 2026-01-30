@@ -32,6 +32,18 @@ class Database:
         self._lock = asyncio.Lock()
         self._initialized = False
         self._pool: Optional[aiosqlite.Connection] = None
+
+    @property
+    def pool(self) -> "Database":
+        """Compatibility shim for legacy call sites expecting .pool.acquire()."""
+        return self
+
+    @asynccontextmanager
+    async def acquire(self):
+        """Compatibility shim for legacy pool acquire."""
+        await self.init_pool()
+        async with self.get_connection() as conn:
+            yield conn
     
     async def init_pool(self) -> None:
         """Initialize database connection pool"""

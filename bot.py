@@ -11,6 +11,7 @@ import os
 import re
 import sys
 import asyncio
+import atexit
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from pathlib import Path
@@ -20,6 +21,39 @@ from config import Config
 
 # Load environment variables
 load_dotenv()
+
+# ==================== SINGLE-INSTANCE LOCK ====================
+_LOCK_HANDLE = None
+
+def _acquire_single_instance_lock() -> None:
+    """Prevent multiple bot instances on the same machine."""
+    global _LOCK_HANDLE
+    try:
+        import msvcrt  # Windows-only
+    except ImportError:
+        return
+    lock_path = Path(".modbot.lock")
+    _LOCK_HANDLE = lock_path.open("a+")
+    try:
+        msvcrt.locking(_LOCK_HANDLE.fileno(), msvcrt.LK_NBLCK, 1)
+    except OSError:
+        raise RuntimeError("Another ModBot instance is already running.")
+    _LOCK_HANDLE.seek(0)
+    _LOCK_HANDLE.truncate()
+    _LOCK_HANDLE.write(str(os.getpid()))
+    _LOCK_HANDLE.flush()
+
+    def _release_lock():
+        try:
+            msvcrt.locking(_LOCK_HANDLE.fileno(), msvcrt.LK_UNLCK, 1)
+        except Exception:
+            pass
+        try:
+            _LOCK_HANDLE.close()
+        except Exception:
+            pass
+
+    atexit.register(_release_lock)
 
 # Initialize static-ffmpeg if installed (ensures ffmpeg binary is in PATH)
 try:
@@ -261,10 +295,10 @@ class ModBot(commands.Bot):
         # AI cogs are in bot_ai.py
         # Support cogs are in bot_support.py
         cogs = [
-            "cogs.help",
+            "cogs.moderation",
             "cogs.setup",
             "cogs.verification",
-            "cogs.moderation",
+            "cogs.help",
             "cogs.roles",
             "cogs.logging_cog",
             "cogs.pin",
@@ -740,6 +774,13 @@ async def main() -> int:
     """Main entry point with error handling"""
     # Validate environment
     validate_environment()
+
+    # Prevent multiple running instances
+    try:
+        _acquire_single_instance_lock()
+    except RuntimeError as e:
+        logger.critical(str(e))
+        return 1
     
     # Get token
     token = os.getenv("DISCORD_TOKEN")

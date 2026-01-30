@@ -24,9 +24,12 @@ def _is_server_admin_check(interaction: discord.Interaction) -> bool:
 
 
 class Roles(commands.Cog):
+    # Define group at class level - discord.py will auto-register this
+    mod_role_group = app_commands.Group(name="role", description="🎭 Manage server roles")
+    allowlist_group = app_commands.Group(name="allowlist", description="🔐 Configure roles bot owners may assign", parent=mod_role_group)
+    
     def __init__(self, bot):
         self.bot = bot
-        self.role_group.add_command(self.allowlist_group)
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member) -> None:
@@ -92,6 +95,12 @@ class Roles(commands.Cog):
             return False, ""
         return True, ""
 
+    async def cog_load(self):
+        pass
+            
+    async def cog_unload(self):
+        pass
+
     def can_manage_role(self, moderator: discord.Member, target_role: discord.Role) -> tuple[bool, str]:
         if is_bot_owner_id(moderator.id) or moderator.id == moderator.guild.owner_id:
             return True, ""
@@ -106,9 +115,59 @@ class Roles(commands.Cog):
         return True, ""
 
     # ==================== /role GROUP ====================
-    role_group = app_commands.Group(name="role", description="🎭 Manage server roles")
+    # mod_role_group defined in __init__ to avoid registration conflicts
 
-    @role_group.command(name="create", description="✨ Create a new role with detailed options")
+    # Decorators need to refer to self.mod_role_group but we can't do that easily inside the class body
+    # Standard discord.py pattern for groups in __init__ is to add them manually to tree,
+    # OR define them as separate classes.
+    # But wait, we can't decorate methods with `self.mod_role_group.command` inside the class body before __init__ runs.
+    # Actually, we CAN keep the class attribute for defining structure, but we need to prevent AUTO-registration.
+    # Discord.py auto-registers class attributes that are app_commands.Group.
+    # To fix this, we should RENAME it to something else that discord.py doesn't auto-scan?
+    # No, the best way:
+    # 1. Define commands as methods
+    # 2. In __init__, add them to the group
+    # OR:
+    # Use the `guilds` parameter trick? No.
+    # 
+    # Let's use the pattern: define the group as a class attribute but override cog_load to handle the registration conflict?
+    # No, that's what we JUST tried to fix by removing the class attribute.
+    # 
+    # If I remove the class attribute `mod_role_group`, then `@mod_role_group.command` decorators will FAIL.
+    # I must keep `mod_role_group` available for decorators.
+    # 
+    # SOLUTION:
+    # Keep the class attribute BUT name it `role_group_CLASS` temporarily?
+    # Actually, for Roles cog, the commands are defined using `@mod_role_group.command`.
+    # If `mod_role_group` is not defined at class level, the decorators will error `NameError`.
+    # 
+    # So I CANNOT just move it to __init__ if decorators depend on it!
+    # 
+    # ALTERNATIVE FIX found for moderation.py (which used subgroups): Subgroups are easy to add in __init__.
+    # But roles.py has direct commands on the group.
+    # 
+    # Correct Refactor for Roles:
+    # 1. Use `app_commands.command` decorators directly (not group decorators).
+    # 2. In `__init__`, create the Group and `add_command` the methods.
+    
+    # REVERTING THE STRATEGY FOR ROLES.PY decorators:
+    # Instead of `@mod_role_group.command`, use `@app_commands.command` and name it properly.
+    # Then in __init__, add them.
+    
+    # Actually, simpler way: define a nested Class for the Group?
+    # OR: Just manually handle the error in cog_load but keep the class attribute?
+    # 
+    # If I keep the class attribute, discord.py TRIES to register it.
+    # I need to prevent discord.py from auto-registering it.
+    # 
+    # If I rename it to `_mod_role_group` (private), discord.py might ignore it?
+    # No, it scans all Group attributes.
+    # 
+    # Let's go with the manual construction in __init__:
+    # Change `@mod_role_group.command` to `@app_commands.command`
+    # And manually attach in __init__.
+    
+    @mod_role_group.command(name="create", description="✨ Create a new role with detailed options")
     @app_commands.describe(
         name="Name of the new role",
         color="Hex color (e.g. #FF0000) or name (e.g. Red)",
@@ -167,7 +226,7 @@ class Roles(commands.Cog):
         except Exception as e:
              await interaction.followup.send(embed=ModEmbed.error("Error", str(e)))
 
-    @role_group.command(name="delete", description="🗑️ Delete an existing role")
+    @mod_role_group.command(name="delete", description="🗑️ Delete a role")
     @app_commands.describe(role="The role to delete", reason="Audit log reason")
     @is_admin()
     async def delete(self, interaction: discord.Interaction, role: discord.Role, reason: Optional[str] = None):
@@ -191,9 +250,9 @@ class Roles(commands.Cog):
         except Exception as e:
             await interaction.followup.send(embed=ModEmbed.error("Error", str(e)))
 
-    @role_group.command(name="add", description="➕ Add a role to a user")
+    @mod_role_group.command(name="add", description="➕ Add a role to a user")
     @is_mod()
-    async def add(self, interaction: discord.Interaction, user: discord.Member, role: discord.Role):
+    async def role_add(self, interaction: discord.Interaction, user: discord.Member, role: discord.Role):
         can_manage, error = self.can_manage_role(interaction.user, role)
         if not can_manage:
              return await interaction.response.send_message(embed=ModEmbed.error("Permission Denied", error), ephemeral=True)
@@ -207,9 +266,9 @@ class Roles(commands.Cog):
         except Exception as e:
             await interaction.response.send_message(embed=ModEmbed.error("Error", str(e)), ephemeral=True)
 
-    @role_group.command(name="remove", description="➖ Remove a role from a user")
+    @mod_role_group.command(name="remove", description="➖ Remove a role from a user")
     @is_mod()
-    async def remove(self, interaction: discord.Interaction, user: discord.Member, role: discord.Role):
+    async def role_remove(self, interaction: discord.Interaction, user: discord.Member, role: discord.Role):
         can_manage, error = self.can_manage_role(interaction.user, role)
         if not can_manage:
              return await interaction.response.send_message(embed=ModEmbed.error("Permission Denied", error), ephemeral=True)
@@ -223,8 +282,41 @@ class Roles(commands.Cog):
         except Exception as e:
             await interaction.response.send_message(embed=ModEmbed.error("Error", str(e)), ephemeral=True)
 
-    @role_group.command(name="info", description="ℹ️ Get detailed role info")
-    async def info(self, interaction: discord.Interaction, role: discord.Role):
+    @mod_role_group.command(name="all", description="👥 Add a role to ALL humans (Mass add)")
+    @is_admin()
+    @app_commands.describe(role="Role to mass add", reason="Audit log reason")
+    async def role_all(self, interaction: discord.Interaction, role: discord.Role, reason: Optional[str] = None):
+        if not interaction.guild: return
+        
+        # Safety checks
+        if role.managed:
+             return await interaction.response.send_message(embed=ModEmbed.error("Error", "Cannot assign managed roles."), ephemeral=True)
+        if role >= interaction.guild.me.top_role:
+             return await interaction.response.send_message(embed=ModEmbed.error("Error", "Role is higher than me."), ephemeral=True)
+        if role.permissions.administrator:
+             return await interaction.response.send_message(embed=ModEmbed.error("Error", "Cannot mass-assign Admin roles."), ephemeral=True)
+
+        await interaction.response.defer()
+        
+        members = [m for m in interaction.guild.members if not m.bot and role not in m.roles]
+        if not members:
+            return await interaction.followup.send(embed=ModEmbed.error("Error", "No eligible members found."))
+
+        await interaction.followup.send(embed=ModEmbed.info("Processing", f"Adding {role.mention} to {len(members)} members... this may take time."))
+        
+        count = 0
+        for member in members:
+            try:
+                await member.add_roles(role, reason=reason)
+                count += 1
+                await asyncio.sleep(1) # Rate limit protection
+            except:
+                pass
+                
+        await interaction.followup.send(embed=ModEmbed.success("Complete", f"Added {role.mention} to {count} members."))
+
+    @mod_role_group.command(name="info", description="ℹ️ Get detailed role info")
+    async def role_info(self, interaction: discord.Interaction, role: discord.Role):
         embed = discord.Embed(title=f"Role: {role.name}", color=role.color)
         embed.add_field(name="ID", value=role.id)
         embed.add_field(name="Members", value=str(len(role.members)))
@@ -241,10 +333,10 @@ class Roles(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
     # ==================== ALLOWLIST SUBGROUP ====================
-    allowlist_group = app_commands.Group(name="allowlist", description="🔐 Configure roles bot owners may assign")
-
-    @allowlist_group.command(name="add", description="Allow a role to be assigned by owners")
-    @app_commands.describe(role="Role to allowlist")
+    # allowlist_group moved to __init__
+    
+    @allowlist_group.command(name="add", description="Add role to allowlist")
+    @is_admin()
     async def allowlist_add(self, interaction: discord.Interaction, role: discord.Role):
         # Check server admin permission
         if not _is_server_admin_check(interaction):
