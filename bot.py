@@ -320,6 +320,7 @@ class ModBot(commands.Bot):
             "cogs.admin",
             "cogs.staff",
             "cogs.court",
+            "cogs.whitelist",
         ]
         
         loaded: list[str] = []

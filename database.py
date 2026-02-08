@@ -411,6 +411,17 @@ class Database:
                     )
                 """)
 
+                # ===== WHITELIST SYSTEM =====
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS whitelist (
+                        guild_id INTEGER,
+                        user_id INTEGER,
+                        added_by INTEGER,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (guild_id, user_id)
+                    )
+                """)
+
                 # ===== AI MEMORY =====
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS ai_memory (
@@ -1956,3 +1967,76 @@ class Database:
             )
             row = await cursor.fetchone()
             return row is not None
+
+    # ==================== WHITELIST SYSTEM ====================
+
+    async def add_whitelist(self, guild_id: int, user_id: int, added_by: int) -> bool:
+        """Add user to whitelist. Returns True if added, False if already exists."""
+        self._validate_guild_id(guild_id)
+        self._validate_user_id(user_id)
+        
+        async with self._lock:
+            async with self.get_connection() as db:
+                try:
+                    await db.execute(
+                        """
+                        INSERT INTO whitelist (guild_id, user_id, added_by)
+                        VALUES (?, ?, ?)
+                        """,
+                        (guild_id, user_id, added_by),
+                    )
+                    await db.commit()
+                    return True
+                except aiosqlite.IntegrityError:
+                    return False
+
+    async def remove_whitelist(self, guild_id: int, user_id: int) -> bool:
+        """Remove user from whitelist. Returns True if removed, False if not found."""
+        self._validate_guild_id(guild_id)
+        self._validate_user_id(user_id)
+        
+        async with self._lock:
+            async with self.get_connection() as db:
+                cursor = await db.execute(
+                    "DELETE FROM whitelist WHERE guild_id = ? AND user_id = ?",
+                    (guild_id, user_id),
+                )
+                await db.commit()
+                return cursor.rowcount > 0
+
+    async def get_whitelist(self, guild_id: int) -> List[int]:
+        """Get list of whitelisted user IDs for a guild."""
+        self._validate_guild_id(guild_id)
+        
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT user_id FROM whitelist WHERE guild_id = ?",
+                (guild_id,),
+            )
+            rows = await cursor.fetchall()
+            return [row[0] for row in rows]
+
+    async def is_whitelisted(self, guild_id: int, user_id: int) -> bool:
+        """Check if a user is whitelisted."""
+        self._validate_guild_id(guild_id)
+        self._validate_user_id(user_id)
+        
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT 1 FROM whitelist WHERE guild_id = ? AND user_id = ?",
+                (guild_id, user_id),
+            )
+            return await cursor.fetchone() is not None
+
+    async def clear_whitelist(self, guild_id: int) -> int:
+        """Clear all whitelist entries for a guild. Returns count of removed entries."""
+        self._validate_guild_id(guild_id)
+        
+        async with self._lock:
+            async with self.get_connection() as db:
+                cursor = await db.execute(
+                    "DELETE FROM whitelist WHERE guild_id = ?",
+                    (guild_id,),
+                )
+                await db.commit()
+                return cursor.rowcount

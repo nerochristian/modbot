@@ -83,11 +83,18 @@ class Logging(commands.Cog):
     async def safe_send_log(
         self, 
         channel: Optional[discord.TextChannel], 
-        embed: discord.Embed
+        embed: discord.Embed,
+        *,
+        use_v2: bool = False,
     ) -> bool:
         """
         Safely send a log embed with enhanced error handling
         Returns: bool indicating success
+        
+        Args:
+            channel: The channel to send to
+            embed: The embed to send
+            use_v2: Whether to use Components v2 (default False for classic v1 embeds)
         """
         if not channel:
             return False
@@ -118,7 +125,7 @@ class Logging(commands.Cog):
             except Exception:
                 pass
 
-            await channel.send(embed=embed)
+            await channel.send(embed=embed, use_v2=use_v2)
             return True
         except discord.Forbidden:
             logger.warning(f"Missing permissions to log in {channel.guild.name} #{channel.name}")
@@ -259,70 +266,74 @@ class Logging(commands.Cog):
         if not channel:
             return
         
+        # Build embed matching the screenshot format
         embed = discord.Embed(
-            title="Message Deleted",
+            title="Message deleted",
             color=0xFF0000,
             timestamp=datetime.now(timezone.utc)
         )
         
-        # Set author to match the image style
-        embed.set_author(name=f"{message.author.name}", icon_url=message.author.display_avatar.url)
+        # Get channel emoji based on channel type
+        channel_emoji = "💬" if isinstance(message.channel, discord.TextChannel) else "🔊"
         
-        # Top 3 fields inline
+        # Channel field with emoji and link (matching screenshot)
         embed.add_field(
-            name="Author",
-            value=f"{message.author.mention} ({message.author.name})",
-            inline=True
+            name="Channel:",
+            value=f"{channel_emoji} | {message.channel.name} (# 🔗 | {message.channel.name})",
+            inline=False
         )
+        
+        # Message ID field
         embed.add_field(
-            name="Channel",
-            value=message.channel.mention,
-            inline=True
-        )
-        embed.add_field(
-            name="Message ID",
+            name="Message ID:",
             value=f"{message.id}",
-            inline=True
+            inline=False
         )
         
-        # Content (truncated if too long)
+        # Message author field with mention and username
+        embed.add_field(
+            name="Message author:",
+            value=f"@{message.author.name} ({message.author.mention})",
+            inline=False
+        )
+        
+        # Message created field with relative timestamp
+        created_ts = int(message.created_at.timestamp())
+        embed.add_field(
+            name="Message created:",
+            value=f"<t:{created_ts}:R>",
+            inline=False
+        )
+        
+        # Message content
         content_value = message.content
         if not content_value and not message.embeds and not message.attachments:
             content_value = "*No content*"
         elif not content_value:
-            # If no text content but has attachments/embeds, describe them in content or leave empty if handled below
             content_value = ""
 
         if len(content_value) > 1024:
             content_value = content_value[:1021] + "..."
             
         if content_value:
-            embed.add_field(name="Content", value=content_value, inline=False)
+            embed.add_field(name="Message", value=content_value, inline=False)
         
-        # Attachments
+        # Attachments (matching screenshot format)
         if message.attachments:
-            attachments_list = [
-                f"[{a.filename}]({a.url})" if not a.is_spoiler() 
-                else f"||{a.filename}||" 
-                for a in message.attachments[:10]
-            ]
-            attachments_text = "\n".join(attachments_list)
+            attachments_list = [a.filename for a in message.attachments[:10]]
+            attachments_text = ", ".join(attachments_list)
             if len(message.attachments) > 10:
-                attachments_text += f"\n*...and {len(message.attachments) - 10} more*"
-            embed.add_field(name="Attachments", value=attachments_text, inline=False)
-        
-        # Embeds
-        if message.embeds:
+                attachments_text += f", ...and {len(message.attachments) - 10} more"
             embed.add_field(
-                name="Embeds",
-                value=f"{len(message.embeds)} embed(s)",
+                name=f"{len(message.attachments)} Attachment(s)",
+                value=attachments_text,
                 inline=False
             )
         
-        # Footer
-        embed.set_footer(text=f"Author ID: {message.author.id}")
+        # Set author to the deleted message author (shows their avatar)
+        embed.set_footer(text=f"@{message.author.global_name or message.author.name}")
         
-        await self.safe_send_log(channel, embed)
+        await self.safe_send_log(channel, embed, use_v2=False)
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message):

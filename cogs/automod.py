@@ -30,6 +30,16 @@ from utils.time_parser import parse_time
 from config import Config
 
 
+# Default bad words list (common slurs/spam terms)
+# Users can remove these via /automod badwords remove
+DEFAULT_BADWORDS = [
+    "nigger", "nigga", "faggot", "fag", "retard", "kys", "kill yourself",
+    "tranny", "chink", "spic", "wetback", "kike", "coon", "gook",
+    "cp", "child porn", "discord.gg", "discordapp.com/invite",
+    "free nitro", "steam gift", "claim your prize",
+]
+
+
 # =========================
 # AI Moderation Helper
 # =========================
@@ -346,8 +356,6 @@ class AutoMod(commands.Cog):
             return
 
         settings = await self.bot.db.get_settings(message.guild.id)
-        if not settings.get("automod_enabled", False):
-            return
 
         if message.channel.id in settings.get("ignored_channels", []):
             return
@@ -358,6 +366,14 @@ class AutoMod(commands.Cog):
 
         content = message.content or ""
         lowered = content.lower()
+
+        # ---------- Ensure default badwords are loaded ----------
+        badwords = settings.get("automod_badwords")
+        if badwords is None:
+            # First time: populate with defaults
+            settings["automod_badwords"] = list(DEFAULT_BADWORDS)
+            await self.bot.db.update_settings(message.guild.id, settings)
+            badwords = settings["automod_badwords"]
 
         # ---------- AI pre-pass (optional) ----------
 
@@ -417,7 +433,6 @@ class AutoMod(commands.Cog):
 
         # ---------- BAD WORDS FILTER ----------
 
-        badwords = settings.get("automod_badwords", [])
         if badwords:
             for word in badwords:
                 w = word.lower()
@@ -433,7 +448,7 @@ class AutoMod(commands.Cog):
 
         # ---------- LINK FILTER ----------
 
-        if settings.get("automod_links_enabled", False):
+        if settings.get("automod_links_enabled", True):
             url_pattern = re.compile(r"https?://\S+")
             urls = url_pattern.findall(content)
             if urls:
@@ -453,7 +468,7 @@ class AutoMod(commands.Cog):
 
         # ---------- DISCORD INVITE FILTER ----------
 
-        if settings.get("automod_invites_enabled", False):
+        if settings.get("automod_invites_enabled", True):
             invite_pattern = re.compile(
                 r"(discord\.gg|discord\.com/invite|discordapp\.com/invite)/\S+"
             )
@@ -671,17 +686,14 @@ class AutoMod(commands.Cog):
         )
         await interaction.response.send_message(embed=embed)
 
-    @automod_group.command(name="disable", description="Disable AutoMod")
+    @automod_group.command(name="disable", description="AutoMod cannot be disabled")
     @is_admin()
     async def automod_disable(self, interaction: discord.Interaction):
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        settings["automod_enabled"] = False
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        embed = ModEmbed.success(
-            "AutoMod Disabled",
-            "AutoMod is now disabled.",
+        embed = ModEmbed.error(
+            "Cannot Disable",
+            "AutoMod is always active to protect your server. You can configure individual filters instead.",
         )
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @automod_group.command(name="status", description="View AutoMod status and settings")
     @is_mod()

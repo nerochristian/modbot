@@ -170,6 +170,7 @@ CATEGORY_ICONS = {
     "Utility": "🔧",
     "Fun": "🎉",
     "Core": "💠",
+    "Whitelist": "🔒",
 }
 
 def get_category_icon(category: str) -> str:
@@ -226,6 +227,11 @@ ADMIN_COMMANDS = {
         ("`/automod enable`", "Enable automod"),
         ("`/automod status`", "View settings"),
         ("`/automod punishment`", "Set punishment"),
+    ],
+    "Whitelist": [
+        ("`/whitelist enable`", "Enable strict mode"),
+        ("`/whitelist scan`", "Find non-whitelisted"),
+        ("`/whitelist mass_add`", "Add role to whitelist"),
     ],
     "Roles": [
         ("`/roles action:create`", "Create a role"),
