@@ -185,7 +185,7 @@ class Setup(commands.Cog):
                   "color": discord.Color.darker_grey(),
                   "permissions": discord.Permissions.none(),
                   "hoist": False,
-                  "setting_key": "quarantine_role",
+                  "setting_key": "automod_quarantine_role_id",
               },
             {
                 "name": "unverified",
@@ -1568,6 +1568,26 @@ class Setup(commands.Cog):
                     created_roles.append("ƒo. Skipped global role reset (verify=false)")
         except Exception as e:
             errors.append(f"ƒ?O Verification setup failed: {e}")
+
+        # ==================== AUTOMOD PERMISSIONS ====================
+        try:
+            # Apply Quarantine overrides to all channels
+            q_role_id = settings.get("automod_quarantine_role_id")
+            q_role = guild.get_role(q_role_id) if q_role_id else None
+            
+            if q_role:
+                q_overrides_applied = 0
+                for channel in guild.channels:
+                    # Skip categories, only restrict actual channels
+                    if isinstance(channel, (discord.TextChannel, discord.VoiceChannel, discord.ForumChannel, discord.StageChannel)):
+                        try:
+                            await channel.set_permissions(q_role, send_messages=False, speak=False, add_reactions=False, create_public_threads=False, create_private_threads=False)
+                            q_overrides_applied += 1
+                        except:
+                            pass
+                created_roles.append(f"🔒 Applied Quarantine to {q_overrides_applied} channels")
+        except Exception as e:
+            errors.append(f"⚠️ Failed to apply Quarantine overrides: {e}")
 
         # ==================== SAVE SETTINGS ====================
         settings["setup_complete"] = True

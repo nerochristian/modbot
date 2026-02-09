@@ -1,11 +1,25 @@
 """
-AutoMod - Automatic moderation features with Groq AI
+AutoMod V3 - Enterprise-Grade Modular Moderation System
 
-Features:
-- Rule-based filters (badwords, links, invites, spam, caps, mentions, new accounts)
-- Groq AI content analysis for context-aware moderation
-- Configurable punishments & durations
-- Per-guild AI toggles and sensitivity
+Major Improvements:
+- Advanced Filter Pipeline with Priority System
+- Intelligent Context-Aware AI Analysis
+- Redis Caching for High Performance
+- Comprehensive Audit Logging
+- Auto-Escalation System
+- Smart Whitelist/Blacklist Management
+- Pattern Learning & Adaptation
+- Multi-Language Support
+- Rate Limiting & DDoS Protection
+- Sophisticated Bypass System with Temporary Overrides
+- Appeal & Review System
+- Statistics & Analytics Dashboard
+- Webhook Integration for External Systems
+- Custom Rule Engine (JSON/YAML)
+- Progressive Punishment System
+- Smart Message Context Analysis
+- Advanced Evasion Detection
+- Automated Pattern Recognition
 """
 
 import os
@@ -13,15 +27,33 @@ import re
 import json
 import asyncio
 import hashlib
-from collections import defaultdict
+import logging
+import difflib
+from abc import ABC, abstractmethod
+from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
-from typing import Optional, Literal, Dict, Any, List
+from typing import Optional, List, Dict, Any, Tuple, Set, Union, Literal
+from dataclasses import dataclass, field
+from enum import Enum
+import unicodedata
 
 import discord
 from discord import app_commands
-from discord.ext import commands
+from discord.ext import commands, tasks
 
-from groq import Groq  # pip install groq
+try:
+    from groq import Groq
+    GROQ_AVAILABLE = True
+except ImportError:
+    GROQ_AVAILABLE = False
+    logging.warning("Groq not installed - AI features disabled")
+
+try:
+    import aioredis
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    logging.warning("Redis not available - using in-memory cache")
 
 from utils.embeds import ModEmbed
 from utils.logging import send_log_embed
@@ -29,1166 +61,1912 @@ from utils.checks import is_admin, is_mod, is_bot_owner_id
 from utils.time_parser import parse_time
 from config import Config
 
+logger = logging.getLogger("AutoModV3")
 
-# Default bad words list (common slurs/spam terms)
-# Users can remove these via /automod badwords remove
-DEFAULT_BADWORDS = [
-    "nigger", "nigga", "faggot", "fag", "retard", "kys", "kill yourself",
-    "tranny", "chink", "spic", "wetback", "kike", "coon", "gook",
-    "cp", "child porn", "discord.gg", "discordapp.com/invite",
-    "free nitro", "steam gift", "claim your prize",
-]
+# =============================================================================
+# ENUMS & DATA CLASSES
+# =============================================================================
 
+class Severity(Enum):
+    """Severity levels for violations"""
+    INFO = 0
+    LOW = 1
+    MEDIUM = 2
+    HIGH = 3
+    CRITICAL = 4
+    EXTREME = 5
 
-# =========================
-# AI Moderation Helper
-# =========================
+class ActionType(Enum):
+    """Possible moderation actions"""
+    NONE = "none"
+    LOG = "log"
+    WARN = "warn"
+    DELETE = "delete"
+    MUTE = "mute"
+    KICK = "kick"
+    BAN = "ban"
+    TEMPBAN = "tempban"
+    QUARANTINE = "quarantine"
+    SHADOWBAN = "shadowban"
 
-class AIModerationHelper:
-    """
-    Thin wrapper around Groq for:
-    - message content classification (toxicity, spam, etc.)
-    - caching and basic rate limiting
-    """
+class FilterCategory(Enum):
+    """Filter categories for organization"""
+    CONTENT = "content"
+    BEHAVIOR = "behavior"
+    IDENTITY = "identity"
+    SECURITY = "security"
+    CUSTOM = "custom"
 
-    def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("GROQ_API_KEY")
-        self.client: Optional[Groq] = None
-        if self.api_key:
-            self.client = Groq(api_key=self.api_key)
+@dataclass
+class FilterResult:
+    """Enhanced filter result with detailed metadata"""
+    triggered: bool
+    reason: str = ""
+    severity: Severity = Severity.LOW
+    action: ActionType = ActionType.WARN
+    confidence: float = 1.0  # 0.0 - 1.0
+    category: FilterCategory = FilterCategory.CONTENT
+    metadata: Dict[str, Any] = field(default_factory=dict)
+    matched_patterns: List[str] = field(default_factory=list)
+    context: str = ""
+    
+    def __post_init__(self):
+        """Auto-determine action based on severity if not set"""
+        if self.triggered and self.action == ActionType.WARN:
+            if self.severity == Severity.EXTREME:
+                self.action = ActionType.BAN
+            elif self.severity == Severity.CRITICAL:
+                self.action = ActionType.KICK
+            elif self.severity == Severity.HIGH:
+                self.action = ActionType.MUTE
+            elif self.severity == Severity.MEDIUM:
+                self.action = ActionType.DELETE
+            else:
+                self.action = ActionType.WARN
 
-        self.analysis_cache: Dict[str, tuple[dict, datetime]] = {}
-        self.rate_limit_tracker: Dict[str, List[datetime]] = defaultdict(list)
-
-        # config
-        self.cache_ttl_seconds = 300
-        self.max_requests_per_minute = 25
-        self.model = "llama-3.3-70b-versatile"
-
-    def _hash_content(self, content: str) -> str:
-        return hashlib.sha256(content.encode("utf-8")).hexdigest()
-
-    def _within_rate_limit(self) -> bool:
+@dataclass
+class UserHistory:
+    """Track user violation history"""
+    user_id: int
+    guild_id: int
+    violations: List[Dict[str, Any]] = field(default_factory=list)
+    warnings: int = 0
+    mutes: int = 0
+    kicks: int = 0
+    last_violation: Optional[datetime] = None
+    
+    def add_violation(self, result: FilterResult):
+        self.violations.append({
+            "timestamp": datetime.now(timezone.utc),
+            "reason": result.reason,
+            "severity": result.severity.value,
+            "action": result.action.value
+        })
+        self.last_violation = datetime.now(timezone.utc)
+        
+        if result.action == ActionType.WARN:
+            self.warnings += 1
+        elif result.action == ActionType.MUTE:
+            self.mutes += 1
+        elif result.action == ActionType.KICK:
+            self.kicks += 1
+    
+    def get_risk_score(self) -> float:
+        """Calculate user risk score (0-100)"""
+        if not self.violations:
+            return 0.0
+        
+        score = 0.0
         now = datetime.now(timezone.utc)
-        window = timedelta(seconds=60)
-        events = [
-            t for t in self.rate_limit_tracker["requests"]
-            if now - t < window
+        
+        for v in self.violations:
+            # Time decay - older violations matter less
+            age_days = (now - v["timestamp"]).days
+            decay = max(0.1, 1.0 - (age_days / 30))
+            
+            # Severity weight
+            severity_weight = {0: 1, 1: 2, 2: 5, 3: 10, 4: 20, 5: 50}
+            score += severity_weight.get(v["severity"], 1) * decay
+        
+        # Frequency multiplier
+        if len(self.violations) > 5:
+            score *= 1.5
+        if len(self.violations) > 10:
+            score *= 2.0
+        
+        return min(100.0, score)
+
+# =============================================================================
+# COMPREHENSIVE PATTERN LIBRARY
+# =============================================================================
+
+class PatternLibrary:
+    """Centralized pattern library with advanced evasion detection"""
+    
+    # Unicode confusables for evasion detection
+    CONFUSABLES = {
+        'a': ['а', 'ａ', '@', '4', 'ā', 'ă', 'ą'],
+        'e': ['е', 'ｅ', '3', 'ē', 'ė', 'ę'],
+        'i': ['і', 'ｉ', '1', '!', 'ī', 'į'],
+        'o': ['о', 'ｏ', '0', 'ō', 'ő'],
+        'u': ['υ', 'ｕ', 'ū', 'ů', 'ų'],
+        's': ['ѕ', 'ｓ', '$', '5'],
+        'n': ['п', 'ｎ'],
+        'c': ['с', 'ｃ'],
+        'g': ['ɡ', 'ｇ', '9'],
+        'k': ['κ', 'ｋ'],
+    }
+    
+    # Comprehensive slur/toxicity patterns
+    TOXICITY_PATTERNS = {
+        'racial': [
+            r'n[i1!]gg[ea@]r?',
+            r'n[i1!]gg[ua@]',
+            r'ch[i1!]nk',
+            r'sp[i1!]c',
+            r'k[i1!]ke',
+            r'c[o0]{2,}n',
+            r'g[o0]{2,}k',
+            r'wet\s?back',
+        ],
+        'homophobic': [
+            r'f[a@4]gg?[o0]t',
+            r'f[a@4]g',
+            r'tr[a@4]nn[yi1]',
+            r'd[yi1]ke',
+        ],
+        'ableist': [
+            r'ret[a@4]rd',
+            r'ret[a@4]rd[e3]d',
+            r'aut[i1]st[i1]c',  # When used as insult
+        ],
+        'threats': [
+            r'k[yi1]{2,}\s?s',
+            r'k[i1]ll\s+(your|ur)?\s?self',
+            r'end\s+(your|ur)\s+life',
+            r'commit\s+suicide',
+            r'shoot\s+up',
+            r'bomb\s+threat',
+        ],
+        'harassment': [
+            r'r[a@4]pe',
+            r'doxx?',
+            r'swat',
+            r'die\s+in\s+a\s+fire',
         ]
-        self.rate_limit_tracker["requests"] = events
-        return len(events) < self.max_requests_per_minute
+    }
+    
+    # Scam/phishing patterns
+    SCAM_PATTERNS = [
+        r'free\s+nitro',
+        r'steam\s+gift',
+        r'claim\s+your\s+(prize|reward)',
+        r'@everyone.*http',
+        r'bit\.ly',
+        r'tinyurl',
+        r'goo\.gl',
+        r'click\s+here.*prize',
+        r'verify\s+account',
+        r'limited\s+time\s+offer',
+    ]
+    
+    # Invite patterns (more comprehensive)
+    INVITE_PATTERNS = [
+        r'discord\.gg/[\w-]+',
+        r'discord(?:app)?\.com/invite/[\w-]+',
+        r'dsc\.gg/[\w-]+',
+    ]
+    
+    # Suspicious link patterns
+    SUSPICIOUS_LINKS = [
+        r'bit\.ly',
+        r'tinyurl',
+        r'grabify',
+        r'iplogger',
+        r'.*\.ru/',
+        r'.*\.su/',
+        r'.*\.tk/',
+        r'steamcommunity\.com.*trade',
+    ]
+    
+    @staticmethod
+    def normalize_unicode(text: str) -> str:
+        """Normalize unicode to detect evasion attempts"""
+        # NFD normalization
+        text = unicodedata.normalize('NFD', text)
+        # Remove combining characters
+        text = ''.join(c for c in text if not unicodedata.combining(c))
+        return text
+    
+    @staticmethod
+    def expand_confusables(pattern: str) -> str:
+        """Expand pattern to include confusable characters"""
+        for char, confusables in PatternLibrary.CONFUSABLES.items():
+            if char in pattern:
+                replacement = f"[{char}{''.join(confusables)}]"
+                pattern = pattern.replace(char, replacement)
+        return pattern
+    
+    @staticmethod
+    def strip_invisible(text: str) -> str:
+        """Remove zero-width and invisible characters"""
+        invisible = [
+            '\u200b',  # Zero-width space
+            '\u200c',  # Zero-width non-joiner
+            '\u200d',  # Zero-width joiner
+            '\u2060',  # Word joiner
+            '\ufeff',  # Zero-width no-break space
+        ]
+        for char in invisible:
+            text = text.replace(char, '')
+        return text
 
-    def _record_request(self) -> None:
-        self.rate_limit_tracker["requests"].append(datetime.now(timezone.utc))
+# =============================================================================
+# ADVANCED CACHING SYSTEM
+# =============================================================================
 
-    def _get_cached(self, content: str) -> Optional[dict]:
-        h = self._hash_content(content)
-        if h not in self.analysis_cache:
-            return None
-        data, ts = self.analysis_cache[h]
-        if (datetime.now(timezone.utc) - ts).total_seconds() > self.cache_ttl_seconds:
-            del self.analysis_cache[h]
-            return None
-        return data
+class CacheManager:
+    """High-performance caching with Redis fallback to memory"""
+    
+    def __init__(self, redis_url: Optional[str] = None):
+        self.redis_url = redis_url
+        self.redis = None
+        self.memory_cache: Dict[str, Tuple[Any, datetime]] = {}
+        self.cache_hits = 0
+        self.cache_misses = 0
+    
+    async def initialize(self):
+        """Initialize Redis connection"""
+        if REDIS_AVAILABLE and self.redis_url:
+            try:
+                self.redis = await aioredis.create_redis_pool(self.redis_url)
+                logger.info("Redis cache initialized")
+            except Exception as e:
+                logger.warning(f"Redis connection failed, using memory cache: {e}")
+    
+    async def get(self, key: str) -> Optional[Any]:
+        """Get value from cache"""
+        # Try Redis first
+        if self.redis:
+            try:
+                value = await self.redis.get(key)
+                if value:
+                    self.cache_hits += 1
+                    return json.loads(value)
+            except Exception as e:
+                logger.error(f"Redis get error: {e}")
+        
+        # Fallback to memory
+        if key in self.memory_cache:
+            value, expiry = self.memory_cache[key]
+            if datetime.now(timezone.utc) < expiry:
+                self.cache_hits += 1
+                return value
+            else:
+                del self.memory_cache[key]
+        
+        self.cache_misses += 1
+        return None
+    
+    async def set(self, key: str, value: Any, ttl: int = 3600):
+        """Set value in cache with TTL"""
+        # Try Redis
+        if self.redis:
+            try:
+                await self.redis.setex(key, ttl, json.dumps(value))
+                return
+            except Exception as e:
+                logger.error(f"Redis set error: {e}")
+        
+        # Fallback to memory
+        expiry = datetime.now(timezone.utc) + timedelta(seconds=ttl)
+        self.memory_cache[key] = (value, expiry)
+        
+        # Cleanup old entries
+        if len(self.memory_cache) > 10000:
+            self._cleanup_memory_cache()
+    
+    def _cleanup_memory_cache(self):
+        """Remove expired entries from memory cache"""
+        now = datetime.now(timezone.utc)
+        expired = [k for k, (_, exp) in self.memory_cache.items() if now >= exp]
+        for k in expired:
+            del self.memory_cache[k]
+    
+    async def close(self):
+        """Close Redis connection"""
+        if self.redis:
+            self.redis.close()
+            await self.redis.wait_closed()
 
-    def _set_cache(self, content: str, result: dict) -> None:
-        h = self._hash_content(content)
-        self.analysis_cache[h] = (result, datetime.now(timezone.utc))
+# =============================================================================
+# ABSTRACT FILTER BASE
+# =============================================================================
 
-    async def analyze_message(
-        self,
-        content: str,
-        context: Dict[str, Any],
-    ) -> dict:
-        """
-        Returns a dict like:
-        {
-            "is_violation": bool,
-            "category": "toxicity|spam|nsfw|threat|other",
-            "severity": 1-10,
-            "reason": str
-        }
-        """
-        # no api key / client -> no ai
-        if not self.client:
-            return {"is_violation": False, "reason": "no_groq_client"}
-
-        # try cache first
-        cached = self._get_cached(content)
-        if cached is not None:
-            return cached
-
-        # rudimentary rate limit
-        if not self._within_rate_limit():
-            return {"is_violation": False, "reason": "rate_limited"}
-
-        prompt = f"""
-You are a strict Discord moderation classifier.
-
-Message:
-\"\"\"{content}\"\"\"
-
-Context (JSON):
-{json.dumps(context, ensure_ascii=False)}
-
-Decide if the message violates server rules.
-
-Categories:
-- toxicity: insults, harassment, slurs
-- spam: repetitive, scam, or promotion
-- nsfw: sexual content, porn, sexualized minors (ALWAYS max severity)
-- threat: self-harm, threats of violence, doxxing
-- other: anything else clearly against ToS
-
-Respond ONLY with a JSON object like:
-{{
-  "is_violation": bool,
-  "category": "toxicity|spam|nsfw|threat|other|none",
-  "severity": 1-10,
-  "reason": "short human explanation"
-}}
-"""
-
-        def _call():
-            return self.client.chat.completions.create(
-                model=self.model,
-                temperature=0.1,
-                max_tokens=200,
-                messages=[{"role": "user", "content": prompt}],
-            )
-
-        try:
-            completion = await asyncio.to_thread(_call)
-            self._record_request()
-            raw = completion.choices[0].message.content.strip()
-
-            # try parse JSON (be forgiving)
-            start = raw.find("{")
-            end = raw.rfind("}")
-            if start == -1 or end == -1:
-                return {"is_violation": False, "reason": "parse_error"}
-
-            data = json.loads(raw[start : end + 1])
-
-            # minimal sane defaults
-            result = {
-                "is_violation": bool(data.get("is_violation")),
-                "category": str(data.get("category", "none")),
-                "severity": int(data.get("severity", 1)),
-                "reason": str(data.get("reason", "no reason provided"))[:300],
-            }
-
-            self._set_cache(content, result)
-            return result
-
-        except Exception as e:
-            print(f"[Groq AutoMod] error: {e}")
-            return {"is_violation": False, "reason": "exception"}
-
-
-# =========================
-# AutoMod Cog
-# =========================
-
-class AutoMod(commands.Cog):
-    def __init__(self, bot):
+class BaseFilter(ABC):
+    """Enhanced base filter with priority and metadata"""
+    
+    def __init__(self, bot: commands.Bot, priority: int = 50):
         self.bot = bot
-        self.spam_tracker: Dict[tuple, List[datetime]] = defaultdict(list)
-        self.spam_cooldown: set[tuple] = set()
-        self.ai_helper = AIModerationHelper()
+        self.priority = priority  # 0-100, higher = checked first
+        self.enabled = True
+        self.cache_manager: Optional[CacheManager] = None
+    
+    @abstractmethod
+    async def check(self, message: discord.Message, settings: dict, context: dict) -> FilterResult:
+        """
+        Check if message violates this filter
+        
+        Args:
+            message: The Discord message
+            settings: Guild settings
+            context: Additional context (user history, etc.)
+        """
+        pass
+    
+    async def get_cache_key(self, message: discord.Message) -> str:
+        """Generate cache key for this filter"""
+        content_hash = hashlib.md5(message.content.encode()).hexdigest()
+        return f"filter:{self.__class__.__name__}:{content_hash}"
+    
+    def normalize_text(self, text: str) -> str:
+        """Normalize text for comparison"""
+        text = text.lower()
+        text = PatternLibrary.normalize_unicode(text)
+        text = PatternLibrary.strip_invisible(text)
+        text = re.sub(r'\s+', ' ', text)
+        return text.strip()
 
-    # ---------- helper: logging ----------
+# =============================================================================
+# ENHANCED FILTERS
+# =============================================================================
 
-    async def log_automod(self, guild: discord.Guild, embed: discord.Embed):
-        settings = await self.bot.db.get_settings(guild.id)
-        log_id = settings.get("automod_log_channel")
-        if not log_id:
-            return
-        channel = guild.get_channel(log_id)
-        if not channel:
-            return
-        try:
-            await send_log_embed(channel, embed)
-        except Exception:
-            pass
+class AdvancedBadWordFilter(BaseFilter):
+    """Enhanced badword filter with context awareness and evasion detection"""
+    
+    def __init__(self, bot):
+        super().__init__(bot, priority=90)
+        self.compiled_patterns: Dict[str, re.Pattern] = {}
+    
+    async def check(self, message: discord.Message, settings: dict, context: dict) -> FilterResult:
+        badwords = settings.get("automod_badwords", [])
+        if not badwords:
+            return FilterResult(False)
+        
+        content = self.normalize_text(message.content)
+        if not content:
+            return FilterResult(False)
+        
+        # Compile patterns if not cached
+        for word in badwords:
+            if word not in self.compiled_patterns:
+                # Escape special characters to treat as literal, then expand
+                escaped = re.escape(word.lower())
+                expanded = PatternLibrary.expand_confusables(escaped)
+                # Add word boundary detection
+                pattern = r'\b' + expanded + r'\b'
+                self.compiled_patterns[word] = re.compile(pattern, re.IGNORECASE)
+        
+        # Check patterns
+        matched = []
+        severity = Severity.LOW
+        
+        
+        # Check patterns (Regex)
+        for word, pattern in self.compiled_patterns.items():
+            if pattern.search(content):
+                matched.append(word)
 
-    # ---------- helper: punishment ----------
+        # Fuzzy Matching (if no exact matches yet, or to catch variations)
+        # We check individual words to avoid false positives on long text
+        if not matched:  # Only check fuzzy if regex didn't catch it
+            words = content.split()
+            for msg_word in words:
+                # Skip short words to avoid noise
+                if len(msg_word) < 3:
+                    continue
 
-    async def apply_punishment(
-        self,
-        user: discord.Member,
-        guild: discord.Guild,
-        punishment: str,
-        reason: str,
-        settings: dict,
-    ) -> str:
-        mute_duration = settings.get("automod_mute_duration", 3600)
-        ban_duration = settings.get("automod_ban_duration", 0)
-        spam_timeout = settings.get("automod_spam_timeout", 60)
+                msg_word_norm = msg_word.lower()
+                for badword in badwords:
+                    # ratio >= 0.85 means ~1-2 char difference for average words
+                    ratio = difflib.SequenceMatcher(None, msg_word_norm, badword.lower()).ratio()
+                    if ratio >= 0.85:
+                        matched.append(f"{badword} (~{int(ratio*100)}%)")
 
-        if punishment == "warn":
-            await self.bot.db.add_warning(
-                guild.id,
-                user.id,
-                self.bot.user.id,
-                f"[AutoMod] {reason}",
+        if matched:
+            # Re-calculate severity based on matched words
+            severity = Severity.MEDIUM  # Default for fuzzy
+
+            # Check if any matched word (stripped of %) is critical
+            for m in matched:
+                base_word = m.split(" (")[0]
+                if base_word in str(PatternLibrary.TOXICITY_PATTERNS.get('threats', [])):
+                    severity = Severity.CRITICAL
+                    break
+                elif base_word in str(PatternLibrary.TOXICITY_PATTERNS.get('racial', [])) or \
+                     base_word in str(PatternLibrary.TOXICITY_PATTERNS.get('homophobic', [])):
+                    severity = Severity.HIGH
+
+        
+        if matched:
+            # Check user history for escalation
+            user_history = context.get('user_history')
+            if user_history and user_history.violations:
+                # Escalate if repeat offender
+                if user_history.warnings >= 3:
+                    severity = Severity(min(severity.value + 1, Severity.EXTREME.value))
+            
+            return FilterResult(
+                triggered=True,
+                reason=f"Prohibited language detected",
+                severity=severity,
+                category=FilterCategory.CONTENT,
+                matched_patterns=matched[:3],  # Limit to 3 for privacy
+                confidence=1.0
             )
-            return "Warning issued"
+        
+        return FilterResult(False)
 
-        if punishment == "mute":
+class SmartLinkFilter(BaseFilter):
+    """Intelligent link filter with URL analysis"""
+    
+    def __init__(self, bot):
+        super().__init__(bot, priority=80)
+        self.url_pattern = re.compile(
+            r'http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*\\(\\),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+'
+        )
+    
+    async def check(self, message: discord.Message, settings: dict, context: dict) -> FilterResult:
+        if not settings.get("automod_links_enabled", True):
+            return FilterResult(False)
+        
+        urls = self.url_pattern.findall(message.content)
+        if not urls:
+            return FilterResult(False)
+        
+        whitelist = settings.get("automod_links_whitelist", [])
+        whitelist_domains = settings.get("automod_whitelisted_domains", [])
+        
+        suspicious_urls = []
+        blocked_urls = []
+        
+        for url in urls:
+            # Extract domain
+            domain_match = re.search(r'://([^/]+)', url)
+            if not domain_match:
+                continue
+            
+            domain = domain_match.group(1).lower()
+            
+            # Check whitelist
+            if any(d in domain for d in whitelist_domains):
+                continue
+            
+            if any(pattern in url for pattern in whitelist):
+                continue
+            
+            # Check suspicious patterns
+            is_suspicious = False
+            for pattern in PatternLibrary.SUSPICIOUS_LINKS:
+                if re.search(pattern, url, re.IGNORECASE):
+                    suspicious_urls.append(url)
+                    is_suspicious = True
+                    break
+            
+            if not is_suspicious:
+                blocked_urls.append(url)
+        
+        if suspicious_urls:
+            return FilterResult(
+                triggered=True,
+                reason="Suspicious link detected (potential phishing/malware)",
+                severity=Severity.HIGH,
+                action=ActionType.DELETE,
+                category=FilterCategory.SECURITY,
+                matched_patterns=suspicious_urls[:2],
+                confidence=0.9
+            )
+        
+        if blocked_urls:
+            return FilterResult(
+                triggered=True,
+                reason="Unauthorized link posted",
+                severity=Severity.MEDIUM,
+                category=FilterCategory.CONTENT,
+                matched_patterns=blocked_urls[:2],
+                confidence=1.0
+            )
+        
+        return FilterResult(False)
+
+class AdvancedSpamFilter(BaseFilter):
+    """Multi-layered spam detection"""
+    
+    def __init__(self, bot):
+        super().__init__(bot, priority=85)
+        self.message_history: Dict[Tuple, deque] = defaultdict(lambda: deque(maxlen=100))
+        self.duplicate_tracker: Dict[Tuple, Dict[str, List[datetime]]] = defaultdict(lambda: defaultdict(list))
+        self.cooldowns: Set[Tuple] = set()
+    
+    async def check(self, message: discord.Message, settings: dict, context: dict) -> FilterResult:
+        threshold = settings.get("automod_spam_threshold", 5)
+        if threshold <= 0:
+            return FilterResult(False)
+        
+        key = (message.guild.id, message.author.id, message.channel.id)
+        now = datetime.now(timezone.utc)
+        
+        # 1. Message flood detection
+        self.message_history[key].append(now)
+        recent_messages = [t for t in self.message_history[key] if (now - t).total_seconds() < 5]
+        
+        if len(recent_messages) >= threshold:
+            if key not in self.cooldowns:
+                self.cooldowns.add(key)
+                asyncio.create_task(self._clear_cooldown(key))
+                asyncio.create_task(self._cleanup_spam(message, threshold))
+                
+                return FilterResult(
+                    triggered=True,
+                    reason=f"Message flood ({len(recent_messages)} messages in 5s)",
+                    severity=Severity.HIGH,
+                    action=ActionType.MUTE,
+                    category=FilterCategory.BEHAVIOR,
+                    metadata={"message_count": len(recent_messages)}
+                )
+        
+        # 2. Duplicate message detection
+        content_hash = hashlib.md5(message.content.encode()).hexdigest()
+        self.duplicate_tracker[key][content_hash].append(now)
+        
+        # Clean old duplicates
+        self.duplicate_tracker[key][content_hash] = [
+            t for t in self.duplicate_tracker[key][content_hash] 
+            if (now - t).total_seconds() < 60
+        ]
+        
+        duplicate_count = len(self.duplicate_tracker[key][content_hash])
+        if duplicate_count >= 3:
+            return FilterResult(
+                triggered=True,
+                reason=f"Duplicate message spam ({duplicate_count}x)",
+                severity=Severity.MEDIUM,
+                action=ActionType.MUTE,
+                category=FilterCategory.BEHAVIOR
+            )
+        
+        # 3. Character spam detection
+        if len(message.content) > 20:
+            unique_chars = len(set(message.content))
+            if unique_chars < 5:  # Very low character diversity
+                return FilterResult(
+                    triggered=True,
+                    reason="Character spam detected",
+                    severity=Severity.LOW,
+                    category=FilterCategory.BEHAVIOR
+                )
+        
+        return FilterResult(False)
+    
+    async def _clear_cooldown(self, key):
+        await asyncio.sleep(10)
+        self.cooldowns.discard(key)
+    
+    async def _cleanup_spam(self, message: discord.Message, count: int):
+        try:
+            messages = []
+            async for m in message.channel.history(limit=min(count + 5, 100)):
+                if m.author.id == message.author.id and \
+                   (discord.utils.utcnow() - m.created_at).total_seconds() < 10:
+                    messages.append(m)
+            
+            if len(messages) > 1:
+                await message.channel.delete_messages(messages)
+        except Exception as e:
+            logger.error(f"Spam cleanup failed: {e}")
+
+class IntelligentAIFilter(BaseFilter):
+    """Advanced AI-powered content moderation with context awareness"""
+    
+    def __init__(self, bot):
+        super().__init__(bot, priority=70)
+        api_key = os.getenv("GROQ_API_KEY")
+        self.client = Groq(api_key=api_key) if api_key and GROQ_AVAILABLE else None
+        self.model = "llama-3.3-70b-versatile"
+        self.analysis_cache: Dict[str, FilterResult] = {}
+        self.max_cache_size = 1000
+    
+    async def check(self, message: discord.Message, settings: dict, context: dict) -> FilterResult:
+        if not self.client or not settings.get("automod_ai_enabled", False):
+            return FilterResult(False)
+        
+        content = message.content.strip()
+        if not content or len(content) < 5:
+            return FilterResult(False)
+        
+        # Cache check
+        cache_key = hashlib.md5(content.encode()).hexdigest()
+        if cache_key in self.analysis_cache:
+            return self.analysis_cache[cache_key]
+        
+        try:
+            # Get user context
+            user_history = context.get('user_history')
+            history_context = ""
+            if user_history and user_history.violations:
+                recent = user_history.violations[-3:]
+                history_context = f"\nUser has {len(user_history.violations)} prior violations. Recent: {[v['reason'] for v in recent]}"
+            
+            # Run AI analysis
+            result = await self.bot.loop.run_in_executor(
+                None, 
+                self._analyze_content, 
+                content,
+                history_context
+            )
+            
+            # Cache result
+            if len(self.analysis_cache) >= self.max_cache_size:
+                # Remove oldest entries
+                remove_count = self.max_cache_size // 4
+                for k in list(self.analysis_cache.keys())[:remove_count]:
+                    del self.analysis_cache[k]
+            
+            self.analysis_cache[cache_key] = result
+            
+            # Apply threshold
+            min_severity = settings.get("automod_ai_min_severity", 4)
+            if result.triggered and result.metadata.get('ai_severity', 0) >= min_severity:
+                return result
+                
+        except Exception as e:
+            logger.error(f"AI filter error: {e}")
+        
+        return FilterResult(False)
+    
+    def _analyze_content(self, content: str, history: str) -> FilterResult:
+        """Synchronous AI analysis"""
+        try:
+            prompt = f"""Analyze this Discord message for policy violations.
+
+Message: "{content}"
+{history}
+
+Check for:
+1. Toxicity (hate speech, slurs, harassment)
+2. Threats (violence, self-harm encouragement)
+3. NSFW content (sexual, graphic)
+4. Spam (repetitive, nonsense)
+5. Scams (phishing, fraud)
+6. Misinformation (if obvious)
+
+Context awareness:
+- Consider intent and context
+- Differentiate jokes from genuine threats
+- Account for user history
+- Be lenient with ambiguous cases
+
+Respond ONLY with valid JSON:
+{{
+    "violation": true/false,
+    "category": "toxicity|threats|nsfw|spam|scam|other",
+    "severity": 1-10,
+    "confidence": 0.0-1.0,
+    "reason": "concise explanation",
+    "context_considered": true/false
+}}"""
+
+            completion = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.2,
+                max_tokens=200
+            )
+            
+            response = completion.choices[0].message.content
+            # Extract JSON if wrapped in markdown
+            if "```json" in response:
+                response = response.split("```json")[1].split("```")[0]
+            elif "```" in response:
+                response = response.split("```")[1].split("```")[0]
+            
+            data = json.loads(response.strip())
+            
+            if data.get("violation"):
+                ai_severity = data.get("severity", 1)
+                confidence = data.get("confidence", 0.5)
+                
+                # Map AI severity to our severity enum
+                severity_map = {
+                    range(1, 3): Severity.LOW,
+                    range(3, 5): Severity.MEDIUM,
+                    range(5, 7): Severity.HIGH,
+                    range(7, 9): Severity.CRITICAL,
+                    range(9, 11): Severity.EXTREME
+                }
+                
+                severity = Severity.MEDIUM
+                for r, s in severity_map.items():
+                    if ai_severity in r:
+                        severity = s
+                        break
+                
+                result = FilterResult(
+                    triggered=True,
+                    reason=f"AI: {data.get('reason', 'Policy violation detected')}",
+                    severity=severity,
+                    confidence=confidence,
+                    category=FilterCategory.CONTENT,
+                    metadata={
+                        "ai_severity": ai_severity,
+                        "ai_category": data.get("category"),
+                        "context_aware": data.get("context_considered", False)
+                    }
+                )
+                return result
+                
+        except Exception as e:
+            logger.error(f"AI analysis failed: {e}")
+        
+        return FilterResult(False)
+
+class ScamDetectionFilter(BaseFilter):
+    """Specialized scam and phishing detection"""
+    
+    def __init__(self, bot):
+        super().__init__(bot, priority=95)
+        self.scam_patterns = [re.compile(p, re.IGNORECASE) for p in PatternLibrary.SCAM_PATTERNS]
+    
+    async def check(self, message: discord.Message, settings: dict, context: dict) -> FilterResult:
+        if not settings.get("automod_scam_protection", True):
+            return FilterResult(False)
+        
+        content = self.normalize_text(message.content)
+        
+        # Check for scam patterns
+        matched_patterns = []
+        for pattern in self.scam_patterns:
+            if pattern.search(content):
+                matched_patterns.append(pattern.pattern)
+        
+        if matched_patterns:
+            # High severity for scams - they're dangerous
+            return FilterResult(
+                triggered=True,
+                reason="Potential scam/phishing attempt detected",
+                severity=Severity.CRITICAL,
+                action=ActionType.BAN,  # Aggressive action for scams
+                category=FilterCategory.SECURITY,
+                matched_patterns=matched_patterns[:3],
+                confidence=0.95
+            )
+        
+        # Check for @everyone/@here abuse with links
+        if ('@everyone' in message.content or '@here' in message.content) and \
+           ('http' in message.content.lower()):
+            return FilterResult(
+                triggered=True,
+                reason="Suspicious mass ping with link",
+                severity=Severity.HIGH,
+                action=ActionType.KICK,
+                category=FilterCategory.SECURITY,
+                confidence=0.9
+            )
+        
+        return FilterResult(False)
+
+class MentionSpamFilter(BaseFilter):
+    """Advanced mention spam detection"""
+    
+    def __init__(self, bot):
+        super().__init__(bot, priority=88)
+    
+    async def check(self, message: discord.Message, settings: dict, context: dict) -> FilterResult:
+        limit = settings.get("automod_max_mentions", 5)
+        if limit <= 0:
+            return FilterResult(False)
+        
+        total_mentions = len(message.mentions) + len(message.role_mentions)
+        
+        if total_mentions >= limit:
+            # Escalate severity based on count
+            if total_mentions >= limit * 2:
+                severity = Severity.CRITICAL
+            elif total_mentions >= limit * 1.5:
+                severity = Severity.HIGH
+            else:
+                severity = Severity.MEDIUM
+            
+            return FilterResult(
+                triggered=True,
+                reason=f"Mass mention spam ({total_mentions} mentions)",
+                severity=severity,
+                action=ActionType.MUTE,
+                category=FilterCategory.BEHAVIOR,
+                metadata={"mention_count": total_mentions}
+            )
+        
+        return FilterResult(False)
+
+class InviteFilter(BaseFilter):
+    """Enhanced Discord invite detection"""
+    
+    def __init__(self, bot):
+        super().__init__(bot, priority=75)
+        self.patterns = [re.compile(p, re.IGNORECASE) for p in PatternLibrary.INVITE_PATTERNS]
+    
+    async def check(self, message: discord.Message, settings: dict, context: dict) -> FilterResult:
+        if not settings.get("automod_invites_enabled", True):
+            return FilterResult(False)
+        
+        content = message.content
+        
+        for pattern in self.patterns:
+            if pattern.search(content):
+                # Check if it's an allowed server
+                allowed_invites = settings.get("automod_allowed_invites", [])
+                if any(inv in content for inv in allowed_invites):
+                    continue
+                
+                return FilterResult(
+                    triggered=True,
+                    reason="Unauthorized Discord invite link",
+                    severity=Severity.MEDIUM,
+                    category=FilterCategory.CONTENT,
+                    confidence=1.0
+                )
+        
+        return FilterResult(False)
+
+class CapsFilter(BaseFilter):
+    """Intelligent caps detection"""
+    
+    def __init__(self, bot):
+        super().__init__(bot, priority=60)
+    
+    async def check(self, message: discord.Message, settings: dict, context: dict) -> FilterResult:
+        threshold = settings.get("automod_caps_percentage", 70)
+        min_length = settings.get("automod_caps_min_length", 10)
+        
+        if threshold <= 0:
+            return FilterResult(False)
+        
+        content = message.content
+        if len(content) < min_length:
+            return FilterResult(False)
+        
+        alpha_chars = [c for c in content if c.isalpha()]
+        if not alpha_chars:
+            return FilterResult(False)
+        
+        caps_count = sum(1 for c in alpha_chars if c.isupper())
+        ratio = (caps_count / len(alpha_chars)) * 100
+        
+        if ratio >= threshold:
+            # More lenient - caps isn't that serious
+            return FilterResult(
+                triggered=True,
+                reason=f"Excessive caps ({int(ratio)}%)",
+                severity=Severity.LOW,
+                action=ActionType.DELETE,
+                category=FilterCategory.BEHAVIOR,
+                metadata={"caps_percentage": ratio}
+            )
+        
+        return FilterResult(False)
+
+class NewAccountFilter(BaseFilter):
+    """New account monitoring"""
+    
+    def __init__(self, bot):
+        super().__init__(bot, priority=50)
+    
+    async def check(self, message: discord.Message, settings: dict, context: dict) -> FilterResult:
+        min_days = settings.get("automod_newaccount_days", 0)
+        if min_days <= 0:
+            return FilterResult(False)
+        
+        age_days = (datetime.now(timezone.utc) - message.author.created_at).days
+        
+        if age_days < min_days:
+            # Just log, don't punish
+            return FilterResult(
+                triggered=True,
+                reason=f"New account ({age_days} days old)",
+                severity=Severity.INFO,
+                action=ActionType.LOG,
+                category=FilterCategory.IDENTITY,
+                metadata={"account_age_days": age_days}
+            )
+        
+        return FilterResult(False)
+
+# =============================================================================
+# MAIN AUTOMOD ENGINE
+# =============================================================================
+
+class AutoModEngine:
+    """Core automod processing engine"""
+    
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self.filters: List[BaseFilter] = []
+        self.user_histories: Dict[Tuple[int, int], UserHistory] = {}
+        self.cache_manager = CacheManager(os.getenv("REDIS_URL"))
+        self.stats = {
+            "messages_checked": 0,
+            "violations_detected": 0,
+            "actions_taken": 0,
+            "false_positives": 0
+        }
+        
+        # Initialize filters
+        self._initialize_filters()
+    
+    def _initialize_filters(self):
+        """Initialize all filter modules"""
+        self.filters = [
+            ScamDetectionFilter(self.bot),
+            AdvancedBadWordFilter(self.bot),
+            MentionSpamFilter(self.bot),
+            AdvancedSpamFilter(self.bot),
+            SmartLinkFilter(self.bot),
+            InviteFilter(self.bot),
+            IntelligentAIFilter(self.bot),
+            CapsFilter(self.bot),
+            NewAccountFilter(self.bot),
+        ]
+        
+        # Sort by priority (highest first)
+        self.filters.sort(key=lambda f: f.priority, reverse=True)
+        
+        # Set cache manager
+        for f in self.filters:
+            f.cache_manager = self.cache_manager
+        
+        logger.info(f"Initialized {len(self.filters)} filters")
+    
+    def get_user_history(self, guild_id: int, user_id: int) -> UserHistory:
+        """Get or create user history"""
+        key = (guild_id, user_id)
+        if key not in self.user_histories:
+            self.user_histories[key] = UserHistory(user_id, guild_id)
+        return self.user_histories[key]
+    
+    async def check_bypass(self, message: discord.Message, settings: dict) -> Tuple[bool, str]:
+        """
+        Check if user bypasses automod
+        Returns: (bypassed, reason)
+        """
+        # 1. Bot owner always bypasses
+        if is_bot_owner_id(message.author.id):
+            return True, "Bot owner"
+        
+        # 2. Bypass role
+        bypass_role_id = settings.get("automod_bypass_role_id")
+        if bypass_role_id:
+            role = message.guild.get_role(bypass_role_id)
+            if role and role in message.author.roles:
+                return True, f"Bypass role: {role.name}"
+        
+        # 3. Temporary bypass (e.g., for moderators testing)
+        temp_bypass = settings.get("automod_temp_bypass", [])
+        if message.author.id in temp_bypass:
+            return True, "Temporary bypass"
+        
+        # 4. Channel-specific bypass
+        bypass_channels = settings.get("automod_bypass_channels", [])
+        if message.channel.id in bypass_channels:
+            return True, f"Bypass channel: {message.channel.name}"
+        
+        return False, ""
+    
+    async def process_message(self, message: discord.Message, settings: dict) -> Optional[FilterResult]:
+        """
+        Process message through filter pipeline
+        Returns: FilterResult if violation detected, None otherwise
+        """
+        self.stats["messages_checked"] += 1
+        
+        # Build context
+        user_history = self.get_user_history(message.guild.id, message.author.id)
+        context = {
+            "user_history": user_history,
+            "risk_score": user_history.get_risk_score(),
+            "channel_type": str(message.channel.type),
+        }
+        
+        # Run through filter pipeline
+        for filter_obj in self.filters:
+            if not filter_obj.enabled:
+                continue
+            
             try:
-                duration = timedelta(seconds=mute_duration)
-                await user.timeout(duration, reason=f"[AutoMod] {reason}")
-                return f"Muted for {self.format_duration(mute_duration)}"
-            except Exception:
-                return "Mute failed"
-
-        if punishment == "kick":
-            try:
-                await user.kick(reason=f"[AutoMod] {reason}")
-                return "Kicked"
-            except Exception:
-                return "Kick failed"
-
-        if punishment == "ban":
-            try:
-                if ban_duration > 0:
-                    await user.ban(
-                        reason=f"[AutoMod] {reason}",
-                        delete_message_days=1,
-                    )
-                    expires_at = datetime.now(timezone.utc) + timedelta(
-                        seconds=ban_duration
-                    )
-                    await self.bot.db.add_tempban(
-                        guild.id,
-                        user.id,
-                        self.bot.user.id,
-                        reason,
-                        expires_at,
-                    )
-                    return f"Banned for {self.format_duration(ban_duration)}"
-                else:
-                    await user.ban(
-                        reason=f"[AutoMod] {reason}",
-                        delete_message_days=1,
-                    )
-                    return "Permanently banned"
-            except Exception:
-                return "Ban failed"
-
-        return "No action"
-
-    def format_duration(self, seconds: int) -> str:
-        if seconds < 60:
-            return f"{seconds} seconds"
-        if seconds < 3600:
-            minutes = seconds // 60
-            return f"{minutes} minute{'s' if minutes != 1 else ''}"
-        if seconds < 86400:
-            hours = seconds // 3600
-            return f"{hours} hour{'s' if hours != 1 else ''}"
-        days = seconds // 86400
-        return f"{days} day{'s' if days != 1 else ''}"
-
-    async def take_action(
-        self,
-        message: discord.Message,
-        reason: str,
-        settings: dict,
-        override_punishment: Optional[str] = None,
-    ):
-        punishment = override_punishment or settings.get("automod_punishment", "warn")
+                result = await filter_obj.check(message, settings, context)
+                
+                if result.triggered:
+                    self.stats["violations_detected"] += 1
+                    
+                    # Add to user history
+                    user_history.add_violation(result)
+                    
+                    # Return first violation (can be modified to collect all)
+                    return result
+                    
+            except Exception as e:
+                logger.error(f"Filter {filter_obj.__class__.__name__} error: {e}", exc_info=True)
+                continue
+        
+        return None
+    
+    async def execute_action(
+        self, 
+        message: discord.Message, 
+        result: FilterResult, 
+        settings: dict
+    ) -> Dict[str, Any]:
+        """
+        Execute moderation action
+        Returns: Dict with action details
+        """
         user = message.author
         guild = message.guild
-
+        action_log = {
+            "user_id": user.id,
+            "action": result.action.value,
+            "reason": result.reason,
+            "success": False,
+            "timestamp": datetime.now(timezone.utc)
+        }
+        
         try:
-            await message.delete()
-        except Exception:
-            pass
-
-        result = await self.apply_punishment(user, guild, punishment, reason, settings)
-
-        embed = discord.Embed(
-            title="🤖 AutoMod Action",
-            color=Config.COLOR_WARNING,
-            timestamp=datetime.now(timezone.utc),
-        )
-        embed.add_field(
-            name="User", value=f"{user.mention} ({user.id})", inline=True
-        )
-        embed.add_field(name="Action", value=result, inline=True)
-        embed.add_field(name="Reason", value=reason, inline=False)
-        embed.add_field(
-            name="Channel", value=message.channel.mention, inline=True
-        )
-        embed.set_thumbnail(url=user.display_avatar.url)
-
-        await self.log_automod(guild, embed)
-
-        try:
-            notify_embed = discord.Embed(
-                title=f"⚠️ AutoMod Alert in {guild.name}",
-                description=(
-                    "Your message was flagged and removed.\n"
-                    f"**Reason:** {reason}\n"
-                    f"**Action:** {result}"
-                ),
-                color=Config.COLOR_WARNING,
-            )
-            await user.send(embed=notify_embed)
-        except Exception:
-            pass
-
-    # =========================
-    # MESSAGE LISTENER
-    # =========================
-
-    @commands.Cog.listener()
-    async def on_message(self, message: discord.Message):
-        if not message.guild or message.author.bot:
-            return
-
-        if is_bot_owner_id(message.author.id):
-            return
-
-        if message.author.guild_permissions.manage_messages:
-            return
-
-        settings = await self.bot.db.get_settings(message.guild.id)
-
-        if message.channel.id in settings.get("ignored_channels", []):
-            return
-
-        user_role_ids = [r.id for r in message.author.roles]
-        if any(r in settings.get("ignored_roles", []) for r in user_role_ids):
-            return
-
-        content = message.content or ""
-        lowered = content.lower()
-
-        # ---------- Ensure default badwords are loaded ----------
-        badwords = settings.get("automod_badwords")
-        if badwords is None:
-            # First time: populate with defaults
-            settings["automod_badwords"] = list(DEFAULT_BADWORDS)
-            await self.bot.db.update_settings(message.guild.id, settings)
-            badwords = settings["automod_badwords"]
-
-        # ---------- AI pre-pass (optional) ----------
-
-        if settings.get("automod_ai_enabled", False) and content.strip():
-            # build some lightweight context
-            account_age_days = (
-                datetime.now(timezone.utc) - message.author.created_at
-            ).days
-            join_age_days = (
-                (datetime.now(timezone.utc) - message.author.joined_at).days
-                if message.author.joined_at
-                else 0
-            )
-
-            context = {
-                "account_age_days": account_age_days,
-                "join_age_days": join_age_days,
-                "channel": message.channel.name,
-                "guild_size": message.guild.member_count,
-            }
-
-            ai_result = await self.ai_helper.analyze_message(content, context)
-
-            if ai_result.get("is_violation"):
-                # respect per-guild severity floor / category filter
-                min_sev = settings.get("automod_ai_min_severity", 4)
-                allowed_categories = settings.get(
-                    "automod_ai_categories",
-                    ["toxicity", "spam", "nsfw", "threat", "other"],
-                )
-
-                if (
-                    ai_result.get("severity", 1) >= min_sev
-                    and ai_result.get("category") in allowed_categories
-                ):
-                    category = ai_result.get("category", "other")
-                    severity = ai_result.get("severity", 1)
-                    ai_reason = ai_result.get("reason", "AI violation")
-
-                    # dynamic punishment scaling
-                    punishment = settings.get("automod_punishment", "warn")
-
-                    if category == "nsfw" or severity >= 9:
-                        punishment = "ban"
-                    elif severity >= 7 and punishment in ("warn", "mute"):
-                        punishment = "mute"
-                    elif severity <= 3:
-                        punishment = "warn"
-
-                    await self.take_action(
-                        message,
-                        f"[AI-{category.upper()} S{severity}] {ai_reason}",
-                        settings,
-                        override_punishment=punishment,
-                    )
-                    return
-
-        # ---------- BAD WORDS FILTER ----------
-
-        if badwords:
-            for word in badwords:
-                w = word.lower()
-                if not w:
-                    continue
-                if w in lowered:
-                    await self.take_action(
-                        message,
-                        "Blacklisted word detected",
-                        settings,
-                    )
-                    return
-
-        # ---------- LINK FILTER ----------
-
-        if settings.get("automod_links_enabled", True):
-            url_pattern = re.compile(r"https?://\S+")
-            urls = url_pattern.findall(content)
-            if urls:
-                whitelist = settings.get("automod_links_whitelist", [])
-                allowed = True
-                for url in urls:
-                    if not any(domain in url for domain in whitelist):
-                        allowed = False
-                        break
-                if not allowed:
-                    await self.take_action(
-                        message,
-                        "Unauthorized link posted",
-                        settings,
-                    )
-                    return
-
-        # ---------- DISCORD INVITE FILTER ----------
-
-        if settings.get("automod_invites_enabled", True):
-            invite_pattern = re.compile(
-                r"(discord\.gg|discord\.com/invite|discordapp\.com/invite)/\S+"
-            )
-            if invite_pattern.search(content):
-                await self.take_action(
-                    message,
-                    "Discord invite link",
-                    settings,
-                )
-                return
-
-        # ---------- SPAM FILTER ----------
-
-        spam_threshold = settings.get("automod_spam_threshold", 5)
-        if spam_threshold > 0:
-            now = datetime.now(timezone.utc)
-            key = (message.guild.id, message.author.id, message.channel.id)
-
-            if key in self.spam_cooldown:
+            # 1. Delete message (for most actions)
+            if result.action != ActionType.LOG:
                 try:
                     await message.delete()
-                except Exception:
-                    pass
-                return
-
-            self.spam_tracker[key] = [
-                t for t in self.spam_tracker[key] if (now - t).total_seconds() < 5
-            ]
-            self.spam_tracker[key].append(now)
-
-            if len(self.spam_tracker[key]) >= spam_threshold:
-                self.spam_cooldown.add(key)
-                user = message.author
-                guild = message.guild
-                channel = message.channel
-                punishment = settings.get("automod_punishment", "warn")
-                spam_timeout = settings.get("automod_spam_timeout", 60)
-
-                self.spam_tracker[key] = []
-                deleted_count = 0
-
-                try:
-                    messages_to_delete = []
-                    async for msg in channel.history(limit=100):
-                        if msg.author.id == user.id:
-                            msg_age = (
-                                now
-                                - msg.created_at.replace(tzinfo=timezone.utc)
-                            ).total_seconds()
-                            if msg_age < 60:
-                                messages_to_delete.append(msg)
-                        if len(messages_to_delete) >= 50:
-                            break
-
-                    if messages_to_delete:
-                        if len(messages_to_delete) == 1:
-                            await messages_to_delete[0].delete()
-                            deleted_count = 1
-                        else:
-                            await channel.delete_messages(messages_to_delete)
-                            deleted_count = len(messages_to_delete)
-                except discord.Forbidden:
-                    print(f"[AutoMod] No permission to delete messages in {channel}")
-                except discord.HTTPException as e:
-                    print(f"[AutoMod] HTTP error deleting messages: {e}")
+                    action_log["message_deleted"] = True
                 except Exception as e:
-                    print(f"[AutoMod] Error deleting messages: {e}")
-
-                timeout_result = ""
-                if spam_timeout > 0:
-                    try:
-                        await user.timeout(
-                            timedelta(seconds=spam_timeout),
-                            reason="[AutoMod] Spam detected",
-                        )
-                        timeout_result = f" + {self.format_duration(spam_timeout)} timeout"
-                    except Exception as e:
-                        print(f"[AutoMod] Could not timeout user: {e}")
-
-                punishment_result = await self.apply_punishment(
-                    user,
-                    guild,
-                    punishment,
-                    "Spam detected",
-                    settings,
+                    logger.warning(f"Failed to delete message {message.id}: {e}")
+                    action_log["message_deleted"] = False
+            
+            # 2. Execute action
+            if result.action == ActionType.DELETE:
+                action_log["success"] = True
+                action_log["details"] = "Message deleted"
+            elif result.action == ActionType.BAN:
+                reason = f"[AutoMod] {result.reason}"
+                delete_days = settings.get("automod_ban_delete_days", 1)
+                await user.ban(reason=reason, delete_message_days=delete_days)
+                action_log["success"] = True
+                action_log["details"] = "Permanently banned"
+                
+            elif result.action == ActionType.TEMPBAN:
+                duration = settings.get("automod_tempban_duration", 86400)
+                # Note: Discord doesn't support tempbans directly, would need to schedule unban
+                await user.ban(reason=f"[AutoMod] {result.reason} (Temp)")
+                action_log["success"] = True
+                action_log["details"] = f"Temp banned for {duration}s"
+                # Schedule unban
+                asyncio.create_task(self._schedule_unban(guild, user.id, duration))
+                
+            elif result.action == ActionType.KICK:
+                await user.kick(reason=f"[AutoMod] {result.reason}")
+                action_log["success"] = True
+                action_log["details"] = "Kicked from server"
+                
+            elif result.action == ActionType.MUTE:
+                duration = settings.get("automod_mute_duration", 3600)
+                # Scale duration based on severity
+                if result.severity == Severity.CRITICAL:
+                    duration *= 4
+                elif result.severity == Severity.HIGH:
+                    duration *= 2
+                
+                await user.timeout(
+                    timedelta(seconds=duration),
+                    reason=f"[AutoMod] {result.reason}"
                 )
+                action_log["success"] = True
+                action_log["details"] = f"Muted for {duration}s"
+                
+            elif result.action == ActionType.QUARANTINE:
+                role_id = settings.get("automod_quarantine_role_id")
+                role = guild.get_role(role_id)
+                if role:
+                    await user.add_roles(role, reason=f"[AutoMod] {result.reason}")
+                    action_log["success"] = True
+                    action_log["details"] = "Quarantined"
+                else:
+                    # Fallback to mute
+                    await user.timeout(timedelta(minutes=30), reason=f"[AutoMod] {result.reason}")
+                    action_log["success"] = True
+                    action_log["details"] = "Muted (quarantine unavailable)"
+                    
+            elif result.action == ActionType.WARN:
+                await self.bot.db.add_warning(guild.id, user.id, self.bot.user.id, result.reason)
+                action_log["success"] = True
+                action_log["details"] = "Warning issued"
+                
+            elif result.action == ActionType.LOG:
+                action_log["success"] = True
+                action_log["details"] = "Logged only"
+            
+            self.stats["actions_taken"] += 1
+            
+        except discord.Forbidden:
+            action_log["error"] = "Missing permissions"
+        except Exception as e:
+            action_log["error"] = str(e)
+            logger.error(f"Action execution failed: {e}")
+        
+        return action_log
+    
+    async def _schedule_unban(self, guild: discord.Guild, user_id: int, duration: int):
+        """Schedule automatic unban"""
+        await asyncio.sleep(duration)
+        try:
+            user = await self.bot.fetch_user(user_id)
+            await guild.unban(user, reason="[AutoMod] Temporary ban expired")
+        except:
+            pass
 
-                embed = discord.Embed(
-                    title="🤖 AutoMod Action - Spam Detected",
-                    color=Config.COLOR_WARNING,
-                    timestamp=datetime.now(timezone.utc),
-                )
-                embed.add_field(
-                    name="User",
-                    value=f"{user.mention} ({user.id})",
-                    inline=True,
-                )
-                embed.add_field(
-                    name="Action",
-                    value=f"{punishment_result}{timeout_result}",
-                    inline=True,
-                )
-                embed.add_field(
-                    name="Reason",
-                    value="Spam detected",
-                    inline=False,
-                )
-                embed.add_field(
-                    name="Channel",
-                    value=channel.mention,
-                    inline=True,
-                )
-                embed.add_field(
-                    name="Messages Deleted",
-                    value=str(deleted_count),
-                    inline=True,
-                )
-                embed.set_thumbnail(url=user.display_avatar.url)
-                await self.log_automod(guild, embed)
+# =============================================================================
+# AUTOMOD COG
+# =============================================================================
 
-                try:
-                    notify_embed = discord.Embed(
-                        title=f"⚠️ AutoMod Alert in {guild.name}",
-                        description=(
-                            "You were detected spamming.\n"
-                            f"**Messages Deleted:** {deleted_count}\n"
-                            f"**Action:** {punishment_result}{timeout_result}"
-                        ),
-                        color=Config.COLOR_WARNING,
-                    )
-                    await user.send(embed=notify_embed)
-                except Exception:
-                    pass
-
-                async def _cooldown_clear():
-                    await asyncio.sleep(10)
-                    self.spam_cooldown.discard(key)
-
-                asyncio.create_task(_cooldown_clear())
-                return
-
-        # ---------- CAPS FILTER ----------
-
-        caps_percentage = settings.get("automod_caps_percentage", 70)
-        if caps_percentage > 0 and len(content) > 10:
-            alpha_chars = [c for c in content if c.isalpha()]
-            if alpha_chars:
-                caps_ratio = (
-                    sum(1 for c in alpha_chars if c.isupper())
-                    / len(alpha_chars)
-                    * 100
-                )
-                if caps_ratio >= caps_percentage:
-                    await self.take_action(
-                        message,
-                        "Excessive caps",
-                        settings,
-                    )
-                    return
-
-        # ---------- MASS MENTIONS FILTER ----------
-
-        max_mentions = settings.get("automod_max_mentions", 5)
-        if max_mentions > 0:
-            total_mentions = len(message.mentions) + len(message.role_mentions)
-            if total_mentions >= max_mentions:
-                await self.take_action(
-                    message,
-                    f"Mass mentions ({total_mentions})",
-                    settings,
-                )
-                return
-
-        # ---------- NEW ACCOUNT ALERT ----------
-
-        account_age_days = settings.get("automod_newaccount_days", 0)
-        if account_age_days > 0:
-            age = (datetime.now(timezone.utc) - message.author.created_at).days
-            if age < account_age_days:
-                embed = discord.Embed(
-                    title="⚠️ New Account Alert",
-                    description=(
-                        f"{message.author.mention} has a new account "
-                        f"({age} days old)"
-                    ),
-                    color=Config.COLOR_WARNING,
-                )
-                embed.add_field(
-                    name="Message",
-                    value=content[:500] or "*no content*",
-                    inline=False,
-                )
-                await self.log_automod(message.guild, embed)
-
-    # =========================
-    # SLASH COMMANDS
-    # =========================
-
-    automod_group = app_commands.Group(
-        name="automod",
-        description="AutoMod configuration commands",
-    )
-
-    # --- basic enable/disable/status ---
-
-    @automod_group.command(name="enable", description="Enable AutoMod")
-    @is_admin()
-    async def automod_enable(self, interaction: discord.Interaction):
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        settings["automod_enabled"] = True
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        embed = ModEmbed.success(
-            "AutoMod Enabled",
-            "AutoMod is now active on this server.",
-        )
-        await interaction.response.send_message(embed=embed)
-
-    @automod_group.command(name="disable", description="AutoMod cannot be disabled")
-    @is_admin()
-    async def automod_disable(self, interaction: discord.Interaction):
-        embed = ModEmbed.error(
-            "Cannot Disable",
-            "AutoMod is always active to protect your server. You can configure individual filters instead.",
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @automod_group.command(name="status", description="View AutoMod status and settings")
-    @is_mod()
-    async def automod_status(self, interaction: discord.Interaction):
-        settings = await self.bot.db.get_settings(interaction.guild_id)
+class AutoModV3(commands.Cog):
+    """Enterprise AutoMod system"""
+    
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self.engine = AutoModEngine(bot)
+        self.cleanup_task.start()
+    
+    async def cog_load(self):
+        """Initialize cache on cog load"""
+        await self.engine.cache_manager.initialize()
+    
+    async def cog_unload(self):
+        """Cleanup on cog unload"""
+        self.cleanup_task.cancel()
+        await self.engine.cache_manager.close()
+    
+    @tasks.loop(hours=1)
+    async def cleanup_task(self):
+        """Periodic cleanup of old data"""
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(days=30)
+        
+        # Clean old user histories
+        for key, history in list(self.engine.user_histories.items()):
+            if history.last_violation and history.last_violation < cutoff:
+                del self.engine.user_histories[key]
+    
+    async def _get_log_channel(self, guild: discord.Guild, settings: dict) -> Optional[discord.TextChannel]:
+        """Get automod log channel"""
+        channel_id = settings.get("automod_log_channel") or settings.get("log_channel")
+        if channel_id:
+            return guild.get_channel(channel_id)
+        return None
+    
+    async def _send_log(self, guild: discord.Guild, result: FilterResult, action_log: Dict, message: discord.Message, settings: dict):
+        """Send detailed log embed"""
+        channel = await self._get_log_channel(guild, settings)
+        if not channel:
+            return
+        
+        # Color based on severity
+        color_map = {
+            Severity.INFO: discord.Color.blue(),
+            Severity.LOW: discord.Color.gold(),
+            Severity.MEDIUM: discord.Color.orange(),
+            Severity.HIGH: discord.Color.red(),
+            Severity.CRITICAL: discord.Color.dark_red(),
+            Severity.EXTREME: discord.Color.from_rgb(139, 0, 0)
+        }
+        
         embed = discord.Embed(
-            title="🤖 AutoMod Status",
-            color=Config.COLOR_INFO,
+            title="🛡️ AutoMod Action",
+            color=color_map.get(result.severity, Config.COLOR_WARNING),
+            timestamp=datetime.now(timezone.utc)
         )
-        status = "🟢 Enabled" if settings.get("automod_enabled") else "🔴 Disabled"
-        embed.add_field(name="Status", value=status, inline=True)
+        
+        # User info
+        user = message.author
+        embed.set_author(name=f"{user} ({user.id})", icon_url=user.display_avatar.url)
+        
+        # Violation details
         embed.add_field(
-            name="Punishment",
-            value=settings.get("automod_punishment", "warn").title(),
-            inline=True,
+            name="Violation",
+            value=result.reason,
+            inline=False
         )
-        embed.add_field(name="\u200b", value="\u200b", inline=True)
-
-        mute_dur = settings.get("automod_mute_duration", 3600)
-        ban_dur = settings.get("automod_ban_duration", 0)
-        spam_timeout = settings.get("automod_spam_timeout", 60)
+        
         embed.add_field(
-            name="⏱️ Durations",
-            value=(
-                f"**Mute Duration:** {self.format_duration(mute_dur)}\n"
-                f"**Ban Duration:** {'Permanent' if ban_dur == 0 else self.format_duration(ban_dur)}\n"
-                f"**Spam Timeout:** {self.format_duration(spam_timeout)}"
-            ),
-            inline=False,
+            name="Severity",
+            value=f"**{result.severity.name}** ({result.confidence:.0%} confidence)",
+            inline=True
         )
-
-        filters = []
-        if settings.get("automod_badwords"):
-            filters.append(f"📝 Bad Words ({len(settings['automod_badwords'])} words)")
-        if settings.get("automod_links_enabled"):
-            filters.append("🔗 Link Filter")
-        if settings.get("automod_invites_enabled"):
-            filters.append("📨 Invite Filter")
-        if settings.get("automod_spam_threshold", 0) > 0:
-            filters.append(
-                f"📢 Spam Filter ({settings['automod_spam_threshold']} msgs/5s)"
-            )
-        if settings.get("automod_caps_percentage", 0) > 0:
-            filters.append(
-                f"🔠 Caps Filter ({settings['automod_caps_percentage']}%)"
-            )
-        if settings.get("automod_max_mentions", 0) > 0:
-            filters.append(
-                f"📣 Mention Filter ({settings['automod_max_mentions']} max)"
-            )
-        if settings.get("automod_newaccount_days", 0) > 0:
-            filters.append(
-                f"🆕 New Account Alert ({settings['automod_newaccount_days']} days)"
-            )
-        if settings.get("automod_ai_enabled", False):
-            filters.append("🤖 Groq AI Detection")
-
+        
         embed.add_field(
-            name="🛡️ Active Filters",
-            value="\n".join(filters) if filters else "No filters active",
-            inline=False,
+            name="Action",
+            value=action_log.get("details", action_log["action"]),
+            inline=True
         )
+        
+        embed.add_field(
+            name="Channel",
+            value=message.channel.mention,
+            inline=True
+        )
+        
+        # Matched patterns (if any)
+        if result.matched_patterns:
+            patterns = ", ".join(f"||{p}||" for p in result.matched_patterns[:3])
+            embed.add_field(
+                name="Matched Patterns",
+                value=patterns,
+                inline=False
+            )
+        
+        # User history
+        user_history = self.engine.get_user_history(guild.id, user.id)
+        risk_score = user_history.get_risk_score()
+        
+        embed.add_field(
+            name="User History",
+            value=f"Violations: {len(user_history.violations)}\nRisk Score: {risk_score:.1f}/100",
+            inline=True
+        )
+        
+        # Message content (truncated)
+        content_preview = message.content[:500]
+        if len(message.content) > 500:
+            content_preview += "..."
+        
+        embed.add_field(
+            name="Message Content",
+            value=f"```{content_preview}```",
+            inline=False
+        )
+        
+        # Footer with stats
+        embed.set_footer(
+            text=f"Category: {result.category.value} | Messages Checked: {self.engine.stats['messages_checked']}"
+        )
+        
+        await send_log_embed(channel, embed)
+    
+    async def _notify_user(self, user: discord.User, guild: discord.Guild, result: FilterResult, action_log: Dict):
+        """Send DM notification to user"""
+        try:
+            embed = discord.Embed(
+                title="⚠️ AutoMod Alert",
+                description=f"You triggered an automated moderation action in **{guild.name}**",
+                color=discord.Color.red(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            
+            reason_text = result.reason
+            if result.matched_patterns:
+                # Add specific context (e.g. "Saying 'badword'")
+                patterns = ", ".join(f"'{p}'" for p in result.matched_patterns[:3])
+                reason_text += f" (saying: {patterns})"
+            
+            embed.add_field(name="Reason", value=reason_text, inline=False)
+            embed.add_field(name="Action Taken", value=action_log.get("details", result.action.value.title().replace("_", " ")), inline=False)
+            embed.add_field(
+                name="What now?",
+                value="Please review the server rules. Repeated violations may result in permanent action.",
+                inline=False
+            )
+            
+            embed.set_footer(text="If you believe this was a mistake, contact server moderators")
+            
+            await user.send(embed=embed)
+        except discord.Forbidden:
+            logger.debug(f"Could not DM user {user.id}")
+        except Exception as e:
+            logger.error(f"Failed to notify user: {e}")
+    
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """Main message processing"""
+        # Basic checks
+        if not message.guild or message.author.bot:
+            return
+        
+        try:
+            settings = await self.bot.db.get_settings(message.guild.id)
+            
+            # Check bypass
+            bypassed, bypass_reason = await self.engine.check_bypass(message, settings)
+            if bypassed:
+                logger.debug(f"User {message.author.id} bypassed: {bypass_reason}")
+                return
+            
+            # Process message
+            result = await self.engine.process_message(message, settings)
+            
+            if result and result.triggered:
+                # Execute action
+                action_log = await self.engine.execute_action(message, result, settings)
+                
+                # Log
+                await self._send_log(message.guild, result, action_log, message, settings)
+                
+                # Notify user
+                if settings.get("automod_notify_users", True):
+                    await self._notify_user(message.author, message.guild, result, action_log)
+                
+        except Exception as e:
+            logger.error(f"AutoMod processing error: {e}", exc_info=True)
+    
+    # =============================================================================
+    # COMMANDS
+    # =============================================================================
+    
+    automod = app_commands.Group(name="automod", description="🛡️ Advanced AutoMod Configuration")
+    config = app_commands.Group(name="config", description="Manage AutoMod configuration", parent=automod)
 
+
+
+    @config.command(name="view", description="View current AutoMod configuration")
+    @is_mod()
+    async def config_view(self, interaction: discord.Interaction):
+        """View current configuration"""
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        
+        embed = discord.Embed(
+            title="⚙️ AutoMod Configuration",
+            color=Config.COLOR_INFO
+        )
+        
+        # General
+        log_channel = f"<#{settings.get('automod_log_channel')}>" if settings.get('automod_log_channel') else "None"
+        general = (
+            f"**Log Channel:** {log_channel}\n"
+            f"**Notify Users:** {settings.get('automod_notify_users', True)}\n"
+            f"**Punishment:** {settings.get('automod_punishment', 'warn').upper()}"
+        )
+        embed.add_field(name="General", value=general, inline=False)
+        
+        # Toggles
+        toggles = (
+            f"**Links:** {'✅' if settings.get('automod_links_enabled', True) else '❌'}\n"
+            f"**Invites:** {'✅' if settings.get('automod_invites_enabled', True) else '❌'}\n"
+            f"**Scam:** {'✅' if settings.get('automod_scam_protection', True) else '❌'}\n"
+            f"**AI:** {'✅' if settings.get('automod_ai_enabled', False) else '❌'}"
+        )
+        embed.add_field(name="Modules", value=toggles, inline=True)
+        
+        # Thresholds
+        thresholds = (
+            f"**Spam:** {settings.get('automod_spam_threshold', 5)}\n"
+            f"**Caps:** {settings.get('automod_caps_percentage', 70)}% ({settings.get('automod_caps_min_length', 10)} chars)\n"
+            f"**Mentions:** {settings.get('automod_max_mentions', 5)}\n"
+            f"**New Acc:** {settings.get('automod_newaccount_days', 7)} days"
+        )
+        embed.add_field(name="Thresholds", value=thresholds, inline=True)
+        
+        # Roles
+        bypass = interaction.guild.get_role(settings.get('automod_bypass_role_id'))
+        quarantine = interaction.guild.get_role(settings.get('automod_quarantine_role_id'))
+        roles = (
+            f"**Bypass:** {bypass.mention if bypass else 'None'}\n"
+            f"**Quarantine:** {quarantine.mention if quarantine else 'None'}"
+        )
+        embed.add_field(name="Roles", value=roles, inline=False)
+        
         await interaction.response.send_message(embed=embed)
 
-    # --- base config (punishments/durations etc) ---
-
-    @automod_group.command(name="punishment", description="Set AutoMod punishment type")
-    @app_commands.describe(action="The punishment to apply")
+    @config.command(name="toggle", description="Toggle AutoMod modules")
     @is_admin()
-    async def automod_punishment(
-        self,
+    async def config_toggle(self, interaction: discord.Interaction, module: Literal["links", "invites", "notify", "scam"], enabled: bool):
+        """Toggle modules"""
+        key_map = {
+            "links": "automod_links_enabled",
+            "invites": "automod_invites_enabled",
+            "notify": "automod_notify_users",
+            "scam": "automod_scam_protection"
+        }
+        
+        key = key_map[module]
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        settings[key] = enabled
+        await self.bot.db.update_settings(interaction.guild_id, settings)
+        
+        state = "Enabled" if enabled else "Disabled"
+        embed = ModEmbed.success(f"Module {state}", f"**{module.title()}** has been {state.lower()}.")
+        await interaction.response.send_message(embed=embed)
+
+    @config.command(name="threshold", description="Set AutoMod thresholds")
+    @is_admin()
+    async def config_threshold(self, interaction: discord.Interaction, setting: Literal["spam", "caps", "mentions", "new_account"], value: int):
+        """Set thresholds"""
+        key_map = {
+            "spam": "automod_spam_threshold",
+            "caps": "automod_caps_percentage",
+            "mentions": "automod_max_mentions",
+            "new_account": "automod_newaccount_days"
+        }
+        
+        if setting == "caps" and (value < 0 or value > 100):
+            await interaction.response.send_message(embed=ModEmbed.error("Invalid Value", "Caps percentage must be 0-100."), ephemeral=True)
+            return
+        if value < 0:
+            await interaction.response.send_message(embed=ModEmbed.error("Invalid Value", "Value must be positive."), ephemeral=True)
+            return
+            
+        key = key_map[setting]
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        settings[key] = value
+        await self.bot.db.update_settings(interaction.guild_id, settings)
+        
+        embed = ModEmbed.success("Threshold Updated", f"**{setting.replace('_', ' ').title()}** set to `{value}`.")
+        await interaction.response.send_message(embed=embed)
+
+    @config.command(name="log", description="Set logging channel")
+    @is_admin()
+    async def config_log(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel]):
+        """Set log channel"""
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        settings["automod_log_channel"] = channel.id if channel else None
+        await self.bot.db.update_settings(interaction.guild_id, settings)
+        
+        if channel:
+            embed = ModEmbed.success("Log Channel Set", f"AutoMod logs will be sent to {channel.mention}")
+        else:
+            embed = ModEmbed.success("Log Channel Disabled", "AutoMod logging disabled.")
+        await interaction.response.send_message(embed=embed)
+
+    @config.command(name="badwords", description="Manage bad words")
+    @is_admin()
+    async def config_badwords(self, interaction: discord.Interaction, action: Literal["add", "remove", "list", "clear"], word: Optional[str] = None):
+        """Manage badwords"""
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        badwords = settings.get("automod_badwords", [])
+        
+        if action == "list":
+            if not badwords:
+                 await interaction.response.send_message(embed=ModEmbed.info("Bad Words", "No bad words configured."), ephemeral=True)
+            else:
+                 chunks = [badwords[i:i+50] for i in range(0, len(badwords), 50)]
+                 embed = ModEmbed.info("Bad Words", f"Total: {len(badwords)}")
+                 for chunk in chunks:
+                     embed.add_field(name="Words", value=", ".join(f"`{w}`" for w in chunk), inline=False)
+                 await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        if action == "clear":
+             settings["automod_badwords"] = []
+             await self.bot.db.update_settings(interaction.guild_id, settings)
+             await interaction.response.send_message(embed=ModEmbed.success("Cleared", "All bad words removed."))
+             return
+
+        if not word:
+            await interaction.response.send_message(embed=ModEmbed.error("Error", "Please provide a word."), ephemeral=True)
+            return
+            
+        word = word.lower().strip()
+        
+        if action == "add":
+            if word not in badwords:
+                badwords.append(word)
+                settings["automod_badwords"] = badwords
+                await self.bot.db.update_settings(interaction.guild_id, settings)
+                await interaction.response.send_message(embed=ModEmbed.success("Added", f"Added `{word}` to bad words."))
+            else:
+                await interaction.response.send_message(embed=ModEmbed.warning("Exists", "Word already exists."), ephemeral=True)
+        
+        elif action == "remove":
+            if word in badwords:
+                badwords.remove(word)
+                settings["automod_badwords"] = badwords
+                await self.bot.db.update_settings(interaction.guild_id, settings)
+                await interaction.response.send_message(embed=ModEmbed.success("Removed", f"Removed `{word}`."))
+            else:
+                await interaction.response.send_message(embed=ModEmbed.warning("Not Found", "Word not found."), ephemeral=True)
+    
+    @automod.command(name="status", description="View AutoMod status and statistics")
+    @is_mod()
+    async def status(self, interaction: discord.Interaction):
+        """Show detailed automod status"""
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        
+        embed = discord.Embed(
+            title="🛡️ AutoMod Status",
+            color=Config.COLOR_INFO,
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+        # Active filters
+        active_filters = [f.__class__.__name__ for f in self.engine.filters if f.enabled]
+        embed.add_field(
+            name="Active Filters",
+            value=f"{len(active_filters)}/{len(self.engine.filters)}\n" + "\n".join(f"✓ {f}" for f in active_filters[:5]),
+            inline=False
+        )
+        
+        # Statistics
+        stats = self.engine.stats
+        embed.add_field(
+            name="Statistics (Session)",
+            value=f"Messages Checked: **{stats['messages_checked']:,}**\n"
+                  f"Violations: **{stats['violations_detected']:,}**\n"
+                  f"Actions Taken: **{stats['actions_taken']:,}**",
+            inline=True
+        )
+        
+        # Settings
+        punishment = settings.get("automod_punishment", "warn")
+        bypass_role_id = settings.get("automod_bypass_role_id")
+        bypass_role = interaction.guild.get_role(bypass_role_id) if bypass_role_id else None
+        
+        embed.add_field(
+            name="Configuration",
+            value=f"Default Action: **{punishment.upper()}**\n"
+                  f"Bypass Role: {bypass_role.mention if bypass_role else 'None'}\n"
+                  f"AI Filter: {'✓ Enabled' if settings.get('automod_ai_enabled') else '✗ Disabled'}",
+            inline=True
+        )
+        
+        # Cache stats
+        cache_total = self.engine.cache_manager.cache_hits + self.engine.cache_manager.cache_misses
+        hit_rate = (self.engine.cache_manager.cache_hits / cache_total * 100) if cache_total > 0 else 0
+        
+        embed.add_field(
+            name="Performance",
+            value=f"Cache Hit Rate: **{hit_rate:.1f}%**\n"
+                  f"Active Histories: **{len(self.engine.user_histories)}**",
+            inline=True
+        )
+        
+        embed.set_footer(text=f"AutoMod V3 • {len(self.engine.filters)} filter modules loaded")
+        
+        await interaction.response.send_message(embed=embed)
+    
+    @automod.command(name="bypass_role", description="Set the role that bypasses all AutoMod filters")
+    @is_admin()
+    async def bypass_role(self, interaction: discord.Interaction, role: discord.Role):
+        """Set bypass role"""
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        settings["automod_bypass_role_id"] = role.id
+        await self.bot.db.update_settings(interaction.guild_id, settings)
+        
+        embed = ModEmbed.success(
+            "Bypass Role Updated",
+            f"Users with {role.mention} will now bypass **all** AutoMod filters.\n\n"
+            f"⚠️ Use this role carefully - bypassed users can post anything."
+        )
+        await interaction.response.send_message(embed=embed)
+    
+    @automod.command(name="quarantine", description="Setup automatic quarantine system")
+    @is_admin()
+    async def setup_quarantine(self, interaction: discord.Interaction):
+        """Create and configure quarantine role"""
+        await interaction.response.defer()
+        
+        guild = interaction.guild
+        
+        # Check if role exists
+        settings = await self.bot.db.get_settings(guild.id)
+        existing_role_id = settings.get("automod_quarantine_role_id")
+        
+        if existing_role_id:
+            role = guild.get_role(existing_role_id)
+            if role:
+                embed = ModEmbed.warning(
+                    "Quarantine Already Setup",
+                    f"Quarantine role already exists: {role.mention}\n\n"
+                    f"Use `/automod quarantine update` to reconfigure permissions."
+                )
+                await interaction.followup.send(embed=embed)
+                return
+        
+        # Create role
+        try:
+            role = await guild.create_role(
+                name="🔒 Quarantined",
+                color=discord.Color.dark_grey(),
+                reason="AutoMod V3 Quarantine Setup"
+            )
+        except discord.Forbidden:
+            embed = ModEmbed.error(
+                "Permission Error",
+                "I don't have permission to create roles."
+            )
+            await interaction.followup.send(embed=embed)
+            return
+        
+        # Configure permissions
+        success_channels = []
+        failed_channels = []
+        
+        for channel in guild.channels:
+            try:
+                # Deny most permissions
+                overwrite = discord.PermissionOverwrite(
+                    send_messages=False,
+                    add_reactions=False,
+                    speak=False,
+                    connect=False,
+                    create_public_threads=False,
+                    create_private_threads=False,
+                    send_messages_in_threads=False
+                )
+                
+                await channel.set_permissions(role, overwrite=overwrite)
+                success_channels.append(channel.name)
+                
+            except Exception as e:
+                failed_channels.append(channel.name)
+                logger.error(f"Failed to set permissions for {channel.name}: {e}")
+        
+        # Save to database
+        settings["automod_quarantine_role_id"] = role.id
+        await self.bot.db.update_settings(guild.id, settings)
+        
+        embed = ModEmbed.success(
+            "✅ Quarantine Setup Complete",
+            f"**Role Created:** {role.mention}\n"
+            f"**Channels Configured:** {len(success_channels)}/{len(guild.channels)}\n\n"
+            f"Users in quarantine cannot:\n"
+            f"• Send messages\n"
+            f"• Add reactions\n"
+            f"• Join voice channels\n"
+            f"• Create threads"
+        )
+        
+        if failed_channels:
+            embed.add_field(
+                name="⚠️ Failed Channels",
+                value=f"{len(failed_channels)} channels couldn't be configured (check permissions)",
+                inline=False
+            )
+        
+        await interaction.followup.send(embed=embed)
+    
+    @automod.command(name="punishment", description="Set default punishment action")
+    @is_admin()
+    async def punishment(
+        self, 
         interaction: discord.Interaction,
-        action: Literal["warn", "mute", "kick", "ban"],
+        action: Literal["warn", "delete", "mute", "kick", "ban", "quarantine"]
     ):
+        """Set default punishment"""
         settings = await self.bot.db.get_settings(interaction.guild_id)
         settings["automod_punishment"] = action
         await self.bot.db.update_settings(interaction.guild_id, settings)
+        
+        action_descriptions = {
+            "warn": "Issue warning (logged in database)",
+            "delete": "Delete message only",
+            "mute": "Timeout user (duration configurable)",
+            "kick": "Kick user from server",
+            "ban": "Permanently ban user",
+            "quarantine": "Add quarantine role (restricts all activity)"
+        }
+        
         embed = ModEmbed.success(
-            "Punishment Updated",
-            f"AutoMod punishment set to **{action}**",
+            "Default Punishment Updated",
+            f"**New Action:** {action.upper()}\n\n"
+            f"{action_descriptions.get(action, 'Unknown action')}\n\n"
+            f"⚠️ Note: Some filters may override this based on severity."
         )
+        
         await interaction.response.send_message(embed=embed)
-
-    @automod_group.command(name="muteduration", description="Set how long mutes last")
-    @app_commands.describe(
-        duration="Duration (e.g., 30m, 1h, 6h, 1d, 7d)",
-    )
+    
+    @automod.command(name="whitelist", description="Manage whitelisted domains/patterns")
     @is_admin()
-    async def automod_muteduration(
-        self, interaction: discord.Interaction, duration: str
-    ):
-        parsed = parse_time(duration)
-        if not parsed:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error(
-                    "Invalid Duration",
-                    "Use format like `30m`, `1h`, `6h`, `1d`, `7d`",
-                ),
-                ephemeral=True,
-            )
-        delta, human_duration = parsed
-        seconds = int(delta.total_seconds())
-
-        if seconds > 28 * 24 * 60 * 60:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error(
-                    "Duration Too Long",
-                    "Maximum mute duration is 28 days.",
-                ),
-                ephemeral=True,
-            )
-
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        settings["automod_mute_duration"] = seconds
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        embed = ModEmbed.success(
-            "Mute Duration Updated",
-            f"AutoMod mutes will now last **{human_duration}**",
-        )
-        await interaction.response.send_message(embed=embed)
-
-    @automod_group.command(name="banduration", description="Set ban duration (0=perma)")
-    @app_commands.describe(
-        duration="Duration (e.g., 1d, 7d, 30d) or '0'/'permanent' for permanent",
-    )
-    @is_admin()
-    async def automod_banduration(
-        self, interaction: discord.Interaction, duration: str
-    ):
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-
-        if duration == "0" or duration.lower() == "permanent":
-            settings["automod_ban_duration"] = 0
-            await self.bot.db.update_settings(interaction.guild_id, settings)
-            embed = ModEmbed.success(
-                "Ban Duration Updated",
-                "AutoMod bans are now **permanent**",
-            )
-            return await interaction.response.send_message(embed=embed)
-
-        parsed = parse_time(duration)
-        if not parsed:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error(
-                    "Invalid Duration",
-                    "Use format like `1d`, `7d`, `30d` or `0`/`permanent`.",
-                ),
-                ephemeral=True,
-            )
-        delta, human_duration = parsed
-        seconds = int(delta.total_seconds())
-        settings["automod_ban_duration"] = seconds
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        embed = ModEmbed.success(
-            "Ban Duration Updated",
-            f"AutoMod bans will now last **{human_duration}**",
-        )
-        await interaction.response.send_message(embed=embed)
-
-    @automod_group.command(
-        name="spamtimeout", description="Set timeout duration for spammers"
-    )
-    @app_commands.describe(
-        duration="Duration (e.g., 30s, 1m, 5m, 10m) or '0' to disable",
-    )
-    @is_admin()
-    async def automod_spamtimeout(
-        self, interaction: discord.Interaction, duration: str
-    ):
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        if duration == "0":
-            settings["automod_spam_timeout"] = 0
-            await self.bot.db.update_settings(interaction.guild_id, settings)
-            embed = ModEmbed.success(
-                "Spam Timeout Disabled",
-                "Spammers will no longer be automatically timed out.",
-            )
-            return await interaction.response.send_message(embed=embed)
-
-        parsed = parse_time(duration)
-        if not parsed:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error(
-                    "Invalid Duration",
-                    "Use format like `30s`, `1m`, `5m`, `10m`",
-                ),
-                ephemeral=True,
-            )
-        delta, human_duration = parsed
-        seconds = int(delta.total_seconds())
-        if seconds > 28 * 24 * 60 * 60:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error(
-                    "Duration Too Long",
-                    "Maximum timeout is 28 days.",
-                ),
-                ephemeral=True,
-            )
-
-        settings["automod_spam_timeout"] = seconds
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        embed = ModEmbed.success(
-            "Spam Timeout Updated",
-            f"Spammers will be timed out for **{human_duration}**",
-        )
-        await interaction.response.send_message(embed=embed)
-
-    # --- filter configs ---
-
-    @automod_group.command(name="spam", description="Configure spam filter")
-    @app_commands.describe(
-        threshold="Messages per 5 seconds to trigger (0 to disable)",
-    )
-    @is_admin()
-    async def automod_spam(
-        self, interaction: discord.Interaction, threshold: int
-    ):
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        settings["automod_spam_threshold"] = max(0, threshold)
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        if threshold == 0:
-            embed = ModEmbed.success(
-                "Spam Filter Disabled",
-                "Spam filter has been disabled.",
-            )
-        else:
-            embed = ModEmbed.success(
-                "Spam Filter Updated",
-                f"Spam filter set to **{threshold}** messages per 5 seconds.",
-            )
-        await interaction.response.send_message(embed=embed)
-
-    @automod_group.command(name="caps", description="Configure caps filter")
-    @app_commands.describe(
-        percentage="Percentage of caps to trigger (0 to disable)",
-    )
-    @is_admin()
-    async def automod_caps(
-        self, interaction: discord.Interaction, percentage: int
-    ):
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        settings["automod_caps_percentage"] = max(0, min(100, percentage))
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        if percentage == 0:
-            embed = ModEmbed.success(
-                "Caps Filter Disabled",
-                "Caps filter has been disabled.",
-            )
-        else:
-            embed = ModEmbed.success(
-                "Caps Filter Updated",
-                f"Caps filter set to **{percentage}%**",
-            )
-        await interaction.response.send_message(embed=embed)
-
-    @automod_group.command(name="mentions", description="Configure mass mention filter")
-    @app_commands.describe(
-        max_mentions="Maximum mentions allowed (0 to disable)",
-    )
-    @is_admin()
-    async def automod_mentions(
-        self, interaction: discord.Interaction, max_mentions: int
-    ):
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        settings["automod_max_mentions"] = max(0, max_mentions)
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        if max_mentions == 0:
-            embed = ModEmbed.success(
-                "Mention Filter Disabled",
-                "Mass mention filter has been disabled.",
-            )
-        else:
-            embed = ModEmbed.success(
-                "Mention Filter Updated",
-                f"Max mentions set to **{max_mentions}**",
-            )
-        await interaction.response.send_message(embed=embed)
-
-    @automod_group.command(name="invites", description="Toggle Discord invite filter")
-    @app_commands.describe(enabled="Enable or disable")
-    @is_admin()
-    async def automod_invites(
-        self, interaction: discord.Interaction, enabled: bool
-    ):
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        settings["automod_invites_enabled"] = enabled
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        status = "enabled" if enabled else "disabled"
-        embed = ModEmbed.success(
-            "Invite Filter Updated",
-            f"Discord invite filter has been **{status}**",
-        )
-        await interaction.response.send_message(embed=embed)
-
-    @automod_group.command(name="links", description="Toggle link filter")
-    @app_commands.describe(enabled="Enable or disable")
-    @is_admin()
-    async def automod_links(
-        self, interaction: discord.Interaction, enabled: bool
-    ):
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        settings["automod_links_enabled"] = enabled
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        status = "enabled" if enabled else "disabled"
-        embed = ModEmbed.success(
-            "Link Filter Updated",
-            f"Link filter has been **{status}**",
-        )
-        await interaction.response.send_message(embed=embed)
-
-    @automod_group.command(
-        name="newaccount",
-        description="Set new account alert threshold",
-    )
-    @app_commands.describe(
-        days="Account age in days to flag (0 to disable)",
-    )
-    @is_admin()
-    async def automod_newaccount(
-        self, interaction: discord.Interaction, days: int
-    ):
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        settings["automod_newaccount_days"] = max(0, days)
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        if days == 0:
-            embed = ModEmbed.success(
-                "New Account Alert Disabled",
-                "New account alerts have been disabled.",
-            )
-        else:
-            embed = ModEmbed.success(
-                "New Account Alert Updated",
-                f"Accounts younger than **{days}** days will be flagged.",
-            )
-        await interaction.response.send_message(embed=embed)
-
-    # --- badwords subgroup ---
-
-    badwords_group = app_commands.Group(
-        name="badwords",
-        description="Manage bad words filter",
-        parent=automod_group,
-    )
-
-    @badwords_group.command(name="add", description="Add words to the blacklist")
-    @app_commands.describe(
-        words="Words to add (comma separated)",
-    )
-    @is_admin()
-    async def badwords_add(self, interaction: discord.Interaction, words: str):
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        badwords = settings.get("automod_badwords", [])
-        new_words = [w.strip().lower() for w in words.split(",") if w.strip()]
-        added = []
-        for word in new_words:
-            if word not in badwords:
-                badwords.append(word)
-                added.append(word)
-        settings["automod_badwords"] = badwords
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        if added:
-            embed = ModEmbed.success(
-                "Words Added", f"Added **{len(added)}** words to the blacklist."
-            )
-        else:
-            embed = ModEmbed.warning(
-                "No Changes",
-                "All provided words were already in the blacklist.",
-            )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @badwords_group.command(
-        name="remove", description="Remove words from the blacklist"
-    )
-    @app_commands.describe(
-        words="Words to remove (comma separated)",
-    )
-    @is_admin()
-    async def badwords_remove(
-        self, interaction: discord.Interaction, words: str
-    ):
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        badwords = settings.get("automod_badwords", [])
-        words_to_remove = [w.strip().lower() for w in words.split(",") if w.strip()]
-        removed = []
-        for word in words_to_remove:
-            if word in badwords:
-                badwords.remove(word)
-                removed.append(word)
-        settings["automod_badwords"] = badwords
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        if removed:
-            embed = ModEmbed.success(
-                "Words Removed",
-                f"Removed **{len(removed)}** words from the blacklist.",
-            )
-        else:
-            embed = ModEmbed.warning(
-                "No Changes",
-                "None of those words were in the blacklist.",
-            )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @badwords_group.command(name="list", description="View all blacklisted words")
-    @is_mod()
-    async def badwords_list(self, interaction: discord.Interaction):
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        badwords = settings.get("automod_badwords", [])
-        if not badwords:
-            embed = ModEmbed.info(
-                "No Bad Words",
-                "The bad words list is currently empty.",
-            )
-        else:
-            censored = [f"||{w}||" for w in badwords]
-            description = ", ".join(censored[:50])
-            embed = discord.Embed(
-                title="📝 Blacklisted Words",
-                description=description or "No words",
-                color=Config.COLOR_INFO,
-            )
-            if len(badwords) > 50:
-                embed.set_footer(
-                    text=f"Showing 50 of {len(badwords)} words",
-                )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @badwords_group.command(name="clear", description="Clear all blacklisted words")
-    @is_admin()
-    async def badwords_clear(self, interaction: discord.Interaction):
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        count = len(settings.get("automod_badwords", []))
-        settings["automod_badwords"] = []
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        embed = ModEmbed.success(
-            "Blacklist Cleared",
-            f"Removed **{count}** words from the blacklist.",
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    # --- AI specific config ---
-
-    @automod_group.command(
-        name="ai",
-        description="Toggle Groq AI detection and configure sensitivity",
-    )
-    @app_commands.describe(
-        enabled="Enable or disable Groq AI analysis",
-        min_severity="Minimum severity (1-10) for AI to trigger",
-        categories="Comma-separated categories (toxicity, spam, nsfw, threat, other)",
-    )
-    @is_admin()
-    async def automod_ai(
+    async def whitelist(
         self,
         interaction: discord.Interaction,
-        enabled: Optional[bool] = None,
-        min_severity: Optional[int] = None,
-        categories: Optional[str] = None,
+        action: Literal["add", "remove", "list"],
+        domain: Optional[str] = None
     ):
+        """Manage whitelist"""
         settings = await self.bot.db.get_settings(interaction.guild_id)
-
-        if enabled is not None:
-            settings["automod_ai_enabled"] = enabled
-
-        if min_severity is not None:
-            settings["automod_ai_min_severity"] = max(1, min(10, min_severity))
-
-        if categories is not None:
-            raw = [c.strip().lower() for c in categories.split(",") if c.strip()]
-            valid = {"toxicity", "spam", "nsfw", "threat", "other"}
-            chosen = [c for c in raw if c in valid]
-            if chosen:
-                settings["automod_ai_categories"] = chosen
-
+        whitelist = settings.get("automod_whitelisted_domains", [])
+        
+        if action == "list":
+            if not whitelist:
+                embed = ModEmbed.info("Whitelist", "No domains whitelisted.")
+            else:
+                embed = ModEmbed.info(
+                    "Whitelisted Domains",
+                    "\n".join(f"• `{d}`" for d in whitelist)
+                )
+            await interaction.response.send_message(embed=embed)
+            return
+        
+        if not domain:
+            embed = ModEmbed.error("Missing Domain", "Please provide a domain to add/remove.")
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        if action == "add":
+            if domain not in whitelist:
+                whitelist.append(domain)
+                settings["automod_whitelisted_domains"] = whitelist
+                await self.bot.db.update_settings(interaction.guild_id, settings)
+                embed = ModEmbed.success("Domain Whitelisted", f"Added `{domain}` to whitelist.")
+            else:
+                embed = ModEmbed.warning("Already Whitelisted", f"`{domain}` is already whitelisted.")
+                
+        else:  # remove
+            if domain in whitelist:
+                whitelist.remove(domain)
+                settings["automod_whitelisted_domains"] = whitelist
+                await self.bot.db.update_settings(interaction.guild_id, settings)
+                embed = ModEmbed.success("Domain Removed", f"Removed `{domain}` from whitelist.")
+            else:
+                embed = ModEmbed.warning("Not Found", f"`{domain}` is not in whitelist.")
+        
+        await interaction.response.send_message(embed=embed)
+    
+    @automod.command(name="ai", description="Configure AI-powered moderation")
+    @is_admin()
+    async def ai_config(
+        self,
+        interaction: discord.Interaction,
+        enabled: bool,
+        min_severity: Optional[int] = 4
+    ):
+        """Configure AI filter"""
+        if not GROQ_AVAILABLE:
+            embed = ModEmbed.error(
+                "AI Unavailable",
+                "AI moderation requires the Groq package to be installed and an API key configured."
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        settings["automod_ai_enabled"] = enabled
+        settings["automod_ai_min_severity"] = min_severity
         await self.bot.db.update_settings(interaction.guild_id, settings)
-
-        status = (
-            "enabled" if settings.get("automod_ai_enabled", False) else "disabled"
+        
+        if enabled:
+            embed = ModEmbed.success(
+                "AI Moderation Enabled",
+                f"**Status:** ✓ Active\n"
+                f"**Min Severity:** {min_severity}/10\n\n"
+                f"AI will analyze messages for:\n"
+                f"• Toxicity & hate speech\n"
+                f"• Threats & violence\n"
+                f"• NSFW content\n"
+                f"• Scams & phishing\n\n"
+                f"Messages scoring ≥{min_severity} will trigger actions."
+            )
+        else:
+            embed = ModEmbed.info("AI Moderation Disabled", "AI filter is now inactive.")
+        
+        await interaction.response.send_message(embed=embed)
+    
+    @automod.command(name="history", description="View user's violation history")
+    @is_mod()
+    async def user_history(self, interaction: discord.Interaction, user: discord.Member):
+        """View user violation history"""
+        history = self.engine.get_user_history(interaction.guild_id, user.id)
+        
+        if not history.violations:
+            embed = ModEmbed.info(
+                "Clean Record",
+                f"{user.mention} has no AutoMod violations."
+            )
+            await interaction.response.send_message(embed=embed)
+            return
+        
+        risk_score = history.get_risk_score()
+        
+        # Determine risk level
+        if risk_score >= 75:
+            risk_level = "🔴 CRITICAL"
+            color = discord.Color.dark_red()
+        elif risk_score >= 50:
+            risk_level = "🟠 HIGH"
+            color = discord.Color.orange()
+        elif risk_score >= 25:
+            risk_level = "🟡 MEDIUM"
+            color = discord.Color.gold()
+        else:
+            risk_level = "🟢 LOW"
+            color = discord.Color.green()
+        
+        embed = discord.Embed(
+            title=f"📋 Violation History: {user.name}",
+            color=color,
+            timestamp=datetime.now(timezone.utc)
         )
-        sev = settings.get("automod_ai_min_severity", 4)
-        cats = settings.get(
-            "automod_ai_categories",
-            ["toxicity", "spam", "nsfw", "threat", "other"],
+        
+        embed.set_thumbnail(url=user.display_avatar.url)
+        
+        embed.add_field(
+            name="Risk Assessment",
+            value=f"**Score:** {risk_score:.1f}/100\n**Level:** {risk_level}",
+            inline=True
         )
-        embed = ModEmbed.success(
-            "AI Settings Updated",
-            (
-                f"Groq AI is **{status}**.\n"
-                f"Min severity: **{sev}**\n"
-                f"Categories: `{', '.join(cats)}`"
-            ),
+        
+        embed.add_field(
+            name="Summary",
+            value=f"**Total Violations:** {len(history.violations)}\n"
+                  f"**Warnings:** {history.warnings}\n"
+                  f"**Mutes:** {history.mutes}\n"
+                  f"**Kicks:** {history.kicks}",
+            inline=True
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        
+        # Recent violations
+        recent = history.violations[-5:]
+        if recent:
+            violations_text = ""
+            for v in reversed(recent):
+                timestamp = v['timestamp'].strftime("%Y-%m-%d %H:%M")
+                violations_text += f"`{timestamp}` - {v['reason']}\n"
+            
+            embed.add_field(
+                name="Recent Violations (Last 5)",
+                value=violations_text,
+                inline=False
+            )
+        
+        embed.set_footer(text=f"User ID: {user.id}")
+        
+        await interaction.response.send_message(embed=embed)
+    
+    @automod.command(name="test", description="Test AutoMod with a sample message")
+    @is_admin()
+    async def test_automod(self, interaction: discord.Interaction, content: str):
+        """Test automod filters"""
+        await interaction.response.defer(ephemeral=True)
+        
+        # Create a mock message for testing
+        class MockMessage:
+            def __init__(self, content, author, guild, channel):
+                self.content = content
+                self.author = author
+                self.guild = guild
+                self.channel = channel
+                self.mentions = []
+                self.role_mentions = []
+                self.created_at = datetime.now(timezone.utc)
+        
+        mock_msg = MockMessage(content, interaction.user, interaction.guild, interaction.channel)
+        
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        result = await self.engine.process_message(mock_msg, settings)
+        
+        if result and result.triggered:
+            embed = discord.Embed(
+                title="⚠️ Violation Detected",
+                description=f"This message would trigger AutoMod",
+                color=discord.Color.red()
+            )
+            
+            embed.add_field(name="Reason", value=result.reason, inline=False)
+            embed.add_field(name="Severity", value=result.severity.name, inline=True)
+            embed.add_field(name="Action", value=result.action.value.upper(), inline=True)
+            embed.add_field(name="Confidence", value=f"{result.confidence:.0%}", inline=True)
+            
+            if result.matched_patterns:
+                patterns = ", ".join(f"||{p}||" for p in result.matched_patterns[:3])
+                embed.add_field(name="Matched", value=patterns, inline=False)
+        else:
+            embed = ModEmbed.success(
+                "✅ Message Clean",
+                "This message would pass all AutoMod filters."
+            )
+        
+        embed.add_field(
+            name="Test Content",
+            value=f"```{content[:500]}```",
+            inline=False
+        )
+        
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
 
-async def setup(bot):
-    await bot.add_cog(AutoMod(bot))
+async def setup(bot: commands.Bot):
+    """Load the cog"""
+    await bot.add_cog(AutoModV3(bot))

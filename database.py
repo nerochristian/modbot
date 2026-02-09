@@ -11,6 +11,10 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 import aiosqlite
+try:
+    from cogs.automod_config import AUTOMOD_SETTINGS
+except ImportError:
+    AUTOMOD_SETTINGS = {}
 
 logger = logging.getLogger("ModBot.Database")
 DATABASE_PATH = "modbot.db"
@@ -489,27 +493,33 @@ class Database:
         """Get guild settings"""
         self._validate_guild_id(guild_id)
         
-        async with self.get_connection() as db:
-            try:
+        settings = {}
+        try:
+            async with self.get_connection() as db:
                 cursor = await db.execute(
                     "SELECT settings FROM guild_settings WHERE guild_id = ?",
                     (guild_id,),
                 )
                 row = await cursor.fetchone()
-                return json.loads(row[0]) if row and row[0] else {}
-            except aiosqlite.OperationalError as e:
-                if "no such table: guild_settings" not in str(e).lower():
-                    raise
+                settings = json.loads(row[0]) if row and row[0] else {}
+        except aiosqlite.OperationalError as e:
+            if "no such table: guild_settings" not in str(e).lower():
+                raise
 
-        # Schema missing: initialize and retry once.
-        await self.init_guild(guild_id)
-        async with self.get_connection() as db:
-            cursor = await db.execute(
-                "SELECT settings FROM guild_settings WHERE guild_id = ?",
-                (guild_id,),
-            )
-            row = await cursor.fetchone()
-            return json.loads(row[0]) if row and row[0] else {}
+            # Schema missing: initialize and retry once.
+            await self.init_guild(guild_id)
+            async with self.get_connection() as db:
+                cursor = await db.execute(
+                    "SELECT settings FROM guild_settings WHERE guild_id = ?",
+                    (guild_id,),
+                )
+                row = await cursor.fetchone()
+                settings = json.loads(row[0]) if row and row[0] else {}
+                
+        # Merge with defaults
+        merged = AUTOMOD_SETTINGS.copy()
+        merged.update(settings)
+        return merged
     
     async def update_settings(self, guild_id: int, settings: Dict[str, Any]) -> None:
         """Update guild settings"""

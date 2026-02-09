@@ -56,6 +56,41 @@ class ToolType(str, Enum):
     BAN = "ban_member"
     UNBAN = "unban_member"
     PURGE = "purge_messages"
+    
+    # Roles
+    ADD_ROLE = "add_role"
+    REMOVE_ROLE = "remove_role"
+    CREATE_ROLE = "create_role"
+    DELETE_ROLE = "delete_role"
+    EDIT_ROLE = "edit_role"
+    
+    # Channels
+    CREATE_CHANNEL = "create_channel"
+    DELETE_CHANNEL = "delete_channel"
+    EDIT_CHANNEL = "edit_channel"
+    LOCK_CHANNEL = "lock_channel"
+    UNLOCK_CHANNEL = "unlock_channel"
+    
+    # Members
+    SET_NICKNAME = "set_nickname"
+    
+    # Threads
+    LOCK_THREAD = "lock_thread"
+    
+    # Voice
+    MOVE_MEMBER = "move_member"
+    DISCONNECT_MEMBER = "disconnect_member"
+    
+    # Server & Assets
+    EDIT_GUILD = "edit_guild"
+    CREATE_EMOJI = "create_emoji"
+    DELETE_EMOJI = "delete_emoji"
+    
+    # Invites & Messages
+    CREATE_INVITE = "create_invite"
+    PIN_MESSAGE = "pin_message"
+    UNPIN_MESSAGE = "unpin_message"
+    
     HELP = "show_help"
 
 
@@ -147,28 +182,47 @@ Return ONLY valid JSON (no markdown, no code fences):
 
 ## Available Tools
 - warn_member: target_user_id (int), reason (str)
-- timeout_member: target_user_id (int), seconds (int, max 259200), reason (str)
+- timeout_member: target_user_id (int), seconds (int), reason (str)
 - untimeout_member: target_user_id (int), reason (str)
 - kick_member: target_user_id (int), reason (str)
-- ban_member: target_user_id (int), delete_message_days (int 0-7), reason (str)
+- ban_member: target_user_id (int), delete_message_days (int), reason (str)
 - unban_member: target_user_id (int), reason (str)
-- purge_messages: amount (int 1-500), reason (str)
-- show_help: no arguments
+- purge_messages: amount (int), reason (str)
 
-## Language Mapping
-- mute/timeout/silence/gag -> timeout_member
-- unmute/untimeout/unsilence -> untimeout_member
-- kick/boot/yeet -> kick_member
-- ban/permaban/banish/exile/terminate/execute -> ban_member
-- warn/note -> warn_member
-- purge/clear/wipe/nuke + count -> purge_messages
+### Role Management (Requires: can_manage_roles)
+- add_role: target_user_id (int), role_name (str), reason (str)
+- remove_role: target_user_id (int), role_name (str), reason (str)
+- create_role: name (str), color_hex (str, opt), hoist (bool), reason (str)
+- delete_role: role_name (str), reason (str)
+- edit_role: role_name (str), new_name (str, opt), new_color (str, opt)
+
+### Channel Management (Requires: can_manage_channels)
+- create_channel: name (str), type (text/voice/stage/forum), category (str, opt), reason (str)
+- delete_channel: channel_name (str/int), reason (str)
+- edit_channel: channel_name (str, opt), new_name (str, opt), topic (str, opt), nsfw (bool, opt), slowmode (int, opt)
+- lock_channel: no args (locks current)
+- unlock_channel: no args (unlocks current)
+
+### Member Admin
+- set_nickname: target_user_id (int), nickname (str, null to reset) -> Requires: can_manage_nicknames
+- move_member: target_user_id (int), channel_name (str) -> Requires: can_move_members
+- disconnect_member: target_user_id (int) -> Requires: can_move_members
+
+### Server/Misc
+- edit_guild: name (str, opt) -> Requires: can_manage_guild
+- create_emoji: name (str), url (str) -> Requires: can_manage_emojis
+- delete_emoji: name (str) -> Requires: can_manage_emojis
+- create_invite: max_age (int seconds) -> Requires: can_create_instant_invite
+- pin_message: message_id (int) -> Requires: can_manage_messages
 
 ## Rules
 - Check permission flags before selecting a tool
-- If user lacks permission: downgrade to allowed action OR return error
-- First mention is always the bot; use subsequent mentions as targets
-- Parse durations like "1h", "30 minutes", "2 days" to seconds (cap at 259200)
-- Default timeout: 3600 seconds (1 hour)"""
+- "age restricted" or "nsfw" -> edit_channel(nsfw=True)
+- "slowmode 5s" -> edit_channel(slowmode=5)
+- First mention is usually the target, but context matters
+- Parse durations like "1h" to seconds
+- Default timeout: 3600 seconds
+- For colors, use hex (e.g. #FF0000) or common names if model supports conversion"""
 
 
 CONVERSATION_SYSTEM_PROMPT: Final[str] = """You are Nebula, a sharp-witted AI with genuine personality who serves as both a moderation assistant and a conversational companion in a Discord server.
@@ -268,11 +322,26 @@ class PermissionFlags:
     kick_members: bool = False
     ban_members: bool = False
     manage_guild: bool = False
+    
+    # Expanded permissions
+    manage_roles: bool = False
+    manage_channels: bool = False
+    manage_nicknames: bool = False
+    manage_threads: bool = False
+    manage_emojis: bool = False
+    manage_webhooks: bool = False
+    move_members: bool = False
+    mute_members: bool = False
+    deafen_members: bool = False
 
     @classmethod
     def from_member(cls, member: discord.Member) -> "PermissionFlags":
         if is_bot_owner_id(member.id):
-            return cls(True, True, True, True, True)
+            return cls(
+                manage_messages=True, moderate_members=True, kick_members=True, ban_members=True, manage_guild=True,
+                manage_roles=True, manage_channels=True, manage_nicknames=True, manage_threads=True, 
+                manage_emojis=True, manage_webhooks=True, move_members=True, mute_members=True, deafen_members=True
+            )
         perms = member.guild_permissions
         return cls(
             manage_messages=perms.manage_messages,
@@ -280,6 +349,17 @@ class PermissionFlags:
             kick_members=perms.kick_members,
             ban_members=perms.ban_members,
             manage_guild=perms.manage_guild,
+            
+            # New permissions
+            manage_roles=perms.manage_roles,
+            manage_channels=perms.manage_channels,
+            manage_nicknames=perms.manage_nicknames,
+            manage_threads=perms.manage_threads,
+            manage_emojis=perms.manage_emojis_and_stickers if hasattr(perms, "manage_emojis_and_stickers") else perms.manage_emojis,
+            manage_webhooks=perms.manage_webhooks,
+            move_members=perms.move_members,
+            mute_members=perms.mute_members,
+            deafen_members=perms.deafen_members,
         )
 
     def to_dict(self) -> Dict[str, bool]:
@@ -289,6 +369,17 @@ class PermissionFlags:
             "can_kick_members": self.kick_members,
             "can_ban_members": self.ban_members,
             "can_manage_guild": self.manage_guild,
+            
+            # New permissions
+            "can_manage_roles": self.manage_roles,
+            "can_manage_channels": self.manage_channels,
+            "can_manage_nicknames": self.manage_nicknames,
+            "can_manage_threads": self.manage_threads,
+            "can_manage_emojis": self.manage_emojis,
+            "can_manage_webhooks": self.manage_webhooks,
+            "can_move_members": self.move_members,
+            "can_mute_members": self.mute_members,
+            "can_deafen_members": self.deafen_members,
         }
 
 
@@ -805,6 +896,417 @@ async def handle_kick(cog: "AIModeration", message: discord.Message, args: Dict[
     return ToolResult.success_result("Member kicked", embed=embed)
 
 
+# =============================================================================
+# ROLE MANAGEMENT HANDLERS
+# =============================================================================
+
+
+@ToolRegistry.register(ToolType.ADD_ROLE, display_name="Add Role", color=discord.Color.green(), emoji="➕", required_permission="manage_roles")
+async def handle_add_role(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    guild = message.guild
+    if not guild: return ToolResult.failure_result("Not in a guild")
+    
+    actor = message.author
+    if not isinstance(actor, discord.Member): return ToolResult.failure_result("Actor not found")
+    
+    # 1. Resolve Target
+    target = await cog.resolve_member(guild, args.get("target_user_id"))
+    if not target: return ToolResult.failure_result("Target user not found")
+    
+    # 2. Resolve Role
+    role = await cog.resolve_role(guild, args.get("role_name"))
+    if not role:
+        return ToolResult.failure_result(f"Role '{args.get('role_name')}' not found")
+        
+    # 3. Hierarchy Checks
+    if not cog.can_manage_role(actor, role):
+        return ToolResult.failure_result(f"You cannot give the role '{role.name}' (it's above you)")
+        
+    if not cog.can_manage_role(guild.me, role):
+        return ToolResult.failure_result(f"I cannot give the role '{role.name}' (it's above me)")
+        
+    reason = str(args.get("reason", "No reason provided"))
+    
+    try:
+        await target.add_roles(role, reason=f"AI Mod ({actor}): {reason}")
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed to add role: {e}")
+        
+    embed = discord.Embed(description=f"✅ Added {role.mention} to {target.mention}", color=discord.Color.green())
+    return ToolResult.success_result("Role added", embed=embed)
+
+
+@ToolRegistry.register(ToolType.REMOVE_ROLE, display_name="Remove Role", color=discord.Color.orange(), emoji="➖", required_permission="manage_roles")
+async def handle_remove_role(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    guild = message.guild
+    if not guild: return ToolResult.failure_result("Not in a guild")
+    
+    actor = message.author
+    if not isinstance(actor, discord.Member): return ToolResult.failure_result("Actor not found")
+
+    target = await cog.resolve_member(guild, args.get("target_user_id"))
+    if not target: return ToolResult.failure_result("Target user not found")
+    
+    role = await cog.resolve_role(guild, args.get("role_name"))
+    if not role: return ToolResult.failure_result(f"Role '{args.get('role_name')}' not found")
+    
+    if not cog.can_manage_role(actor, role):
+        return ToolResult.failure_result(f"You cannot remove '{role.name}' (hierarchy)")
+    if not cog.can_manage_role(guild.me, role):
+        return ToolResult.failure_result(f"I cannot remove '{role.name}' (hierarchy)")
+        
+    reason = str(args.get("reason", "No reason provided"))
+    
+    try:
+        await target.remove_roles(role, reason=f"AI Mod ({actor}): {reason}")
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed to remove role: {e}")
+
+    embed = discord.Embed(description=f"✅ Removed {role.mention} from {target.mention}", color=discord.Color.orange())
+    return ToolResult.success_result("Role removed", embed=embed)
+
+
+@ToolRegistry.register(ToolType.CREATE_ROLE, display_name="Create Role", color=discord.Color.blue(), emoji="✨", required_permission="manage_roles")
+async def handle_create_role(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    guild = message.guild
+    if not guild: return ToolResult.failure_result("Not in a guild")
+    
+    name = args.get("name")
+    if not name: return ToolResult.failure_result("Role name is required")
+    
+    # Parse color
+    color = discord.Color.default()
+    color_input = args.get("color_hex")
+    if color_input:
+        try:
+            if color_input.startswith("#"): color_input = color_input[1:]
+            color = discord.Color(int(color_input, 16))
+        except:
+            pass
+            
+    hoist = bool(args.get("hoist", False))
+    reason = str(args.get("reason", "No reason provided"))
+    
+    try:
+        role = await guild.create_role(name=name, color=color, hoist=hoist, reason=f"AI Mod ({message.author}): {reason}")
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed to create role: {e}")
+        
+    embed = discord.Embed(description=f"✅ Created role {role.mention}", color=color)
+    return ToolResult.success_result("Role created", embed=embed)
+
+
+@ToolRegistry.register(ToolType.DELETE_ROLE, display_name="Delete Role", color=discord.Color.red(), emoji="🗑️", required_permission="manage_roles")
+async def handle_delete_role(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    guild = message.guild
+    if not guild: return ToolResult.failure_result("Not in a guild")
+    
+    actor = message.author
+    role = await cog.resolve_role(guild, args.get("role_name"))
+    
+    if not role: return ToolResult.failure_result(f"Role '{args.get('role_name')}' not found")
+    
+    if not cog.can_manage_role(actor, role): return ToolResult.failure_result("Role is above you")
+    if not cog.can_manage_role(guild.me, role): return ToolResult.failure_result("Role is above me")
+    
+    try:
+        await role.delete(reason=f"AI Mod ({actor}): {args.get('reason')}")
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed to delete role: {e}")
+        
+    embed = discord.Embed(description=f"🗑️ Deleted role **{role.name}**", color=discord.Color.red())
+    return ToolResult.success_result("Role deleted", embed=embed)
+
+
+@ToolRegistry.register(ToolType.EDIT_ROLE, display_name="Edit Role", color=discord.Color.blue(), emoji="✏️", required_permission="manage_roles")
+async def handle_edit_role(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    guild = message.guild
+    actor = message.author
+    role = await cog.resolve_role(guild, args.get("role_name"))
+    
+    if not role: return ToolResult.failure_result(f"Role '{args.get('role_name')}' not found")
+    if not cog.can_manage_role(actor, role): return ToolResult.failure_result("Role is above you")
+    
+    kwargs = {}
+    if "new_name" in args: kwargs["name"] = args["new_name"]
+    if "new_color" in args:
+        try:
+            c = args["new_color"]
+            if c.startswith("#"): c = c[1:]
+            kwargs["color"] = discord.Color(int(c, 16))
+        except: pass
+        
+    if not kwargs: return ToolResult.failure_result("Nothing to edit")
+    
+    await role.edit(**kwargs, reason=f"AI Edit by {actor}")
+    return ToolResult.success_result(f"Role {role.mention} updated")
+
+
+# =============================================================================
+# CHANNEL MANAGEMENT HANDLERS
+# =============================================================================
+
+
+@ToolRegistry.register(ToolType.CREATE_CHANNEL, display_name="Create Channel", color=discord.Color.green(), emoji="📺", required_permission="manage_channels")
+async def handle_create_channel(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    guild = message.guild
+    if not guild: return ToolResult.failure_result("Not in a guild")
+    
+    name = args.get("name")
+    if not name: return ToolResult.failure_result("Channel name required")
+    
+    c_type = args.get("type", "text").lower()
+    category_name = args.get("category")
+    
+    category = None
+    if category_name:
+        category = discord.utils.find(lambda c: c.name.lower() == category_name.lower(), guild.categories)
+    
+    reason = f"AI Mod ({message.author}): {args.get('reason', 'No reason')}"
+    
+    try:
+        if "voice" in c_type:
+            ch = await guild.create_voice_channel(name, category=category, reason=reason)
+        elif "stage" in c_type:
+            ch = await guild.create_stage_channel(name, category=category, reason=reason)
+        elif "forum" in c_type:
+            ch = await guild.create_forum_channel(name, category=category, reason=reason)
+        else:
+            ch = await guild.create_text_channel(name, category=category, reason=reason)
+            
+        return ToolResult.success_result(f"Channel created", embed=discord.Embed(description=f"✅ Created {ch.mention}", color=discord.Color.green()))
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed to create channel: {e}")
+
+
+@ToolRegistry.register(ToolType.DELETE_CHANNEL, display_name="Delete Channel", color=discord.Color.red(), emoji="🗑️", required_permission="manage_channels")
+async def handle_delete_channel(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    guild = message.guild
+    name = args.get("channel_name")
+    
+    # Try ID first, then name
+    channel = None
+    if str(name).isdigit():
+        channel = guild.get_channel(int(name))
+        
+    if not channel:
+        channel = discord.utils.find(lambda c: c.name.lower() == name.lower(), guild.channels)
+        
+    if not channel: return ToolResult.failure_result(f"Channel '{name}' not found")
+    
+    try:
+        await channel.delete(reason=f"AI Mod ({message.author})")
+        return ToolResult.success_result(f"Channel '{channel.name}' deleted")
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed to delete channel: {e}")
+
+
+@ToolRegistry.register(ToolType.EDIT_CHANNEL, display_name="Edit Channel", color=discord.Color.blue(), emoji="📝", required_permission="manage_channels")
+async def handle_edit_channel(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    guild = message.guild
+    channel_name = args.get("channel_name")
+    
+    # Target channel (default to current if not specified)
+    channel = message.channel
+    if channel_name:
+        if str(channel_name).isdigit():
+            c = guild.get_channel(int(channel_name))
+            if c: channel = c
+        else:
+            c = discord.utils.find(lambda x: x.name.lower() == channel_name.lower(), guild.channels)
+            if c: channel = c
+            
+    if not isinstance(channel, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.ForumChannel)):
+        return ToolResult.failure_result("Cannot edit this type of channel")
+        
+    kwargs = {}
+    if "new_name" in args: kwargs["name"] = args["new_name"]
+    if "topic" in args: kwargs["topic"] = args["topic"]
+    if "nsfw" in args: kwargs["nsfw"] = bool(args["nsfw"])
+    if "slowmode" in args: kwargs["slowmode_delay"] = int(args["slowmode"])
+    if "bitrate" in args and isinstance(channel, discord.VoiceChannel): kwargs["bitrate"] = int(args["bitrate"])
+    if "user_limit" in args and isinstance(channel, discord.VoiceChannel): kwargs["user_limit"] = int(args["user_limit"])
+    
+    if not kwargs: return ToolResult.failure_result("Nothing to edit")
+    
+    try:
+        await channel.edit(**kwargs, reason=f"AI Mod ({message.author})")
+        changes = ", ".join(f"{k}={v}" for k, v in kwargs.items())
+        return ToolResult.success_result(f"Channel updated: {changes}")
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed to edit channel: {e}")
+
+
+@ToolRegistry.register(ToolType.LOCK_CHANNEL, display_name="Lock Channel", color=discord.Color.orange(), emoji="🔒", required_permission="manage_channels")
+async def handle_lock_channel(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    channel = message.channel
+    # support triggering in other channels?
+    
+    try:
+        await channel.set_permissions(message.guild.default_role, send_messages=False, reason=f"Lock by {message.author}")
+        return ToolResult.success_result("Channel locked 🔒")
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed: {e}")
+
+
+@ToolRegistry.register(ToolType.UNLOCK_CHANNEL, display_name="Unlock Channel", color=discord.Color.green(), emoji="🔓", required_permission="manage_channels")
+async def handle_unlock_channel(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    channel = message.channel
+    try:
+        await channel.set_permissions(message.guild.default_role, send_messages=True, reason=f"Unlock by {message.author}")
+        return ToolResult.success_result("Channel unlocked 🔓")
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed: {e}")
+
+
+# =============================================================================
+# MEMBER MANAGEMENT HANDLERS
+# =============================================================================
+
+
+@ToolRegistry.register(ToolType.SET_NICKNAME, display_name="Set Nickname", color=discord.Color.blue(), emoji="🏷️", required_permission="manage_nicknames")
+async def handle_set_nickname(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    guild = message.guild
+    if not guild: return ToolResult.failure_result("Not in a guild")
+    
+    actor = message.author
+    target = await cog.resolve_member(guild, args.get("target_user_id"))
+    if not target: return ToolResult.failure_result("Target not found")
+    
+    # Hierarchy check
+    if not cog.can_moderate(actor, target): return ToolResult.failure_result("Target is above you")
+    if not cog.can_moderate(guild.me, target): return ToolResult.failure_result("Target is above me")
+    
+    new_nick = args.get("nickname")
+    if new_nick and len(new_nick) > 32: return ToolResult.failure_result("Nickname too long (max 32)")
+    
+    try:
+        await target.edit(nick=new_nick, reason=f"AI Mod ({actor})")
+        return ToolResult.success_result(f"Nickname set to '{new_nick}'" if new_nick else "Nickname reset")
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed to set nickname: {e}")
+
+
+# =============================================================================
+# VOICE MANAGEMENT HANDLERS
+# =============================================================================
+
+
+@ToolRegistry.register(ToolType.MOVE_MEMBER, display_name="Move Member", color=discord.Color.purple(), emoji="🗣️", required_permission="move_members")
+async def handle_move_member(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    guild = message.guild
+    if not guild: return ToolResult.failure_result("Not in a guild")
+    
+    target = await cog.resolve_member(guild, args.get("target_user_id"))
+    if not target: return ToolResult.failure_result("Target not found")
+    
+    if not target.voice: return ToolResult.failure_result("Target not in voice")
+    
+    channel_name = args.get("channel_name")
+    channel = None
+    if str(channel_name).isdigit():
+        channel = guild.get_channel(int(channel_name))
+    else:
+        channel = discord.utils.find(lambda c: isinstance(c, discord.VoiceChannel) and c.name.lower() == channel_name.lower(), guild.voice_channels)
+        
+    if not channel: return ToolResult.failure_result(f"Voice channel '{channel_name}' not found")
+    
+    try:
+        await target.move_to(channel, reason=f"AI Mod ({message.author})")
+        return ToolResult.success_result(f"Moved {target.display_name} to {channel.name}")
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed to move: {e}")
+
+
+@ToolRegistry.register(ToolType.DISCONNECT_MEMBER, display_name="Disconnect Member", color=discord.Color.dark_grey(), emoji="🔌", required_permission="move_members")
+async def handle_disconnect_member(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    guild = message.guild
+    target = await cog.resolve_member(guild, args.get("target_user_id"))
+    
+    if not target or not target.voice: return ToolResult.failure_result("Target not in voice")
+    
+    try:
+        await target.move_to(None, reason=f"AI Mod ({message.author})")
+        return ToolResult.success_result(f"Disconnected {target.display_name}")
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed to disconnect: {e}")
+
+
+# =============================================================================
+# SERVER & ASSET HANDLERS
+# =============================================================================
+
+
+@ToolRegistry.register(ToolType.EDIT_GUILD, display_name="Edit Server", color=discord.Color.gold(), emoji="🏠", required_permission="manage_guild")
+async def handle_edit_guild(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    guild = message.guild
+    kwargs = {}
+    if "name" in args: kwargs["name"] = args["name"]
+    # Icon/Banner support requires downloading URL, skipping for simplicity unless requested
+    
+    if not kwargs: return ToolResult.failure_result("Nothing to edit")
+    
+    try:
+        await guild.edit(**kwargs, reason=f"AI Mod ({message.author})")
+        return ToolResult.success_result("Server updated")
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed: {e}")
+
+
+@ToolRegistry.register(ToolType.CREATE_EMOJI, display_name="Create Emoji", color=discord.Color.green(), emoji="😀", required_permission="manage_emojis")
+async def handle_create_emoji(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    guild = message.guild
+    name = args.get("name")
+    url = args.get("url")
+    if not name or not url: return ToolResult.failure_result("Name and URL required")
+    
+    try:
+        async with cog.bot.session.get(url) as resp:
+            if resp.status != 200: return ToolResult.failure_result("Failed to download image")
+            data = await resp.read()
+            
+        emoji = await guild.create_custom_emoji(name=name, image=data, reason=f"AI Mod ({message.author})")
+        return ToolResult.success_result(f"Emoji created: {emoji}", embed=discord.Embed(description=f"✅ Created {emoji}", color=discord.Color.green()))
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed: {e}")
+
+
+@ToolRegistry.register(ToolType.DELETE_EMOJI, display_name="Delete Emoji", color=discord.Color.red(), emoji="🗑️", required_permission="manage_emojis")
+async def handle_delete_emoji(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    guild = message.guild
+    name = args.get("name")
+    emoji = discord.utils.find(lambda e: e.name.lower() == name.lower(), guild.emojis)
+    
+    if not emoji: return ToolResult.failure_result("Emoji not found")
+    
+    try:
+        await emoji.delete(reason=f"AI Mod ({message.author})")
+        return ToolResult.success_result(f"Emoji '{name}' deleted")
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed: {e}")
+
+
+@ToolRegistry.register(ToolType.CREATE_INVITE, display_name="Create Invite", color=discord.Color.green(), emoji="📨", required_permission="create_instant_invite")
+async def handle_create_invite(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    channel = message.channel
+    try:
+        invite = await channel.create_invite(max_age=args.get("max_age", 86400), reason=f"AI Mod ({message.author})")
+        return ToolResult.success_result(f"Invite created: {invite.url}")
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed: {e}")
+
+
+@ToolRegistry.register(ToolType.PIN_MESSAGE, display_name="Pin Message", color=discord.Color.red(), emoji="📌", required_permission="manage_messages")
+async def handle_pin_message(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
+    msg_id = args.get("message_id")
+    try:
+        msg = await message.channel.fetch_message(int(msg_id))
+        await msg.pin(reason=f"AI Mod ({message.author})")
+        return ToolResult.success_result("Message pinned 📌")
+    except Exception as e:
+        return ToolResult.failure_result(f"Failed: {e}")
+
+
 @ToolRegistry.register(ToolType.BAN, display_name="Ban Member", color=discord.Color.dark_red(), emoji="🔨", required_permission="ban_members")
 async def handle_ban(cog: "AIModeration", message: discord.Message, args: Dict[str, Any], decision: Decision) -> ToolResult:
     guild = message.guild
@@ -984,11 +1486,68 @@ class AIModeration(commands.Cog):
         except Exception:
             return []
 
-    async def resolve_member(self, guild: discord.Guild, user_id: Any) -> Optional[discord.Member]:
-        try:
-            return guild.get_member(int(user_id))
-        except (TypeError, ValueError):
+    async def resolve_member(self, guild: discord.Guild, user_id_or_name: Union[int, str]) -> Optional[discord.Member]:
+        if not user_id_or_name:
             return None
+        
+        # Try ID
+        if isinstance(user_id_or_name, int) or str(user_id_or_name).isdigit():
+            member = guild.get_member(int(user_id_or_name))
+            if member: return member
+            
+        # Try Mention
+        if isinstance(user_id_or_name, str):
+            match = re.match(r"<@!?(\d+)>", user_id_or_name)
+            if match:
+                member = guild.get_member(int(match.group(1)))
+                if member: return member
+                
+        # Try Name (Exact -> Case-insensitive)
+        name = str(user_id_or_name).lower()
+        member = discord.utils.find(lambda m: m.name.lower() == name or m.display_name.lower() == name, guild.members)
+        if member: return member
+        
+        return None
+
+    async def resolve_role(self, guild: discord.Guild, role_id_or_name: Union[int, str]) -> Optional[discord.Role]:
+        if not role_id_or_name:
+            return None
+
+        # 1. Try ID
+        if isinstance(role_id_or_name, int) or str(role_id_or_name).isdigit():
+            role = guild.get_role(int(role_id_or_name))
+            if role: return role
+
+        # 2. Try Mention
+        if isinstance(role_id_or_name, str):
+            match = re.match(r"<@&(\d+)>", role_id_or_name)
+            if match:
+                role = guild.get_role(int(match.group(1)))
+                if role: return role
+
+        # 3. Try Name (Exact -> Case-insensitive)
+        query = str(role_id_or_name).lower()
+        role = discord.utils.find(lambda r: r.name.lower() == query, guild.roles)
+        if role: return role
+        
+        # 4. Fuzzy Match
+        import difflib
+        role_names = [r.name for r in guild.roles]
+        matches = difflib.get_close_matches(query, role_names, n=1, cutoff=0.7)
+        if matches:
+            return discord.utils.find(lambda r: r.name == matches[0], guild.roles)
+
+        return None
+
+    def can_manage_role(self, member: Union[discord.Member, discord.User], role: discord.Role) -> bool:
+        if is_bot_owner_id(member.id): return True
+        if isinstance(member, discord.User): return False # Cannot manage roles if not a member
+
+        # Check if member has manage_roles permission
+        if not member.guild_permissions.manage_roles: return False
+
+        # Check role hierarchy
+        return member.top_role > role
 
     def can_moderate(self, actor: discord.Member, target: discord.Member) -> bool:
         if actor == target:
