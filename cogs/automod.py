@@ -1211,6 +1211,458 @@ class AutoModEngine:
             pass
 
 # =============================================================================
+# INTERACTIVE DASHBOARD UI
+# =============================================================================
+
+def _build_dashboard_embed(guild: discord.Guild, settings: dict) -> discord.Embed:
+    """Build the main AutoMod dashboard embed showing all config at a glance."""
+    embed = discord.Embed(
+        title="🛡️ AutoMod Dashboard",
+        description="Configure your server's automated moderation system.\nUse the buttons and menus below to adjust settings.",
+        color=discord.Color.from_rgb(88, 101, 242),
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    # ── Module Toggles ──
+    def _icon(val: bool) -> str:
+        return "✅" if val else "❌"
+
+    toggles = (
+        f"{_icon(settings.get('automod_links_enabled', True))} **Link Filter**\n"
+        f"{_icon(settings.get('automod_invites_enabled', True))} **Invite Filter**\n"
+        f"{_icon(settings.get('automod_scam_protection', True))} **Scam Protection**\n"
+        f"{_icon(settings.get('automod_ai_enabled', False))} **AI Moderation**\n"
+        f"{_icon(settings.get('automod_notify_users', True))} **Notify Users**"
+    )
+    embed.add_field(name="📦 Modules", value=toggles, inline=True)
+
+    # ── Thresholds ──
+    thresholds = (
+        f"**Spam Limit:** `{settings.get('automod_spam_threshold', 5)}` msgs/5s\n"
+        f"**Caps:** `{settings.get('automod_caps_percentage', 70)}%` (min `{settings.get('automod_caps_min_length', 10)}` chars)\n"
+        f"**Max Mentions:** `{settings.get('automod_max_mentions', 5)}`\n"
+        f"**New Account:** `{settings.get('automod_newaccount_days', 7)}` days"
+    )
+    embed.add_field(name="📊 Thresholds", value=thresholds, inline=True)
+
+    # ── Roles & Channels ──
+    bypass_role = guild.get_role(settings.get("automod_bypass_role_id")) if settings.get("automod_bypass_role_id") else None
+    quarantine_role = guild.get_role(settings.get("automod_quarantine_role_id")) if settings.get("automod_quarantine_role_id") else None
+    log_ch = guild.get_channel(settings.get("automod_log_channel")) if settings.get("automod_log_channel") else None
+
+    infra = (
+        f"**Bypass Role:** {bypass_role.mention if bypass_role else '`Not Set`'}\n"
+        f"**Quarantine Role:** {quarantine_role.mention if quarantine_role else '`Not Set`'}\n"
+        f"**Log Channel:** {log_ch.mention if log_ch else '`Not Set`'}\n"
+        f"**Punishment:** `{settings.get('automod_punishment', 'warn').upper()}`"
+    )
+    embed.add_field(name="⚙️ Infrastructure", value=infra, inline=False)
+
+    # ── Lists ──
+    badwords = settings.get("automod_badwords", [])
+    domains = settings.get("automod_whitelisted_domains", [])
+    lists_text = (
+        f"**Bad Words:** `{len(badwords)}` configured\n"
+        f"**Whitelisted Domains:** `{len(domains)}` configured"
+    )
+    embed.add_field(name="📋 Lists", value=lists_text, inline=False)
+
+    embed.set_footer(text="AutoMod V3 • Changes are saved automatically")
+    return embed
+
+
+async def _refresh_dashboard(interaction: discord.Interaction, bot: commands.Bot, guild_id: int):
+    """Helper to refresh the dashboard embed after a change."""
+    guild = bot.get_guild(guild_id) or interaction.guild
+    settings = await bot.db.get_settings(guild_id)
+    embed = _build_dashboard_embed(guild, settings)
+    try:
+        await interaction.message.edit(embed=embed)
+    except Exception:
+        pass
+
+
+class ThresholdModal(discord.ui.Modal, title="📊 Edit Thresholds"):
+    """Modal for editing automod thresholds."""
+
+    spam = discord.ui.TextInput(
+        label="Spam Limit (msgs per 5s, 0 = off)",
+        placeholder="5",
+        required=False,
+        max_length=4,
+    )
+    caps = discord.ui.TextInput(
+        label="Caps Percentage (0-100, 0 = off)",
+        placeholder="70",
+        required=False,
+        max_length=3,
+    )
+    mentions = discord.ui.TextInput(
+        label="Max Mentions (0 = off)",
+        placeholder="5",
+        required=False,
+        max_length=4,
+    )
+    new_account = discord.ui.TextInput(
+        label="New Account Age (days, 0 = off)",
+        placeholder="7",
+        required=False,
+        max_length=4,
+    )
+
+    def __init__(self, bot: commands.Bot, guild_id: int):
+        super().__init__()
+        self.bot = bot
+        self.guild_id = guild_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        settings = await self.bot.db.get_settings(self.guild_id)
+        changes = []
+
+        for field, key, label in [
+            (self.spam, "automod_spam_threshold", "Spam Limit"),
+            (self.caps, "automod_caps_percentage", "Caps %"),
+            (self.mentions, "automod_max_mentions", "Max Mentions"),
+            (self.new_account, "automod_newaccount_days", "Account Age"),
+        ]:
+            val = field.value.strip()
+            if val:
+                try:
+                    v = int(val)
+                    if v < 0:
+                        v = 0
+                    if key == "automod_caps_percentage":
+                        v = min(v, 100)
+                    settings[key] = v
+                    changes.append(f"**{label}** → `{v}`")
+                except ValueError:
+                    pass
+
+        await self.bot.db.update_settings(self.guild_id, settings)
+        msg = "\n".join(changes) if changes else "No changes made."
+        await interaction.response.send_message(
+            embed=ModEmbed.success("Thresholds Updated", msg),
+            ephemeral=True,
+        )
+        await _refresh_dashboard(interaction, self.bot, self.guild_id)
+
+
+class BadWordsModal(discord.ui.Modal, title="🚫 Manage Bad Words"):
+    """Modal for adding / removing bad words."""
+
+    add_words = discord.ui.TextInput(
+        label="Add Words (comma-separated)",
+        style=discord.TextStyle.paragraph,
+        placeholder="word1, word2, word3",
+        required=False,
+        max_length=1000,
+    )
+    remove_words = discord.ui.TextInput(
+        label="Remove Words (comma-separated)",
+        style=discord.TextStyle.paragraph,
+        placeholder="word1, word2",
+        required=False,
+        max_length=1000,
+    )
+
+    def __init__(self, bot: commands.Bot, guild_id: int):
+        super().__init__()
+        self.bot = bot
+        self.guild_id = guild_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        settings = await self.bot.db.get_settings(self.guild_id)
+        badwords: list = settings.get("automod_badwords", [])
+        added, removed = [], []
+
+        if self.add_words.value.strip():
+            for w in self.add_words.value.split(","):
+                w = w.strip().lower()
+                if w and w not in badwords:
+                    badwords.append(w)
+                    added.append(w)
+
+        if self.remove_words.value.strip():
+            for w in self.remove_words.value.split(","):
+                w = w.strip().lower()
+                if w in badwords:
+                    badwords.remove(w)
+                    removed.append(w)
+
+        settings["automod_badwords"] = badwords
+        await self.bot.db.update_settings(self.guild_id, settings)
+
+        parts = []
+        if added:
+            parts.append(f"**Added ({len(added)}):** {', '.join(f'`{w}`' for w in added[:20])}")
+        if removed:
+            parts.append(f"**Removed ({len(removed)}):** {', '.join(f'`{w}`' for w in removed[:20])}")
+        if not parts:
+            parts.append("No changes made.")
+        parts.append(f"\n**Total bad words:** `{len(badwords)}`")
+
+        await interaction.response.send_message(
+            embed=ModEmbed.success("Bad Words Updated", "\n".join(parts)),
+            ephemeral=True,
+        )
+        await _refresh_dashboard(interaction, self.bot, self.guild_id)
+
+
+class DomainsModal(discord.ui.Modal, title="🌐 Manage Whitelisted Domains"):
+    """Modal for adding / removing whitelisted domains."""
+
+    add_domains = discord.ui.TextInput(
+        label="Add Domains (comma-separated)",
+        style=discord.TextStyle.paragraph,
+        placeholder="youtube.com, twitter.com",
+        required=False,
+        max_length=1000,
+    )
+    remove_domains = discord.ui.TextInput(
+        label="Remove Domains (comma-separated)",
+        style=discord.TextStyle.paragraph,
+        placeholder="example.com",
+        required=False,
+        max_length=1000,
+    )
+
+    def __init__(self, bot: commands.Bot, guild_id: int):
+        super().__init__()
+        self.bot = bot
+        self.guild_id = guild_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        settings = await self.bot.db.get_settings(self.guild_id)
+        domains: list = settings.get("automod_whitelisted_domains", [])
+        added, removed = [], []
+
+        if self.add_domains.value.strip():
+            for d in self.add_domains.value.split(","):
+                d = d.strip().lower()
+                if d and d not in domains:
+                    domains.append(d)
+                    added.append(d)
+
+        if self.remove_domains.value.strip():
+            for d in self.remove_domains.value.split(","):
+                d = d.strip().lower()
+                if d in domains:
+                    domains.remove(d)
+                    removed.append(d)
+
+        settings["automod_whitelisted_domains"] = domains
+        await self.bot.db.update_settings(self.guild_id, settings)
+
+        parts = []
+        if added:
+            parts.append(f"**Added:** {', '.join(f'`{d}`' for d in added[:15])}")
+        if removed:
+            parts.append(f"**Removed:** {', '.join(f'`{d}`' for d in removed[:15])}")
+        if not parts:
+            parts.append("No changes made.")
+        parts.append(f"\n**Total domains:** `{len(domains)}`")
+
+        await interaction.response.send_message(
+            embed=ModEmbed.success("Domains Updated", "\n".join(parts)),
+            ephemeral=True,
+        )
+        await _refresh_dashboard(interaction, self.bot, self.guild_id)
+
+
+class PunishmentSelect(discord.ui.Select):
+    """Dropdown to choose default punishment."""
+
+    def __init__(self, bot: commands.Bot, guild_id: int, current: str):
+        self.bot = bot
+        self.guild_id = guild_id
+        options = [
+            discord.SelectOption(label="Warn", value="warn", emoji="⚠️", description="Issue a warning", default=(current == "warn")),
+            discord.SelectOption(label="Delete", value="delete", emoji="🗑️", description="Delete the message only", default=(current == "delete")),
+            discord.SelectOption(label="Mute", value="mute", emoji="🔇", description="Timeout the user", default=(current == "mute")),
+            discord.SelectOption(label="Kick", value="kick", emoji="👢", description="Kick from server", default=(current == "kick")),
+            discord.SelectOption(label="Ban", value="ban", emoji="🔨", description="Permanently ban", default=(current == "ban")),
+            discord.SelectOption(label="Quarantine", value="quarantine", emoji="🔒", description="Restrict all activity", default=(current == "quarantine")),
+        ]
+        super().__init__(placeholder="🔧 Set Default Punishment", options=options, row=3)
+
+    async def callback(self, interaction: discord.Interaction):
+        settings = await self.bot.db.get_settings(self.guild_id)
+        settings["automod_punishment"] = self.values[0]
+        await self.bot.db.update_settings(self.guild_id, settings)
+        await interaction.response.send_message(
+            embed=ModEmbed.success("Punishment Updated", f"Default punishment set to **{self.values[0].upper()}**."),
+            ephemeral=True,
+        )
+        await _refresh_dashboard(interaction, self.bot, self.guild_id)
+
+
+class AutoModDashboardView(discord.ui.View):
+    """Main interactive dashboard view with all controls."""
+
+    def __init__(self, bot: commands.Bot, guild_id: int, owner_id: int):
+        super().__init__(timeout=300)
+        self.bot = bot
+        self.guild_id = guild_id
+        self.owner_id = owner_id
+
+        # Async init not possible in __init__, so we add the punishment select lazily
+        # We'll add it in interaction_check or use a factory classmethod
+        self._punishment_added = False
+
+    async def _ensure_punishment_select(self):
+        if not self._punishment_added:
+            settings = await self.bot.db.get_settings(self.guild_id)
+            punishment = settings.get("automod_punishment", "warn")
+            self.add_item(PunishmentSelect(self.bot, self.guild_id, punishment))
+            self._punishment_added = True
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.owner_id:
+            await interaction.response.send_message(
+                embed=ModEmbed.error("Access Denied", "Only the person who opened this dashboard can use it."),
+                ephemeral=True,
+            )
+            return False
+        await self._ensure_punishment_select()
+        return True
+
+    async def on_timeout(self):
+        for item in self.children:
+            if hasattr(item, "disabled"):
+                item.disabled = True
+
+    # ── Toggle Buttons (Row 0) ──
+
+    @discord.ui.button(label="Links", emoji="🔗", style=discord.ButtonStyle.secondary, row=0)
+    async def toggle_links(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._toggle(interaction, "automod_links_enabled", button)
+
+    @discord.ui.button(label="Invites", emoji="📨", style=discord.ButtonStyle.secondary, row=0)
+    async def toggle_invites(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._toggle(interaction, "automod_invites_enabled", button)
+
+    @discord.ui.button(label="Scam", emoji="🛡️", style=discord.ButtonStyle.secondary, row=0)
+    async def toggle_scam(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._toggle(interaction, "automod_scam_protection", button)
+
+    @discord.ui.button(label="AI", emoji="🤖", style=discord.ButtonStyle.secondary, row=0)
+    async def toggle_ai(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._toggle(interaction, "automod_ai_enabled", button)
+
+    @discord.ui.button(label="Notify", emoji="🔔", style=discord.ButtonStyle.secondary, row=0)
+    async def toggle_notify(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await self._toggle(interaction, "automod_notify_users", button)
+
+    async def _toggle(self, interaction: discord.Interaction, key: str, button: discord.ui.Button):
+        settings = await self.bot.db.get_settings(self.guild_id)
+        current = settings.get(key, False)
+        settings[key] = not current
+        await self.bot.db.update_settings(self.guild_id, settings)
+
+        state = "Enabled" if not current else "Disabled"
+        name = key.replace("automod_", "").replace("_enabled", "").replace("_protection", "").replace("_users", "").title()
+        await interaction.response.send_message(
+            embed=ModEmbed.success(f"{name} {state}", f"**{name}** has been **{state.lower()}**."),
+            ephemeral=True,
+        )
+        await _refresh_dashboard(interaction, self.bot, self.guild_id)
+
+    # ── Role Selects (Row 1) ──
+
+    @discord.ui.select(cls=discord.ui.RoleSelect, placeholder="🔓 Set Bypass Role", min_values=0, max_values=1, row=1)
+    async def set_bypass_role(self, interaction: discord.Interaction, select: discord.ui.RoleSelect):
+        settings = await self.bot.db.get_settings(self.guild_id)
+        if select.values:
+            role = select.values[0]
+            settings["automod_bypass_role_id"] = role.id
+            msg = f"Bypass role set to {role.mention}.\n⚠️ Users with this role bypass **all** filters."
+        else:
+            settings["automod_bypass_role_id"] = None
+            msg = "Bypass role cleared."
+        await self.bot.db.update_settings(self.guild_id, settings)
+        await interaction.response.send_message(embed=ModEmbed.success("Bypass Role Updated", msg), ephemeral=True)
+        await _refresh_dashboard(interaction, self.bot, self.guild_id)
+
+    @discord.ui.select(cls=discord.ui.RoleSelect, placeholder="🔒 Set Quarantine Role", min_values=0, max_values=1, row=2)
+    async def set_quarantine_role(self, interaction: discord.Interaction, select: discord.ui.RoleSelect):
+        settings = await self.bot.db.get_settings(self.guild_id)
+        if select.values:
+            role = select.values[0]
+            settings["automod_quarantine_role_id"] = role.id
+            msg = f"Quarantine role set to {role.mention}."
+        else:
+            settings["automod_quarantine_role_id"] = None
+            msg = "Quarantine role cleared."
+        await self.bot.db.update_settings(self.guild_id, settings)
+        await interaction.response.send_message(embed=ModEmbed.success("Quarantine Role Updated", msg), ephemeral=True)
+        await _refresh_dashboard(interaction, self.bot, self.guild_id)
+
+    # ── Action Buttons (Row 4) ──
+
+    @discord.ui.button(label="Thresholds", emoji="📊", style=discord.ButtonStyle.primary, row=4)
+    async def edit_thresholds(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(ThresholdModal(self.bot, self.guild_id))
+
+    @discord.ui.button(label="Bad Words", emoji="🚫", style=discord.ButtonStyle.primary, row=4)
+    async def manage_badwords(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(BadWordsModal(self.bot, self.guild_id))
+
+    @discord.ui.button(label="Domains", emoji="🌐", style=discord.ButtonStyle.primary, row=4)
+    async def manage_domains(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(DomainsModal(self.bot, self.guild_id))
+
+    @discord.ui.button(label="Log Channel", emoji="📝", style=discord.ButtonStyle.primary, row=4)
+    async def set_log_channel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Opens an ephemeral channel select for the log channel."""
+        view = _LogChannelSelectView(self.bot, self.guild_id)
+        await interaction.response.send_message(
+            embed=ModEmbed.info("Select Log Channel", "Choose a channel below, or select nothing to disable logging."),
+            view=view,
+            ephemeral=True,
+        )
+
+    @discord.ui.button(label="Refresh", emoji="🔄", style=discord.ButtonStyle.secondary, row=4)
+    async def refresh_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
+        settings = await self.bot.db.get_settings(self.guild_id)
+        guild = self.bot.get_guild(self.guild_id) or interaction.guild
+        embed = _build_dashboard_embed(guild, settings)
+        await interaction.response.edit_message(embed=embed)
+
+
+class _LogChannelSelectView(discord.ui.View):
+    """Ephemeral view with a channel select for setting log channel."""
+
+    def __init__(self, bot: commands.Bot, guild_id: int):
+        super().__init__(timeout=60)
+        self.bot = bot
+        self.guild_id = guild_id
+
+    @discord.ui.select(
+        cls=discord.ui.ChannelSelect,
+        placeholder="📝 Select log channel...",
+        channel_types=[discord.ChannelType.text],
+        min_values=0,
+        max_values=1,
+    )
+    async def select_channel(self, interaction: discord.Interaction, select: discord.ui.ChannelSelect):
+        settings = await self.bot.db.get_settings(self.guild_id)
+        if select.values:
+            ch = select.values[0]
+            settings["automod_log_channel"] = ch.id
+            msg = f"Log channel set to {ch.mention}."
+        else:
+            settings["automod_log_channel"] = None
+            msg = "Logging disabled."
+        await self.bot.db.update_settings(self.guild_id, settings)
+        await interaction.response.edit_message(
+            embed=ModEmbed.success("Log Channel Updated", msg),
+            view=None,
+        )
+        # Refresh parent dashboard
+        await _refresh_dashboard(interaction, self.bot, self.guild_id)
+
+
+# =============================================================================
 # AUTOMOD COG
 # =============================================================================
 
@@ -1407,167 +1859,20 @@ class AutoModV3(commands.Cog):
     # =============================================================================
     
     automod = app_commands.Group(name="automod", description="🛡️ Advanced AutoMod Configuration")
-    config = app_commands.Group(name="config", description="Manage AutoMod configuration", parent=automod)
 
+    # =========================================================================
+    # INTERACTIVE DASHBOARD VIEWS
+    # =========================================================================
 
-
-    @config.command(name="view", description="View current AutoMod configuration")
-    @is_mod()
-    async def config_view(self, interaction: discord.Interaction):
-        """View current configuration"""
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        
-        embed = discord.Embed(
-            title="⚙️ AutoMod Configuration",
-            color=Config.COLOR_INFO
-        )
-        
-        # General
-        log_channel = f"<#{settings.get('automod_log_channel')}>" if settings.get('automod_log_channel') else "None"
-        general = (
-            f"**Log Channel:** {log_channel}\n"
-            f"**Notify Users:** {settings.get('automod_notify_users', True)}\n"
-            f"**Punishment:** {settings.get('automod_punishment', 'warn').upper()}"
-        )
-        embed.add_field(name="General", value=general, inline=False)
-        
-        # Toggles
-        toggles = (
-            f"**Links:** {'✅' if settings.get('automod_links_enabled', True) else '❌'}\n"
-            f"**Invites:** {'✅' if settings.get('automod_invites_enabled', True) else '❌'}\n"
-            f"**Scam:** {'✅' if settings.get('automod_scam_protection', True) else '❌'}\n"
-            f"**AI:** {'✅' if settings.get('automod_ai_enabled', False) else '❌'}"
-        )
-        embed.add_field(name="Modules", value=toggles, inline=True)
-        
-        # Thresholds
-        thresholds = (
-            f"**Spam:** {settings.get('automod_spam_threshold', 5)}\n"
-            f"**Caps:** {settings.get('automod_caps_percentage', 70)}% ({settings.get('automod_caps_min_length', 10)} chars)\n"
-            f"**Mentions:** {settings.get('automod_max_mentions', 5)}\n"
-            f"**New Acc:** {settings.get('automod_newaccount_days', 7)} days"
-        )
-        embed.add_field(name="Thresholds", value=thresholds, inline=True)
-        
-        # Roles
-        bypass = interaction.guild.get_role(settings.get('automod_bypass_role_id'))
-        quarantine = interaction.guild.get_role(settings.get('automod_quarantine_role_id'))
-        roles = (
-            f"**Bypass:** {bypass.mention if bypass else 'None'}\n"
-            f"**Quarantine:** {quarantine.mention if quarantine else 'None'}"
-        )
-        embed.add_field(name="Roles", value=roles, inline=False)
-        
-        await interaction.response.send_message(embed=embed)
-
-    @config.command(name="toggle", description="Toggle AutoMod modules")
+    @automod.command(name="config", description="📊 Open the interactive AutoMod configuration dashboard")
     @is_admin()
-    async def config_toggle(self, interaction: discord.Interaction, module: Literal["links", "invites", "notify", "scam"], enabled: bool):
-        """Toggle modules"""
-        key_map = {
-            "links": "automod_links_enabled",
-            "invites": "automod_invites_enabled",
-            "notify": "automod_notify_users",
-            "scam": "automod_scam_protection"
-        }
-        
-        key = key_map[module]
+    async def automod_config(self, interaction: discord.Interaction):
+        """Open the interactive AutoMod dashboard"""
         settings = await self.bot.db.get_settings(interaction.guild_id)
-        settings[key] = enabled
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        
-        state = "Enabled" if enabled else "Disabled"
-        embed = ModEmbed.success(f"Module {state}", f"**{module.title()}** has been {state.lower()}.")
-        await interaction.response.send_message(embed=embed)
+        embed = _build_dashboard_embed(interaction.guild, settings)
+        view = AutoModDashboardView(self.bot, interaction.guild_id, interaction.user.id)
+        await interaction.response.send_message(embed=embed, view=view)
 
-    @config.command(name="threshold", description="Set AutoMod thresholds")
-    @is_admin()
-    async def config_threshold(self, interaction: discord.Interaction, setting: Literal["spam", "caps", "mentions", "new_account"], value: int):
-        """Set thresholds"""
-        key_map = {
-            "spam": "automod_spam_threshold",
-            "caps": "automod_caps_percentage",
-            "mentions": "automod_max_mentions",
-            "new_account": "automod_newaccount_days"
-        }
-        
-        if setting == "caps" and (value < 0 or value > 100):
-            await interaction.response.send_message(embed=ModEmbed.error("Invalid Value", "Caps percentage must be 0-100."), ephemeral=True)
-            return
-        if value < 0:
-            await interaction.response.send_message(embed=ModEmbed.error("Invalid Value", "Value must be positive."), ephemeral=True)
-            return
-            
-        key = key_map[setting]
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        settings[key] = value
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        
-        embed = ModEmbed.success("Threshold Updated", f"**{setting.replace('_', ' ').title()}** set to `{value}`.")
-        await interaction.response.send_message(embed=embed)
-
-    @config.command(name="log", description="Set logging channel")
-    @is_admin()
-    async def config_log(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel]):
-        """Set log channel"""
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        settings["automod_log_channel"] = channel.id if channel else None
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        
-        if channel:
-            embed = ModEmbed.success("Log Channel Set", f"AutoMod logs will be sent to {channel.mention}")
-        else:
-            embed = ModEmbed.success("Log Channel Disabled", "AutoMod logging disabled.")
-        await interaction.response.send_message(embed=embed)
-
-    @config.command(name="badwords", description="Manage bad words")
-    @is_admin()
-    async def config_badwords(self, interaction: discord.Interaction, action: Literal["add", "remove", "list", "clear"], word: Optional[str] = None):
-        """Manage badwords"""
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        badwords = settings.get("automod_badwords", [])
-        
-        if action == "list":
-            if not badwords:
-                 await interaction.response.send_message(embed=ModEmbed.info("Bad Words", "No bad words configured."), ephemeral=True)
-            else:
-                 chunks = [badwords[i:i+50] for i in range(0, len(badwords), 50)]
-                 embed = ModEmbed.info("Bad Words", f"Total: {len(badwords)}")
-                 for chunk in chunks:
-                     embed.add_field(name="Words", value=", ".join(f"`{w}`" for w in chunk), inline=False)
-                 await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-
-        if action == "clear":
-             settings["automod_badwords"] = []
-             await self.bot.db.update_settings(interaction.guild_id, settings)
-             await interaction.response.send_message(embed=ModEmbed.success("Cleared", "All bad words removed."))
-             return
-
-        if not word:
-            await interaction.response.send_message(embed=ModEmbed.error("Error", "Please provide a word."), ephemeral=True)
-            return
-            
-        word = word.lower().strip()
-        
-        if action == "add":
-            if word not in badwords:
-                badwords.append(word)
-                settings["automod_badwords"] = badwords
-                await self.bot.db.update_settings(interaction.guild_id, settings)
-                await interaction.response.send_message(embed=ModEmbed.success("Added", f"Added `{word}` to bad words."))
-            else:
-                await interaction.response.send_message(embed=ModEmbed.warning("Exists", "Word already exists."), ephemeral=True)
-        
-        elif action == "remove":
-            if word in badwords:
-                badwords.remove(word)
-                settings["automod_badwords"] = badwords
-                await self.bot.db.update_settings(interaction.guild_id, settings)
-                await interaction.response.send_message(embed=ModEmbed.success("Removed", f"Removed `{word}`."))
-            else:
-                await interaction.response.send_message(embed=ModEmbed.warning("Not Found", "Word not found."), ephemeral=True)
-    
     @automod.command(name="status", description="View AutoMod status and statistics")
     @is_mod()
     async def status(self, interaction: discord.Interaction):
@@ -1623,224 +1928,6 @@ class AutoModV3(commands.Cog):
         )
         
         embed.set_footer(text=f"AutoMod V3 • {len(self.engine.filters)} filter modules loaded")
-        
-        await interaction.response.send_message(embed=embed)
-    
-    @automod.command(name="bypass_role", description="Set the role that bypasses all AutoMod filters")
-    @is_admin()
-    async def bypass_role(self, interaction: discord.Interaction, role: discord.Role):
-        """Set bypass role"""
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        settings["automod_bypass_role_id"] = role.id
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        
-        embed = ModEmbed.success(
-            "Bypass Role Updated",
-            f"Users with {role.mention} will now bypass **all** AutoMod filters.\n\n"
-            f"⚠️ Use this role carefully - bypassed users can post anything."
-        )
-        await interaction.response.send_message(embed=embed)
-    
-    @automod.command(name="quarantine", description="Setup automatic quarantine system")
-    @is_admin()
-    async def setup_quarantine(self, interaction: discord.Interaction):
-        """Create and configure quarantine role"""
-        await interaction.response.defer()
-        
-        guild = interaction.guild
-        
-        # Check if role exists
-        settings = await self.bot.db.get_settings(guild.id)
-        existing_role_id = settings.get("automod_quarantine_role_id")
-        
-        if existing_role_id:
-            role = guild.get_role(existing_role_id)
-            if role:
-                embed = ModEmbed.warning(
-                    "Quarantine Already Setup",
-                    f"Quarantine role already exists: {role.mention}\n\n"
-                    f"Use `/automod quarantine update` to reconfigure permissions."
-                )
-                await interaction.followup.send(embed=embed)
-                return
-        
-        # Create role
-        try:
-            role = await guild.create_role(
-                name="🔒 Quarantined",
-                color=discord.Color.dark_grey(),
-                reason="AutoMod V3 Quarantine Setup"
-            )
-        except discord.Forbidden:
-            embed = ModEmbed.error(
-                "Permission Error",
-                "I don't have permission to create roles."
-            )
-            await interaction.followup.send(embed=embed)
-            return
-        
-        # Configure permissions
-        success_channels = []
-        failed_channels = []
-        
-        for channel in guild.channels:
-            try:
-                # Deny most permissions
-                overwrite = discord.PermissionOverwrite(
-                    send_messages=False,
-                    add_reactions=False,
-                    speak=False,
-                    connect=False,
-                    create_public_threads=False,
-                    create_private_threads=False,
-                    send_messages_in_threads=False
-                )
-                
-                await channel.set_permissions(role, overwrite=overwrite)
-                success_channels.append(channel.name)
-                
-            except Exception as e:
-                failed_channels.append(channel.name)
-                logger.error(f"Failed to set permissions for {channel.name}: {e}")
-        
-        # Save to database
-        settings["automod_quarantine_role_id"] = role.id
-        await self.bot.db.update_settings(guild.id, settings)
-        
-        embed = ModEmbed.success(
-            "✅ Quarantine Setup Complete",
-            f"**Role Created:** {role.mention}\n"
-            f"**Channels Configured:** {len(success_channels)}/{len(guild.channels)}\n\n"
-            f"Users in quarantine cannot:\n"
-            f"• Send messages\n"
-            f"• Add reactions\n"
-            f"• Join voice channels\n"
-            f"• Create threads"
-        )
-        
-        if failed_channels:
-            embed.add_field(
-                name="⚠️ Failed Channels",
-                value=f"{len(failed_channels)} channels couldn't be configured (check permissions)",
-                inline=False
-            )
-        
-        await interaction.followup.send(embed=embed)
-    
-    @automod.command(name="punishment", description="Set default punishment action")
-    @is_admin()
-    async def punishment(
-        self, 
-        interaction: discord.Interaction,
-        action: Literal["warn", "delete", "mute", "kick", "ban", "quarantine"]
-    ):
-        """Set default punishment"""
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        settings["automod_punishment"] = action
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        
-        action_descriptions = {
-            "warn": "Issue warning (logged in database)",
-            "delete": "Delete message only",
-            "mute": "Timeout user (duration configurable)",
-            "kick": "Kick user from server",
-            "ban": "Permanently ban user",
-            "quarantine": "Add quarantine role (restricts all activity)"
-        }
-        
-        embed = ModEmbed.success(
-            "Default Punishment Updated",
-            f"**New Action:** {action.upper()}\n\n"
-            f"{action_descriptions.get(action, 'Unknown action')}\n\n"
-            f"⚠️ Note: Some filters may override this based on severity."
-        )
-        
-        await interaction.response.send_message(embed=embed)
-    
-    @automod.command(name="whitelist", description="Manage whitelisted domains/patterns")
-    @is_admin()
-    async def whitelist(
-        self,
-        interaction: discord.Interaction,
-        action: Literal["add", "remove", "list"],
-        domain: Optional[str] = None
-    ):
-        """Manage whitelist"""
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        whitelist = settings.get("automod_whitelisted_domains", [])
-        
-        if action == "list":
-            if not whitelist:
-                embed = ModEmbed.info("Whitelist", "No domains whitelisted.")
-            else:
-                embed = ModEmbed.info(
-                    "Whitelisted Domains",
-                    "\n".join(f"• `{d}`" for d in whitelist)
-                )
-            await interaction.response.send_message(embed=embed)
-            return
-        
-        if not domain:
-            embed = ModEmbed.error("Missing Domain", "Please provide a domain to add/remove.")
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        if action == "add":
-            if domain not in whitelist:
-                whitelist.append(domain)
-                settings["automod_whitelisted_domains"] = whitelist
-                await self.bot.db.update_settings(interaction.guild_id, settings)
-                embed = ModEmbed.success("Domain Whitelisted", f"Added `{domain}` to whitelist.")
-            else:
-                embed = ModEmbed.warning("Already Whitelisted", f"`{domain}` is already whitelisted.")
-                
-        else:  # remove
-            if domain in whitelist:
-                whitelist.remove(domain)
-                settings["automod_whitelisted_domains"] = whitelist
-                await self.bot.db.update_settings(interaction.guild_id, settings)
-                embed = ModEmbed.success("Domain Removed", f"Removed `{domain}` from whitelist.")
-            else:
-                embed = ModEmbed.warning("Not Found", f"`{domain}` is not in whitelist.")
-        
-        await interaction.response.send_message(embed=embed)
-    
-    @automod.command(name="ai", description="Configure AI-powered moderation")
-    @is_admin()
-    async def ai_config(
-        self,
-        interaction: discord.Interaction,
-        enabled: bool,
-        min_severity: Optional[int] = 4
-    ):
-        """Configure AI filter"""
-        if not GROQ_AVAILABLE:
-            embed = ModEmbed.error(
-                "AI Unavailable",
-                "AI moderation requires the Groq package to be installed and an API key configured."
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-            return
-        
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        settings["automod_ai_enabled"] = enabled
-        settings["automod_ai_min_severity"] = min_severity
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-        
-        if enabled:
-            embed = ModEmbed.success(
-                "AI Moderation Enabled",
-                f"**Status:** ✓ Active\n"
-                f"**Min Severity:** {min_severity}/10\n\n"
-                f"AI will analyze messages for:\n"
-                f"• Toxicity & hate speech\n"
-                f"• Threats & violence\n"
-                f"• NSFW content\n"
-                f"• Scams & phishing\n\n"
-                f"Messages scoring ≥{min_severity} will trigger actions."
-            )
-        else:
-            embed = ModEmbed.info("AI Moderation Disabled", "AI filter is now inactive.")
         
         await interaction.response.send_message(embed=embed)
     

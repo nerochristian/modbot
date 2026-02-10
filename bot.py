@@ -183,6 +183,13 @@ except ImportError as e:
     logger.critical(f"❌ Failed to import required modules: {e}")
     sys.exit(1)
 
+# Web dashboard (optional — runs if DISCORD_CLIENT_ID + DISCORD_CLIENT_SECRET are set)
+try:
+    from web.app import start_dashboard
+    _DASHBOARD_AVAILABLE = True
+except ImportError:
+    _DASHBOARD_AVAILABLE = False
+
 # Enable Discord Components v2 layouts (converts embeds into LayoutView cards).
 patch_components_v2()
 
@@ -226,6 +233,7 @@ class ModBot(commands.Bot):
         # Internal flags
         self._ready_once: bool = False
         self._cache_cleanup_task: Optional[asyncio.Task] = None
+        self._dashboard_runner = None
         
         # Global blacklist cache (set of user IDs)
         self.blacklist_cache: set[int] = set()
@@ -385,6 +393,13 @@ class ModBot(commands.Bot):
 
         # Bind the global error handler
         self.tree.on_error = self.on_tree_error
+
+        # Start web dashboard
+        if _DASHBOARD_AVAILABLE:
+            try:
+                self._dashboard_runner = await start_dashboard(self)
+            except Exception as e:
+                logger.warning(f"⚠️ Dashboard failed to start: {e}")
     
     async def on_tree_error(self, interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
         """Global error handler for application commands"""
@@ -729,6 +744,13 @@ class ModBot(commands.Bot):
                 logger.error(f"Error in cache cleanup: {e}")
     
     async def close(self):
+        # Shutdown dashboard
+        if self._dashboard_runner:
+            try:
+                await self._dashboard_runner.cleanup()
+                logger.info("✅ Dashboard server stopped")
+            except Exception:
+                pass
         """Cleanup on shutdown"""
         logger.info("👋 Shutting down ModBot...")
         

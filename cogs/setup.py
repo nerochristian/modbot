@@ -215,6 +215,13 @@ class Setup(commands.Cog):
                   "hoist": False,
                   "setting_key": "whitelisted_role",
             },
+            {
+                  "name": "Bypass",
+                  "color": discord.Color.dark_teal(),
+                  "permissions": discord.Permissions.none(),
+                  "hoist": False,
+                  "setting_key": "automod_bypass_role_id",
+            },
         ]
 
         settings = await self.bot.db.get_settings(guild.id)
@@ -887,8 +894,8 @@ class Setup(commands.Cog):
                         pass
 
         # ==================== QUARANTINE ROLE PERMISSIONS ====================
-        if settings.get("quarantine_role"):
-            quarantine_role = guild.get_role(settings["quarantine_role"])
+        if settings.get("automod_quarantine_role_id"):
+            quarantine_role = guild.get_role(settings["automod_quarantine_role_id"])
             if quarantine_role:
                 for channel in guild.channels:
                     try:

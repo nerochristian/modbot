@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ModBot Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+
+<body>
+    <nav class="navbar glass">
+        <div class="nav-brand">
+            <div class="logo-icon">🛡️</div>
+            <span class="logo-text">ModBot</span>
+        </div>
+        <div class="nav-user">
+            <img src="{{avatar_url}}" alt="Avatar" class="user-avatar">
+            <span class="user-name">{{username}}</span>
+            <a href="/logout" class="btn btn-sm btn-ghost">Logout</a>
+        </div>
+    </nav>
+
+    <main class="dashboard-page">
+        <div class="page-header">
+            <h1>Select a Server</h1>
+            <p class="subtitle">Choose a server to configure — <strong>{{guild_count}}</strong> servers available</p>
+        </div>
+
+        <div class="guild-grid">
+            {{guilds_html}}
+        </div>
+
+        <div class="empty-state" id="emptyState" style="display:none;">
+            <div class="empty-icon">🔍</div>
+            <h3>No Servers Found</h3>
+            <p>Make sure ModBot is in your server and you have <strong>Manage Server</strong> permissions.</p>
+        </div>
+    </main>
+
+    <script>
+        const grid = document.querySelector('.guild-grid');
+        const empty = document.getElementById('emptyState');
+        if (grid && grid.children.length === 0) {
+            grid.style.display = 'none';
+            empty.style.display = 'block';
+        }
+    </script>
+</body>
+
+</html>
