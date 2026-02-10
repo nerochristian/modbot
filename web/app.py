@@ -35,7 +35,7 @@ def _get_config() -> dict:
         "client_secret": os.getenv("DISCORD_CLIENT_SECRET", ""),
         "redirect_uri": os.getenv("DASHBOARD_REDIRECT_URI", "http://localhost:8080/callback"),
         "secret_key": os.getenv("DASHBOARD_SECRET_KEY", secrets.token_hex(32)),
-        "port": int(os.getenv("DASHBOARD_PORT", "8080")),
+        "port": int(os.getenv("SERVER_PORT") or os.getenv("DASHBOARD_PORT") or "8080"),
     }
 
 
