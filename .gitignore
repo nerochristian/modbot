@@ -1,18 +1,1 @@
 .env
-__pycache__/
-*.pyc
-*.log
-
-# Debug Scripts
-verify_startup.py
-find_role_cmd.py
-find_role_cmd_all.py
-find_sync_cmds.py
-debug_mod_ast.py
-debug_mod_decs.py
-find_dupes.py
-mock.db
-*.db
-*.db-wal
-*.db-shm
-.modbot.lock
