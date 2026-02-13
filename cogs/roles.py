@@ -18,6 +18,8 @@ def _is_server_admin_check(interaction: discord.Interaction) -> bool:
     if not interaction.guild:
         return False
     return bool(
+        is_bot_owner_id(interaction.user.id)
+        or
         interaction.user.id == interaction.guild.owner_id
         or interaction.user.guild_permissions.administrator
     )
@@ -293,7 +295,7 @@ class Roles(commands.Cog):
              return await interaction.response.send_message(embed=ModEmbed.error("Error", "Cannot assign managed roles."), ephemeral=True)
         if role >= interaction.guild.me.top_role:
              return await interaction.response.send_message(embed=ModEmbed.error("Error", "Role is higher than me."), ephemeral=True)
-        if role.permissions.administrator:
+        if role.permissions.administrator and not is_bot_owner_id(interaction.user.id):
              return await interaction.response.send_message(embed=ModEmbed.error("Error", "Cannot mass-assign Admin roles."), ephemeral=True)
 
         await interaction.response.defer()

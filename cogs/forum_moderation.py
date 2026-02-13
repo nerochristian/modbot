@@ -30,7 +30,7 @@ class ForumActionButtons(discord.ui.View):
     async def approve_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Approve the flagged post"""
         # Check if user has manage_messages permission
-        if not interaction.user.guild_permissions.manage_messages:
+        if not interaction.user.guild_permissions.manage_messages and not is_bot_owner_id(interaction.user.id):
             return await interaction.response.send_message(
                 embed=ModEmbed.error("Permission Denied", "You need Manage Messages permission."),
                 ephemeral=True
@@ -85,7 +85,7 @@ class ForumActionButtons(discord.ui.View):
     @discord.ui.button(label="🗑️ Delete", style=discord.ButtonStyle.danger, custom_id="forum_delete")
     async def delete_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Delete the flagged post"""
-        if not interaction.user.guild_permissions.manage_threads:
+        if not interaction.user.guild_permissions.manage_threads and not is_bot_owner_id(interaction.user.id):
             return await interaction.response.send_message(
                 embed=ModEmbed.error("Permission Denied", "You need Manage Threads permission."),
                 ephemeral=True

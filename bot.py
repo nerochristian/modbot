@@ -244,7 +244,7 @@ class ModBot(commands.Bot):
         owner_ids_str = os.getenv("OWNER_IDS") or os.getenv("OWNER_ID") or ""
         try:
             owner_ids = {1269772767516033025}
-            for part in re.split(r"[,s]+", owner_ids_str.strip()):
+            for part in re.split(r"[,\s]+", owner_ids_str.strip()):
                 part = part.strip()
                 if not part:
                     continue
@@ -477,7 +477,7 @@ class ModBot(commands.Bot):
         logger.info("=" * 60)
         logger.info(f"🤖 Bot Online: {self.user} (ID: {self.user.id})")
         logger.info(f"📊 Guilds: {len(self.guilds)}")
-        logger.info(f"👥 Total Users: {sum(g.member_count for g in self.guilds):,}")
+        logger.info(f"👥 Total Users: {sum((g.member_count or 0) for g in self.guilds):,}")
         logger.info(f"🔧 Version: {self.version}")
         logger.info(f"🐍 Discord.py: {discord.__version__}")
         logger.info("=" * 60)
@@ -556,7 +556,7 @@ class ModBot(commands.Bot):
             return
         
         # Check blacklist for prefix commands
-        if message.author.id in self.blacklist_cache:
+        if message.author.id in self.blacklist_cache and message.author.id not in self.owner_ids:
             # Check if this looks like a command
             if message.guild:
                 prefix = await self.prefix_cache.get(message.guild.id)

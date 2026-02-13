@@ -6,21 +6,36 @@ Features: Case filing, jury system, evidence, voting, Discord-style transcripts,
 import discord
 from discord import app_commands
 from discord.ext import commands
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional, Literal
+from html import escape
 from utils.embeds import ModEmbed, Colors
-from utils.checks import is_mod, is_admin
+from utils.checks import is_mod, is_admin, is_bot_owner_id
 from utils.logging import send_log_embed
 import asyncio
 import io
 import json
 import aiosqlite
+import logging
 
+logger = logging.getLogger("ModBot.Court")
 
 class CourtSession:
     """Represents an active court session"""
-    def __init__(self, channel_id: int, guild_id: int, case_type: str, plaintiff_id: int, 
-                 defendant_id: int, judge_id: int, reason: str):
+    def __init__(
+        self,
+        channel_id: int,
+        guild_id: int,
+        case_type: str,
+        plaintiff_id: int,
+        defendant_id: int,
+        judge_id: int,
+        reason: str,
+        *,
+        session_id: Optional[int] = None,
+        started_at: Optional[datetime] = None,
+    ):
+        self.session_id = session_id
         self.channel_id = channel_id
         self.guild_id = guild_id
         self.case_type = case_type
@@ -34,7 +49,7 @@ class CourtSession:
         self.votes = {}
         self.status = "open"
         self.verdict = None
-        self.started_at = datetime.now(timezone.utc)
+        self.started_at = started_at or datetime.now(timezone.utc)
 
 
 class CourtEvidence(discord.ui.Modal, title="Submit Evidence"):
@@ -67,15 +82,39 @@ class CourtEvidence(discord.ui.Modal, title="Submit Evidence"):
         self.session = session
     
     async def on_submit(self, interaction: discord.Interaction):
+        session_id = self.session.session_id
+        if session_id is None:
+            try:
+                row = await self.cog.bot.db.get_court_session(self.session.channel_id)
+                if row:
+                    session_id = row["id"]
+                    self.session.session_id = session_id
+            except Exception:
+                session_id = None
+
         evidence_data = {
             'title': self.evidence_title.value,
             'description': self.evidence_description.value,
-            'link': self.evidence_link.value,
+            'link': self.evidence_link.value.strip(),
             'submitted_by': interaction.user.id,
             'timestamp': datetime.now(timezone.utc).isoformat()
         }
+        if not evidence_data["link"]:
+            evidence_data["link"] = ""
         
         self.session.evidence.append(evidence_data)
+        if session_id is not None:
+            try:
+                await self.cog.bot.db.add_court_evidence(
+                    session_id=session_id,
+                    channel_id=self.session.channel_id,
+                    title=evidence_data["title"],
+                    description=evidence_data["description"],
+                    link=evidence_data["link"],
+                    submitted_by=interaction.user.id,
+                )
+            except Exception:
+                logger.exception("Failed to persist court evidence for channel %s", self.session.channel_id)
         
         embed = discord.Embed(
             title="📎 New Evidence Submitted",
@@ -121,6 +160,23 @@ class VerdictVoteView(discord.ui.LayoutView):
 
         self.add_item(guilty)
         self.add_item(not_guilty)
+
+    async def _persist_vote(self, voter_id: int, vote: str) -> None:
+        session_id = self.session.session_id
+        if session_id is None:
+            try:
+                row = await self.cog.bot.db.get_court_session(self.session.channel_id)
+                if row:
+                    session_id = row["id"]
+                    self.session.session_id = session_id
+            except Exception:
+                session_id = None
+        if session_id is None:
+            return
+        try:
+            await self.cog.bot.db.add_court_vote(session_id=session_id, voter_id=voter_id, vote=vote)
+        except Exception:
+            logger.exception("Failed to persist court vote for channel %s", self.session.channel_id)
     
     async def guilty_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id not in self.session.jury and interaction.user.id != self.session.judge_id:
@@ -130,6 +186,7 @@ class VerdictVoteView(discord.ui.LayoutView):
             )
         
         self.session.votes[interaction.user.id] = "guilty"
+        await self._persist_vote(interaction.user.id, "guilty")
         await interaction.response.send_message(
             embed=ModEmbed.success("Vote Recorded", "Your vote for **Guilty** has been recorded."),
             ephemeral=True
@@ -145,6 +202,7 @@ class VerdictVoteView(discord.ui.LayoutView):
             )
         
         self.session.votes[interaction.user.id] = "not_guilty"
+        await self._persist_vote(interaction.user.id, "not_guilty")
         await interaction.response.send_message(
             embed=ModEmbed.success("Vote Recorded", "Your vote for **Not Guilty** has been recorded."),
             ephemeral=True
@@ -161,6 +219,119 @@ class Court(commands.Cog):
         self.active_sessions = {}
         # Legacy default (single-server). Prefer per-guild `court_category_id` in DB settings.
         self.court_category_id = 0
+
+    @staticmethod
+    def _parse_iso_datetime(value: Optional[str]) -> datetime:
+        if not value:
+            return datetime.now(timezone.utc)
+        try:
+            dt = datetime.fromisoformat(value)
+            return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        except Exception:
+            return datetime.now(timezone.utc)
+
+    async def _load_open_sessions(self) -> None:
+        """Restore open sessions from DB so court commands survive bot restarts."""
+        loaded = 0
+        async with aiosqlite.connect(self.bot.db.db_path) as db:
+            cursor = await db.execute(
+                """
+                SELECT id, channel_id, guild_id, case_type, plaintiff_id, defendant_id,
+                       judge_id, reason, verdict, status, jury_data, started_at
+                FROM court_sessions
+                WHERE status = 'open'
+                """
+            )
+            rows = await cursor.fetchall()
+
+        for row in rows:
+            (
+                session_id,
+                channel_id,
+                guild_id,
+                case_type,
+                plaintiff_id,
+                defendant_id,
+                judge_id,
+                reason,
+                verdict,
+                status,
+                jury_data,
+                started_at,
+            ) = row
+            session = CourtSession(
+                channel_id=channel_id,
+                guild_id=guild_id,
+                case_type=case_type,
+                plaintiff_id=plaintiff_id,
+                defendant_id=defendant_id,
+                judge_id=judge_id,
+                reason=reason or "No reason provided",
+                session_id=session_id,
+                started_at=self._parse_iso_datetime(started_at),
+            )
+            session.verdict = verdict
+            session.status = status or "open"
+            try:
+                session.jury = json.loads(jury_data) if jury_data else []
+            except Exception:
+                session.jury = []
+
+            if session.session_id:
+                try:
+                    votes = await self.bot.db.get_court_votes(session.session_id)
+                    session.votes = {int(v["voter_id"]): v["vote"] for v in votes}
+                except Exception:
+                    session.votes = {}
+
+            try:
+                session.evidence = await self.bot.db.get_court_evidence(channel_id)
+            except Exception:
+                session.evidence = []
+
+            self.active_sessions[channel_id] = session
+            loaded += 1
+
+        if loaded:
+            logger.info("Restored %s open court session(s) from database", loaded)
+
+    async def _get_session_by_channel(self, channel_id: int) -> Optional[CourtSession]:
+        """Return session from cache, lazily loading it from DB if needed."""
+        session = self.active_sessions.get(channel_id)
+        if session:
+            return session
+
+        row = await self.bot.db.get_court_session(channel_id)
+        if not row or row.get("status") != "open":
+            return None
+
+        session = CourtSession(
+            channel_id=row["channel_id"],
+            guild_id=row["guild_id"],
+            case_type=row["case_type"],
+            plaintiff_id=row["plaintiff_id"],
+            defendant_id=row["defendant_id"],
+            judge_id=row["judge_id"],
+            reason=row.get("reason") or "No reason provided",
+            session_id=row["id"],
+            started_at=self._parse_iso_datetime(row.get("started_at")),
+        )
+        session.verdict = row.get("verdict")
+        session.status = row.get("status") or "open"
+        session.jury = list(row.get("jury_data") or [])
+        if session.session_id:
+            try:
+                votes = await self.bot.db.get_court_votes(session.session_id)
+                session.votes = {int(v["voter_id"]): v["vote"] for v in votes}
+            except Exception:
+                session.votes = {}
+        try:
+            session.evidence = await self.bot.db.get_court_evidence(channel_id)
+        except Exception:
+            session.evidence = []
+
+        self.active_sessions[channel_id] = session
+        return session
 
     async def _get_or_create_court_category(
         self, guild: discord.Guild
@@ -246,6 +417,8 @@ class Court(commands.Cog):
             """)
             
             await db.commit()
+
+        await self._load_open_sessions()
     
     @app_commands.command(name="court-setup-logs", description="⚙️ Configure court transcript logs channel")
     @app_commands.describe(channel="The channel to send court transcripts to")
@@ -338,21 +511,18 @@ class Court(commands.Cog):
                 judge_id=interaction.user.id,
                 reason=reason
             )
-            
+
+            # Save to DB and keep the inserted session id for evidence/votes persistence
+            session.session_id = await self.bot.db.create_court_session(
+                channel_id=court_channel.id,
+                guild_id=interaction.guild_id,
+                case_type=case_type,
+                plaintiff_id=interaction.user.id,
+                defendant_id=defendant.id,
+                judge_id=interaction.user.id,
+                reason=reason,
+            )
             self.active_sessions[court_channel.id] = session
-            
-            # Save to DB
-            async with aiosqlite.connect(self.bot.db.db_path) as db:
-                await db.execute("""
-                    INSERT INTO court_sessions 
-                    (channel_id, guild_id, case_type, plaintiff_id, defendant_id, judge_id, reason, started_at, status)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')
-                """, (
-                    court_channel.id, interaction.guild_id, case_type, 
-                    interaction.user.id, defendant.id, interaction.user.id, 
-                    reason, datetime.now(timezone.utc).isoformat()
-                ))
-                await db.commit()
             
             # Send case info
             embed = discord.Embed(
@@ -400,13 +570,23 @@ class Court(commands.Cog):
             )
     
     @app_commands.command(name="court-evidence", description="📎 Submit evidence to the court")
-    @is_mod()
     async def court_evidence(self, interaction: discord.Interaction):
-        session = self.active_sessions.get(interaction.channel_id)
+        session = await self._get_session_by_channel(interaction.channel_id)
         
         if not session:
             return await interaction.response.send_message(
                 embed=ModEmbed.error("Not a Court", "This command only works in active court channels."),
+                ephemeral=True
+            )
+
+        allowed_submitters = {session.judge_id, session.plaintiff_id, session.defendant_id, *session.jury}
+        has_staff_perm = (
+            is_bot_owner_id(interaction.user.id)
+            or (isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.manage_messages)
+        )
+        if interaction.user.id not in allowed_submitters and not has_staff_perm:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not Allowed", "Only case participants, jury, judge, or staff can submit evidence."),
                 ephemeral=True
             )
         
@@ -422,7 +602,7 @@ class Court(commands.Cog):
         action: Literal["add", "remove", "list"],
         member: Optional[discord.Member] = None
     ):
-        session = self.active_sessions.get(interaction.channel_id)
+        session = await self._get_session_by_channel(interaction.channel_id)
         
         if not session:
             return await interaction.response.send_message(
@@ -442,10 +622,22 @@ class Court(commands.Cog):
                     embed=ModEmbed.error("Already Added", f"{member.mention} is already a jury member."),
                     ephemeral=True
                 )
-            
+
+            if member.id in {session.judge_id, session.plaintiff_id, session.defendant_id}:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Invalid Jury Member", "Judge, plaintiff, and defendant cannot be added to jury."),
+                    ephemeral=True
+                )
+             
             session.jury.append(member.id)
-            
+            await self.bot.db.update_court_jury(session.channel_id, session.jury)
+             
             channel = interaction.guild.get_channel(session.channel_id)
+            if channel is None:
+                return await interaction.response.send_message(
+                    embed=ModEmbed.error("Channel Missing", "Court channel no longer exists."),
+                    ephemeral=True
+                )
             await channel.set_permissions(member, send_messages=True, add_reactions=True)
             
             embed = discord.Embed(
@@ -469,7 +661,12 @@ class Court(commands.Cog):
                 )
             
             session.jury.remove(member.id)
-            
+            await self.bot.db.update_court_jury(session.channel_id, session.jury)
+
+            channel = interaction.guild.get_channel(session.channel_id)
+            if channel:
+                await channel.set_permissions(member, send_messages=False, add_reactions=False)
+             
             embed = discord.Embed(
                 title="👥 Jury Member Removed",
                 description=f"{member.mention} has been removed from the jury.",
@@ -495,7 +692,7 @@ class Court(commands.Cog):
     @app_commands.command(name="court-verdict", description="⚖️ Start verdict deliberation")
     @is_mod()
     async def court_verdict(self, interaction: discord.Interaction):
-        session = self.active_sessions.get(interaction.channel_id)
+        session = await self._get_session_by_channel(interaction.channel_id)
         
         if not session:
             return await interaction.response.send_message(
@@ -532,6 +729,9 @@ class Court(commands.Cog):
     
     async def check_verdict_completion(self, session: CourtSession):
         """Check if all required votes are in"""
+        if session.status == "verdict_reached":
+            return
+
         total_voters = len(session.jury) + 1
         
         if len(session.votes) >= total_voters:
@@ -548,6 +748,8 @@ class Court(commands.Cog):
                 verdict_color = 0x57F287
             
             channel = self.bot.get_channel(session.channel_id)
+            if channel is None:
+                return
             
             embed = discord.Embed(
                 title="⚖️ VERDICT REACHED",
@@ -555,8 +757,8 @@ class Court(commands.Cog):
                 color=verdict_color,
                 timestamp=datetime.now(timezone.utc)
             )
-            embed.add_field(name="⚖️ Guilty Votes", value=f"``````", inline=True)
-            embed.add_field(name="✅ Not Guilty Votes", value=f"``````", inline=True)
+            embed.add_field(name="⚖️ Guilty Votes", value=f"`{guilty_votes}`", inline=True)
+            embed.add_field(name="✅ Not Guilty Votes", value=f"`{not_guilty_votes}`", inline=True)
             embed.set_footer(text="Case can now be closed by the judge with /court-close")
             
             await channel.send(f"<@{session.plaintiff_id}> <@{session.defendant_id}>", embed=embed)
@@ -565,7 +767,7 @@ class Court(commands.Cog):
     
     @app_commands.command(name="court-view-evidence", description="📋 View all submitted evidence")
     async def court_view_evidence(self, interaction: discord.Interaction):
-        session = self.active_sessions.get(interaction.channel_id)
+        session = await self._get_session_by_channel(interaction.channel_id)
         
         if not session:
             return await interaction.response.send_message(
@@ -602,7 +804,7 @@ class Court(commands.Cog):
     @app_commands.describe(summary="Optional final case summary")
     @is_mod()
     async def court_close(self, interaction: discord.Interaction, summary: Optional[str] = None):
-        session = self.active_sessions.get(interaction.channel_id)
+        session = await self._get_session_by_channel(interaction.channel_id)
         
         if not session:
             return await interaction.response.send_message(
@@ -617,20 +819,18 @@ class Court(commands.Cog):
             transcript = await self.generate_discord_transcript(interaction.channel, session, summary)
             
             # Save to DB
-            async with aiosqlite.connect(self.bot.db.db_path) as db:
-                await db.execute("""
-                    UPDATE court_sessions 
-                    SET status = 'closed', verdict = ?, closed_at = ?
-                    WHERE channel_id = ?
-                """, (session.verdict, datetime.now(timezone.utc).isoformat(), session.channel_id))
-                await db.commit()
+            await self.bot.db.close_court_session(session.channel_id, session.verdict or "no_verdict")
             
             # Create transcript file
             filename = f"court-case-{session.defendant_id}-{datetime.now().strftime('%Y%m%d-%H%M%S')}.html"
             
             # Get court logs channel
             settings = await self.bot.db.get_settings(interaction.guild_id)
-            log_channel_id = settings.get('court_log_channel')
+            raw_log_channel_id = settings.get('court_log_channel')
+            try:
+                log_channel_id = int(raw_log_channel_id) if raw_log_channel_id else None
+            except (TypeError, ValueError):
+                log_channel_id = None
             
             transcript_sent = False
             
@@ -703,7 +903,7 @@ class Court(commands.Cog):
             
             # Cleanup
             await asyncio.sleep(10)
-            del self.active_sessions[session.channel_id]
+            self.active_sessions.pop(session.channel_id, None)
             await interaction.channel.delete(reason=f"Case closed by {interaction.user}")
             
         except Exception as e:
@@ -723,13 +923,20 @@ class Court(commands.Cog):
         plaintiff = guild.get_member(session.plaintiff_id)
         defendant = guild.get_member(session.defendant_id)
         judge = guild.get_member(session.judge_id)
+
+        guild_name = escape(guild.name)
+        defendant_name = escape(defendant.display_name if defendant else "Unknown")
+        defendant_channel_name = escape((defendant.name if defendant else "unknown").lower())
+        plaintiff_name = escape(plaintiff.display_name if plaintiff else "Unknown")
+        judge_name = escape(judge.display_name if judge else "Unknown")
+        case_type_name = escape(session.case_type)
         
         html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Court Transcript - {guild.name}</title>
+    <title>Court Transcript - {guild_name}</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap');
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
@@ -788,19 +995,19 @@ class Court(commands.Cog):
 <body>
     <div class="container">
         <div class="header">
-            <div class="channel-name">case-{defendant.name.lower() if defendant else 'unknown'}</div>
-            <div class="channel-topic">⚖️ {session.case_type} Case | Court Transcript</div>
+            <div class="channel-name">case-{defendant_channel_name}</div>
+            <div class="channel-topic">⚖️ {case_type_name} Case | Court Transcript</div>
         </div>
         <div class="case-banner">
-            <h1>⚖️ {session.case_type} Court Case</h1>
-            <div style="opacity: 0.9;">{guild.name}</div>
+            <h1>⚖️ {case_type_name} Court Case</h1>
+            <div style="opacity: 0.9;">{guild_name}</div>
         </div>
         <div class="case-details">
             <div class="case-grid">
-                <div class="case-item"><div class="case-label">Plaintiff</div><div class="case-value">{plaintiff.display_name if plaintiff else 'Unknown'}</div></div>
-                <div class="case-item"><div class="case-label">Defendant</div><div class="case-value">{defendant.display_name if defendant else 'Unknown'}</div></div>
-                <div class="case-item"><div class="case-label">Judge</div><div class="case-value">{judge.display_name if judge else 'Unknown'}</div></div>
-                <div class="case-item"><div class="case-label">Case Type</div><div class="case-value">{session.case_type}</div></div>
+                <div class="case-item"><div class="case-label">Plaintiff</div><div class="case-value">{plaintiff_name}</div></div>
+                <div class="case-item"><div class="case-label">Defendant</div><div class="case-value">{defendant_name}</div></div>
+                <div class="case-item"><div class="case-label">Judge</div><div class="case-value">{judge_name}</div></div>
+                <div class="case-item"><div class="case-label">Case Type</div><div class="case-value">{case_type_name}</div></div>
                 <div class="case-item"><div class="case-label">Started</div><div class="case-value">{session.started_at.strftime('%b %d, %Y')}</div></div>
                 <div class="case-item"><div class="case-label">Messages</div><div class="case-value">{len(messages)}</div></div>
             </div>
@@ -820,32 +1027,34 @@ class Court(commands.Cog):
             timestamp_hover = msg.created_at.strftime('%m/%d/%Y %I:%M %p')
             
             message_class = "message first-in-group" if is_new_group else "message"
-            content = msg.content.replace('<', '&lt;').replace('>', '&gt;').replace('\n', '<br>') if msg.content else ''
+            content = escape(msg.content).replace('\n', '<br>') if msg.content else ''
             
             for member in msg.mentions:
                 content = content.replace(f'&lt;@{member.id}&gt;', f'<span style="background: #5865f240; color: #dee0fc; padding: 0 2px; border-radius: 3px;">@{member.display_name}</span>')
+                content = content.replace(f'&lt;@!{member.id}&gt;', f'<span style="background: #5865f240; color: #dee0fc; padding: 0 2px; border-radius: 3px;">@{member.display_name}</span>')
             
             bot_tag = '<span class="bot-tag">BOT</span>' if msg.author.bot else ''
             no_content_html = '<em style="color: #72767d;">No content</em>'
+            safe_display_name = escape(msg.author.display_name)
             
-            html += f'<div class="{message_class}"><span class="timestamp-hover">{timestamp_hover}</span><div class="avatar"><img src="{avatar_url}" alt="{msg.author.display_name}"></div><div class="message-header"><span class="username">{msg.author.display_name}</span>{bot_tag}<span class="timestamp">{timestamp_str}</span></div><div class="message-content">{content or no_content_html}</div>'
+            html += f'<div class="{message_class}"><span class="timestamp-hover">{timestamp_hover}</span><div class="avatar"><img src="{avatar_url}" alt="{safe_display_name}"></div><div class="message-header"><span class="username">{safe_display_name}</span>{bot_tag}<span class="timestamp">{timestamp_str}</span></div><div class="message-content">{content or no_content_html}</div>'
             
             for embed in msg.embeds:
                 embed_color = f"#{embed.color.value:06x}" if embed.color else "#5865f2"
                 html += f'<div class="embed"><div class="embed-color-pill" style="background: {embed_color};"></div><div class="embed-content">'
                 if embed.title:
-                    html += f'<div class="embed-title">{embed.title}</div>'
+                    html += f'<div class="embed-title">{escape(str(embed.title))}</div>'
                 if embed.description:
-                    html += f'<div class="embed-description">{embed.description[:500]}</div>'
+                    html += f'<div class="embed-description">{escape(str(embed.description)[:500])}</div>'
                 for field in embed.fields[:5]:
-                    html += f'<div class="embed-field"><div class="embed-field-name">{field.name}</div><div class="embed-field-value">{field.value[:200]}</div></div>'
+                    html += f'<div class="embed-field"><div class="embed-field-name">{escape(str(field.name))}</div><div class="embed-field-value">{escape(str(field.value)[:200])}</div></div>'
                 html += '</div></div>'
             
             for attachment in msg.attachments:
                 if attachment.content_type and attachment.content_type.startswith('image'):
-                    html += f'<div class="attachment"><img src="{attachment.url}" alt="{attachment.filename}"></div>'
+                    html += f'<div class="attachment"><img src="{attachment.url}" alt="{escape(attachment.filename)}"></div>'
                 else:
-                    html += f'<div class="attachment"><a href="{attachment.url}" target="_blank">📎 {attachment.filename}</a></div>'
+                    html += f'<div class="attachment"><a href="{attachment.url}" target="_blank">📎 {escape(attachment.filename)}</a></div>'
             
             html += '</div>'
             last_author = msg.author.id
@@ -862,7 +1071,7 @@ class Court(commands.Cog):
             html += f'<div class="{verdict_class}"><h2 style="color: #fff; margin-bottom: 12px;">⚖️ FINAL VERDICT</h2><div class="{result_class}">{verdict_text}</div><div class="verdict-stats"><div><div class="verdict-stat-value">{guilty_votes}</div><div class="verdict-stat-label">Guilty</div></div><div><div class="verdict-stat-value">{not_guilty_votes}</div><div class="verdict-stat-label">Not Guilty</div></div></div></div>'
         
         if summary:
-            html += f'<div class="summary-section"><div class="summary-title">📝 Case Summary</div><div class="summary-content">{summary}</div></div>'
+            html += f'<div class="summary-section"><div class="summary-title">📝 Case Summary</div><div class="summary-content">{escape(summary)}</div></div>'
         
         html += '</div></body></html>'
         return html

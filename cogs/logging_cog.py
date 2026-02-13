@@ -6,13 +6,15 @@ Comprehensive event logging for messages, members, voice, moderation actions, an
 import discord
 from discord import app_commands
 from discord.ext import commands
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from typing import Optional, Literal
 import logging
+import io
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_admin
 from utils.cache import ChannelCache
+from utils.transcript import generate_html_transcript, EphemeralTranscriptView
 from config import Config
 
 logger = logging.getLogger(__name__)
@@ -28,6 +30,32 @@ class Logging(commands.Cog):
         self.bot = bot
         self._channel_cache = ChannelCache(ttl=300)  # 5 minute TTL
         self._audit_search_window_seconds = 15
+        self._suppress_message_delete_until: dict[int, datetime] = {}
+        self._suppress_bulk_delete_until: dict[int, datetime] = {}
+
+    def suppress_message_delete_log(self, channel_id: int, seconds: int = 6) -> None:
+        self._suppress_message_delete_until[channel_id] = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+
+    def suppress_bulk_delete_log(self, channel_id: int, seconds: int = 8) -> None:
+        self._suppress_bulk_delete_until[channel_id] = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+
+    def _is_message_delete_suppressed(self, channel_id: int) -> bool:
+        until = self._suppress_message_delete_until.get(channel_id)
+        if not until:
+            return False
+        if datetime.now(timezone.utc) >= until:
+            self._suppress_message_delete_until.pop(channel_id, None)
+            return False
+        return True
+
+    def _is_bulk_delete_suppressed(self, channel_id: int) -> bool:
+        until = self._suppress_bulk_delete_until.get(channel_id)
+        if not until:
+            return False
+        if datetime.now(timezone.utc) >= until:
+            self._suppress_bulk_delete_until.pop(channel_id, None)
+            return False
+        return True
 
     async def get_log_channel(
         self, 
@@ -45,7 +73,10 @@ class Logging(commands.Cog):
             # Fetch from DB
             try:
                 settings = await self.bot.db.get_settings(guild.id)
+                # Check both key formats: {type}_log_channel (standard) and log_channel_{type} (settings.py)
                 channel_id = settings.get(f'{log_type}_log_channel')
+                if not channel_id:
+                     channel_id = settings.get(f'log_channel_{log_type}')
                 
                 # Cache the result (even if None)
                 await self._channel_cache.set(guild.id, log_type, channel_id)
@@ -86,6 +117,7 @@ class Logging(commands.Cog):
         embed: discord.Embed,
         *,
         use_v2: bool = False,
+        view: Optional[discord.ui.View] = None,
     ) -> bool:
         """
         Safely send a log embed with enhanced error handling
@@ -95,6 +127,7 @@ class Logging(commands.Cog):
             channel: The channel to send to
             embed: The embed to send
             use_v2: Whether to use Components v2 (default False for classic v1 embeds)
+            view: Optional view to Attach to the log message
         """
         if not channel:
             return False
@@ -125,7 +158,7 @@ class Logging(commands.Cog):
             except Exception:
                 pass
 
-            await channel.send(embed=embed, use_v2=use_v2)
+            await channel.send(embed=embed, use_v2=use_v2, view=view)
             return True
         except discord.Forbidden:
             logger.warning(f"Missing permissions to log in {channel.guild.name} #{channel.name}")
@@ -257,6 +290,9 @@ class Logging(commands.Cog):
         # Ignore DMs and bot messages
         if not message.guild or message.author.bot:
             return
+
+        if self._is_message_delete_suppressed(message.channel.id):
+            return
         
         # Ignore empty messages
         if not message.content and not message.attachments and not message.embeds:
@@ -332,8 +368,21 @@ class Logging(commands.Cog):
         
         # Set author to the deleted message author (shows their avatar)
         embed.set_footer(text=f"@{message.author.global_name or message.author.name}")
-        
-        await self.safe_send_log(channel, embed, use_v2=False)
+
+        view: Optional[discord.ui.View] = None
+        try:
+            transcript_file = generate_html_transcript(
+                message.guild,
+                message.channel,
+                [],
+                purged_messages=[message],
+            )
+            transcript_name = f"delete-transcript-{message.guild.id}-{int(datetime.now(timezone.utc).timestamp())}.html"
+            view = EphemeralTranscriptView(io.BytesIO(transcript_file.getvalue()), filename=transcript_name)
+        except Exception as e:
+            logger.error(f"Failed to generate delete transcript view: {e}")
+
+        await self.safe_send_log(channel, embed, use_v2=False, view=view)
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
@@ -397,6 +446,9 @@ class Logging(commands.Cog):
         """Log bulk message deletions"""
         if not messages:
             return
+
+        if self._is_bulk_delete_suppressed(messages[0].channel.id):
+            return
         
         # Get guild from first message
         guild = messages[0].guild
@@ -421,8 +473,17 @@ class Logging(commands.Cog):
         embed.add_field(name="Human Messages", value=str(len(messages) - bot_count), inline=True)
         embed.add_field(name="Bot Messages", value=str(bot_count), inline=True)
         embed.add_field(name="Unique Authors", value=str(len(authors)), inline=True)
-        
-        await self.safe_send_log(channel, embed)
+
+        transcript_file = generate_html_transcript(
+            guild,
+            messages[0].channel,
+            [],
+            purged_messages=messages,
+        )
+        transcript_name = f"purge-transcript-{guild.id}-{int(datetime.now(timezone.utc).timestamp())}.html"
+        view = EphemeralTranscriptView(io.BytesIO(transcript_file.getvalue()), filename=transcript_name)
+
+        await self.safe_send_log(channel, embed, view=view)
 
     # ==================== MEMBER LOGGING ====================
     

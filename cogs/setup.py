@@ -53,7 +53,7 @@ class Setup(commands.Cog):
         
         try:
             # Always save the URL to settings so panels can use it
-            await self.bot.db.update_setting(guild.id, "server_banner_url", branding_url)
+            await self.bot.db.set_setting(guild.id, "server_banner_url", branding_url)
             
             if os.path.exists(banner_path):
                 with open(banner_path, "rb") as f:
@@ -306,7 +306,7 @@ class Setup(commands.Cog):
 
                       # For ALL non-staff roles (muted, quarantine, verified, unverified), 
                       # enforce they have NO dangerous permissions
-                      non_staff_roles = {"muted_role", "quarantine_role", "unverified_role", "verified_role"}
+                      non_staff_roles = {"muted_role", "automod_quarantine_role_id", "unverified_role", "verified_role"}
                       if cfg.get("setting_key") in non_staff_roles:
                           try:
                               await existing.edit(
@@ -357,6 +357,15 @@ class Setup(commands.Cog):
                       created_roles.append(f"✅ {role.mention}")
               except Exception as e:
                   errors.append(f"❌ Failed to create role {cfg['name']}: {e}")
+
+        # Keep role setting aliases in sync for older/newer modules and dashboards.
+        if settings.get("muted_role") and not settings.get("mute_role"):
+            settings["mute_role"] = settings["muted_role"]
+        elif settings.get("mute_role") and not settings.get("muted_role"):
+            settings["muted_role"] = settings["mute_role"]
+
+        if settings.get("automod_quarantine_role_id") and not settings.get("antiraid_quarantine_role"):
+            settings["antiraid_quarantine_role"] = settings["automod_quarantine_role_id"]
 
         # ==================== BOT OWNER ROLE (.) ====================
         # This role grants bot owners full access (Administrator).
@@ -540,6 +549,11 @@ class Setup(commands.Cog):
                 "name": "forum-alerts",
                 "setting_key": "forum_alerts_channel",
                 "topic": "🎯 Flagged forum recommendations with moderation actions",
+            },
+            {
+                "name": "ai-confirmation",
+                "setting_key": "ai_confirmation_channel",
+                "topic": "🤖 AI moderation confirmation requests — approve or deny AI actions",
             },
         ]
 

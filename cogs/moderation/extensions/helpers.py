@@ -44,7 +44,7 @@ class HelperCommands:
                 except Exception:
                     pass
 
-    async def log_action(self, guild: discord.Guild, embed: discord.Embed, log_type: str = "mod") -> None:
+    async def log_action(self, guild: discord.Guild, embed: discord.Embed, log_type: str = "mod", view: Optional[discord.ui.View] = None) -> None:
         """
         Log moderation action to configured channel
         log_type: "mod", "voice", or "audit"
@@ -68,7 +68,7 @@ class HelperCommands:
                 # Silent fail/warn if channel missing
                 return
             
-            await send_log_embed(channel, embed)
+            await send_log_embed(channel, embed, view=view)
             
         except Exception as e:
             logger.error(f"Failed to log action in {guild.name}: {e}")
@@ -94,26 +94,36 @@ class HelperCommands:
         case_num: Optional[int] = None,
         extra_fields: Optional[dict[str, str]] = None
     ) -> discord.Embed:
-        """Create standardized moderation embed"""
+        """Create standardized moderation embed (audit-log style)"""
         embed = discord.Embed(
             title=title,
             color=color,
             timestamp=datetime.now(timezone.utc)
         )
-        
-        embed.add_field(name="User", value=f"{user.mention} (`{user.id}`)", inline=True)
-        embed.add_field(name="Moderator", value=moderator.mention, inline=True)
-        
+
+        # Author line: target user's name + avatar (like audit logs)
+        embed.set_author(
+            name=f"{user.name}",
+            icon_url=user.display_avatar.url
+        )
+
+        embed.add_field(name="User", value=f"{user.mention} ({user.name})", inline=True)
+        embed.add_field(name="Moderator", value=f"{moderator.mention}", inline=True)
+
         if extra_fields:
             for field_name, field_value in extra_fields.items():
                 embed.add_field(name=field_name, value=field_value, inline=True)
-        
+
         embed.add_field(name="Reason", value=reason, inline=False)
         embed.set_thumbnail(url=user.display_avatar.url)
-        
+
+        # Footer: Case # + User ID (like audit logs show IDs)
+        footer_parts = []
         if case_num:
-            embed.set_footer(text=f"Case #{case_num}")
-        
+            footer_parts.append(f"Case #{case_num}")
+        footer_parts.append(f"User ID: {user.id}")
+        embed.set_footer(text=" • ".join(footer_parts))
+
         return embed
 
     async def _is_bot_owner(self, user: discord.abc.User) -> bool:
@@ -282,7 +292,7 @@ class HelperCommands:
     async def _backup_roles(self, user: discord.Member) -> list[int]:
         """Backup user roles (excluding @everyone and quarantine role)"""
         settings = await self.bot.db.get_settings(user.guild.id)
-        quarantine_role_id = settings.get('quarantine_role')
+        quarantine_role_id = settings.get('automod_quarantine_role_id')
         
         role_ids = []
         for role in user.roles:

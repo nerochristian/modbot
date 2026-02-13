@@ -1183,9 +1183,30 @@ class AutoModEngine:
                     action_log["details"] = "Muted (quarantine unavailable)"
                     
             elif result.action == ActionType.WARN:
-                await self.bot.db.add_warning(guild.id, user.id, self.bot.user.id, result.reason)
+                warning_id, warn_count = await self.bot.db.add_warning(guild.id, user.id, self.bot.user.id, result.reason)
                 action_log["success"] = True
-                action_log["details"] = "Warning issued"
+                action_log["details"] = f"Warning issued (#{warn_count})"
+
+                # Check warn thresholds for auto-punishment
+                if settings.get("warn_thresholds_enabled"):
+                    ban_at = settings.get("warn_threshold_ban", 7)
+                    kick_at = settings.get("warn_threshold_kick", 5)
+                    mute_at = settings.get("warn_threshold_mute", 3)
+                    try:
+                        if ban_at and warn_count >= ban_at:
+                            await guild.ban(user, reason=f"[AutoMod] Auto-ban: {warn_count} warnings reached")
+                            action_log["details"] += f" → Auto-banned ({warn_count} warns)"
+                        elif kick_at and warn_count >= kick_at:
+                            await guild.kick(user, reason=f"[AutoMod] Auto-kick: {warn_count} warnings reached")
+                            action_log["details"] += f" → Auto-kicked ({warn_count} warns)"
+                        elif mute_at and warn_count >= mute_at:
+                            mute_dur = settings.get("warn_mute_duration", 3600)
+                            await user.timeout(timedelta(seconds=mute_dur), reason=f"[AutoMod] Auto-mute: {warn_count} warnings reached")
+                            action_log["details"] += f" → Auto-muted ({warn_count} warns)"
+                    except discord.Forbidden:
+                        action_log["details"] += " (auto-punishment failed: missing perms)"
+                    except Exception as e:
+                        action_log["details"] += f" (auto-punishment failed: {e})"
                 
             elif result.action == ActionType.LOG:
                 action_log["success"] = True
@@ -1868,6 +1889,15 @@ class AutoModV3(commands.Cog):
     @is_admin()
     async def automod_config(self, interaction: discord.Interaction):
         """Open the interactive AutoMod dashboard"""
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        embed = _build_dashboard_embed(interaction.guild, settings)
+        view = AutoModDashboardView(self.bot, interaction.guild_id, interaction.user.id)
+        await interaction.response.send_message(embed=embed, view=view)
+
+    @app_commands.command(name="automodconfig", description="Open AutoMod config dashboard")
+    @is_admin()
+    async def automod_config_alias(self, interaction: discord.Interaction):
+        """Direct alias for /automod config."""
         settings = await self.bot.db.get_settings(interaction.guild_id)
         embed = _build_dashboard_embed(interaction.guild, settings)
         view = AutoModDashboardView(self.bot, interaction.guild_id, interaction.user.id)

@@ -259,6 +259,9 @@ ALLOWED_KEYS = {
     "automod_badwords", "automod_whitelisted_domains",
     "automod_links_whitelist", "automod_allowed_invites",
     "automod_ai_min_severity",
+    # Warning Thresholds
+    "warn_thresholds_enabled", "warn_threshold_mute", "warn_threshold_kick",
+    "warn_threshold_ban", "warn_mute_duration",
     # Logging
     "log_channel_mod", "log_channel_audit", "log_channel_message",
     "log_channel_voice", "log_channel_automod", "log_channel_report",
@@ -278,6 +281,8 @@ ALLOWED_KEYS = {
     # Antiraid
     "antiraid_enabled", "antiraid_join_threshold", "antiraid_join_interval",
     "antiraid_action",
+    # AFK
+    "afk_detection_enabled", "afk_timeout_minutes",
 }
 
 

@@ -541,7 +541,32 @@ class Database:
         settings = await self.get_settings(guild_id)
         settings[key] = value
         await self.update_settings(guild_id, settings)
-    
+
+    # ==================== QUARANTINE ====================
+
+    async def add_quarantine(self, guild_id: int, user_id: int, moderator_id: int, reason: str, expires_at=None, role_ids: list = None) -> None:
+        """Add a quarantine record"""
+        self._validate_guild_id(guild_id)
+        import json as _json
+        roles_backup = _json.dumps(role_ids or [])
+        async with self._lock:
+            async with self.get_connection() as db:
+                await db.execute("""
+                    INSERT INTO quarantines (guild_id, user_id, moderator_id, reason, roles_backup, expires_at, active)
+                    VALUES (?, ?, ?, ?, ?, ?, 1)
+                """, (guild_id, user_id, moderator_id, reason, roles_backup, expires_at))
+                await db.commit()
+
+    async def remove_quarantine(self, guild_id: int, user_id: int) -> None:
+        """Remove (deactivate) a quarantine record"""
+        self._validate_guild_id(guild_id)
+        async with self._lock:
+            async with self.get_connection() as db:
+                await db.execute("""
+                    UPDATE quarantines SET active = 0 WHERE guild_id = ? AND user_id = ? AND active = 1
+                """, (guild_id, user_id))
+                await db.commit()
+
     # ==================== MODERATION - CASES ====================
     
     async def create_case(
@@ -647,8 +672,8 @@ class Database:
     
     async def add_warning(
         self, guild_id: int, user_id: int, moderator_id: int, reason: str
-    ) -> int:
-        """Add a warning"""
+    ):
+        """Add a warning. Returns (warning_id, total_warning_count)."""
         async with self._lock:
             async with self.get_connection() as db:
                 cursor = await db.execute(
@@ -658,8 +683,15 @@ class Database:
                     """,
                     (guild_id, user_id, moderator_id, reason),
                 )
+                warning_id = cursor.lastrowid
+                cursor2 = await db.execute(
+                    "SELECT COUNT(*) FROM warnings WHERE guild_id = ? AND user_id = ?",
+                    (guild_id, user_id),
+                )
+                row = await cursor2.fetchone()
+                total_count = row[0] if row else 1
                 await db.commit()
-                return cursor.lastrowid
+                return warning_id, total_count
     
     async def get_warnings(self, guild_id: int, user_id: int) -> List[Dict[str, Any]]:
         """Get all warnings for a user"""

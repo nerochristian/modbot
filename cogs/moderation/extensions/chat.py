@@ -3,12 +3,14 @@ from discord import app_commands
 from discord.ext import commands
 from datetime import datetime, timezone
 import asyncio
+import io
 import re
 from typing import Optional, Union
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_mod, is_admin, is_bot_owner_id
 from utils.time_parser import parse_time
+from utils.transcript import EphemeralTranscriptView, generate_html_transcript
 from config import Config
 
 class ChatCommands:
@@ -328,12 +330,16 @@ class ChatCommands:
         return await self._respond(source, embed=ModEmbed.success("Gunlocked", f"{target.mention} is unlocked."))
 
     async def _purge_logic(self, source, amount: int, user: discord.Member = None, check=None):
+        logging_cog = self.bot.get_cog("Logging")
+
         if isinstance(source, discord.Interaction):
             await source.response.defer(ephemeral=True)
             channel = source.channel
             interaction = source
             author = source.user
         else:
+            if logging_cog and hasattr(source, "channel") and isinstance(source.channel, discord.TextChannel):
+                logging_cog.suppress_message_delete_log(source.channel.id)
             try:
                 await source.message.delete()
             except:
@@ -341,6 +347,10 @@ class ChatCommands:
             channel = source.channel
             interaction = None
             author = source.author
+
+        if logging_cog and isinstance(channel, discord.TextChannel):
+            logging_cog.suppress_message_delete_log(channel.id)
+            logging_cog.suppress_bulk_delete_log(channel.id)
 
         settings = await self.bot.db.get_settings(source.guild.id)
         
@@ -384,6 +394,35 @@ class ChatCommands:
 
         deleted = await channel.purge(limit=amount, check=combined_check)
         count = len(deleted)
+
+        if count > 0 and logging_cog and isinstance(channel, discord.TextChannel):
+            try:
+                message_log_channel = await logging_cog.get_log_channel(source.guild, "message")
+                if message_log_channel:
+                    log_embed = discord.Embed(
+                        title="Bulk Message Delete",
+                        description=f"**{count}** messages were deleted in {channel.mention}",
+                        color=Colors.ERROR,
+                        timestamp=datetime.now(timezone.utc),
+                    )
+
+                    authors = {m.author for m in deleted if not m.author.bot}
+                    bot_count = sum(1 for m in deleted if m.author.bot)
+                    log_embed.add_field(name="Human Messages", value=str(count - bot_count), inline=True)
+                    log_embed.add_field(name="Bot Messages", value=str(bot_count), inline=True)
+                    log_embed.add_field(name="Unique Authors", value=str(len(authors)), inline=True)
+
+                    transcript_file = generate_html_transcript(
+                        source.guild,
+                        channel,
+                        [],
+                        purged_messages=deleted,
+                    )
+                    transcript_name = f"purge-transcript-{source.guild.id}-{int(datetime.now(timezone.utc).timestamp())}.html"
+                    view = EphemeralTranscriptView(io.BytesIO(transcript_file.getvalue()), filename=transcript_name)
+                    await logging_cog.safe_send_log(message_log_channel, log_embed, view=view)
+            except Exception:
+                pass
         
         embed = ModEmbed.success("Purged", f"Deleted **{count}** messages.")
         if user:

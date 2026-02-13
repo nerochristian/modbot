@@ -12,10 +12,11 @@ import re
 import unicodedata
 from utils.embeds import ModEmbed
 from utils.components_v2 import branded_panel_container
-from utils.checks import is_mod
+from utils.checks import is_mod, is_bot_owner_id
 from utils.logging import send_log_embed
 from config import Config
 import io
+from utils.transcript import generate_html_transcript
 
 def _brand_assets(guild: Optional[discord.Guild], override_banner_url: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
     logo_url = None
@@ -353,11 +354,9 @@ class TicketCloseButton(ui.View):
         await asyncio.sleep(5)
         
         # Generate transcript
-        transcript = []
-        async for message in interaction.channel.history(limit=500, oldest_first=True):
-            transcript.append(f"[{message.created_at.strftime('%Y-%m-%d %H:%M')}] {message.author}:  {message.content}")
-        
-        transcript_text = "\n".join(transcript)
+        messages = [m async for m in interaction.channel.history(limit=500, oldest_first=True)]
+        transcript_file = generate_html_transcript(interaction.guild, interaction.channel, messages)
+        transcript_file.seek(0)
         
         # Get ticket info
         ticket = await interaction.client.db.get_ticket(interaction.channel.id)
@@ -379,7 +378,7 @@ class TicketCloseButton(ui.View):
                     embed.add_field(name="Closed By", value=interaction.user.mention, inline=True)
                     embed.add_field(name="Category", value=ticket['category'], inline=True)
                     
-                    file = discord.File(io.StringIO(transcript_text), filename=f"ticket-{ticket['ticket_number']}. txt")
+                    file = discord.File(transcript_file, filename=f"ticket-{ticket['ticket_number']}.html")
                     await send_log_embed(log_channel, embed, file=file)
         
         await interaction.channel.delete(reason=f"Ticket closed by {interaction.user}")
@@ -457,11 +456,9 @@ class Tickets(commands.Cog):
         await asyncio.sleep(5)
         
         # Generate transcript
-        transcript = []
-        async for message in interaction.channel.history(limit=500, oldest_first=True):
-            transcript.append(f"[{message.created_at.strftime('%Y-%m-%d %H:%M')}] {message.author}: {message.content}")
-        
-        transcript_text = "\n".join(transcript)
+        messages = [m async for m in interaction.channel.history(limit=500, oldest_first=True)]
+        transcript_file = generate_html_transcript(interaction.guild, interaction.channel, messages)
+        transcript_file.seek(0)
         await self.bot.db.close_ticket(interaction.channel.id)
         
         # Send transcript to log channel
@@ -479,14 +476,14 @@ class Tickets(commands.Cog):
                 embed.add_field(name="Closed By", value=interaction.user.mention, inline=True)
                 embed.add_field(name="Reason", value=reason, inline=False)
                 
-                file = discord.File(io.StringIO(transcript_text), filename=f"ticket-{ticket['ticket_number']}.txt")
+                file = discord.File(transcript_file, filename=f"ticket-{ticket['ticket_number']}.html")
                 await send_log_embed(log_channel, embed, file=file)
         
         await interaction.channel.delete(reason=f"Ticket closed by {interaction.user}: {reason}")
 
     async def _ticket_add(self, interaction: discord.Interaction, user: Optional[discord.Member]):
         # Check mod permission
-        if not interaction.user.guild_permissions.manage_messages:
+        if not interaction.user.guild_permissions.manage_messages and not is_bot_owner_id(interaction.user.id):
             return await interaction.response.send_message(
                 embed=ModEmbed.error("Permission Denied", "You need mod permissions for this action."),
                 ephemeral=True
@@ -518,7 +515,7 @@ class Tickets(commands.Cog):
 
     async def _ticket_remove(self, interaction: discord.Interaction, user: Optional[discord.Member]):
         # Check mod permission
-        if not interaction.user.guild_permissions.manage_messages:
+        if not interaction.user.guild_permissions.manage_messages and not is_bot_owner_id(interaction.user.id):
             return await interaction.response.send_message(
                 embed=ModEmbed.error("Permission Denied", "You need mod permissions for this action."),
                 ephemeral=True
@@ -551,7 +548,7 @@ class Tickets(commands.Cog):
 
     async def _ticket_rename(self, interaction: discord.Interaction, name: Optional[str]):
         # Check mod permission
-        if not interaction.user.guild_permissions.manage_messages:
+        if not interaction.user.guild_permissions.manage_messages and not is_bot_owner_id(interaction.user.id):
             return await interaction.response.send_message(
                 embed=ModEmbed.error("Permission Denied", "You need mod permissions for this action."),
                 ephemeral=True
@@ -577,7 +574,7 @@ class Tickets(commands.Cog):
 
     async def _ticket_transcript(self, interaction: discord.Interaction):
         # Check mod permission
-        if not interaction.user.guild_permissions.manage_messages:
+        if not interaction.user.guild_permissions.manage_messages and not is_bot_owner_id(interaction.user.id):
             return await interaction.response.send_message(
                 embed=ModEmbed.error("Permission Denied", "You need mod permissions for this action."),
                 ephemeral=True
@@ -585,12 +582,11 @@ class Tickets(commands.Cog):
 
         await interaction.response.defer()
         
-        transcript = []
-        async for message in interaction.channel.history(limit=500, oldest_first=True):
-            transcript.append(f"[{message.created_at.strftime('%Y-%m-%d %H:%M')}] {message.author}: {message.content}")
+        messages = [m async for m in interaction.channel.history(limit=500, oldest_first=True)]
+        transcript_file = generate_html_transcript(interaction.guild, interaction.channel, messages)
+        transcript_file.seek(0)
         
-        transcript_text = "\n".join(transcript)
-        file = discord.File(io.StringIO(transcript_text), filename=f"transcript-{interaction.channel.name}.txt")
+        file = discord.File(transcript_file, filename=f"transcript-{interaction.channel.name}.html")
         
         embed = ModEmbed.success("Transcript Generated", "Here is the transcript of this ticket.")
         await interaction.followup.send(embed=embed, file=file)
@@ -690,6 +686,8 @@ class Tickets(commands.Cog):
         )
 
     async def _is_ticket_staff(self, member: discord.Member, settings: dict) -> bool:
+        if is_bot_owner_id(member.id):
+            return True
         if member.guild_permissions.administrator:
             return True
         staff_role_id = settings.get("staff_role")
@@ -747,11 +745,9 @@ class Tickets(commands.Cog):
         await asyncio.sleep(Config.TICKET_CLOSE_DELAY)
 
         # Generate transcript
-        transcript_lines: list[str] = []
-        async for msg in interaction.channel.history(limit=500, oldest_first=True):
-            content = msg.content or ""
-            transcript_lines.append(f"[{msg.created_at.strftime('%Y-%m-%d %H:%M')}] {msg.author}: {content}")
-        transcript_text = "\n".join(transcript_lines)
+        messages = [m async for m in interaction.channel.history(limit=500, oldest_first=True)]
+        transcript_file = generate_html_transcript(interaction.guild, interaction.channel, messages)
+        transcript_file.seek(0)
 
         ticket = await self.bot.db.get_ticket(interaction.channel.id)
         if ticket:
@@ -777,8 +773,8 @@ class Tickets(commands.Cog):
                     embed.add_field(name="Category", value=ticket.get("category", "unknown"), inline=True)
 
                     file = discord.File(
-                        io.BytesIO(transcript_text.encode("utf-8")),
-                        filename=f"ticket-{ticket['ticket_number']}.txt",
+                        transcript_file,
+                        filename=f"ticket-{ticket['ticket_number']}.html",
                     )
                     await send_log_embed(log_channel, embed, file=file)
 

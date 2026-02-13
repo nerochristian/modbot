@@ -70,6 +70,9 @@
             <a class="nav-item" data-section="antiraid" onclick="switchSection('antiraid')">
                 <span class="nav-icon">🚨</span> Anti-Raid
             </a>
+            <a class="nav-item" data-section="verification" onclick="switchSection('verification')">
+                <span class="nav-icon">✅</span> Verification
+            </a>
         </nav>
     </aside>
 
@@ -253,6 +256,42 @@
                     </table>
                 </div>
             </div>
+            <div class="panel glass" style="margin-top:1.5rem">
+                <h2>⚠️ Warning Thresholds</h2>
+                <p class="section-desc">Automatically punish users when they reach a certain number of warnings (from
+                    both manual warns and AutoMod).</p>
+                <div class="settings-grid cols-2">
+                    <div class="setting-card">
+                        <div class="setting-header">
+                            <span class="setting-icon">⚠️</span>
+                            <div>
+                                <h3>Enable Thresholds</h3>
+                                <p>Auto-punish at X warnings</p>
+                            </div>
+                        </div>
+                        <label class="toggle">
+                            <input type="checkbox" data-key="warn_thresholds_enabled" id="toggle_warn_thresholds">
+                            <span class="toggle-slider"></span>
+                        </label>
+                    </div>
+                    <div class="input-group">
+                        <label>🔇 Mute at <span class="hint">(warnings)</span></label>
+                        <input type="number" data-key="warn_threshold_mute" min="1" max="50" class="input-field">
+                    </div>
+                    <div class="input-group">
+                        <label>👢 Kick at <span class="hint">(warnings)</span></label>
+                        <input type="number" data-key="warn_threshold_kick" min="1" max="50" class="input-field">
+                    </div>
+                    <div class="input-group">
+                        <label>🔨 Ban at <span class="hint">(warnings)</span></label>
+                        <input type="number" data-key="warn_threshold_ban" min="1" max="50" class="input-field">
+                    </div>
+                    <div class="input-group">
+                        <label>Mute Duration <span class="hint">(seconds)</span></label>
+                        <input type="number" data-key="warn_mute_duration" min="60" max="604800" class="input-field">
+                    </div>
+                </div>
+            </div>
         </section>
 
         <!-- ═══ ROLES ═══ -->
@@ -292,6 +331,45 @@
                     </div>
                     <p>Can configure bot settings</p>
                     <select data-key="manager_role" class="input-field role-select" id="managerRoleSelect"></select>
+                </div>
+            </div>
+            <h2 style="margin-top:1.5rem">🏷️ Hierarchy Roles</h2>
+            <p class="section-desc">Define your server's staff hierarchy. These roles determine command permissions.</p>
+            <div class="roles-grid">
+                <div class="role-card glass">
+                    <div class="role-header"><span>👑</span>
+                        <h3>Owner Role</h3>
+                    </div>
+                    <p>Full access to all commands</p>
+                    <select data-key="owner_role" class="input-field role-select"></select>
+                </div>
+                <div class="role-card glass">
+                    <div class="role-header"><span>⚡</span>
+                        <h3>Admin Role</h3>
+                    </div>
+                    <p>Manage settings and moderation</p>
+                    <select data-key="admin_role" class="input-field role-select"></select>
+                </div>
+                <div class="role-card glass">
+                    <div class="role-header"><span>🛡️</span>
+                        <h3>Moderator Role</h3>
+                    </div>
+                    <p>Moderation commands access</p>
+                    <select data-key="moderator_role" class="input-field role-select"></select>
+                </div>
+                <div class="role-card glass">
+                    <div class="role-header"><span>🤝</span>
+                        <h3>Helper Role</h3>
+                    </div>
+                    <p>Limited moderation access</p>
+                    <select data-key="helper_role" class="input-field role-select"></select>
+                </div>
+                <div class="role-card glass">
+                    <div class="role-header"><span>✅</span>
+                        <h3>Whitelisted Role</h3>
+                    </div>
+                    <p>Bypasses certain restrictions</p>
+                    <select data-key="whitelisted_role" class="input-field role-select"></select>
                 </div>
             </div>
         </section>
@@ -382,6 +460,37 @@
                         <option value="ban">🔨 Ban</option>
                         <option value="lockdown">🔒 Lockdown</option>
                     </select>
+                </div>
+            </div>
+        </section>
+
+        <!-- ═══ VERIFICATION ═══ -->
+        <section class="content-section" id="sec-verification">
+            <div class="section-title-bar">
+                <h1>✅ Verification</h1>
+                <span class="section-badge">Gate</span>
+            </div>
+            <div class="settings-grid cols-2">
+                <div class="setting-card">
+                    <div class="setting-header">
+                        <span class="setting-icon">✅</span>
+                        <div>
+                            <h3>Verification Gate</h3>
+                            <p>Require new members to verify</p>
+                        </div>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" data-key="verification_enabled" id="toggle_verification">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+                <div class="input-group">
+                    <label>Verification Channel</label>
+                    <select data-key="verification_channel" class="input-field log-select"></select>
+                </div>
+                <div class="input-group">
+                    <label>Verified Role</label>
+                    <select data-key="verification_role" class="input-field role-select"></select>
                 </div>
             </div>
         </section>

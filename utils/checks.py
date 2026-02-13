@@ -133,6 +133,17 @@ def is_admin():
     
     return app_commands.check(predicate)
 
+def has_permissions_or_owner(**perms):
+    """Prefix-command permission check that always allows configured bot owners."""
+    base_check = commands.has_permissions(**perms)
+
+    async def predicate(ctx: commands.Context) -> bool:
+        if is_bot_owner_id(ctx.author.id):
+            return True
+        return await base_check.predicate(ctx)
+
+    return commands.check(predicate)
+
 def can_moderate(target:  discord.Member, moderator: discord.Member) -> bool:
     """Check if moderator can moderate the target"""
     # Bot owner can moderate anyone (subject to Discord's own limitations)

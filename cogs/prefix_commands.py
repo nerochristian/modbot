@@ -11,7 +11,7 @@ import asyncio
 import random
 
 from utils.embeds import ModEmbed, Colors
-from utils.checks import is_bot_owner_id
+from utils.checks import is_bot_owner_id, has_permissions_or_owner
 
 
 class PrefixCommands(commands.Cog):
@@ -144,14 +144,14 @@ class PrefixCommands(commands.Cog):
     #     await ctx.send(embed=ModEmbed.success("🔓 Unlocked", f"{channel.mention} is now unlocked."))
 
     @commands.command(name="nick", aliases=["setnick"])
-    @commands.has_permissions(manage_nicknames=True)
+    @has_permissions_or_owner(manage_nicknames=True)
     async def nick_cmd(self, ctx, member: discord.Member, *, nickname: str = None):
         """Change a user's nickname"""
         await member.edit(nick=nickname)
         await ctx.send(embed=ModEmbed.success("✏️ Nickname Changed", f"{member.mention}'s nickname updated."))
 
     @commands.command(name="strip", aliases=["removeallroles"])
-    @commands.has_permissions(manage_roles=True)
+    @has_permissions_or_owner(manage_roles=True)
     async def strip_cmd(self, ctx, member: discord.Member):
         """Remove all roles from a user"""
         roles = [r for r in member.roles if r != ctx.guild.default_role and r < ctx.guild.me.top_role]
@@ -159,49 +159,49 @@ class PrefixCommands(commands.Cog):
         await ctx.send(embed=ModEmbed.success("🔻 Roles Stripped", f"Removed {len(roles)} roles from {member.mention}."))
 
     @commands.command(name="vcmute", aliases=["vm"])
-    @commands.has_permissions(mute_members=True)
+    @has_permissions_or_owner(mute_members=True)
     async def vcmute_cmd(self, ctx, member: discord.Member):
         """Server mute a user in voice"""
         await member.edit(mute=True)
         await ctx.send(embed=ModEmbed.success("🔇 VC Muted", f"{member.mention} is now muted in VC."))
 
     @commands.command(name="vcunmute", aliases=["vum"])
-    @commands.has_permissions(mute_members=True)
+    @has_permissions_or_owner(mute_members=True)
     async def vcunmute_cmd(self, ctx, member: discord.Member):
         """Unmute a user in voice"""
         await member.edit(mute=False)
         await ctx.send(embed=ModEmbed.success("🔊 VC Unmuted", f"{member.mention} is now unmuted in VC."))
 
     @commands.command(name="deafen", aliases=["deaf"])
-    @commands.has_permissions(deafen_members=True)
+    @has_permissions_or_owner(deafen_members=True)
     async def deafen_cmd(self, ctx, member: discord.Member):
         """Deafen a user in voice"""
         await member.edit(deafen=True)
         await ctx.send(embed=ModEmbed.success("🔇 Deafened", f"{member.mention} is now deafened."))
 
     @commands.command(name="undeafen", aliases=["undeaf"])
-    @commands.has_permissions(deafen_members=True)
+    @has_permissions_or_owner(deafen_members=True)
     async def undeafen_cmd(self, ctx, member: discord.Member):
         """Undeafen a user in voice"""
         await member.edit(deafen=False)
         await ctx.send(embed=ModEmbed.success("🔊 Undeafened", f"{member.mention} is now undeafened."))
 
     @commands.command(name="vckick", aliases=["vk", "disconnect"])
-    @commands.has_permissions(move_members=True)
+    @has_permissions_or_owner(move_members=True)
     async def vckick_cmd(self, ctx, member: discord.Member):
         """Kick a user from voice channel"""
         await member.move_to(None)
         await ctx.send(embed=ModEmbed.success("👢 VC Kicked", f"{member.mention} disconnected from VC."))
 
     @commands.command(name="vcmove", aliases=["vmove"])
-    @commands.has_permissions(move_members=True)
+    @has_permissions_or_owner(move_members=True)
     async def vcmove_cmd(self, ctx, member: discord.Member, channel: discord.VoiceChannel):
         """Move a user to another voice channel"""
         await member.move_to(channel)
         await ctx.send(embed=ModEmbed.success("📦 Moved", f"{member.mention} moved to {channel.mention}."))
 
     @commands.command(name="hide")
-    @commands.has_permissions(manage_channels=True)
+    @has_permissions_or_owner(manage_channels=True)
     async def hide_cmd(self, ctx, channel: discord.TextChannel = None):
         """Hide a channel from everyone"""
         channel = channel or ctx.channel
@@ -209,7 +209,7 @@ class PrefixCommands(commands.Cog):
         await ctx.send(embed=ModEmbed.success("👁️ Hidden", f"{channel.mention} is now hidden."))
 
     @commands.command(name="unhide", aliases=["show"])
-    @commands.has_permissions(manage_channels=True)
+    @has_permissions_or_owner(manage_channels=True)
     async def unhide_cmd(self, ctx, channel: discord.TextChannel = None):
         """Unhide a channel"""
         channel = channel or ctx.channel
@@ -228,7 +228,7 @@ class PrefixCommands(commands.Cog):
     #     await new.send(embed=ModEmbed.success("💣 Nuked", "Channel has been nuked."))
 
     @commands.command(name="massban", aliases=["mb"])
-    @commands.has_permissions(administrator=True)
+    @has_permissions_or_owner(administrator=True)
     async def massban_cmd(self, ctx, *user_ids: int):
         """Ban multiple users by ID"""
         banned = 0
@@ -240,14 +240,14 @@ class PrefixCommands(commands.Cog):
         await ctx.send(embed=ModEmbed.success("🔨 Mass Banned", f"Banned {banned} users."))
 
     @commands.command(name="note", aliases=["addnote"])
-    @commands.has_permissions(manage_messages=True)
+    @has_permissions_or_owner(manage_messages=True)
     async def note_cmd(self, ctx, member: discord.Member, *, note: str):
         """Add a note to a user"""
         await self.bot.db.create_case(ctx.guild.id, member.id, ctx.author.id, "Note", note)
         await ctx.send(embed=ModEmbed.success("📝 Note Added", f"Note added to {member.mention}."))
 
     @commands.command(name="notes")
-    @commands.has_permissions(manage_messages=True)
+    @has_permissions_or_owner(manage_messages=True)
     async def notes_cmd(self, ctx, member: discord.Member):
         """View notes for a user"""
         cases = await self.bot.db.get_cases(ctx.guild.id, member.id)
@@ -258,17 +258,17 @@ class PrefixCommands(commands.Cog):
         await ctx.send(embed=ModEmbed.info(f"📝 Notes for {member}", desc))
 
     @commands.command(name="clearwarns", aliases=["cw"])
-    @commands.has_permissions(administrator=True)
+    @has_permissions_or_owner(administrator=True)
     async def clearwarns_cmd(self, ctx, member: discord.Member):
         """Clear all warnings for a user"""
         await ctx.send(embed=ModEmbed.success("🧹 Cleared", f"Warnings cleared for {member.mention}."))
 
     @commands.command(name="role", aliases=["giverole", "addrole"])
-    @commands.has_permissions(manage_roles=True)
+    @has_permissions_or_owner(manage_roles=True)
     async def role_cmd(self, ctx, member: discord.Member, role: discord.Role):
         """Add or remove a role from a user"""
         # Security checks
-        if role >= ctx.author.top_role and ctx.author.id != ctx.guild.owner_id:
+        if role >= ctx.author.top_role and ctx.author.id != ctx.guild.owner_id and not is_bot_owner_id(ctx.author.id):
             return await ctx.send(embed=ModEmbed.error("Permission Denied", "You cannot manage a role equal to or higher than your highest role."))
         
         if role >= ctx.guild.me.top_role:
@@ -278,14 +278,23 @@ class PrefixCommands(commands.Cog):
             return await ctx.send(embed=ModEmbed.error("Managed Role", "This role is managed by an integration and cannot be manually assigned."))
         
         # Protect dangerous roles from being assigned by non-admins
-        if (role.permissions.administrator or role.permissions.manage_guild or role.permissions.manage_roles) and not ctx.author.guild_permissions.administrator:
+        if (
+            (role.permissions.administrator or role.permissions.manage_guild or role.permissions.manage_roles)
+            and not ctx.author.guild_permissions.administrator
+            and not is_bot_owner_id(ctx.author.id)
+        ):
             return await ctx.send(embed=ModEmbed.error("Permission Denied", "Only administrators can assign roles with dangerous permissions."))
         
         # Can't modify server owner's roles unless you're the owner
         if member.id == ctx.guild.owner_id and ctx.author.id != ctx.guild.owner_id and not is_bot_owner_id(ctx.author.id):
             return await ctx.send(embed=ModEmbed.error("Permission Denied", "You cannot modify the server owner's roles."))
         # Can't modify someone with higher role than you
-        if member.top_role >= ctx.author.top_role and member.id != ctx.author.id and ctx.author.id != ctx.guild.owner_id:
+        if (
+            member.top_role >= ctx.author.top_role
+            and member.id != ctx.author.id
+            and ctx.author.id != ctx.guild.owner_id
+            and not is_bot_owner_id(ctx.author.id)
+        ):
             return await ctx.send(embed=ModEmbed.error("Permission Denied", "You cannot modify roles for someone with equal or higher role."))
         
         if role in member.roles:
@@ -437,14 +446,14 @@ class PrefixCommands(commands.Cog):
     # ═══════════════════════════════════════════════════════════════
 
     @commands.command(name="say", aliases=["echo"])
-    @commands.has_permissions(manage_messages=True)
+    @has_permissions_or_owner(manage_messages=True)
     async def say_cmd(self, ctx, *, message: str):
         """Make the bot say something"""
         await ctx.message.delete()
         await ctx.send(message)
 
     @commands.command(name="embed")
-    @commands.has_permissions(manage_messages=True)
+    @has_permissions_or_owner(manage_messages=True)
     async def embed_cmd(self, ctx, *, text: str):
         """Send an embed message"""
         await ctx.message.delete()
@@ -516,7 +525,7 @@ class PrefixCommands(commands.Cog):
     # ═══════════════════════════════════════════════════════════════
 
     @commands.command(name="modstats", aliases=["ms"])
-    @commands.has_permissions(manage_messages=True)
+    @has_permissions_or_owner(manage_messages=True)
     async def modstats_cmd(self, ctx, member: discord.Member = None):
         """View moderation stats"""
         member = member or ctx.author
@@ -526,7 +535,7 @@ class PrefixCommands(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.command(name="case")
-    @commands.has_permissions(manage_messages=True)
+    @has_permissions_or_owner(manage_messages=True)
     async def case_cmd(self, ctx, case_id: int):
         """View a specific case"""
         case = await self.bot.db.get_case(ctx.guild.id, case_id)
@@ -538,7 +547,7 @@ class PrefixCommands(commands.Cog):
         await ctx.send(embed=embed)
 
     @commands.command(name="warnings", aliases=["warns"])
-    @commands.has_permissions(manage_messages=True)
+    @has_permissions_or_owner(manage_messages=True)
     async def warnings_cmd(self, ctx, member: discord.Member):
         """View warnings for a user"""
         cases = await self.bot.db.get_cases(ctx.guild.id, member.id)
@@ -698,7 +707,7 @@ class PrefixCommands(commands.Cog):
             await ctx.send(embed=ModEmbed.error("Invalid Emoji", "Please provide a custom emoji."))
 
     @commands.command(name="steal", aliases=["addemoji", "clone"])
-    @commands.has_permissions(manage_emojis=True)
+    @has_permissions_or_owner(manage_emojis=True)
     async def steal_cmd(self, ctx, emoji: str, name: str = None):
         """Steal an emoji from another server"""
         if "<" not in emoji:
@@ -752,7 +761,7 @@ class PrefixCommands(commands.Cog):
             await ctx.send(embed=ModEmbed.error("Error", "Could not fetch first message."))
 
     @commands.command(name="roleall", aliases=["giveroleall"])
-    @commands.has_permissions(administrator=True)
+    @has_permissions_or_owner(administrator=True)
     async def roleall_cmd(self, ctx, role: discord.Role):
         """Give a role to everyone in the server"""
         msg = await ctx.send(embed=ModEmbed.info("⏳ Processing", "Adding role to all members..."))
@@ -775,7 +784,7 @@ class PrefixCommands(commands.Cog):
         ))
 
     @commands.command(name="removeall", aliases=["removeroleall"])
-    @commands.has_permissions(administrator=True)
+    @has_permissions_or_owner(administrator=True)
     async def removeall_cmd(self, ctx, role: discord.Role):
         """Remove a role from everyone"""
         msg = await ctx.send(embed=ModEmbed.info("⏳ Processing", "Removing role from all members..."))
@@ -791,7 +800,7 @@ class PrefixCommands(commands.Cog):
         await msg.edit(embed=ModEmbed.success("✅ Complete", f"Removed {role.mention} from **{success}** members."))
 
     @commands.command(name="rolecolor", aliases=["rc", "colorole"])
-    @commands.has_permissions(manage_roles=True)
+    @has_permissions_or_owner(manage_roles=True)
     async def rolecolor_cmd(self, ctx, role: discord.Role, color: str):
         """Change a role's color (hex code like #FF0000)"""
         try:
@@ -803,7 +812,7 @@ class PrefixCommands(commands.Cog):
             await ctx.send(embed=ModEmbed.error("Invalid Color", "Use hex format like `#FF0000`"))
 
     @commands.command(name="hideall", aliases=["hidechannels"])
-    @commands.has_permissions(administrator=True)
+    @has_permissions_or_owner(administrator=True)
     async def hideall_cmd(self, ctx):
         """Hide all channels from @everyone"""
         count = 0
@@ -817,7 +826,7 @@ class PrefixCommands(commands.Cog):
         await ctx.send(embed=ModEmbed.success("👻 Channels Hidden", f"Hid **{count}** channels from @everyone"))
 
     @commands.command(name="unhideall", aliases=["unhidechannels"])
-    @commands.has_permissions(administrator=True)
+    @has_permissions_or_owner(administrator=True)
     async def unhideall_cmd(self, ctx):
         """Unhide all channels for @everyone"""
         count = 0
@@ -831,7 +840,7 @@ class PrefixCommands(commands.Cog):
         await ctx.send(embed=ModEmbed.success("👁️ Channels Visible", f"Unhid **{count}** channels for @everyone"))
 
     @commands.command(name="createemoji", aliases=["makeemoji"])
-    @commands.has_permissions(manage_emojis=True)
+    @has_permissions_or_owner(manage_emojis=True)
     async def createemoji_cmd(self, ctx, name: str, url: str):
         """Create an emoji from a URL"""
         try:
@@ -846,7 +855,7 @@ class PrefixCommands(commands.Cog):
             await ctx.send(embed=ModEmbed.error("Failed", f"Error: {str(e)[:100]}"))
 
     @commands.command(name="deleteemoji", aliases=["removeemoji"])
-    @commands.has_permissions(manage_emojis=True)
+    @has_permissions_or_owner(manage_emojis=True)
     async def deleteemoji_cmd(self, ctx, emoji: str):
         """Delete a server emoji"""
         if "<" not in emoji:

@@ -155,6 +155,17 @@ class ManagementCommands:
     async def _mute_logic(self, source, user: discord.Member, duration: str, reason: str):
         guild = source.guild
         moderator = source.user if isinstance(source, discord.Interaction) else source.author
+
+        # Discord does not support timing out bot accounts.
+        if user.bot:
+            return await self._respond(
+                source,
+                embed=ModEmbed.error(
+                    "Cannot Timeout Bot",
+                    "Discord does not allow timeouts on bot accounts. Use kick/ban/quarantine instead.",
+                ),
+                ephemeral=True,
+            )
         
         can_mod, error = await self.can_moderate(guild.id, moderator, user)
         if not can_mod:
@@ -178,8 +189,18 @@ class ManagementCommands:
         
         try:
             await user.timeout(delta, reason=f"{moderator}: {reason}")
-        except Exception as e:
-            return await self._respond(source, embed=ModEmbed.error("Failed", "You do not have permission to use this bot on that user."), ephemeral=True)
+        except discord.Forbidden:
+            return await self._respond(
+                source,
+                embed=ModEmbed.error(
+                    "Failed",
+                    "I cannot timeout this user due Discord role hierarchy/permissions. "
+                    "Ensure my role is above the target and I have Timeout Members.",
+                ),
+                ephemeral=True,
+            )
+        except discord.HTTPException as e:
+            return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not timeout: {e}"), ephemeral=True)
 
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Mute", reason, human_duration)
         
@@ -295,7 +316,7 @@ class ManagementCommands:
         failed = 0
         
         for member in role.members:
-            if member.top_role >= moderator.top_role:
+            if member.top_role >= moderator.top_role and not is_bot_owner_id(moderator.id):
                 failed += 1
                 continue
             try:
@@ -315,7 +336,7 @@ class ManagementCommands:
         failed = 0
         
         for member in role.members:
-            if member.top_role >= moderator.top_role:
+            if member.top_role >= moderator.top_role and not is_bot_owner_id(moderator.id):
                 failed += 1
                 continue
             try:
@@ -483,7 +504,13 @@ class ManagementCommands:
         if role.managed:
              return await self._respond(source, embed=ModEmbed.error("Managed Role", "This role is managed by an integration and cannot be manually assigned."))
         
-        if role.permissions.administrator or role.permissions.manage_guild or role.permissions.manage_roles or role.permissions.ban_members or role.permissions.kick_members:
+        if (
+            role.permissions.administrator
+            or role.permissions.manage_guild
+            or role.permissions.manage_roles
+            or role.permissions.ban_members
+            or role.permissions.kick_members
+        ) and not is_bot_owner_id(author.id):
              return await self._respond(source, embed=ModEmbed.error("Dangerous Role", "You cannot mass-assign dangerous permissions."))
         
         if isinstance(source, discord.Interaction):
@@ -594,7 +621,7 @@ class ManagementCommands:
              return await self._respond(source, embed=ModEmbed.error("Bot Permission Error", bot_error), ephemeral=True)
 
         settings = await self.bot.db.get_settings(source.guild.id)
-        quarantine_role_id = settings.get("quarantine_role_id")
+        quarantine_role_id = settings.get("automod_quarantine_role_id")
         
         if not quarantine_role_id:
              return await self._respond(source, embed=ModEmbed.error("Not Configured", "Quarantine role is not set."), ephemeral=True)
@@ -613,7 +640,7 @@ class ManagementCommands:
                 expires_at = datetime.now(timezone.utc) + delta
 
         # Backup roles
-        restored, failed = await self._backup_roles(user)
+        backup_role_ids = await self._backup_roles(user)
         
         # Apply quarantine
         try:
@@ -627,7 +654,8 @@ class ManagementCommands:
             user.id,
             author.id,
             reason,
-            expires_at
+            expires_at,
+            backup_role_ids
         )
         
         embed = discord.Embed(
@@ -640,7 +668,7 @@ class ManagementCommands:
         if expires_at:
              embed.add_field(name="Expires", value=f"<t:{int(expires_at.timestamp())}:R>", inline=True)
         
-        embed.add_field(name="Roles Removed", value=str(restored), inline=True)
+        embed.add_field(name="Roles Removed", value=str(len(backup_role_ids)), inline=True)
         
         await self._respond(source, embed=embed)
         await self.log_action(source.guild, embed)
@@ -670,7 +698,7 @@ class ManagementCommands:
         
         # Remove quarantine role
         settings = await self.bot.db.get_settings(source.guild.id)
-        quarantine_role_id = settings.get("quarantine_role_id")
+        quarantine_role_id = settings.get("automod_quarantine_role_id")
         if quarantine_role_id:
             role = source.guild.get_role(int(quarantine_role_id))
             if role and role in user.roles:

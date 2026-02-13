@@ -55,4 +55,11 @@ AUTOMOD_SETTINGS = {
     "automod_ai_min_severity": 4,
     
     "automod_scam_protection": True,
+
+    # Warning Threshold Settings (unified for automod + manual warns)
+    "warn_thresholds_enabled": True,
+    "warn_threshold_mute": 3,
+    "warn_threshold_kick": 5,
+    "warn_threshold_ban": 7,
+    "warn_mute_duration": 3600,
 }
