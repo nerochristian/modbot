@@ -356,12 +356,29 @@ class HelperCommands:
         """Get active quarantine record from database"""
         try:
             async with self.bot.db.get_connection() as conn:
-                async with conn.execute("""
+                # Backward-compatible schema handling:
+                # older tables use `created_at`, newer code used `started_at`.
+                query_started = """
                     SELECT id, guild_id, user_id, moderator_id, roles_backup, started_at, expires_at, reason
                     FROM quarantines
                     WHERE guild_id = ? AND user_id = ? AND active = 1
-                """, (guild_id, user_id)) as cursor:
-                    row = await cursor.fetchone()
+                    ORDER BY id DESC
+                    LIMIT 1
+                """
+                query_created = """
+                    SELECT id, guild_id, user_id, moderator_id, roles_backup, created_at, expires_at, reason
+                    FROM quarantines
+                    WHERE guild_id = ? AND user_id = ? AND active = 1
+                    ORDER BY id DESC
+                    LIMIT 1
+                """
+
+                try:
+                    async with conn.execute(query_started, (guild_id, user_id)) as cursor:
+                        row = await cursor.fetchone()
+                except Exception:
+                    async with conn.execute(query_created, (guild_id, user_id)) as cursor:
+                        row = await cursor.fetchone()
                 
             if not row:
                 return None
@@ -376,5 +393,6 @@ class HelperCommands:
                 'expires_at': row[6],
                 'reason': row[7]
             }
-        except Exception:
+        except Exception as e:
+            logger.error(f"Failed to fetch active quarantine for {guild_id}/{user_id}: {e}")
             return None

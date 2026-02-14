@@ -134,6 +134,8 @@ class Database:
             ("giveaways", "banner_url", "TEXT"),
             ("giveaways", "dm_winners", "BOOLEAN DEFAULT 0"),
             ("giveaways", "reward", "TEXT"),
+            # quarantines
+            ("quarantines", "started_at", "TIMESTAMP"),
         ]
         
         for table, column, col_type in migrations:

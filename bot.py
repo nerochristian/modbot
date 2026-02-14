@@ -12,6 +12,7 @@ import re
 import sys
 import asyncio
 import atexit
+import subprocess
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 from pathlib import Path
@@ -38,10 +39,15 @@ def _acquire_single_instance_lock() -> None:
         msvcrt.locking(_LOCK_HANDLE.fileno(), msvcrt.LK_NBLCK, 1)
     except OSError:
         raise RuntimeError("Another ModBot instance is already running.")
-    _LOCK_HANDLE.seek(0)
-    _LOCK_HANDLE.truncate()
-    _LOCK_HANDLE.write(str(os.getpid()))
-    _LOCK_HANDLE.flush()
+    # Lock ownership is enforced by msvcrt.locking; pid text is best-effort
+    # metadata and should never crash startup if filesystem permissions are odd.
+    try:
+        _LOCK_HANDLE.seek(0)
+        _LOCK_HANDLE.truncate()
+        _LOCK_HANDLE.write(str(os.getpid()))
+        _LOCK_HANDLE.flush()
+    except OSError:
+        pass
 
     def _release_lock():
         try:
@@ -76,21 +82,26 @@ def _embed_init_force_accent(self, *args, **kwargs):
 discord.Embed.__init__ = _embed_init_force_accent
 
 # ==================== ENVIRONMENT VALIDATION ====================
+def _get_modbot_token() -> Optional[str]:
+    """Resolve ModBot token with explicit override support."""
+    return os.getenv("MODBOT_DISCORD_TOKEN") or os.getenv("DISCORD_TOKEN")
+
+
 def validate_environment() -> None:
     """Validate required environment variables"""
-    required = ["DISCORD_TOKEN"]
     optional_warnings = ["GROQ_API_KEY", "OWNER_IDS"]
-    
-    for var in required:
-        if not os.getenv(var):
-            logger = logging.getLogger("ModBot")
-            logger.critical(f"❌ Missing required environment variable: {var}")
-            sys.exit(1)
-    
+    logger = logging.getLogger("ModBot")
+
+    if not _get_modbot_token():
+        logger.critical(
+            "ÃƒÂ¢Ã‚ÂÃ…â€™ Missing required bot token: set MODBOT_DISCORD_TOKEN "
+            "(or DISCORD_TOKEN fallback)."
+        )
+        sys.exit(1)
+
     for var in optional_warnings:
         if not os.getenv(var):
-            logger = logging.getLogger("ModBot")
-            logger.warning(f"⚠️ Optional environment variable not set: {var}")
+            logger.warning(f"ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Optional environment variable not set: {var}")
 
 # ==================== CONSOLE ENCODING FIX ====================
 if sys.platform == "win32":
@@ -116,19 +127,19 @@ class ColoredFormatter(logging.Formatter):
     }
     
     EMOJI_FALLBACK = {
-        "✅": "[OK]",
-        "❌": "[ERR]",
-        "⚡": "[>>]",
-        "🤖": "[BOT]",
-        "📡": "[NET]",
-        "👋": "[BYE]",
-        "⚠️": "[!]",
-        "🔧": "[CFG]",
-        "💬": "[CMD]",
-        "📦": "[COG]",
-        "👥": "[USR]",
-        "🚀": "[START]",
-        "🗄️": "[DB]",
+        "ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦": "[OK]",
+        "ÃƒÂ¢Ã‚ÂÃ…â€™": "[ERR]",
+        "ÃƒÂ¢Ã…Â¡Ã‚Â¡": "[>>]",
+        "ÃƒÂ°Ã…Â¸Ã‚Â¤Ã¢â‚¬â€œ": "[BOT]",
+        "ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¡": "[NET]",
+        "ÃƒÂ°Ã…Â¸Ã¢â‚¬ËœÃ¢â‚¬Â¹": "[BYE]",
+        "ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â": "[!]",
+        "ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â§": "[CFG]",
+        "ÃƒÂ°Ã…Â¸Ã¢â‚¬â„¢Ã‚Â¬": "[CMD]",
+        "ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¦": "[COG]",
+        "ÃƒÂ°Ã…Â¸Ã¢â‚¬ËœÃ‚Â¥": "[USR]",
+        "ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬": "[START]",
+        "ÃƒÂ°Ã…Â¸Ã¢â‚¬â€Ã¢â‚¬Å¾ÃƒÂ¯Ã‚Â¸Ã‚Â": "[DB]",
     }
     
     def format(self, record: logging.LogRecord) -> str:
@@ -180,10 +191,10 @@ try:
     from utils.cache import SnipeCache, PrefixCache
     from utils.components_v2 import patch_components_v2
 except ImportError as e:
-    logger.critical(f"❌ Failed to import required modules: {e}")
+    logger.critical(f"ÃƒÂ¢Ã‚ÂÃ…â€™ Failed to import required modules: {e}")
     sys.exit(1)
 
-# Web dashboard (optional — runs if DISCORD_CLIENT_ID + DISCORD_CLIENT_SECRET are set)
+# Web dashboard (optional ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â runs if DISCORD_CLIENT_ID + DISCORD_CLIENT_SECRET are set)
 try:
     from web.app import start_dashboard
     _DASHBOARD_AVAILABLE = True
@@ -192,6 +203,97 @@ except ImportError:
 
 # Enable Discord Components v2 layouts (converts embeds into LayoutView cards).
 patch_components_v2()
+
+
+def _env_enabled(var_name: str, default: bool = False) -> bool:
+    raw = os.getenv(var_name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _start_lifesim_process() -> Optional[subprocess.Popen]:
+    """
+    Optionally start LifeSimBot as a managed child process.
+
+    Requires LIFESIM_DISCORD_TOKEN to avoid running two clients on one token.
+    """
+    if not _env_enabled("RUN_LIFESIM_WITH_MODBOT", default=True):
+        logger.info("LifeSimBot child process disabled via RUN_LIFESIM_WITH_MODBOT")
+        return None
+
+    project_root = Path(__file__).resolve().parent
+    lifesim_script: Optional[Path] = None
+    for folder_name in ("lifesimbot", "LifeSimBot"):
+        candidate = project_root / folder_name / "bot.py"
+        if candidate.exists():
+            lifesim_script = candidate
+            break
+    if lifesim_script is None:
+        for child in project_root.iterdir():
+            if child.is_dir() and child.name.lower() == "lifesimbot":
+                candidate = child / "bot.py"
+                if candidate.exists():
+                    lifesim_script = candidate
+                    break
+    if lifesim_script is None:
+        logger.warning("LifeSimBot entrypoint not found in ./lifesimbot/bot.py")
+        return None
+
+    mod_token = _get_modbot_token()
+    lifesim_token = os.getenv("LIFESIM_DISCORD_TOKEN")
+
+    if not lifesim_token:
+        logger.warning(
+            "LIFESIM_DISCORD_TOKEN is not set; skipping LifeSimBot child process."
+        )
+        return None
+
+    if mod_token and lifesim_token == mod_token:
+        logger.warning(
+            "LIFESIM_DISCORD_TOKEN matches the ModBot token "
+            "(MODBOT_DISCORD_TOKEN / DISCORD_TOKEN); skipping LifeSimBot "
+            "to prevent token session conflicts."
+        )
+        return None
+
+    child_env = os.environ.copy()
+    # LifeSimBot reads LIFESIM_DISCORD_TOKEN first, then DISCORD_TOKEN.
+    child_env["DISCORD_TOKEN"] = lifesim_token
+
+    try:
+        proc = subprocess.Popen(
+            [sys.executable, str(lifesim_script)],
+            cwd=str(lifesim_script.parent),
+            env=child_env,
+        )
+        logger.info(f"Started LifeSimBot (pid={proc.pid})")
+        return proc
+    except Exception as e:
+        logger.error(f"Failed to start LifeSimBot child process: {e}", exc_info=True)
+        return None
+
+
+def _stop_lifesim_process(proc: Optional[subprocess.Popen]) -> None:
+    """Stop managed LifeSimBot child process if it's still running."""
+    if not proc:
+        return
+
+    try:
+        if proc.poll() is not None:
+            logger.info(f"LifeSimBot exited with code {proc.returncode}")
+            return
+
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+            logger.info("LifeSimBot child process stopped")
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait(timeout=5)
+            logger.warning("LifeSimBot child process was force-killed after timeout")
+    except Exception as e:
+        logger.error(f"Error while stopping LifeSimBot child process: {e}")
 
 # ==================== BOT CLASS ====================
 class ModBot(commands.Bot):
@@ -251,7 +353,7 @@ class ModBot(commands.Bot):
                 owner_ids.add(int(part))
             return owner_ids
         except ValueError:
-            logger.warning("⚠️ Invalid OWNER_IDS in .env, using default")
+            logger.warning("ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Invalid OWNER_IDS in .env, using default")
             return {1269772767516033025}
     
     async def get_prefix(self, message: discord.Message):
@@ -281,13 +383,13 @@ class ModBot(commands.Bot):
     
     async def setup_hook(self):
         """Load cogs and sync slash commands"""
-        logger.info("🔧 Initializing bot systems...")
+        logger.info("ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â§ Initializing bot systems...")
         
         # Initialize database connection pool
         try:
             await self.db.init_pool()
         except Exception as e:
-            logger.error(f"❌ Failed to initialize database pool: {e}")
+            logger.error(f"ÃƒÂ¢Ã‚ÂÃ…â€™ Failed to initialize database pool: {e}")
             raise
         
         # Start cache cleanup task
@@ -296,7 +398,7 @@ class ModBot(commands.Bot):
         # Ensure cogs directory exists
         cogs_path = Path("./cogs")
         if not cogs_path.exists():
-            logger.warning("⚠️ Cogs directory not found, creating...")
+            logger.warning("ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Cogs directory not found, creating...")
             cogs_path.mkdir(exist_ok=True)
         
         # Cog list - CORE MODERATION BOT ONLY
@@ -340,32 +442,32 @@ class ModBot(commands.Bot):
             try:
                 await self.load_extension(cog)
                 loaded.append(cog)
-                logger.info(f"✅ Loaded: {cog}")
+                logger.info(f"ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Loaded: {cog}")
             except commands.ExtensionNotFound:
                 skipped.append(cog)
-                logger.debug(f"⚠️ Skipped: {cog} (not found)")
+                logger.debug(f"ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Skipped: {cog} (not found)")
             except commands.ExtensionAlreadyLoaded:
-                logger.debug(f"⚠️ Skipped: {cog} (already loaded)")
+                logger.debug(f"ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Skipped: {cog} (already loaded)")
             except Exception as e:
                 failed.append((cog, str(e)))
-                logger.error(f"❌ Failed: {cog} - {e}")
+                logger.error(f"ÃƒÂ¢Ã‚ÂÃ…â€™ Failed: {cog} - {e}")
         
         # Summary
         logger.info("=" * 60)
-        logger.info("📦 Cog Loading Summary:")
-        logger.info(f"  ✅ Loaded: {len(loaded)}")
-        logger.info(f"  ⚠️ Skipped: {len(skipped)}")
-        logger.info(f"  ❌ Failed: {len(failed)}")
+        logger.info("ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã‚Â¦ Cog Loading Summary:")
+        logger.info(f"  ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Loaded: {len(loaded)}")
+        logger.info(f"  ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Skipped: {len(skipped)}")
+        logger.info(f"  ÃƒÂ¢Ã‚ÂÃ…â€™ Failed: {len(failed)}")
         if failed:
             logger.warning("  Failed cogs:")
             for cog, error in failed:
-                logger.warning(f"    • {cog}: {error}")
+                logger.warning(f"    ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ {cog}: {error}")
         logger.info("=" * 60)
         
         # Display loaded commands
         logger.info("=" * 60)
-        logger.info(f"✅ Loaded {len(self.cogs)} cogs successfully")
-        logger.info(f"📊 Total Commands: {len(list(self.walk_commands()))} prefix, {len(self.tree.get_commands())} slash")
+        logger.info(f"ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Loaded {len(self.cogs)} cogs successfully")
+        logger.info(f"ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â  Total Commands: {len(list(self.walk_commands()))} prefix, {len(self.tree.get_commands())} slash")
         logger.info("=" * 60)
         
         # Set global interaction check for the tree
@@ -376,19 +478,19 @@ class ModBot(commands.Bot):
         try:
             if sync_guild_id:
                 guild_object = discord.Object(id=int(sync_guild_id))
-                logger.info(f"⚡ Syncing slash commands to specific guild: {sync_guild_id}...")
+                logger.info(f"ÃƒÂ¢Ã…Â¡Ã‚Â¡ Syncing slash commands to specific guild: {sync_guild_id}...")
                 self.tree.copy_global_to(guild=guild_object)
                 synced = await self.tree.sync(guild=guild_object)
-                logger.info(f"⚡ Successfully synced {len(synced)} slash commands to guild {sync_guild_id}")
+                logger.info(f"ÃƒÂ¢Ã…Â¡Ã‚Â¡ Successfully synced {len(synced)} slash commands to guild {sync_guild_id}")
             else:
-                logger.info("⚡ Syncing slash commands globally (this may take up to 1 hour)...")
+                logger.info("ÃƒÂ¢Ã…Â¡Ã‚Â¡ Syncing slash commands globally (this may take up to 1 hour)...")
                 synced = await self.tree.sync()
-                logger.info(f"⚡ Successfully synced {len(synced)} slash commands globally")
+                logger.info(f"ÃƒÂ¢Ã…Â¡Ã‚Â¡ Successfully synced {len(synced)} slash commands globally")
         except discord.HTTPException as e:
-            logger.error(f"❌ Failed to sync commands: {e}")
+            logger.error(f"ÃƒÂ¢Ã‚ÂÃ…â€™ Failed to sync commands: {e}")
             self.errors_caught += 1
         except Exception as e:
-            logger.error(f"❌ Unexpected error syncing commands: {e}")
+            logger.error(f"ÃƒÂ¢Ã‚ÂÃ…â€™ Unexpected error syncing commands: {e}")
             self.errors_caught += 1
 
         # Bind the global error handler
@@ -399,7 +501,7 @@ class ModBot(commands.Bot):
             try:
                 self._dashboard_runner = await start_dashboard(self)
             except Exception as e:
-                logger.warning(f"⚠️ Dashboard failed to start: {e}")
+                logger.warning(f"ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â Dashboard failed to start: {e}")
     
     async def on_tree_error(self, interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
         """Global error handler for application commands"""
@@ -414,7 +516,7 @@ class ModBot(commands.Bot):
                 fmt = " and ".join(missing)
                 
             embed = discord.Embed(
-                title="🚫 Permission Denied",
+                title="ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â« Permission Denied",
                 description=f"You are missing the following permission(s) to run this command:\n**{fmt}**",
                 color=0xFF0000
             )
@@ -431,7 +533,7 @@ class ModBot(commands.Bot):
         if isinstance(error, discord.app_commands.BotMissingPermissions):
             missing = [p.replace('_', ' ').replace('guild', 'server').title() for p in error.missing_permissions]
             embed = discord.Embed(
-                title="⚠️ I Need Permissions",
+                title="ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â I Need Permissions",
                 description=f"I am missing the following permission(s) to do that:\n**{', '.join(missing)}**",
                 color=0xFF0000
             )
@@ -455,7 +557,7 @@ class ModBot(commands.Bot):
         if interaction.user.id in self.blacklist_cache:
             try:
                 await interaction.response.send_message(
-                    f"{interaction.user.mention} 🚫 **Blacklisted** - You are blacklisted from using this bot.",
+                    f"{interaction.user.mention} ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â« **Blacklisted** - You are blacklisted from using this bot.",
                     ephemeral=True
                 )
             except (discord.errors.InteractionResponded, discord.errors.NotFound):
@@ -468,22 +570,22 @@ class ModBot(commands.Bot):
     async def on_ready(self):
         """Called when bot is ready and connected"""
         if self._ready_once:
-            logger.info("🔄 Reconnected to Discord")
+            logger.info("ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ¢â‚¬Å¾ Reconnected to Discord")
             return
         
         self._ready_once = True
         
         # Banner
         logger.info("=" * 60)
-        logger.info(f"🤖 Bot Online: {self.user} (ID: {self.user.id})")
-        logger.info(f"📊 Guilds: {len(self.guilds)}")
-        logger.info(f"👥 Total Users: {sum((g.member_count or 0) for g in self.guilds):,}")
-        logger.info(f"🔧 Version: {self.version}")
-        logger.info(f"🐍 Discord.py: {discord.__version__}")
+        logger.info(f"ÃƒÂ°Ã…Â¸Ã‚Â¤Ã¢â‚¬â€œ Bot Online: {self.user} (ID: {self.user.id})")
+        logger.info(f"ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â  Guilds: {len(self.guilds)}")
+        logger.info(f"ÃƒÂ°Ã…Â¸Ã¢â‚¬ËœÃ‚Â¥ Total Users: {sum((g.member_count or 0) for g in self.guilds):,}")
+        logger.info(f"ÃƒÂ°Ã…Â¸Ã¢â‚¬ÂÃ‚Â§ Version: {self.version}")
+        logger.info(f"ÃƒÂ°Ã…Â¸Ã‚ÂÃ‚Â Discord.py: {discord.__version__}")
         logger.info("=" * 60)
         
         # Initialize database for all guilds
-        logger.info("🗄️ Initializing guild databases...")
+        logger.info("ÃƒÂ°Ã…Â¸Ã¢â‚¬â€Ã¢â‚¬Å¾ÃƒÂ¯Ã‚Â¸Ã‚Â Initializing guild databases...")
         success = 0
         failed = 0
         
@@ -492,12 +594,12 @@ class ModBot(commands.Bot):
                 await self.db.init_guild(guild.id)
                 success += 1
             except Exception as e:
-                logger.error(f"❌ Failed to init {guild.name}: {e}")
+                logger.error(f"ÃƒÂ¢Ã‚ÂÃ…â€™ Failed to init {guild.name}: {e}")
                 failed += 1
         
-        logger.info(f"✅ Initialized {success}/{len(self.guilds)} guilds")
+        logger.info(f"ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Initialized {success}/{len(self.guilds)} guilds")
         if failed:
-            logger.warning(f"⚠️ {failed} guilds failed initialization")
+            logger.warning(f"ÃƒÂ¢Ã…Â¡Ã‚Â ÃƒÂ¯Ã‚Â¸Ã‚Â {failed} guilds failed initialization")
         logger.info("=" * 60)
         
         # Set presence
@@ -506,14 +608,14 @@ class ModBot(commands.Bot):
         # Load blacklist cache
         await self._load_blacklist_cache()
         
-        logger.info("🚀 Bot is fully operational!")
+        logger.info("ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬ Bot is fully operational!")
     
     async def _load_blacklist_cache(self):
         """Load blacklist from database into cache"""
         try:
             blacklist = await self.db.get_blacklist()
             self.blacklist_cache = {entry["user_id"] for entry in blacklist}
-            logger.info(f"🚫 Loaded {len(self.blacklist_cache)} blacklisted users")
+            logger.info(f"ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â« Loaded {len(self.blacklist_cache)} blacklisted users")
         except Exception as e:
             logger.error(f"Failed to load blacklist cache: {e}")
             self.blacklist_cache = set()
@@ -536,7 +638,7 @@ class ModBot(commands.Bot):
         try:
             await self.db.init_guild(guild.id)
             logger.info(
-                f"✅ Joined guild: {guild.name} "
+                f"ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Joined guild: {guild.name} "
                 f"(ID: {guild.id}, Members: {guild.member_count})"
             )
             await self.update_presence()
@@ -545,7 +647,7 @@ class ModBot(commands.Bot):
     
     async def on_guild_remove(self, guild: discord.Guild):
         """Handle leaving a guild"""
-        logger.info(f"👋 Left guild: {guild.name} (ID: {guild.id})")
+        logger.info(f"ÃƒÂ°Ã…Â¸Ã¢â‚¬ËœÃ¢â‚¬Â¹ Left guild: {guild.name} (ID: {guild.id})")
         # Clear cached prefix
         await self.prefix_cache.invalidate(guild.id)
         await self.update_presence()
@@ -566,7 +668,7 @@ class ModBot(commands.Bot):
                 prefix = "!"
             
             if message.content.startswith(prefix) or message.content.startswith(f"<@{self.user.id}>") or message.content.startswith(f"<@!{self.user.id}>"):
-                await message.channel.send(f"{message.author.mention} 🚫 **Blacklisted** - You are blacklisted from using this bot.")
+                await message.channel.send(f"{message.author.mention} ÃƒÂ°Ã…Â¸Ã…Â¡Ã‚Â« **Blacklisted** - You are blacklisted from using this bot.")
                 return
         
         self.messages_seen += 1
@@ -584,7 +686,7 @@ class ModBot(commands.Bot):
         """Track command usage"""
         self.commands_used += 1
         location = ctx.guild.name if ctx.guild else "DMs"
-        logger.info(f"💬 {ctx.author} used '{ctx.command.name}' in {location}")
+        logger.info(f"ÃƒÂ°Ã…Â¸Ã¢â‚¬â„¢Ã‚Â¬ {ctx.author} used '{ctx.command.name}' in {location}")
     
     async def on_command_error(self, ctx: commands.Context, error: Exception):
         """Global command error handler"""
@@ -597,7 +699,7 @@ class ModBot(commands.Bot):
         # Missing permissions
         if isinstance(error, commands.MissingPermissions):
             embed = discord.Embed(
-                title="❌ Missing Permissions",
+                title="ÃƒÂ¢Ã‚ÂÃ…â€™ Missing Permissions",
                 description="You don't have permission to use this command.",
                 color=0xFF0000,
             )
@@ -607,7 +709,7 @@ class ModBot(commands.Bot):
         if isinstance(error, commands.BotMissingPermissions):
             missing = ", ".join(f"`{perm}`" for perm in error.missing_permissions)
             embed = discord.Embed(
-                title="❌ Bot Missing Permissions",
+                title="ÃƒÂ¢Ã‚ÂÃ…â€™ Bot Missing Permissions",
                 description=f"I need these permissions: {missing}",
                 color=0xFF0000,
             )
@@ -616,7 +718,7 @@ class ModBot(commands.Bot):
         # Missing required argument
         if isinstance(error, commands.MissingRequiredArgument):
             embed = discord.Embed(
-                title="❌ Missing Argument",
+                title="ÃƒÂ¢Ã‚ÂÃ…â€™ Missing Argument",
                 description=(
                     f"Missing required argument: `{error.param.name}`\n\n"
                     f"Use `{ctx.prefix}help {ctx.command}` for more info."
@@ -628,7 +730,7 @@ class ModBot(commands.Bot):
         # Bad argument
         if isinstance(error, commands.BadArgument):
             embed = discord.Embed(
-                title="❌ Invalid Argument",
+                title="ÃƒÂ¢Ã‚ÂÃ…â€™ Invalid Argument",
                 description=f"Invalid argument provided.\n\n{error}",
                 color=0xFF0000,
             )
@@ -637,7 +739,7 @@ class ModBot(commands.Bot):
         # Command on cooldown
         if isinstance(error, commands.CommandOnCooldown):
             embed = discord.Embed(
-                title="⏰ Cooldown",
+                title="ÃƒÂ¢Ã‚ÂÃ‚Â° Cooldown",
                 description=f"Please wait {error.retry_after:.1f}s before using this command again.",
                 color=0xFF9900,
             )
@@ -646,7 +748,7 @@ class ModBot(commands.Bot):
         # User input error
         if isinstance(error, commands.UserInputError):
             embed = discord.Embed(
-                title="❌ Invalid Input",
+                title="ÃƒÂ¢Ã‚ÂÃ…â€™ Invalid Input",
                 description=(
                     f"{error}\n\nUse `{ctx.prefix}help {ctx.command}` for usage info."
                 ),
@@ -657,7 +759,7 @@ class ModBot(commands.Bot):
         # Check failure
         if isinstance(error, commands.CheckFailure):
             embed = discord.Embed(
-                title="❌ Check Failed",
+                title="ÃƒÂ¢Ã‚ÂÃ…â€™ Check Failed",
                 description="You cannot use this command here.",
                 color=0xFF0000,
             )
@@ -671,7 +773,7 @@ class ModBot(commands.Bot):
         
         # Send generic error message
         embed = discord.Embed(
-            title="❌ Command Error",
+            title="ÃƒÂ¢Ã‚ÂÃ…â€™ Command Error",
             description=(
                 "An unexpected error occurred while executing this command.\n"
                 "The error has been logged."
@@ -738,7 +840,7 @@ class ModBot(commands.Bot):
                 
                 # Cleanup would happen automatically via TTL,
                 # but we can log stats here
-                logger.debug("🧹 Cache cleanup cycle completed")
+                logger.debug("ÃƒÂ°Ã…Â¸Ã‚Â§Ã‚Â¹ Cache cleanup cycle completed")
                 
             except Exception as e:
                 logger.error(f"Error in cache cleanup: {e}")
@@ -748,11 +850,11 @@ class ModBot(commands.Bot):
         if self._dashboard_runner:
             try:
                 await self._dashboard_runner.cleanup()
-                logger.info("✅ Dashboard server stopped")
+                logger.info("ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Dashboard server stopped")
             except Exception:
                 pass
         """Cleanup on shutdown"""
-        logger.info("👋 Shutting down ModBot...")
+        logger.info("ÃƒÂ°Ã…Â¸Ã¢â‚¬ËœÃ¢â‚¬Â¹ Shutting down ModBot...")
         
         # Cancel cache cleanup task
         if self._cache_cleanup_task:
@@ -764,18 +866,18 @@ class ModBot(commands.Bot):
         
         # Log session statistics
         uptime = (datetime.now(timezone.utc) - self.start_time).total_seconds()
-        logger.info("📊 Session Stats:")
-        logger.info(f"  • Uptime: {uptime:.0f}s ({uptime/3600:.1f}h)")
-        logger.info(f"  • Commands Used: {self.commands_used}")
-        logger.info(f"  • Messages Seen: {self.messages_seen}")
-        logger.info(f"  • Errors Caught: {self.errors_caught}")
+        logger.info("ÃƒÂ°Ã…Â¸Ã¢â‚¬Å“Ã…Â  Session Stats:")
+        logger.info(f"  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Uptime: {uptime:.0f}s ({uptime/3600:.1f}h)")
+        logger.info(f"  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Commands Used: {self.commands_used}")
+        logger.info(f"  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Messages Seen: {self.messages_seen}")
+        logger.info(f"  ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Errors Caught: {self.errors_caught}")
         
         # Clear caches
         try:
             await self.snipe_cache.clear()
             await self.edit_snipe_cache.clear()
             await self.prefix_cache.clear()
-            logger.info("✅ Caches cleared")
+            logger.info("ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Caches cleared")
         except Exception as e:
             logger.error(f"Error clearing caches: {e}")
         
@@ -783,13 +885,13 @@ class ModBot(commands.Bot):
         try:
             if hasattr(self.db, "close"):
                 await self.db.close()
-            logger.info("✅ Database connections closed")
+            logger.info("ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Database connections closed")
         except Exception as e:
             logger.error(f"Error closing database: {e}")
         
         # Close bot
         await super().close()
-        logger.info("✅ Bot shutdown complete")
+        logger.info("ÃƒÂ¢Ã…â€œÃ¢â‚¬Â¦ Bot shutdown complete")
 
 
 # ==================== MAIN ENTRY POINT ====================
@@ -806,30 +908,38 @@ async def main() -> int:
         return 1
     
     # Get token
-    token = os.getenv("DISCORD_TOKEN")
+    token = _get_modbot_token()
     if not token:
         logger.critical("=" * 60)
-        logger.critical("❌ DISCORD_TOKEN not found in environment!")
+        logger.critical(
+            "ÃƒÂ¢Ã‚ÂÃ…â€™ ModBot token not found. Set MODBOT_DISCORD_TOKEN "
+            "(or DISCORD_TOKEN fallback)."
+        )
         logger.critical("=" * 60)
         logger.critical("Please create a .env file with:")
-        logger.critical("DISCORD_TOKEN=your_bot_token_here")
+        logger.critical("MODBOT_DISCORD_TOKEN=your_modbot_token_here")
+        logger.critical("LIFESIM_DISCORD_TOKEN=your_lifesimbot_token_here")
         logger.critical("=" * 60)
         return 1
     
     # Create bot instance
     bot = ModBot()
-    
+    lifesim_proc: Optional[subprocess.Popen] = _start_lifesim_process()
+
     try:
         async with bot:
-            logger.info("🚀 Starting bot...")
+            logger.info("ÃƒÂ°Ã…Â¸Ã…Â¡Ã¢â€šÂ¬ Starting bot...")
             await bot.start(token)
     except KeyboardInterrupt:
-        logger.info("👋 Received shutdown signal (Ctrl+C)")
+        logger.info("ÃƒÂ°Ã…Â¸Ã¢â‚¬ËœÃ¢â‚¬Â¹ Received shutdown signal (Ctrl+C)")
     except discord.LoginFailure:
         logger.critical("=" * 60)
-        logger.critical("❌ Invalid Discord token!")
+        logger.critical("ÃƒÂ¢Ã‚ÂÃ…â€™ Invalid Discord token!")
         logger.critical("=" * 60)
-        logger.critical("Check your .env file and ensure DISCORD_TOKEN is correct.")
+        logger.critical(
+            "Check your .env file and ensure MODBOT_DISCORD_TOKEN "
+            "(or DISCORD_TOKEN fallback) is correct."
+        )
         logger.critical(
             "Get your token from: https://discord.com/developers/applications"
         )
@@ -837,18 +947,19 @@ async def main() -> int:
         return 1
     except discord.PrivilegedIntentsRequired:
         logger.critical("=" * 60)
-        logger.critical("❌ Missing Privileged Intents!")
+        logger.critical("ÃƒÂ¢Ã‚ÂÃ…â€™ Missing Privileged Intents!")
         logger.critical("=" * 60)
         logger.critical("Enable these in the Discord Developer Portal:")
-        logger.critical("• Server Members Intent")
-        logger.critical("• Message Content Intent")
-        logger.critical("• Presence Intent")
+        logger.critical("ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Server Members Intent")
+        logger.critical("ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Message Content Intent")
+        logger.critical("ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¢ Presence Intent")
         logger.critical("=" * 60)
         return 1
     except Exception as e:
-        logger.critical(f"❌ Fatal error during bot execution: {e}", exc_info=True)
+        logger.critical(f"ÃƒÂ¢Ã‚ÂÃ…â€™ Fatal error during bot execution: {e}", exc_info=True)
         return 1
     finally:
+        _stop_lifesim_process(lifesim_proc)
         if not bot.is_closed():
             await bot.close()
     
@@ -860,8 +971,8 @@ if __name__ == "__main__":
         exit_code = asyncio.run(main())
         sys.exit(exit_code)
     except KeyboardInterrupt:
-        logger.info("👋 Shutdown complete")
+        logger.info("Shutdown complete")
         sys.exit(0)
     except Exception as e:
-        logger.critical(f"❌ Critical startup error: {e}", exc_info=True)
+        logger.critical(f"Critical startup error: {e}", exc_info=True)
         sys.exit(1)

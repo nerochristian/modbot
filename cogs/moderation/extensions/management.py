@@ -672,7 +672,34 @@ class ManagementCommands:
         
         await self._respond(source, embed=embed)
         await self.log_action(source.guild, embed)
-        
+
+        # Auto-post notice in jail channel (if configured).
+        jail_channel_id = settings.get("quarantine_channel")
+        if jail_channel_id:
+            jail_channel = source.guild.get_channel(int(jail_channel_id))
+            if isinstance(jail_channel, discord.TextChannel):
+                jail_embed = discord.Embed(
+                    title="Quarantine Notice",
+                    description=(
+                        f"{user.mention}, you are quarantined.\n"
+                        "Please wait for staff instructions here."
+                    ),
+                    color=Colors.DARK_RED,
+                    timestamp=datetime.now(timezone.utc),
+                )
+                jail_embed.add_field(name="Reason", value=reason, inline=False)
+                jail_embed.add_field(name="Duration", value=human_duration, inline=True)
+                if expires_at:
+                    jail_embed.add_field(name="Expires", value=f"<t:{int(expires_at.timestamp())}:R>", inline=True)
+                try:
+                    await jail_channel.send(
+                        content=user.mention,
+                        embed=jail_embed,
+                        allowed_mentions=discord.AllowedMentions(users=True),
+                    )
+                except Exception:
+                    pass
+
         # DM
         dm_embed = discord.Embed(
             title=f"☣️ Quarantined in {source.guild.name}",

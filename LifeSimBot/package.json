@@ -1,0 +1,52 @@
+{
+  "name": "lifesimbot",
+  "version": "2.0.0",
+  "description": "A comprehensive Discord life simulation bot with economy, businesses, jobs, skills, and more",
+  "main": "bot.py",
+  "scripts": {
+    "start": "python bot.py",
+    "dev": "python bot.py --debug",
+    "test": "pytest tests/",
+    "lint": "pylint **/*.py",
+    "format": "black .",
+    "backup": "python scripts/backup_db.py",
+    "migrate": "python scripts/migrate_db.py"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yourusername/lifesimbot.git"
+  },
+  "keywords": [
+    "discord",
+    "bot",
+    "economy",
+    "simulation",
+    "game",
+    "rpg",
+    "life-sim"
+  ],
+  "author": "Your Name",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/yourusername/lifesimbot/issues"
+  },
+  "homepage": "https://github.com/yourusername/lifesimbot#readme",
+  "engines": {
+    "node": ">=16.0.0",
+    "python": ">=3.10.0"
+  },
+  "dependencies": {},
+  "devDependencies": {},
+  "python_dependencies": {
+    "discord.py": ">=2.3.0",
+    "aiosqlite": ">=0.19.0",
+    "python-dotenv": ">=1.0.0",
+    "Pillow": ">=10.0.0",
+    "matplotlib": ">=3.7.0",
+    "numpy": ">=1.24.0",
+    "asyncio": ">=3.4.3",
+    "aiohttp": ">=3.9.0",
+    "pytz": ">=2023.3",
+    "dateutil": ">=2.8.2"
+  }
+}

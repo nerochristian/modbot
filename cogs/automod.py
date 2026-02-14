@@ -52,8 +52,12 @@ try:
     import aioredis
     REDIS_AVAILABLE = True
 except ImportError:
-    REDIS_AVAILABLE = False
-    logging.warning("Redis not available - using in-memory cache")
+    try:
+        import redis.asyncio as aioredis
+        REDIS_AVAILABLE = True
+    except ImportError:
+        REDIS_AVAILABLE = False
+        logging.warning("Redis not available - using in-memory cache")
 
 from utils.embeds import ModEmbed
 from utils.logging import send_log_embed
@@ -319,7 +323,10 @@ class CacheManager:
         """Initialize Redis connection"""
         if REDIS_AVAILABLE and self.redis_url:
             try:
-                self.redis = await aioredis.create_redis_pool(self.redis_url)
+                if hasattr(aioredis, "from_url"):
+                    self.redis = aioredis.from_url(self.redis_url)
+                else:
+                    self.redis = await aioredis.create_redis_pool(self.redis_url)
                 logger.info("Redis cache initialized")
             except Exception as e:
                 logger.warning(f"Redis connection failed, using memory cache: {e}")
@@ -331,6 +338,8 @@ class CacheManager:
             try:
                 value = await self.redis.get(key)
                 if value:
+                    if isinstance(value, (bytes, bytearray)):
+                        value = value.decode("utf-8", errors="ignore")
                     self.cache_hits += 1
                     return json.loads(value)
             except Exception as e:
@@ -376,8 +385,17 @@ class CacheManager:
     async def close(self):
         """Close Redis connection"""
         if self.redis:
-            self.redis.close()
-            await self.redis.wait_closed()
+            try:
+                close_result = self.redis.close()
+                if asyncio.iscoroutine(close_result):
+                    await close_result
+                wait_closed = getattr(self.redis, "wait_closed", None)
+                if wait_closed:
+                    wait_result = wait_closed()
+                    if asyncio.iscoroutine(wait_result):
+                        await wait_result
+            except Exception as e:
+                logger.error(f"Redis close error: {e}")
 
 # =============================================================================
 # ABSTRACT FILTER BASE

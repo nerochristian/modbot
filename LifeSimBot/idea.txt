@@ -1,0 +1,136 @@
+userid (TEXT PRIMARY KEY)
+
+-- Economy
+balance (INT, default 1000)
+bank (INT, default 0)
+bank_limit (INT, default 10000)
+net_worth (INT, default 0)
+
+-- XP & Level
+xp (INT, default 0)
+level (INT, default 1)
+
+-- Life Stats
+health (INT, default 100)
+energy (INT, default 100)
+hunger (INT, default 100)
+happiness (INT, default 100)
+
+-- Jobs
+current_job (TEXT, default 'Unemployed')
+job_level (INT, default 1)
+job_xp (INT, default 0)
+total_work_count (INT, default 0)
+
+-- Reputation & Social
+reputation (INT, default 0)
+fame (INT, default 0)
+karma (INT, default 0)
+
+-- Skills (level up by doing, 0-100 each)
+skill_strength (INT, default 0)
+skill_intelligence (INT, default 0)
+skill_charisma (INT, default 0)
+skill_luck (INT, default 0)
+skill_cooking (INT, default 0)
+skill_crime (INT, default 0)
+skill_business (INT, default 0)
+
+-- Inventory & Assets (JSON)
+inventory (TEXT, default '{}')
+equipped_items (TEXT, default '{}')
+
+-- Properties & Vehicles
+current_property (TEXT, default NULL)
+current_vehicle (TEXT, default NULL)
+property_condition (INT, default 100)  -- durability
+vehicle_condition (INT, default 100)   -- durability
+
+-- Businesses (JSON array)
+businesses (TEXT, default '[]')
+
+-- Family (JSON)
+spouse (TEXT, default NULL)
+married_at (TEXT, default NULL)
+kids (TEXT, default '[]')
+family_bank (INT, default 0)
+
+-- Social (JSON arrays)
+friends (TEXT, default '[]')
+enemies (TEXT, default '[]')
+
+-- Crypto & Stocks (JSON)
+crypto_portfolio (TEXT, default '{}')
+stock_portfolio (TEXT, default '{}')
+crypto_wallet_address (TEXT, default NULL)
+
+-- Pets (JSON array)
+pets (TEXT, default '[]')
+
+-- Guild
+guild_id (TEXT, default NULL)
+guild_role (TEXT, default 'member')
+
+-- Timestamps
+created_at (TEXT, default CURRENT_TIMESTAMP)
+last_work (TEXT, default NULL)
+last_sleep (TEXT, default NULL)
+last_daily (TEXT, default NULL)
+last_rob (TEXT, default NULL)
+last_crime (TEXT, default NULL)
+hospital_until (TEXT, default NULL)  -- can't work if in hospital
+
+-- Status Effects (JSON) - buffs/debuffs
+status_effects (TEXT, default '[]')
+
+-- Achievements (JSON array of IDs)
+achievements (TEXT, default '[]')
+
+-- Quests (JSON)
+active_daily_quests (TEXT, default '[]')
+completed_quests_today (TEXT, default '[]')
+total_quests_completed (INT, default 0)
+
+-- Casino Stats
+casino_total_bet (INT, default 0)
+casino_total_won (INT, default 0)
+casino_vip_tier (INT, default 0)
+
+-- Crime Stats
+crimes_committed (INT, default 0)
+times_jailed (INT, default 0)
+jail_until (TEXT, default NULL)
+
+guild_id (TEXT PRIMARY KEY)
+name (TEXT)
+owner_id (TEXT)
+created_at (TEXT)
+level (INT, default 1)
+xp (INT, default 0)
+bank (INT, default 0)  -- shared guild bank
+member_count (INT, default 1)
+perks (TEXT, default '[]')  -- JSON array of unlocked perks
+description (TEXT, default '')
+
+business_id (TEXT PRIMARY KEY)
+owner_id (TEXT)
+business_type (TEXT)
+name (TEXT)
+level (INT, default 1)
+revenue_per_hour (INT)
+last_collected (TEXT)
+employees (TEXT, default '[]')  -- JSON
+upgrades (TEXT, default '[]')   -- JSON
+
+pet_id (TEXT PRIMARY KEY)
+owner_id (TEXT)
+pet_type (TEXT)  -- dog, cat, dragon, etc.
+name (TEXT)
+level (INT, default 1)
+xp (INT, default 0)
+happiness (INT, default 100)
+hunger (INT, default 100)
+last_fed (TEXT)
+last_played (TEXT)
+buffs (TEXT, default '[]')  -- what buffs this pet gives
+is_alive (INT, default 1)   -- 0 = dead

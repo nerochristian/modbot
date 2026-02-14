@@ -1,0 +1,223 @@
+2026-02-13 18:38:22,649 | WARNING | discord.client | PyNaCl is not installed, voice will NOT be supported
+2026-02-13 18:38:22,649 | INFO | LifeSimBot | LifeSimBot starting up
+2026-02-13 18:38:22,650 | INFO | LifeSimBot | Python 3.14.0 | discord.py 2.7.0a | OS Windows 11
+2026-02-13 18:38:22,650 | INFO | LifeSimBot | DB life_sim.db | Log bot.log
+2026-02-13 18:38:22,650 | INFO | LifeSimBot | Debug False | Features 16 enabled
+2026-02-13 18:38:22,652 | INFO | LifeSimBot | Connecting to Discord...
+2026-02-13 18:38:22,653 | INFO | discord.client | logging in using static token
+2026-02-13 18:38:23,045 | INFO | LifeSimBot | Initializing...
+2026-02-13 18:38:23,046 | INFO | bot.database | Initializing Database Schema...
+2026-02-13 18:38:23,127 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-02-13 18:38:23,131 | INFO | LifeSimBot | [OK] Database initialized
+2026-02-13 18:38:23,138 | INFO | LifeSimBot | Skipping _init_ (empty placeholder)
+2026-02-13 18:38:23,140 | ERROR | LifeSimBot | [ERR] Failed to load cog admin: Extension 'cogs.admin' could not be loaded or found.
+2026-02-13 18:38:23,142 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.admin' could not be loaded or found.
+
+2026-02-13 18:38:23,142 | ERROR | LifeSimBot | [ERR] Failed to load cog aimoderation: Extension 'cogs.aimoderation' could not be loaded or found.
+2026-02-13 18:38:23,143 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.aimoderation' could not be loaded or found.
+
+2026-02-13 18:38:23,143 | ERROR | LifeSimBot | [ERR] Failed to load cog antiraid: Extension 'cogs.antiraid' could not be loaded or found.
+2026-02-13 18:38:23,144 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.antiraid' could not be loaded or found.
+
+2026-02-13 18:38:23,144 | ERROR | LifeSimBot | [ERR] Failed to load cog automod: Extension 'cogs.automod' could not be loaded or found.
+2026-02-13 18:38:23,145 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.automod' could not be loaded or found.
+
+2026-02-13 18:38:23,145 | ERROR | LifeSimBot | [ERR] Failed to load cog automod_config: Extension 'cogs.automod_config' could not be loaded or found.
+2026-02-13 18:38:23,146 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.automod_config' could not be loaded or found.
+
+2026-02-13 18:38:23,146 | ERROR | LifeSimBot | [ERR] Failed to load cog blacklist: Extension 'cogs.blacklist' could not be loaded or found.
+2026-02-13 18:38:23,146 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.blacklist' could not be loaded or found.
+
+2026-02-13 18:38:23,147 | ERROR | LifeSimBot | [ERR] Failed to load cog court: Extension 'cogs.court' could not be loaded or found.
+2026-02-13 18:38:23,147 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.court' could not be loaded or found.
+
+2026-02-13 18:38:23,148 | ERROR | LifeSimBot | [ERR] Failed to load cog forum_moderation: Extension 'cogs.forum_moderation' could not be loaded or found.
+2026-02-13 18:38:23,149 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.forum_moderation' could not be loaded or found.
+
+2026-02-13 18:38:23,150 | ERROR | LifeSimBot | [ERR] Failed to load cog help: Extension 'cogs.help' could not be loaded or found.
+2026-02-13 18:38:23,151 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.help' could not be loaded or found.
+
+2026-02-13 18:38:23,151 | ERROR | LifeSimBot | [ERR] Failed to load cog logging_cog: Extension 'cogs.logging_cog' could not be loaded or found.
+2026-02-13 18:38:23,152 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.logging_cog' could not be loaded or found.
+
+2026-02-13 18:38:23,152 | ERROR | LifeSimBot | [ERR] Failed to load cog modmail: Extension 'cogs.modmail' could not be loaded or found.
+2026-02-13 18:38:23,153 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.modmail' could not be loaded or found.
+
+2026-02-13 18:38:23,154 | ERROR | LifeSimBot | [ERR] Failed to load cog pin: Extension 'cogs.pin' could not be loaded or found.
+2026-02-13 18:38:23,154 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.pin' could not be loaded or found.
+
+2026-02-13 18:38:23,155 | ERROR | LifeSimBot | [ERR] Failed to load cog polls: Extension 'cogs.polls' could not be loaded or found.
+2026-02-13 18:38:23,156 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.polls' could not be loaded or found.
+
+2026-02-13 18:38:23,156 | ERROR | LifeSimBot | [ERR] Failed to load cog prefix_commands: Extension 'cogs.prefix_commands' could not be loaded or found.
+2026-02-13 18:38:23,157 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.prefix_commands' could not be loaded or found.
+
+2026-02-13 18:38:23,158 | ERROR | LifeSimBot | [ERR] Failed to load cog reports: Extension 'cogs.reports' could not be loaded or found.
+2026-02-13 18:38:23,159 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.reports' could not be loaded or found.
+
+2026-02-13 18:38:23,159 | ERROR | LifeSimBot | [ERR] Failed to load cog roles: Extension 'cogs.roles' could not be loaded or found.
+2026-02-13 18:38:23,160 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.roles' could not be loaded or found.
+
+2026-02-13 18:38:23,160 | ERROR | LifeSimBot | [ERR] Failed to load cog settings: Extension 'cogs.settings' could not be loaded or found.
+2026-02-13 18:38:23,161 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.settings' could not be loaded or found.
+
+2026-02-13 18:38:23,161 | ERROR | LifeSimBot | [ERR] Failed to load cog setup: Extension 'cogs.setup' could not be loaded or found.
+2026-02-13 18:38:23,162 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.setup' could not be loaded or found.
+
+2026-02-13 18:38:23,163 | ERROR | LifeSimBot | [ERR] Failed to load cog staff: Extension 'cogs.staff' could not be loaded or found.
+2026-02-13 18:38:23,164 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.staff' could not be loaded or found.
+
+2026-02-13 18:38:23,164 | ERROR | LifeSimBot | [ERR] Failed to load cog tickets: Extension 'cogs.tickets' could not be loaded or found.
+2026-02-13 18:38:23,165 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.tickets' could not be loaded or found.
+
+2026-02-13 18:38:23,165 | ERROR | LifeSimBot | [ERR] Failed to load cog utility: Extension 'cogs.utility' could not be loaded or found.
+2026-02-13 18:38:23,166 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.utility' could not be loaded or found.
+
+2026-02-13 18:38:23,166 | ERROR | LifeSimBot | [ERR] Failed to load cog verification: Extension 'cogs.verification' could not be loaded or found.
+2026-02-13 18:38:23,167 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.verification' could not be loaded or found.
+
+2026-02-13 18:38:23,168 | ERROR | LifeSimBot | [ERR] Failed to load cog voice: Extension 'cogs.voice' could not be loaded or found.
+2026-02-13 18:38:23,169 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.voice' could not be loaded or found.
+
+2026-02-13 18:38:23,169 | ERROR | LifeSimBot | [ERR] Failed to load cog whitelist: Extension 'cogs.whitelist' could not be loaded or found.
+2026-02-13 18:38:23,170 | ERROR | LifeSimBot | Traceback (most recent call last):
+  File "C:\Users\Dell\mod\LifeSimBot\bot.py", line 314, in load_cogs
+    await self.load_extension(f'cogs.{cog_name}')
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\ext\commands\bot.py", line 1038, in load_extension
+    raise errors.ExtensionNotFound(name)
+discord.ext.commands.errors.ExtensionNotFound: Extension 'cogs.whitelist' could not be loaded or found.
+
+2026-02-13 18:38:23,170 | INFO | LifeSimBot | Cogs: 0 loaded, 24 failed
+2026-02-13 18:38:23,405 | INFO | LifeSimBot | [OK] Synced 0 application commands
+2026-02-13 18:38:23,405 | INFO | LifeSimBot | Background tasks started
+2026-02-13 18:38:23,409 | WARNING | LifeSimBot | [WARN] Startup completed with 24 cog error(s) in 0.36s
+2026-02-13 18:38:23,409 | WARNING | LifeSimBot |  - admin: Extension 'cogs.admin' could not be loaded or found.
+2026-02-13 18:38:23,410 | WARNING | LifeSimBot |  - aimoderation: Extension 'cogs.aimoderation' could not be loaded or found.
+2026-02-13 18:38:23,410 | WARNING | LifeSimBot |  - antiraid: Extension 'cogs.antiraid' could not be loaded or found.
+2026-02-13 18:38:23,410 | WARNING | LifeSimBot |  - automod: Extension 'cogs.automod' could not be loaded or found.
+2026-02-13 18:38:23,410 | WARNING | LifeSimBot |  - automod_config: Extension 'cogs.automod_config' could not be loaded or found.
+2026-02-13 18:38:23,410 | WARNING | LifeSimBot |  - blacklist: Extension 'cogs.blacklist' could not be loaded or found.
+2026-02-13 18:38:23,410 | WARNING | LifeSimBot |  - court: Extension 'cogs.court' could not be loaded or found.
+2026-02-13 18:38:23,410 | WARNING | LifeSimBot |  - forum_moderation: Extension 'cogs.forum_moderation' could not be loaded or found.
+2026-02-13 18:38:23,411 | WARNING | LifeSimBot |  - ... and 16 more
+2026-02-13 18:38:23,859 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 8cb44abcdd6c4f870547dc0287821ebf).
+2026-02-13 18:38:25,878 | INFO | LifeSimBot | ====================================================
+2026-02-13 18:38:25,878 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-02-13 18:38:25,878 | INFO | LifeSimBot | Guilds: 1 | Users: 31 | Latency: 36ms
+2026-02-13 18:38:25,879 | INFO | LifeSimBot | ====================================================
+2026-02-13 18:38:25,894 | INFO | LifeSimBot | Database auto-backup completed

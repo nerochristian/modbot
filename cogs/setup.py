@@ -887,12 +887,80 @@ class Setup(commands.Cog):
         if resolved_welcome_channel:
             settings["welcome_channel"] = resolved_welcome_channel.id
 
+        # ==================== JAIL CHANNEL ====================
+        # Dedicated channel quarantined users can still read/write in.
+        jail_channel_id = settings.get("quarantine_channel")
+        jail_channel = guild.get_channel(int(jail_channel_id)) if jail_channel_id else None
+        if not isinstance(jail_channel, discord.TextChannel):
+            jail_channel = discord.utils.get(guild.text_channels, name="jail")
+
+        quarantine_role = None
+        if settings.get("automod_quarantine_role_id"):
+            quarantine_role = guild.get_role(int(settings["automod_quarantine_role_id"]))
+
+        jail_overwrites: dict[discord.abc.Snowflake, discord.PermissionOverwrite] = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            guild.me: discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                manage_channels=True,
+            ),
+        }
+
+        if quarantine_role:
+            jail_overwrites[quarantine_role] = discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                add_reactions=False,
+                attach_files=False,
+                embed_links=False,
+                create_public_threads=False,
+                create_private_threads=False,
+                send_messages_in_threads=False,
+            )
+
+        for key in ["owner_role", "manager_role", "admin_role", "supervisor_role", "senior_mod_role", "mod_role", "staff_role"]:
+            rid = settings.get(key)
+            role = guild.get_role(int(rid)) if rid else None
+            if role:
+                jail_overwrites[role] = discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                    manage_messages=True,
+                )
+
+        try:
+            if jail_channel:
+                await jail_channel.edit(
+                    topic="Quarantined users can only talk here.",
+                    overwrites=jail_overwrites,
+                    reason="ModBot Setup: configure jail channel",
+                )
+                created_channels.append(f"✅ {jail_channel.mention} (jail)")
+            else:
+                jail_channel = await guild.create_text_channel(
+                    "jail",
+                    topic="Quarantined users can only talk here.",
+                    overwrites=jail_overwrites,
+                    reason="ModBot Setup: create jail channel",
+                )
+                created_channels.append(f"✅ {jail_channel.mention} (jail)")
+            settings["quarantine_channel"] = jail_channel.id
+        except Exception as e:
+            errors.append(f"❌ Failed to configure #jail: {e}")
+
         # ==================== MUTED ROLE PERMISSIONS ====================
         if settings.get("muted_role"):
             muted_role = guild.get_role(settings["muted_role"])
             if muted_role:
+                quarantine_channel_id = settings.get("quarantine_channel")
                 for channel in guild.channels:
                     try:
+                        if quarantine_channel_id and getattr(channel, "id", None) == int(quarantine_channel_id):
+                            continue
                         if isinstance(channel, (discord.TextChannel, discord.VoiceChannel)):
                             await channel.set_permissions(
                                 muted_role,
@@ -911,8 +979,11 @@ class Setup(commands.Cog):
         if settings.get("automod_quarantine_role_id"):
             quarantine_role = guild.get_role(settings["automod_quarantine_role_id"])
             if quarantine_role:
+                quarantine_channel_id = settings.get("quarantine_channel")
                 for channel in guild.channels:
                     try:
+                        if quarantine_channel_id and getattr(channel, "id", None) == int(quarantine_channel_id):
+                            continue
                         if isinstance(channel, (discord.TextChannel, discord.VoiceChannel)):
                             await channel.set_permissions(
                                 quarantine_role,
@@ -1595,17 +1666,40 @@ class Setup(commands.Cog):
             # Apply Quarantine overrides to all channels
             q_role_id = settings.get("automod_quarantine_role_id")
             q_role = guild.get_role(q_role_id) if q_role_id else None
+            jail_channel_id = settings.get("quarantine_channel")
+            jail_channel = guild.get_channel(int(jail_channel_id)) if jail_channel_id else None
             
             if q_role:
                 q_overrides_applied = 0
                 for channel in guild.channels:
                     # Skip categories, only restrict actual channels
                     if isinstance(channel, (discord.TextChannel, discord.VoiceChannel, discord.ForumChannel, discord.StageChannel)):
+                        if jail_channel_id and getattr(channel, "id", None) == int(jail_channel_id):
+                            continue
                         try:
                             await channel.set_permissions(q_role, send_messages=False, speak=False, add_reactions=False, create_public_threads=False, create_private_threads=False)
                             q_overrides_applied += 1
                         except:
                             pass
+
+                # Ensure quarantined users can use the jail channel.
+                if isinstance(jail_channel, discord.TextChannel):
+                    try:
+                        await jail_channel.set_permissions(
+                            q_role,
+                            view_channel=True,
+                            send_messages=True,
+                            read_message_history=True,
+                            add_reactions=False,
+                            attach_files=False,
+                            embed_links=False,
+                            create_public_threads=False,
+                            create_private_threads=False,
+                            send_messages_in_threads=False,
+                            reason="ModBot Setup - Quarantine jail access",
+                        )
+                    except Exception:
+                        pass
                 created_roles.append(f"🔒 Applied Quarantine to {q_overrides_applied} channels")
         except Exception as e:
             errors.append(f"⚠️ Failed to apply Quarantine overrides: {e}")
