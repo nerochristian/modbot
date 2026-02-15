@@ -830,8 +830,8 @@ class Core(commands.Cog):
             last_daily_dt = datetime.fromisoformat(last_daily)
             time_since = datetime.utcnow() - last_daily_dt
             
-            if time_since < timedelta(hours=24):
-                time_left = timedelta(hours=24) - time_since
+            if time_since < timedelta(seconds=DAILY_COOLDOWN):
+                time_left = timedelta(seconds=DAILY_COOLDOWN) - time_since
                 await interaction.response.send_message(
                     f"⏰ You've already claimed your daily reward!\n"
                     f"Come back in **{format_time(int(time_left.total_seconds()))}**",

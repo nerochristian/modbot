@@ -225,10 +225,12 @@ class Moderation(
         "kicked": "kick",
         "muted": "mute",
         "quarantined": "quarantine",
+        "jailed": "quarantine",
         "warned": "warn",
         "unmuted": "unmute",
         "unbanned": "unban",
         "unquarantined": "unquarantine",
+        "unjailed": "unquarantine",
         # AI moderation titles/phrases
         "member banned": "ban",
         "user banned": "ban",
@@ -256,6 +258,7 @@ class Moderation(
         "untimeout":    "unmute",
         "unquar":       "unquarantine",
         "unquarantine": "unquarantine",
+        "unjail":       "unquarantine",
         "unwarn":       "unwarn",
         "delwarn":      "unwarn",
         # Escalation — reply to any mod embed to escalate
@@ -265,6 +268,7 @@ class Moderation(
         "timeout":      "mute",
         "quarantine":   "quarantine",
         "quar":         "quarantine",
+        "jail":         "quarantine",
         "warn":         "warn",
     }
 

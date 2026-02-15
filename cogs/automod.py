@@ -49,13 +49,16 @@ except ImportError:
     logging.warning("Groq not installed - AI features disabled")
 
 try:
-    import aioredis
+    # Prefer redis.asyncio because aioredis has compatibility issues on newer
+    # Python versions (e.g. duplicate TimeoutError base class on import).
+    import redis.asyncio as aioredis
     REDIS_AVAILABLE = True
-except ImportError:
+except Exception:
     try:
-        import redis.asyncio as aioredis
+        # Legacy fallback for older environments.
+        import aioredis  # type: ignore[import-not-found]
         REDIS_AVAILABLE = True
-    except ImportError:
+    except Exception:
         REDIS_AVAILABLE = False
         logging.warning("Redis not available - using in-memory cache")
 

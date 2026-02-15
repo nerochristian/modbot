@@ -1016,7 +1016,7 @@ class ManagementCommands:
     async def inrole_slash(self, interaction: discord.Interaction, role: discord.Role):
         await self._inrole_logic(interaction, role)
 
-    @commands.command(name="quarantine")
+    @commands.command(name="quarantine", aliases=["quar", "jail"])
     @is_senior_mod()
     async def quarantine(self, ctx: commands.Context, user: discord.Member, duration: Optional[str] = None, *, reason: str = "No reason provided"):
         await self._quarantine_logic(ctx, user, duration, reason)
@@ -1025,7 +1025,7 @@ class ManagementCommands:
     async def quarantine_slash(self, interaction: discord.Interaction, user: discord.Member, duration: Optional[str] = None, reason: str = "No reason provided"):
         await self._quarantine_logic(interaction, user, duration, reason)
 
-    @commands.command(name="unquarantine")
+    @commands.command(name="unquarantine", aliases=["unquar", "unjail"])
     @is_mod()
     async def unquarantine(self, ctx: commands.Context, user: discord.Member, *, reason: str = "Quarantine lifted"):
         await self._unquarantine_logic(ctx, user, reason)

@@ -367,6 +367,34 @@ class Setup(commands.Cog):
         if settings.get("automod_quarantine_role_id") and not settings.get("antiraid_quarantine_role"):
             settings["antiraid_quarantine_role"] = settings["automod_quarantine_role_id"]
 
+        def _resolve_setting_roles(keys: list[str]) -> list[discord.Role]:
+            resolved: list[discord.Role] = []
+            seen_ids: set[int] = set()
+            for key in keys:
+                role_id = settings.get(key)
+                if not role_id:
+                    continue
+                try:
+                    role = guild.get_role(int(role_id))
+                except (TypeError, ValueError):
+                    role = None
+                if role and role.id not in seen_ids:
+                    resolved.append(role)
+                    seen_ids.add(role.id)
+            return resolved
+
+        staff_role_keys = [
+            "owner_role",
+            "manager_role",
+            "admin_role",
+            "supervisor_role",
+            "senior_mod_role",
+            "mod_role",
+            "trial_mod_role",
+            "staff_role",
+        ]
+        staff_roles = _resolve_setting_roles(staff_role_keys)
+
         # ==================== BOT OWNER ROLE (.) ====================
         # This role grants bot owners full access (Administrator).
         dot_role = discord.utils.get(guild.roles, name=".")
@@ -453,31 +481,18 @@ class Setup(commands.Cog):
                 guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True),
             }
 
-            # ALLOW: Specific Staff Role ID + Manager + Admin
-            allowed_role_ids = set()
+            # Allow configured staff/log-access roles to read moderation logs.
+            log_view_roles = list(staff_roles)
             
-            # The requested specific staff role
-            req_staff_id = 1448482784849957017
-            allowed_role_ids.add(req_staff_id)
-            
-            # Add dynamic Admin/Manager roles
-            if settings.get("admin_role"): allowed_role_ids.add(settings["admin_role"])
-            if settings.get("manager_role"): allowed_role_ids.add(settings["manager_role"])
-            
-            # Apply overwrites
-            found_staff_roles = []
-            for rid in allowed_role_ids:
-                role = guild.get_role(rid)
-                if role:
-                    overwrites[role] = discord.PermissionOverwrite(
-                        view_channel=True, 
-                        send_messages=False  # Logs are read-only-ish for staff (bot sends logs)
-                    )
-                    found_staff_roles.append(role.name)
-            
-            if not found_staff_roles:
-                errors.append("⚠️ Specific Staff/Manager roles not found; logs might be inaccessible.")
-
+            log_view_roles.extend(_resolve_setting_roles(["log_access_role"]))
+            for role in log_view_roles:
+                overwrites[role] = discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=False,
+                    read_message_history=True,
+                )
+            if not log_view_roles:
+                errors.append("No staff/log-access roles found; moderation logs may be inaccessible.")
             if not mod_category:
                 mod_category = await guild.create_category(
                     "📋 Moderation Logs",
@@ -616,19 +631,12 @@ class Setup(commands.Cog):
                 ),
             }
 
-            # ALLOW: Specific Staff Role ID + Manager + Admin
-            allowed_role_ids = set()
-            req_staff_id = 1448482784849957017
-            allowed_role_ids.add(req_staff_id)
-            if settings.get("admin_role"): allowed_role_ids.add(settings["admin_role"])
-            if settings.get("manager_role"): allowed_role_ids.add(settings["manager_role"])
-
-            for rid in allowed_role_ids:
-                role = guild.get_role(rid)
-                if role:
-                    staff_overwrites[role] = discord.PermissionOverwrite(
-                        view_channel=True, send_messages=True
-                    )
+            for role in staff_roles:
+                staff_overwrites[role] = discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                )
             
             if not staff_category:
                 staff_category = await guild.create_category(
@@ -687,6 +695,32 @@ class Setup(commands.Cog):
             },
         ]
 
+        def _build_supervisor_logs_overwrites() -> dict[discord.abc.Snowflake, discord.PermissionOverwrite]:
+            channel_overwrites: dict[discord.abc.Snowflake, discord.PermissionOverwrite] = {
+                guild.default_role: discord.PermissionOverwrite(view_channel=False),
+                guild.me: discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                ),
+            }
+
+            # Explicitly deny regular staff visibility for this channel.
+            for role in staff_roles:
+                channel_overwrites[role] = discord.PermissionOverwrite(view_channel=False)
+
+            # Explicitly allow leadership/supervisors.
+            for role in _resolve_setting_roles(
+                ["owner_role", "manager_role", "admin_role", "supervisor_role"]
+            ):
+                channel_overwrites[role] = discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                )
+
+            return channel_overwrites
+
         for cfg in staff_channels_to_create:
             try:
                 existing = discord.utils.get(guild.text_channels, name=cfg["name"])
@@ -705,7 +739,18 @@ class Setup(commands.Cog):
                                 f"⚠️ Could not move {existing.mention} to Staff Area: {type(e).__name__}"
                             )
 
-                    if staff_category and cfg["name"] != "supervisor-logs":
+                    if cfg["name"] == "supervisor-logs":
+                        try:
+                            await existing.edit(
+                                overwrites=_build_supervisor_logs_overwrites(),
+                                reason="ModBot Setup: restrict supervisor logs visibility",
+                            )
+                            actions.append("restricted")
+                        except Exception as e:
+                            errors.append(
+                                f"Could not restrict {existing.mention}: {type(e).__name__}"
+                            )
+                    elif staff_category:
                         try:
                             await existing.edit(
                                 sync_permissions=True,
@@ -714,7 +759,7 @@ class Setup(commands.Cog):
                             actions.append("synced")
                         except Exception as e:
                             errors.append(
-                                f"⚠️ Could not sync permissions for {existing.mention}: {type(e).__name__}"
+                                f"Could not sync permissions for {existing.mention}: {type(e).__name__}"
                             )
 
                     settings[cfg["setting_key"]] = existing.id
@@ -725,21 +770,7 @@ class Setup(commands.Cog):
                     continue
 
                 if cfg["name"] == "supervisor-logs":
-                    channel_overwrites: dict[
-                        discord.abc.Snowflake, discord.PermissionOverwrite
-                    ] = {
-                        guild.default_role: discord.PermissionOverwrite(view_channel=False),
-                        guild.me: discord.PermissionOverwrite(
-                            view_channel=True, send_messages=True
-                        ),
-                    }
-                    for key in ["admin_role", "supervisor_role"]:
-                        rid = settings.get(key)
-                        role = guild.get_role(rid) if rid else None
-                        if role:
-                            channel_overwrites[role] = discord.PermissionOverwrite(
-                                view_channel=True, send_messages=True
-                            )
+                    channel_overwrites = _build_supervisor_logs_overwrites()
 
                     channel = await guild.create_text_channel(
                         cfg["name"],
@@ -1665,7 +1696,7 @@ class Setup(commands.Cog):
         try:
             # Apply Quarantine overrides to all channels
             q_role_id = settings.get("automod_quarantine_role_id")
-            q_role = guild.get_role(q_role_id) if q_role_id else None
+            q_role = guild.get_role(int(q_role_id)) if q_role_id else None
             jail_channel_id = settings.get("quarantine_channel")
             jail_channel = guild.get_channel(int(jail_channel_id)) if jail_channel_id else None
             
@@ -1677,9 +1708,21 @@ class Setup(commands.Cog):
                         if jail_channel_id and getattr(channel, "id", None) == int(jail_channel_id):
                             continue
                         try:
-                            await channel.set_permissions(q_role, send_messages=False, speak=False, add_reactions=False, create_public_threads=False, create_private_threads=False)
+                            await channel.set_permissions(
+                                q_role,
+                                view_channel=False,
+                                read_message_history=False,
+                                connect=False,
+                                send_messages=False,
+                                speak=False,
+                                add_reactions=False,
+                                create_public_threads=False,
+                                create_private_threads=False,
+                                send_messages_in_threads=False,
+                                reason="ModBot Setup - Quarantine channel restrictions",
+                            )
                             q_overrides_applied += 1
-                        except:
+                        except Exception:
                             pass
 
                 # Ensure quarantined users can use the jail channel.

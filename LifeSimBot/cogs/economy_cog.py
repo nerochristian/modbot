@@ -13,10 +13,9 @@ from datetime import datetime, timedelta
 import asyncio
 import random
 import logging
-import os
 
 from utils.format import format_currency, format_time, format_percentage
-from utils.checks import is_registered
+from utils.checks import is_registered, safe_reply
 from utils.constants import *
 from views.v2_embed import apply_v2_embed_layout
 
@@ -686,8 +685,7 @@ class Economy(commands.Cog):
     
     def set_work_cooldown(self, user_id: int):
         """Set work cooldown for user"""
-        cooldown_seconds = int(os.getenv('WORK_COOLDOWN', 3600))
-        self.work_cooldowns[user_id] = datetime.utcnow() + timedelta(seconds=cooldown_seconds)
+        self.work_cooldowns[user_id] = datetime.utcnow() + timedelta(seconds=WORK_COOLDOWN)
     
     @app_commands.command(name="hustle", description="Do a quick hustle to earn money")
     @app_commands.describe(minigame="Choose a hustle minigame (optional)")
@@ -879,8 +877,7 @@ class Economy(commands.Cog):
                 return
         
         # Set cooldown
-        cooldown_seconds = int(os.getenv('ROB_COOLDOWN', 7200))
-        self.bot.cooldowns[cooldown_key] = datetime.utcnow() + timedelta(seconds=cooldown_seconds)
+        self.bot.cooldowns[cooldown_key] = datetime.utcnow() + timedelta(seconds=ROB_COOLDOWN)
         
         # Calculate success chance (based on stats if available)
         base_success_rate = 0.5
@@ -954,7 +951,7 @@ class Economy(commands.Cog):
         embed = await view.create_embed()
         
         apply_v2_embed_layout(view, embed=embed)
-        await interaction.response.send_message(view=view)
+        await safe_reply(interaction, view=view)
     
     @app_commands.command(name="give", description="Give money or items to another user")
     @app_commands.describe(

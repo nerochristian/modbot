@@ -103,6 +103,18 @@ class Roles(commands.Cog):
     async def cog_unload(self):
         pass
 
+    async def _safe_send(
+        self,
+        interaction: discord.Interaction,
+        *,
+        embed: discord.Embed,
+        ephemeral: bool = False,
+    ):
+        """Reply via initial response or followup depending on interaction state."""
+        if interaction.response.is_done():
+            return await interaction.followup.send(embed=embed, ephemeral=ephemeral)
+        return await interaction.response.send_message(embed=embed, ephemeral=ephemeral)
+
     def can_manage_role(self, moderator: discord.Member, target_role: discord.Role) -> tuple[bool, str]:
         if is_bot_owner_id(moderator.id) or moderator.id == moderator.guild.owner_id:
             return True, ""
@@ -257,32 +269,42 @@ class Roles(commands.Cog):
     async def role_add(self, interaction: discord.Interaction, user: discord.Member, role: discord.Role):
         can_manage, error = self.can_manage_role(interaction.user, role)
         if not can_manage:
-             return await interaction.response.send_message(embed=ModEmbed.error("Permission Denied", error), ephemeral=True)
+             return await self._safe_send(interaction, embed=ModEmbed.error("Permission Denied", error), ephemeral=True)
         
         if role in user.roles:
-            return await interaction.response.send_message(embed=ModEmbed.error("Error", "User already has this role."), ephemeral=True)
+            return await self._safe_send(interaction, embed=ModEmbed.error("Error", "User already has this role."), ephemeral=True)
+
+        await interaction.response.defer()
 
         try:
             await user.add_roles(role, reason=f"Added by {interaction.user}")
-            await interaction.response.send_message(embed=ModEmbed.success("Role Added", f"Added {role.mention} to {user.mention}"))
+            await self._safe_send(
+                interaction,
+                embed=ModEmbed.success("Role Added", f"Added {role.mention} to {user.mention}")
+            )
         except Exception as e:
-            await interaction.response.send_message(embed=ModEmbed.error("Error", str(e)), ephemeral=True)
+            await self._safe_send(interaction, embed=ModEmbed.error("Error", str(e)), ephemeral=True)
 
     @mod_role_group.command(name="remove", description="➖ Remove a role from a user")
     @is_mod()
     async def role_remove(self, interaction: discord.Interaction, user: discord.Member, role: discord.Role):
         can_manage, error = self.can_manage_role(interaction.user, role)
         if not can_manage:
-             return await interaction.response.send_message(embed=ModEmbed.error("Permission Denied", error), ephemeral=True)
+             return await self._safe_send(interaction, embed=ModEmbed.error("Permission Denied", error), ephemeral=True)
 
         if role not in user.roles:
-            return await interaction.response.send_message(embed=ModEmbed.error("Error", "User does not have this role."), ephemeral=True)
+            return await self._safe_send(interaction, embed=ModEmbed.error("Error", "User does not have this role."), ephemeral=True)
+
+        await interaction.response.defer()
 
         try:
             await user.remove_roles(role, reason=f"Removed by {interaction.user}")
-            await interaction.response.send_message(embed=ModEmbed.success("Role Removed", f"Removed {role.mention} from {user.mention}"))
+            await self._safe_send(
+                interaction,
+                embed=ModEmbed.success("Role Removed", f"Removed {role.mention} from {user.mention}")
+            )
         except Exception as e:
-            await interaction.response.send_message(embed=ModEmbed.error("Error", str(e)), ephemeral=True)
+            await self._safe_send(interaction, embed=ModEmbed.error("Error", str(e)), ephemeral=True)
 
     @mod_role_group.command(name="all", description="👥 Add a role to ALL humans (Mass add)")
     @is_admin()

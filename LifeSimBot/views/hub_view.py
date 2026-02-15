@@ -386,8 +386,8 @@ class HubView(discord.ui.LayoutView):
             "Crime": ("last_crime", CRIME_COOLDOWN),
             "Daily": ("last_daily", DAILY_COOLDOWN),
             "Rob": ("last_rob", ROB_COOLDOWN),
-            "Farm": ("last_farm", getattr(self.bot, 'FARM_COOLDOWN', 3600)),
-            "Fish": ("last_fish", getattr(self.bot, 'FISH_COOLDOWN', 1800)),
+            "Farm": ("last_farm", FARM_COOLDOWN),
+            "Fish": ("last_fish", FISH_COOLDOWN),
         }
         
         ready_commands = []

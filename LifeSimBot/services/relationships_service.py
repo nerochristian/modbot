@@ -4,8 +4,12 @@ from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from typing import Literal
 
+try:
+    from ..config import LifeSimConfig
+except Exception:
+    from config import LifeSimConfig
 
-INTERACTION_COOLDOWN = timedelta(minutes=5)
+INTERACTION_COOLDOWN = timedelta(seconds=LifeSimConfig.COOLDOWNS.RELATIONSHIP_INTERACTION)
 
 RelationshipStatus = Literal["stranger", "friend", "partner", "ex"]
 InteractionType = Literal["talk", "hangout", "flirt"]

@@ -1,6 +1,13 @@
 # utils/constants.py
 import discord
 
+try:
+    # Package import path: LifeSimBot.utils.constants
+    from ..config import LifeSimConfig
+except Exception:
+    # Script import path: utils.constants (cwd=LifeSimBot)
+    from config import LifeSimConfig
+
 class Times:
     """Time constants in seconds."""
     SECOND = 1
@@ -79,56 +86,58 @@ class Paths:
 # -----------------------------------------------------------------------------
 
 class EconomyConfig:
-    STARTING_BALANCE = 500
-    STARTING_BANK = 0
-    STARTING_BANK_LIMIT = 5000
+    STARTING_BALANCE = LifeSimConfig.ECONOMY.STARTING_BALANCE
+    STARTING_BANK = LifeSimConfig.ECONOMY.STARTING_BANK
+    STARTING_BANK_LIMIT = LifeSimConfig.ECONOMY.STARTING_BANK_LIMIT
     
     # Daily Rewards
-    DAILY_BASE = 1000
-    DAILY_STREAK_BONUS = 250
-    MAX_STREAK = 10
-    DAILY_COOLDOWN_SECONDS = 20 * Times.HOUR
+    DAILY_BASE = LifeSimConfig.ECONOMY.DAILY_BASE
+    DAILY_STREAK_BONUS = LifeSimConfig.ECONOMY.DAILY_STREAK_BONUS
+    MAX_STREAK = LifeSimConfig.ECONOMY.MAX_STREAK
+    DAILY_COOLDOWN_SECONDS = LifeSimConfig.COOLDOWNS.DAILY
     
     # Transfers
-    TRANSFER_MIN = 10
-    TAX_RATE = 0.03 # 3% tax on user-to-user payments
+    TRANSFER_MIN = LifeSimConfig.ECONOMY.TRANSFER_MIN
+    TAX_RATE = LifeSimConfig.ECONOMY.TAX_RATE # 3% tax on user-to-user payments
 
 class CrimeConfig:
     # Success Rates (0.0 to 1.0)
-    ROB_SUCCESS_BASE = 0.45
-    SHOPLIFT_SUCCESS_BASE = 0.60
-    HEIST_SUCCESS_BASE = 0.25
+    ROB_SUCCESS_BASE = LifeSimConfig.CRIME.ROB_SUCCESS_BASE
+    SHOPLIFT_SUCCESS_BASE = LifeSimConfig.CRIME.SHOPLIFT_SUCCESS_BASE
+    HEIST_SUCCESS_BASE = LifeSimConfig.CRIME.HEIST_SUCCESS_BASE
     
     # Penalties
-    FINE_PERCENT_MIN = 0.10 # Lose 10% of wallet if caught
-    FINE_PERCENT_MAX = 0.30 # Lose 30% of wallet if caught
+    FINE_PERCENT_MIN = LifeSimConfig.CRIME.FINE_PERCENT_MIN # Lose 10% of wallet if caught
+    FINE_PERCENT_MAX = LifeSimConfig.CRIME.FINE_PERCENT_MAX # Lose 30% of wallet if caught
     
     # Jail Times (Seconds)
-    JAIL_MIN = 5 * Times.MINUTE
-    JAIL_MAX = 2 * Times.HOUR
+    JAIL_MIN = LifeSimConfig.CRIME.JAIL_MIN
+    JAIL_MAX = LifeSimConfig.CRIME.JAIL_MAX
 
 class JobConfig:
-    MAX_SHIFT_HOURS = 8
-    BASE_PAY_PER_HOUR = 50
-    XP_PER_WORK = 10
+    MAX_SHIFT_HOURS = LifeSimConfig.JOBS.MAX_SHIFT_HOURS
+    BASE_PAY_PER_HOUR = LifeSimConfig.JOBS.BASE_PAY_PER_HOUR
+    XP_PER_WORK = LifeSimConfig.JOBS.XP_PER_WORK
 
 class Cooldowns:
     """Cooldowns in Seconds (Use Times class)."""
     
     class Economy:
-        DAILY = 20 * Times.HOUR # Slightly less than 24h to be forgiving
-        WORK = 1 * Times.HOUR
-        BEG = 5 * Times.MINUTE
+        DAILY = LifeSimConfig.COOLDOWNS.DAILY
+        WORK = LifeSimConfig.COOLDOWNS.WORK
+        BEG = LifeSimConfig.COOLDOWNS.BEG
+        FARM = LifeSimConfig.COOLDOWNS.FARM
+        FISH = LifeSimConfig.COOLDOWNS.FISH
         
     class Crime:
-        ROB = 2 * Times.HOUR
-        HEIST = 1 * Times.DAY
-        SHOPLIFT = 30 * Times.MINUTE
-        ESCAPE_ATTEMPT = 15 * Times.MINUTE
+        ROB = LifeSimConfig.COOLDOWNS.ROB
+        HEIST = LifeSimConfig.COOLDOWNS.HEIST
+        SHOPLIFT = LifeSimConfig.COOLDOWNS.CRIME
+        ESCAPE_ATTEMPT = LifeSimConfig.COOLDOWNS.ESCAPE_ATTEMPT
         
     class Interaction:
-        GIFT = 1 * Times.DAY
-        BATTLE = 15 * Times.MINUTE
+        GIFT = LifeSimConfig.COOLDOWNS.GIFT
+        BATTLE = LifeSimConfig.COOLDOWNS.BATTLE
 
 
 # -----------------------------------------------------------------------------
@@ -139,19 +148,23 @@ class Cooldowns:
 STARTING_BANK_LIMIT = EconomyConfig.STARTING_BANK_LIMIT
 DAILY_COOLDOWN = EconomyConfig.DAILY_COOLDOWN_SECONDS
 WORK_COOLDOWN = Cooldowns.Economy.WORK
+BEG_COOLDOWN = Cooldowns.Economy.BEG
+FARM_COOLDOWN = Cooldowns.Economy.FARM
+FISH_COOLDOWN = Cooldowns.Economy.FISH
 
 # Crime
 ROB_COOLDOWN = Cooldowns.Crime.ROB
 CRIME_COOLDOWN = Cooldowns.Crime.SHOPLIFT
-ROB_ENERGY_COST = 15
-MIN_ROB_BALANCE = 100
+HEIST_COOLDOWN = Cooldowns.Crime.HEIST
+ROB_ENERGY_COST = LifeSimConfig.CRIME.ROB_ENERGY_COST
+MIN_ROB_BALANCE = LifeSimConfig.CRIME.MIN_ROB_BALANCE
 
 # Lifecycle / stats caps
-SLEEP_COOLDOWN = 8 * Times.HOUR
-MAX_HEALTH = 100
-MAX_ENERGY = 100
-MAX_HUNGER = 100
-MAX_HAPPINESS = 100
+SLEEP_COOLDOWN = LifeSimConfig.COOLDOWNS.SLEEP
+MAX_HEALTH = LifeSimConfig.CAPS.MAX_HEALTH
+MAX_ENERGY = LifeSimConfig.CAPS.MAX_ENERGY
+MAX_HUNGER = LifeSimConfig.CAPS.MAX_HUNGER
+MAX_HAPPINESS = LifeSimConfig.CAPS.MAX_HAPPINESS
 
 # Skills
 SKILL_EMOJIS = {
