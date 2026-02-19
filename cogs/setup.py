@@ -1008,14 +1008,23 @@ class Setup(commands.Cog):
 
         # ==================== QUARANTINE ROLE PERMISSIONS ====================
         if settings.get("automod_quarantine_role_id"):
-            quarantine_role = guild.get_role(settings["automod_quarantine_role_id"])
+            quarantine_role = guild.get_role(int(settings["automod_quarantine_role_id"]))
             if quarantine_role:
                 quarantine_channel_id = settings.get("quarantine_channel")
                 for channel in guild.channels:
                     try:
                         if quarantine_channel_id and getattr(channel, "id", None) == int(quarantine_channel_id):
                             continue
-                        if isinstance(channel, (discord.TextChannel, discord.VoiceChannel)):
+                        if isinstance(
+                            channel,
+                            (
+                                discord.CategoryChannel,
+                                discord.TextChannel,
+                                discord.VoiceChannel,
+                                discord.StageChannel,
+                                discord.ForumChannel,
+                            ),
+                        ):
                             await channel.set_permissions(
                                 quarantine_role,
                                 view_channel=False,

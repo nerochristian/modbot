@@ -1279,25 +1279,5 @@ class Help(commands.Cog):
         embed = view._build_embed()
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
-    # Prefix versions for compatibility
-    @commands.command(name="help")
-    async def help_prefix(self, ctx: commands.Context, *, command: Optional[str] = None) -> None:
-        """Prefix version of /help"""
-        index = _HelpIndex.build(self.bot, include_slash=False, include_prefix=True)
-
-        if command:
-            key = _normalize_command_name(command)
-            cmd = index.by_name.get(key)
-            if not cmd:
-                await ctx.send(f"Command `{command}` not found. Try `,help`.")
-                return
-            await ctx.send(embed=self._build_details_embed(cmd))
-            return
-
-        view = HelpView(bot=self.bot, author_id=ctx.author.id, index=index, mode="prefix")
-        msg = await ctx.send(embed=view.pages[0], view=view)
-        view.message = msg
-
-
 async def setup(bot: commands.Bot):
     await bot.add_cog(Help(bot))

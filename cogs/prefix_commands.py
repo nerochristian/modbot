@@ -415,13 +415,6 @@ class PrefixCommands(commands.Cog):
         """List all server roles"""
         roles = [r.mention for r in ctx.guild.roles[1:]][:20]
         await ctx.send(embed=ModEmbed.info("🎭 Roles", " ".join(roles) or "No roles"))
-
-    @commands.command(name="emojis", aliases=["emotes"])
-    async def emojis_cmd(self, ctx):
-        """List server emojis"""
-        emojis = [str(e) for e in ctx.guild.emojis][:30]
-        await ctx.send(embed=ModEmbed.info("😀 Emojis", " ".join(emojis) or "No emojis"))
-
     @commands.command(name="icon")
     async def icon_cmd(self, ctx):
         """Get server icon"""

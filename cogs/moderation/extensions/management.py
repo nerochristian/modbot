@@ -13,6 +13,86 @@ from utils.time_parser import parse_time
 from config import Config
 
 class ManagementCommands:
+    async def _sync_quarantine_overwrites(
+        self,
+        guild: discord.Guild,
+        quarantine_role: discord.Role,
+        jail_channel_id: Optional[Union[int, str]],
+    ) -> tuple[int, int]:
+        """Ensure quarantine role cannot access normal channels and can access jail."""
+        target_jail_id: Optional[int] = None
+        if jail_channel_id:
+            try:
+                target_jail_id = int(jail_channel_id)
+            except (TypeError, ValueError):
+                target_jail_id = None
+
+        restricted_types = (
+            discord.CategoryChannel,
+            discord.TextChannel,
+            discord.VoiceChannel,
+            discord.StageChannel,
+            discord.ForumChannel,
+        )
+
+        applied = 0
+        failed = 0
+
+        for channel in guild.channels:
+            if not isinstance(channel, restricted_types):
+                continue
+            if target_jail_id and channel.id == target_jail_id:
+                continue
+            try:
+                await channel.set_permissions(
+                    quarantine_role,
+                    view_channel=False,
+                    read_message_history=False,
+                    connect=False,
+                    send_messages=False,
+                    speak=False,
+                    add_reactions=False,
+                    create_public_threads=False,
+                    create_private_threads=False,
+                    send_messages_in_threads=False,
+                    reason="Quarantine enforcement",
+                )
+                applied += 1
+            except Exception:
+                failed += 1
+
+        if target_jail_id:
+            jail_channel = guild.get_channel(target_jail_id)
+            if isinstance(
+                jail_channel,
+                (
+                    discord.CategoryChannel,
+                    discord.TextChannel,
+                    discord.VoiceChannel,
+                    discord.StageChannel,
+                    discord.ForumChannel,
+                ),
+            ):
+                try:
+                    await jail_channel.set_permissions(
+                        quarantine_role,
+                        view_channel=True,
+                        send_messages=True,
+                        read_message_history=True,
+                        connect=True,
+                        speak=False,
+                        add_reactions=False,
+                        create_public_threads=False,
+                        create_private_threads=False,
+                        send_messages_in_threads=False,
+                        reason="Quarantine jail access",
+                    )
+                    applied += 1
+                except Exception:
+                    failed += 1
+
+        return applied, failed
+
     # ==================== KICK / BAN / MUTE LOGIC ====================
 
     async def _kick_logic(self, source, user: discord.Member, reason: str):
@@ -630,6 +710,16 @@ class ManagementCommands:
         if not quarantine_role:
              return await self._respond(source, embed=ModEmbed.error("Configuration Error", "Quarantine role not found."), ephemeral=True)
 
+        overwrite_applied = 0
+        overwrite_failed = 0
+        bot_member = source.guild.me
+        if bot_member and bot_member.guild_permissions.manage_channels:
+            overwrite_applied, overwrite_failed = await self._sync_quarantine_overwrites(
+                source.guild,
+                quarantine_role,
+                settings.get("quarantine_channel"),
+            )
+
         # Calculate duration
         expires_at = None
         human_duration = "Indefinite"
@@ -669,6 +759,18 @@ class ManagementCommands:
              embed.add_field(name="Expires", value=f"<t:{int(expires_at.timestamp())}:R>", inline=True)
         
         embed.add_field(name="Roles Removed", value=str(len(backup_role_ids)), inline=True)
+        if overwrite_applied or overwrite_failed:
+            embed.add_field(
+                name="Channel Sync",
+                value=f"Updated {overwrite_applied} channels (failed: {overwrite_failed})",
+                inline=False,
+            )
+        elif not (bot_member and bot_member.guild_permissions.manage_channels):
+            embed.add_field(
+                name="Channel Sync",
+                value="Skipped: I need **Manage Channels** to enforce quarantine visibility.",
+                inline=False,
+            )
         
         await self._respond(source, embed=embed)
         await self.log_action(source.guild, embed)

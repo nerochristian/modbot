@@ -251,6 +251,28 @@ class Voice(commands.Cog):
     @is_mod()
     async def vc_moveall(self, interaction: discord.Interaction, from_channel: discord.VoiceChannel, to_channel: discord.VoiceChannel):
         await self._moveall(interaction, from_channel, to_channel)
+
+    @vc_group.command(name="muteall", description="Server mute all users in a voice channel")
+    @app_commands.describe(channel="Voice channel to mute", reason="Reason for muting everyone")
+    @is_mod()
+    async def vc_muteall(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.VoiceChannel,
+        reason: str = "No reason provided",
+    ):
+        await self._muteall(interaction, channel, reason)
+
+    @vc_group.command(name="unmuteall", description="Server unmute all users in a voice channel")
+    @app_commands.describe(channel="Voice channel to unmute", reason="Reason for unmuting everyone")
+    @is_mod()
+    async def vc_unmuteall(
+        self,
+        interaction: discord.Interaction,
+        channel: discord.VoiceChannel,
+        reason: str = "No reason provided",
+    ):
+        await self._unmuteall(interaction, channel, reason)
     
     @vc_group.command(name="ban", description="Ban a user from all voice channels")
     @app_commands.describe(user="The user to voice ban", reason="Reason for banning")
@@ -798,6 +820,75 @@ class Voice(commands.Cog):
         
         embed = ModEmbed.success("Users Moved", 
                                  f"Moved **{count}** users from {from_channel.mention} to {to_channel.mention}")
+        await self._respond(source, embed=embed)
+
+    async def _muteall(self, source, channel: discord.VoiceChannel, reason: str):
+        await self._set_channel_mute_state(source, channel, True, reason)
+
+    async def _unmuteall(self, source, channel: discord.VoiceChannel, reason: str):
+        await self._set_channel_mute_state(source, channel, False, reason)
+
+    async def _set_channel_mute_state(
+        self,
+        source,
+        channel: discord.VoiceChannel,
+        mute_state: bool,
+        reason: str,
+    ):
+        if not channel.members:
+            return await self._respond(
+                source,
+                embed=ModEmbed.error("Empty Channel", f"{channel.mention} has no members."),
+                ephemeral=True,
+            )
+
+        if isinstance(source, discord.Interaction):
+            await source.response.defer()
+
+        author = source.user if isinstance(source, discord.Interaction) else source.author
+        action_label = "muted" if mute_state else "unmuted"
+        action_title = "Voice Muted" if mute_state else "Voice Unmuted"
+
+        changed = 0
+        already = 0
+        skipped_owner = 0
+        failed = 0
+
+        for member in list(channel.members):
+            if is_bot_owner_id(member.id) and not is_bot_owner_id(author.id):
+                skipped_owner += 1
+                continue
+
+            if not member.voice:
+                continue
+
+            if member.voice.mute is mute_state:
+                already += 1
+                continue
+
+            try:
+                await member.edit(
+                    mute=mute_state,
+                    reason=f"Mass VC {action_label} by {author}: {reason}",
+                )
+                changed += 1
+            except (discord.Forbidden, discord.HTTPException):
+                failed += 1
+
+        summary_lines = [
+            f"{channel.mention}: **{changed}** member(s) {action_label}.",
+            f"Already {action_label}: **{already}**",
+            f"Failed: **{failed}**",
+        ]
+        if skipped_owner:
+            summary_lines.append(f"Skipped protected users: **{skipped_owner}**")
+        if reason:
+            summary_lines.append(f"Reason: {reason}")
+
+        if failed > 0:
+            embed = ModEmbed.warning(action_title, "\n".join(summary_lines))
+        else:
+            embed = ModEmbed.success(action_title, "\n".join(summary_lines))
         await self._respond(source, embed=embed)
 
     async def _ban(self, source, user: discord.Member, reason: str):
