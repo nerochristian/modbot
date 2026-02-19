@@ -3,7 +3,7 @@ setlocal ENABLEDELAYEDEXPANSION
 
 cd /d "%~dp0"
 
-set "REPO_URL=https://github.com/nerochristian/modobt"
+set "REPO_URL=https://github.com/nerochristian/modbot"
 set "DEFAULT_BRANCH=main"
 
 echo ==========================================
