@@ -14,6 +14,7 @@ import asyncio
 from groq import Groq
 from utils.embeds import ModEmbed
 from utils.checks import is_mod, is_admin, is_bot_owner_id
+from utils.logging import send_log_embed
 
 
 class ForumActionButtons(discord.ui.View):
@@ -279,7 +280,7 @@ class ForumModeration(commands.Cog):
                             guild_id=thread.guild.id
                         )
                         
-                        await channel.send(embed=embed, view=view)
+                        await send_log_embed(channel, embed, view=view)
                         print(f"[ForumMod] Alert sent to {channel.name}")
                     else:
                         print(f"[ForumMod] Could not find channel with ID {alerts_channel_id}")
@@ -454,7 +455,7 @@ class ForumModeration(commands.Cog):
                         guild_id=guild.id
                     )
                     
-                    await channel.send(embed=embed, view=view)
+                    await send_log_embed(channel, embed, view=view)
         except Exception as e:
             print(f"[ForumMod] Error logging to mod log: {e}")
     
@@ -621,7 +622,7 @@ class ForumModeration(commands.Cog):
                     color=0xFF6600,
                     timestamp=datetime.now(timezone.utc)
                 )
-                await channel.send(embed=log_embed)
+                await send_log_embed(channel, log_embed)
         
         embed = ModEmbed.success(
             "Thread Deleted",

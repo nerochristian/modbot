@@ -22,6 +22,12 @@ import discord
 
 # Component types that can appear at the top level of a LayoutView
 _V2_TOP_LEVEL_TYPES = {1, 9, 10, 12, 13, 14, 17}
+_LOG_STYLE_CHANNEL_NAMES = frozenset(
+    {
+        "forum-alerts",
+        "ai-confirmation",
+    }
+)
 
 # Regex to detect timestamp-only footer text (excluded from v2 cards)
 _TS_ONLY_RE = re.compile(
@@ -31,6 +37,49 @@ _TS_ONLY_RE = re.compile(
     r"\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?"
     r")$"
 )
+
+
+def _is_log_style_channel(target: object) -> bool:
+    """Whether this destination should use audit-log visual normalization."""
+    name = (getattr(target, "name", None) or "").strip().lower()
+    if not name:
+        return False
+    return name.endswith("-logs") or name in _LOG_STYLE_CHANNEL_NAMES
+
+
+def _normalize_log_embeds_for_target(
+    target: object,
+    *,
+    embed: Any,
+    embeds: Any,
+) -> tuple[Any, Any]:
+    """Normalize embed visuals for log channels without touching non-log sends."""
+    if not _is_log_style_channel(target):
+        return embed, embeds
+    if embed is None and not embeds:
+        return embed, embeds
+
+    try:
+        from utils.logging import normalize_log_embed
+    except Exception:
+        return embed, embeds
+
+    normalized_embed = embed
+    normalized_embeds = embeds
+
+    if embed is not None:
+        try:
+            normalized_embed = normalize_log_embed(target, embed)
+        except Exception:
+            normalized_embed = embed
+
+    if embeds:
+        try:
+            normalized_embeds = [normalize_log_embed(target, e) for e in embeds]
+        except Exception:
+            normalized_embeds = embeds
+
+    return normalized_embed, normalized_embeds
 
 
 class ComponentsV2Config:
@@ -460,8 +509,9 @@ def patch_components_v2() -> None:
         has_embed = embed is not MISSING and embed is not None
         has_embeds = embeds is not MISSING and bool(embeds)
         has_content = content is not MISSING and content not in (None, "", ...)
+        has_visual = has_embed or has_embeds
 
-        if (has_embed or has_embeds or has_content) and (
+        if has_visual and (
             view in (MISSING, None) or hasattr(view, "children")
         ):
             layout = await layout_view_from_embeds(
@@ -502,8 +552,9 @@ def patch_components_v2() -> None:
         has_embed = embed is not MISSING and embed is not None
         has_embeds = embeds is not MISSING and bool(embeds)
         has_content = content is not MISSING and content not in (None, "", ...)
+        has_visual = has_embed or has_embeds
 
-        if (has_embed or has_embeds or has_content) and (
+        if has_visual and (
             view in (MISSING, None) or hasattr(view, "children")
         ):
             layout = await layout_view_from_embeds(
@@ -561,8 +612,9 @@ def patch_components_v2() -> None:
         has_embed = embed is not MISSING and embed is not None
         has_embeds = embeds is not MISSING and bool(embeds)
         has_content = content is not MISSING and content not in (None, "", ...)
+        has_visual = has_embed or has_embeds
 
-        if (has_embed or has_embeds or has_content) and (
+        if has_visual and (
             view in (MISSING, None) or hasattr(view, "children")
         ):
             layout = await layout_view_from_embeds(
@@ -594,6 +646,21 @@ def patch_components_v2() -> None:
         return await original_webhook_send(self, content=content, **kwargs)
 
     async def patched_messageable_send(self, *args, **kwargs):
+        has_embed_kw = "embed" in kwargs
+        has_embeds_kw = "embeds" in kwargs
+        maybe_embed = kwargs.get("embed", None)
+        maybe_embeds = kwargs.get("embeds", None)
+        if maybe_embed is not None or maybe_embeds:
+            maybe_embed, maybe_embeds = _normalize_log_embeds_for_target(
+                self,
+                embed=maybe_embed,
+                embeds=maybe_embeds,
+            )
+            if has_embed_kw:
+                kwargs["embed"] = maybe_embed
+            if has_embeds_kw:
+                kwargs["embeds"] = maybe_embeds
+
         if not _should_use_v2(kwargs):
             return await original_messageable_send(self, *args, **kwargs)
 
@@ -606,8 +673,9 @@ def patch_components_v2() -> None:
         has_embed = embed is not None
         has_embeds = bool(embeds)
         has_content = content is not MISSING and content not in (None, "", ...)
+        has_visual = has_embed or has_embeds
 
-        if (has_embed or has_embeds or has_content) and (view is None or hasattr(view, "children")):
+        if has_visual and (view is None or hasattr(view, "children")):
             layout = await layout_view_from_embeds(
                 content=content,
                 embed=embed,

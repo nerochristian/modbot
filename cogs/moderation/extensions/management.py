@@ -13,6 +13,36 @@ from utils.time_parser import parse_time
 from config import Config
 
 class ManagementCommands:
+    @staticmethod
+    def _quarantine_restricted_overwrite() -> discord.PermissionOverwrite:
+        """Permissions quarantine role should have outside the jail channel."""
+        return discord.PermissionOverwrite(
+            view_channel=False,
+            read_message_history=False,
+            connect=False,
+            send_messages=False,
+            speak=False,
+            add_reactions=False,
+            create_public_threads=False,
+            create_private_threads=False,
+            send_messages_in_threads=False,
+        )
+
+    @staticmethod
+    def _quarantine_jail_overwrite() -> discord.PermissionOverwrite:
+        """Permissions quarantine role should have inside the jail channel."""
+        return discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            connect=True,
+            speak=False,
+            add_reactions=False,
+            create_public_threads=False,
+            create_private_threads=False,
+            send_messages_in_threads=False,
+        )
+
     async def _sync_quarantine_overwrites(
         self,
         guild: discord.Guild,
@@ -37,24 +67,21 @@ class ManagementCommands:
 
         applied = 0
         failed = 0
+        restricted_overwrite = self._quarantine_restricted_overwrite()
+        jail_overwrite = self._quarantine_jail_overwrite()
 
         for channel in guild.channels:
             if not isinstance(channel, restricted_types):
                 continue
             if target_jail_id and channel.id == target_jail_id:
                 continue
+            current_overwrite = channel.overwrites_for(quarantine_role)
+            if current_overwrite == restricted_overwrite:
+                continue
             try:
                 await channel.set_permissions(
                     quarantine_role,
-                    view_channel=False,
-                    read_message_history=False,
-                    connect=False,
-                    send_messages=False,
-                    speak=False,
-                    add_reactions=False,
-                    create_public_threads=False,
-                    create_private_threads=False,
-                    send_messages_in_threads=False,
+                    overwrite=restricted_overwrite,
                     reason="Quarantine enforcement",
                 )
                 applied += 1
@@ -74,20 +101,14 @@ class ManagementCommands:
                 ),
             ):
                 try:
-                    await jail_channel.set_permissions(
-                        quarantine_role,
-                        view_channel=True,
-                        send_messages=True,
-                        read_message_history=True,
-                        connect=True,
-                        speak=False,
-                        add_reactions=False,
-                        create_public_threads=False,
-                        create_private_threads=False,
-                        send_messages_in_threads=False,
-                        reason="Quarantine jail access",
-                    )
-                    applied += 1
+                    current_overwrite = jail_channel.overwrites_for(quarantine_role)
+                    if current_overwrite != jail_overwrite:
+                        await jail_channel.set_permissions(
+                            quarantine_role,
+                            overwrite=jail_overwrite,
+                            reason="Quarantine jail access",
+                        )
+                        applied += 1
                 except Exception:
                     failed += 1
 
@@ -730,7 +751,7 @@ class ManagementCommands:
                 expires_at = datetime.now(timezone.utc) + delta
 
         # Backup roles
-        backup_role_ids = await self._backup_roles(user)
+        backup_role_ids = await self._backup_roles(user, quarantine_role.id)
         
         # Apply quarantine
         try:
@@ -798,6 +819,7 @@ class ManagementCommands:
                         content=user.mention,
                         embed=jail_embed,
                         allowed_mentions=discord.AllowedMentions(users=True),
+                        use_v2=False,
                     )
                 except Exception:
                     pass

@@ -7,7 +7,7 @@ import json
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_bot_owner_id, get_owner_ids
-from utils.logging import send_log_embed
+from utils.logging import normalize_log_embed, send_log_embed
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +22,13 @@ class HelperCommands:
         **kwargs,
     ):
         """Send a response or followup depending on whether the interaction/context is already acknowledged."""
+        if embed is not None:
+            try:
+                target = source.channel if hasattr(source, "channel") else None
+                embed = normalize_log_embed(target, embed, include_banner=False)
+            except Exception:
+                pass
+
         try:
             if isinstance(source, discord.Interaction):
                 if source.response.is_done():
@@ -289,10 +296,16 @@ class HelperCommands:
 
         return True, ""
 
-    async def _backup_roles(self, user: discord.Member) -> list[int]:
+    async def _backup_roles(self, user: discord.Member, quarantine_role_id: Optional[int] = None) -> list[int]:
         """Backup user roles (excluding @everyone and quarantine role)"""
-        settings = await self.bot.db.get_settings(user.guild.id)
-        quarantine_role_id = settings.get('automod_quarantine_role_id')
+        if quarantine_role_id is None:
+            settings = await self.bot.db.get_settings(user.guild.id)
+            quarantine_role_id = settings.get('automod_quarantine_role_id')
+        else:
+            try:
+                quarantine_role_id = int(quarantine_role_id)
+            except (TypeError, ValueError):
+                quarantine_role_id = None
         
         role_ids = []
         for role in user.roles:

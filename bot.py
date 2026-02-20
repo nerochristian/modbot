@@ -726,7 +726,7 @@ class ModBot(commands.Bot):
         # Missing permissions
         if isinstance(error, commands.MissingPermissions):
             embed = discord.Embed(
-                title="ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Missing Permissions",
+                title="Missing Permissions",
                 description="You don't have permission to use this command.",
                 color=0xFF0000,
             )
@@ -736,7 +736,7 @@ class ModBot(commands.Bot):
         if isinstance(error, commands.BotMissingPermissions):
             missing = ", ".join(f"`{perm}`" for perm in error.missing_permissions)
             embed = discord.Embed(
-                title="ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Bot Missing Permissions",
+                title="Bot Missing Permissions",
                 description=f"I need these permissions: {missing}",
                 color=0xFF0000,
             )
@@ -745,7 +745,7 @@ class ModBot(commands.Bot):
         # Missing required argument
         if isinstance(error, commands.MissingRequiredArgument):
             embed = discord.Embed(
-                title="ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Missing Argument",
+                title="Missing Argument",
                 description=(
                     f"Missing required argument: `{error.param.name}`\n\n"
                     f"Use `{ctx.prefix}help {ctx.command}` for more info."
@@ -757,7 +757,7 @@ class ModBot(commands.Bot):
         # Bad argument
         if isinstance(error, commands.BadArgument):
             embed = discord.Embed(
-                title="ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Invalid Argument",
+                title="Invalid Argument",
                 description=f"Invalid argument provided.\n\n{error}",
                 color=0xFF0000,
             )
@@ -766,7 +766,7 @@ class ModBot(commands.Bot):
         # Command on cooldown
         if isinstance(error, commands.CommandOnCooldown):
             embed = discord.Embed(
-                title="ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â° Cooldown",
+                title="Cooldown",
                 description=f"Please wait {error.retry_after:.1f}s before using this command again.",
                 color=0xFF9900,
             )
@@ -775,7 +775,7 @@ class ModBot(commands.Bot):
         # User input error
         if isinstance(error, commands.UserInputError):
             embed = discord.Embed(
-                title="ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Invalid Input",
+                title="Invalid Input",
                 description=(
                     f"{error}\n\nUse `{ctx.prefix}help {ctx.command}` for usage info."
                 ),
@@ -786,7 +786,7 @@ class ModBot(commands.Bot):
         # Check failure
         if isinstance(error, commands.CheckFailure):
             embed = discord.Embed(
-                title="ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Check Failed",
+                title="Check Failed",
                 description="You cannot use this command here.",
                 color=0xFF0000,
             )
@@ -800,7 +800,7 @@ class ModBot(commands.Bot):
         
         # Send generic error message
         embed = discord.Embed(
-            title="ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Command Error",
+            title="Command Error",
             description=(
                 "An unexpected error occurred while executing this command.\n"
                 "The error has been logged."
@@ -1003,3 +1003,4 @@ if __name__ == "__main__":
     except Exception as e:
         logger.critical(f"Critical startup error: {e}", exc_info=True)
         sys.exit(1)
+

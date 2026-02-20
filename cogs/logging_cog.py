@@ -15,7 +15,7 @@ from utils.embeds import ModEmbed, Colors
 from utils.checks import is_admin
 from utils.cache import ChannelCache
 from utils.transcript import generate_html_transcript, EphemeralTranscriptView
-from config import Config
+from utils.logging import normalize_log_embed
 
 logger = logging.getLogger(__name__)
 
@@ -133,32 +133,8 @@ class Logging(commands.Cog):
             return False
         
         try:
-            # 1. THUMBNAIL: Priority = Existing -> Author Icon -> Guild Icon
-            try:
-                if not getattr(getattr(embed, "thumbnail", None), "url", None):
-                    author_icon = getattr(getattr(embed, "author", None), "icon_url", None)
-                    if author_icon:
-                        embed.set_thumbnail(url=author_icon)
-                    elif channel.guild.icon:
-                        embed.set_thumbnail(url=channel.guild.icon.url)
-            except Exception:
-                pass
-
-            # 2. BANNER: Always set the main image to the Server Banner (Guild > Config)
-            try:
-                banner_url = None
-                if channel.guild.banner:
-                    banner_url = channel.guild.banner.url
-                
-                if not banner_url:
-                    banner_url = (getattr(Config, "SERVER_BANNER_URL", "") or "").strip() or None
-                
-                if banner_url:
-                    embed.set_image(url=banner_url)
-            except Exception:
-                pass
-
-            await channel.send(embed=embed, use_v2=use_v2, view=view)
+            normalized = normalize_log_embed(channel, embed)
+            await channel.send(embed=normalized, use_v2=use_v2, view=view)
             return True
         except discord.Forbidden:
             logger.warning(f"Missing permissions to log in {channel.guild.name} #{channel.name}")

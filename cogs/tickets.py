@@ -354,7 +354,7 @@ class TicketCloseButton(ui.View):
         await asyncio.sleep(5)
         
         # Generate transcript
-        messages = [m async for m in interaction.channel.history(limit=500, oldest_first=True)]
+        messages = [m async for m in interaction.channel.history(limit=None, oldest_first=True)]
         transcript_file = generate_html_transcript(interaction.guild, interaction.channel, messages)
         transcript_file.seek(0)
         
@@ -456,7 +456,7 @@ class Tickets(commands.Cog):
         await asyncio.sleep(5)
         
         # Generate transcript
-        messages = [m async for m in interaction.channel.history(limit=500, oldest_first=True)]
+        messages = [m async for m in interaction.channel.history(limit=None, oldest_first=True)]
         transcript_file = generate_html_transcript(interaction.guild, interaction.channel, messages)
         transcript_file.seek(0)
         await self.bot.db.close_ticket(interaction.channel.id)
@@ -582,7 +582,7 @@ class Tickets(commands.Cog):
 
         await interaction.response.defer()
         
-        messages = [m async for m in interaction.channel.history(limit=500, oldest_first=True)]
+        messages = [m async for m in interaction.channel.history(limit=None, oldest_first=True)]
         transcript_file = generate_html_transcript(interaction.guild, interaction.channel, messages)
         transcript_file.seek(0)
         
@@ -745,7 +745,7 @@ class Tickets(commands.Cog):
         await asyncio.sleep(Config.TICKET_CLOSE_DELAY)
 
         # Generate transcript
-        messages = [m async for m in interaction.channel.history(limit=500, oldest_first=True)]
+        messages = [m async for m in interaction.channel.history(limit=None, oldest_first=True)]
         transcript_file = generate_html_transcript(interaction.guild, interaction.channel, messages)
         transcript_file.seek(0)
 

@@ -81,7 +81,8 @@ class Utility(commands.Cog):
                 content=message,
                 username=member.display_name,
                 avatar_url=member.display_avatar.url,
-                wait=True # Wait to ensure it sends before deleting
+                wait=True, # Wait to ensure it sends before deleting
+                use_v2=False,
             )
         except Exception as e:
             await ctx.send(f"❌ Failed to send mimic message: {e}", delete_after=5)

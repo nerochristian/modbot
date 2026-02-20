@@ -77,7 +77,7 @@ class Pin(commands.Cog):
         else:
             if len(content) > 2000:
                 content = content[:1997] + "..."
-            return await channel.send(content)
+            return await channel.send(content, use_v2=False)
 
     async def _bump_pin(self, channel: discord.abc.Messageable, pin: StickyPin) -> None:
         try:
