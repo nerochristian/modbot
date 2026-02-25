@@ -168,7 +168,8 @@ class ModEmbed:
             if longest < min_chars:
                 pad_line = status_embed_pad_line(min_chars - longest)
                 if pad_line:
-                    message = f"{message}\n{pad_line}"
+                    # Inline padding prevents the extra blank/gap line on mobile clients.
+                    message = f"{message}{pad_line}"
 
         return discord.Embed(description=message, color=color)
 
