@@ -1,0 +1,16 @@
+<svg width="64" height="64" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <!-- Shield -->
+  <path
+    d="M12 2L4 6V11C4 16 7.5 19.5 12 22C16.5 19.5 20 16 20 11V6L12 2Z"
+    fill="#EF4444"
+  />
+
+  <!-- X -->
+  <path
+    d="M9 9L15 15M15 9L9 15"
+    fill="none"
+    stroke="white"
+    stroke-width="2"
+    stroke-linecap="round"
+  />
+</svg>

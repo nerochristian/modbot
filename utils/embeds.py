@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from config import Config
+from utils.status_emojis import status_embed_pad_line
 
 _ZWS = "\u200b"
 _LOG_PAD_MARKER = _ZWS * 5
@@ -108,69 +109,118 @@ def force_log_embed_size(embed: discord.Embed, *, target_lines: Optional[int] = 
 class Colors:
     """Color constants for embeds"""
     ACCENT = getattr(Config, "EMBED_ACCENT_COLOR", Config.COLOR_EMBED)
-    SUCCESS = ACCENT
-    ERROR = ACCENT
-    WARNING = ACCENT
-    INFO = ACCENT
+    SUCCESS = 0x22C55E
+    ERROR = 0xEF4444
+    WARNING = 0xF59E0B
+    INFO = 0x2563EB
     MOD = ACCENT
     EMBED = ACCENT
-    PINK = ACCENT
-    GOLD = ACCENT
-    DARK_RED = ACCENT
+    PINK = 0xEC4899
+    GOLD = 0xF59E0B
+    DARK_RED = 0x991B1B
 
 
 class ModEmbed:
     """Pre-built embed templates for moderation actions"""
 
     @staticmethod
+    def _emoji(config_attr: str, fallback: str) -> str:
+        value = str(getattr(Config, config_attr, "") or "").strip()
+        return value or fallback
+
+    @staticmethod
+    def _clean_title(title: str) -> str:
+        cleaned = (title or "").strip()
+        # Keep mentions/user tags intact (e.g. "<@123> muted").
+        if cleaned.startswith("<@") or cleaned.startswith("@"):
+            return cleaned
+        while cleaned and not cleaned[0].isalnum():
+            cleaned = cleaned[1:].lstrip()
+        return cleaned or "Update"
+
+    @staticmethod
+    def _quote_description_lines(description: Optional[str]) -> str:
+        body = (description or "").strip()
+        if not body:
+            return ""
+        lines = [line.strip() for line in body.splitlines() if line.strip()]
+        return "\n".join(f"> {line}" for line in lines)
+
+    @staticmethod
+    def _status_embed(
+        *,
+        icon: str,
+        title: str,
+        description: Optional[str],
+        color: int,
+    ) -> discord.Embed:
+        header = f"{icon} **{ModEmbed._clean_title(title)}**"
+        quoted_body = ModEmbed._quote_description_lines(description)
+        message = header if not quoted_body else f"{header}\n{quoted_body}"
+
+        # Keep short status embeds from collapsing into tiny cards.
+        min_chars = max(0, int(getattr(Config, "STATUS_EMBED_MIN_WIDTH_CHARS", 32)))
+        if min_chars > 0:
+            longest = 0
+            for line in message.splitlines():
+                stripped = line.replace("**", "").replace("`", "")
+                longest = max(longest, len(stripped))
+            if longest < min_chars:
+                pad_line = status_embed_pad_line(min_chars - longest)
+                if pad_line:
+                    message = f"{message}\n{pad_line}"
+
+        return discord.Embed(description=message, color=color)
+
+    @staticmethod
     def success(title: str, description: Optional[str] = None) -> discord.Embed:
         """Green success embed"""
-        embed = discord. Embed(
-            title=f"✅ {title}",
+        return ModEmbed._status_embed(
+            icon=ModEmbed._emoji("EMOJI_SUCCESS", "\u2705"),
+            title=title,
             description=description,
             color=Colors.SUCCESS,
         )
-        return embed
 
     @staticmethod
     def error(title: str, description: Optional[str] = None) -> discord.Embed:
         """Red error embed"""
-        embed = discord.Embed(
-            title=f"❌ {title}",
+        return ModEmbed._status_embed(
+            icon=ModEmbed._emoji("EMOJI_ERROR", "\u274c"),
+            title=title,
             description=description,
-            color=Colors. ERROR,
+            color=Colors.ERROR,
         )
-        return embed
 
     @staticmethod
     def warning(title: str, description: Optional[str] = None) -> discord.Embed:
         """Orange warning embed"""
-        embed = discord. Embed(
-            title=f"⚠️ {title}",
+        return ModEmbed._status_embed(
+            icon=ModEmbed._emoji("EMOJI_WARNING", "\u26a0\ufe0f"),
+            title=title,
             description=description,
             color=Colors.WARNING,
         )
-        return embed
 
     @staticmethod
-    def info(title:  str, description: Optional[str] = None) -> discord.Embed:
+    def info(title: str, description: Optional[str] = None) -> discord.Embed:
         """Blue info embed"""
-        embed = discord.Embed(
-            title=f"ℹ️ {title}",
+        return ModEmbed._status_embed(
+            icon=ModEmbed._emoji("EMOJI_INFO", "\u2139\ufe0f"),
+            title=title,
             description=description,
             color=Colors.INFO,
         )
-        return embed
 
     @staticmethod
     def mod_action(title: str, description: Optional[str] = None) -> discord.Embed:
         """Purple moderation action embed"""
-        embed = discord. Embed(
-            title=f"🔨 {title}",
+        return ModEmbed._status_embed(
+            icon=ModEmbed._emoji("EMOJI_BAN", "\U0001f528"),
+            title=title,
             description=description,
             color=Colors.MOD,
         )
-        return embed
 
     @staticmethod
     def case(case_number: int, action: str, user, moderator, reason: str) -> discord.Embed:

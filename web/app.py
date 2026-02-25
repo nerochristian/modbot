@@ -230,6 +230,12 @@ async def guild_settings(request: web.Request) -> web.Response:
     icon_url = str(guild.icon.url) if guild.icon else "https://cdn.discordapp.com/embed/avatars/0.png"
     bot_member = guild.get_member(bot.user.id)
     bot_nick = bot_member.display_name if bot_member else bot.user.name
+    user = session["user"]
+    user_avatar = (
+        f"https://cdn.discordapp.com/avatars/{user['id']}/{user['avatar']}.png?size=64"
+        if user.get("avatar")
+        else "https://cdn.discordapp.com/embed/avatars/0.png"
+    )
 
     return _render_template(
         "guild.html",
@@ -238,6 +244,8 @@ async def guild_settings(request: web.Request) -> web.Response:
         guild_id=guild_id,
         member_count=guild.member_count or 0,
         bot_nickname=bot_nick,
+        user_name=user.get("username", "User"),
+        user_avatar=user_avatar,
     )
 
 

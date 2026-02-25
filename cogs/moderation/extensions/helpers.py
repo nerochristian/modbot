@@ -7,7 +7,8 @@ import json
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_bot_owner_id, get_owner_ids
-from utils.logging import normalize_log_embed, send_log_embed
+from utils.logging import send_log_embed
+from utils.status_emojis import apply_status_emoji_overrides
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +25,7 @@ class HelperCommands:
         """Send a response or followup depending on whether the interaction/context is already acknowledged."""
         if embed is not None:
             try:
-                target = source.channel if hasattr(source, "channel") else None
-                embed = normalize_log_embed(target, embed, include_banner=False)
+                embed = await apply_status_emoji_overrides(embed, getattr(source, "guild", None))
             except Exception:
                 pass
 
@@ -40,7 +40,12 @@ class HelperCommands:
                 )
             else:
                 # Context
-                return await source.reply(content=content, embed=embed, **kwargs)
+                return await source.reply(
+                    content=content,
+                    embed=embed,
+                    mention_author=False,
+                    **kwargs,
+                )
         except discord.HTTPException:
             # Fallback when the interaction state changed mid-execution.
             if isinstance(source, discord.Interaction):

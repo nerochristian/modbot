@@ -304,10 +304,22 @@ class ManagementCommands:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not timeout: {e}"), ephemeral=True)
 
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Mute", reason, human_duration)
-        
-        embed = await self.create_mod_embed(title="🔇 User Muted", user=user, moderator=moderator, reason=reason, color=Colors.WARNING, case_num=case_num, extra_fields={"Duration": human_duration})
-        await self._respond(source, embed=embed)
-        await self.log_action(guild, embed)
+
+        log_embed = await self.create_mod_embed(
+            title="🔇 User Muted",
+            user=user,
+            moderator=moderator,
+            reason=reason,
+            color=Colors.WARNING,
+            case_num=case_num,
+            extra_fields={"Duration": human_duration},
+        )
+        response_embed = ModEmbed.success(
+            f"{user.mention} muted",
+            f"Duration: {human_duration}",
+        )
+        await self._respond(source, embed=response_embed)
+        await self.log_action(guild, log_embed)
         
         dm_embed = discord.Embed(title=f"🔇 Muted in {guild.name}", description=f"**Reason:** {reason}\n**Duration:** {human_duration}", color=Colors.WARNING)
         await self.dm_user(user, dm_embed)
@@ -329,10 +341,18 @@ class ManagementCommands:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not unmute: {e}"), ephemeral=True)
             
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Unmute", reason)
-        
-        embed = await self.create_mod_embed(title="🔊 User Unmuted", user=user, moderator=moderator, reason=reason, color=Colors.SUCCESS, case_num=case_num)
-        await self._respond(source, embed=embed)
-        await self.log_action(guild, embed)
+
+        log_embed = await self.create_mod_embed(
+            title="🔊 User Unmuted",
+            user=user,
+            moderator=moderator,
+            reason=reason,
+            color=Colors.SUCCESS,
+            case_num=case_num,
+        )
+        response_embed = ModEmbed.success(f"{user.mention} unmuted")
+        await self._respond(source, embed=response_embed)
+        await self.log_action(guild, log_embed)
 
     # ==================== MASS ACTIONS ====================
 

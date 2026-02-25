@@ -21,6 +21,15 @@ def _parse_hex_color(value: str | None, default: int) -> int:
         return default
 
 
+def _parse_int(value: str | None, default: int) -> int:
+    if value is None:
+        return default
+    try:
+        return int(str(value).strip())
+    except Exception:
+        return default
+
+
 class Config:
     # Bot Token
     TOKEN = os.getenv('DISCORD_TOKEN')
@@ -74,19 +83,32 @@ class Config:
         "https://example.com/verification-tutorial.mp4",
     )
     
-    # Emojis
-    EMOJI_SUCCESS = "✅"
-    EMOJI_ERROR = "❌"
-    EMOJI_WARNING = "⚠️"
-    EMOJI_INFO = "ℹ️"
-    EMOJI_LOADING = "⏳"
-    EMOJI_LOCK = "🔒"
-    EMOJI_UNLOCK = "🔓"
-    EMOJI_BAN = "🔨"
-    EMOJI_KICK = "👢"
-    EMOJI_MUTE = "🔇"
-    EMOJI_WARN = "⚠️"
-    
+    # Emojis (can be unicode or custom emoji string like <:check:123456789012345678>)
+    # Note: Discord message text does not support raw SVG. Upload custom emojis to a
+    # server first, then set the env var to the emoji mention string.
+    EMOJI_SUCCESS = os.getenv("EMOJI_SUCCESS", "\u2705")
+    EMOJI_ERROR = os.getenv("EMOJI_ERROR", "\u274c")
+    EMOJI_WARNING = os.getenv("EMOJI_WARNING", "\u26a0\ufe0f")
+    EMOJI_INFO = os.getenv("EMOJI_INFO", "\u2139\ufe0f")
+    EMOJI_LOADING = os.getenv("EMOJI_LOADING", "\u23f3")
+    EMOJI_LOCK = os.getenv("EMOJI_LOCK", "\U0001f512")
+    EMOJI_UNLOCK = os.getenv("EMOJI_UNLOCK", "\U0001f513")
+    EMOJI_BAN = os.getenv("EMOJI_BAN", "\U0001f528")
+    EMOJI_KICK = os.getenv("EMOJI_KICK", "\U0001f462")
+    EMOJI_MUTE = os.getenv("EMOJI_MUTE", "\U0001f507")
+    EMOJI_WARN = os.getenv("EMOJI_WARN", "\u26a0\ufe0f")
+
+    # Auto-create per-guild custom status emojis from local assets when needed.
+    AUTO_CREATE_STATUS_EMOJIS = str(os.getenv("AUTO_CREATE_STATUS_EMOJIS", "1")).strip().lower() in {"1", "true", "yes", "on"}
+    STATUS_SUCCESS_EMOJI_NAME = os.getenv("STATUS_SUCCESS_EMOJI_NAME", "mod_success")
+    STATUS_ERROR_EMOJI_NAME = os.getenv("STATUS_ERROR_EMOJI_NAME", "mod_error")
+    STATUS_EMOJI_CREATE_REASON = os.getenv(
+        "STATUS_EMOJI_CREATE_REASON",
+        "Auto-create status emojis for moderation responses.",
+    )
+
+    # Status embed visual floor (helps avoid tiny embeds on short messages).
+    STATUS_EMBED_MIN_WIDTH_CHARS = _parse_int(os.getenv("STATUS_EMBED_MIN_WIDTH_CHARS"), 32)
     # Limits
     MAX_WARNINGS = 5
     MAX_MESSAGE_LENGTH = 2000
@@ -108,3 +130,4 @@ class Config:
     DEFAULT_MUTE_DURATION = 3600
     DEFAULT_CAPS_PERCENTAGE = 70
     DEFAULT_MAX_MENTIONS = 5
+

@@ -19,6 +19,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from config import Config
+from utils.embeds import ModEmbed
+from utils.status_emojis import apply_status_emoji_overrides
 
 # Load environment variables
 load_dotenv()
@@ -69,14 +71,16 @@ try:
 except ImportError:
     pass
 
-# ==================== GLOBAL EMBED COLOR ENFORCEMENT ====================
-# Forces all embeds (side color) to use Config.EMBED_ACCENT_COLOR.
+# ==================== GLOBAL EMBED DEFAULT COLOR ====================
+# Applies Config.EMBED_ACCENT_COLOR only when no explicit embed color is set.
 _ORIGINAL_EMBED_INIT = discord.Embed.__init__
 
 def _embed_init_force_accent(self, *args, **kwargs):
-    kwargs.pop("colour", None)
-    kwargs.pop("timestamp", None)
-    kwargs["color"] = getattr(Config, "EMBED_ACCENT_COLOR", 0x5865F2)
+    explicit_colour = kwargs.pop("colour", None)
+    if "color" not in kwargs and explicit_colour is not None:
+        kwargs["color"] = explicit_colour
+    if "color" not in kwargs or kwargs["color"] is None:
+        kwargs["color"] = getattr(Config, "EMBED_ACCENT_COLOR", 0x5865F2)
     return _ORIGINAL_EMBED_INIT(self, *args, **kwargs)
 
 discord.Embed.__init__ = _embed_init_force_accent
@@ -216,7 +220,7 @@ logger = setup_logging()
 try:
     from database import Database
     from utils.cache import SnipeCache, PrefixCache
-    from utils.components_v2 import patch_components_v2
+    from utils.components_v2 import ComponentsV2Config, patch_components_v2
 except ImportError as e:
     logger.critical(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Failed to import required modules: {e}")
     sys.exit(1)
@@ -228,8 +232,9 @@ try:
 except ImportError:
     _DASHBOARD_AVAILABLE = False
 
-# Enable Discord Components v2 layouts (converts embeds into LayoutView cards).
+# Install Components v2 patching, but keep classic v1 embeds as default.
 patch_components_v2()
+ComponentsV2Config.disable()
 
 
 def _env_enabled(var_name: str, default: bool = False) -> bool:
@@ -358,6 +363,8 @@ class ModBot(commands.Bot):
         self.commands_used: int = 0
         self.messages_seen: int = 0
         self.errors_caught: int = 0
+        self.loading_emoji: str = getattr(Config, "EMOJI_LOADING", "\u23f3")
+        self._prefix_loading_messages: dict[int, discord.Message] = {}
         
         # Internal flags
         self._ready_once: bool = False
@@ -407,6 +414,42 @@ class ModBot(commands.Bot):
                 prefix = ","
         
         return commands.when_mentioned_or(prefix)(self, message)
+
+    async def _send_prefix_loading(self, ctx: commands.Context) -> None:
+        """Send a temporary loading marker for prefix commands."""
+        message = getattr(ctx, "message", None)
+        if not message:
+            return
+        if message.id in self._prefix_loading_messages:
+            return
+
+        loading_message: Optional[discord.Message] = None
+        try:
+            loading_message = await ctx.reply(self.loading_emoji, mention_author=False)
+        except Exception:
+            try:
+                loading_message = await ctx.send(self.loading_emoji)
+            except Exception:
+                loading_message = None
+
+        if loading_message:
+            self._prefix_loading_messages[message.id] = loading_message
+
+    async def _clear_prefix_loading(self, message_id: Optional[int]) -> None:
+        """Delete a previously sent loading marker."""
+        if message_id is None:
+            return
+        loading_message = self._prefix_loading_messages.pop(message_id, None)
+        if loading_message is None:
+            return
+        try:
+            await loading_message.delete()
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            pass
+
+    async def _clear_prefix_loading_for_ctx(self, ctx: commands.Context) -> None:
+        message = getattr(ctx, "message", None)
+        await self._clear_prefix_loading(getattr(message, "id", None))
     
     async def setup_hook(self):
         """Load cogs and sync slash commands"""
@@ -533,7 +576,7 @@ class ModBot(commands.Bot):
     async def on_tree_error(self, interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
         """Global error handler for application commands"""
         self.errors_caught += 1
-        
+
         # Handle Missing Permissions
         if isinstance(error, discord.app_commands.MissingPermissions):
             missing = [p.replace('_', ' ').replace('guild', 'server').title() for p in error.missing_permissions]
@@ -541,11 +584,10 @@ class ModBot(commands.Bot):
                 fmt = f"{', '.join(missing[:-1])}, and {missing[-1]}"
             else:
                 fmt = " and ".join(missing)
-                
-            embed = discord.Embed(
-                title="ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â« Permission Denied",
-                description=f"You are missing the following permission(s) to run this command:\n**{fmt}**",
-                color=0xFF0000
+
+            embed = ModEmbed.error(
+                "Permission Denied",
+                f"You are missing the following permission(s) to run this command:\n**{fmt}**",
             )
             try:
                 if interaction.response.is_done():
@@ -559,22 +601,22 @@ class ModBot(commands.Bot):
         # Handle other errors (BotMissingPermissions, etc.)
         if isinstance(error, discord.app_commands.BotMissingPermissions):
             missing = [p.replace('_', ' ').replace('guild', 'server').title() for p in error.missing_permissions]
-            embed = discord.Embed(
-                title="ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â I Need Permissions",
-                description=f"I am missing the following permission(s) to do that:\n**{', '.join(missing)}**",
-                color=0xFF0000
+            embed = ModEmbed.error(
+                "I Need Permissions",
+                f"I am missing the following permission(s) to do that:\n**{', '.join(missing)}**",
             )
             try:
                 if interaction.response.is_done():
                     await interaction.followup.send(embed=embed, ephemeral=True)
                 else:
                     await interaction.response.send_message(embed=embed, ephemeral=True)
-            except: pass
+            except Exception:
+                pass
             return
-            
+
         # Generic fallback
         logger.error(f"Ignoring exception in command '{interaction.command.name if interaction.command else 'Unknown'}': {error}", exc_info=error)
-    
+
     async def _check_global_blacklist(self, interaction: discord.Interaction) -> bool:
         """Global check for application commands - blocks blacklisted users"""
         # Allow owners to bypass blacklist (just in case they tested it on themselves)
@@ -683,7 +725,7 @@ class ModBot(commands.Bot):
         """Handle incoming messages"""
         if message.author.bot:
             return
-        
+
         # Check blacklist for prefix commands
         if message.author.id in self.blacklist_cache and message.author.id not in self.owner_ids:
             # Check if this looks like a command
@@ -693,127 +735,154 @@ class ModBot(commands.Bot):
                     prefix = ","
             else:
                 prefix = "!"
-            
+
             if message.content.startswith(prefix) or message.content.startswith(f"<@{self.user.id}>") or message.content.startswith(f"<@!{self.user.id}>"):
-                await message.channel.send(f"{message.author.mention} ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â« **Blacklisted** - You are blacklisted from using this bot.")
+                await message.channel.send(
+                    f"{message.author.mention} \u274c **Blacklisted** - You are blacklisted from using this bot."
+                )
                 return
-        
+
         self.messages_seen += 1
-        await self.process_commands(message)
-    
+
+        ctx = await self.get_context(message)
+        if ctx.command is None:
+            invoked = (ctx.invoked_with or "").strip()
+            if invoked:
+                loading_message: Optional[discord.Message] = None
+                try:
+                    loading_message = await message.reply(self.loading_emoji, mention_author=False)
+                except Exception:
+                    try:
+                        loading_message = await message.channel.send(self.loading_emoji)
+                    except Exception:
+                        loading_message = None
+
+                embed = ModEmbed.error(
+                    "Command not found",
+                    f"There's no command called `{invoked}`.",
+                )
+                try:
+                    embed = await apply_status_emoji_overrides(embed, message.guild)
+                except Exception:
+                    pass
+                if loading_message is not None:
+                    try:
+                        await loading_message.edit(content=None, embed=embed)
+                    except Exception:
+                        try:
+                            await loading_message.delete()
+                        except Exception:
+                            pass
+                        try:
+                            await message.reply(embed=embed, mention_author=False)
+                        except Exception:
+                            await message.channel.send(embed=embed)
+                else:
+                    try:
+                        await message.reply(embed=embed, mention_author=False)
+                    except Exception:
+                        await message.channel.send(embed=embed)
+            return
+
+        await self.invoke(ctx)
+
     async def on_interaction(self, interaction: discord.Interaction):
         """Handle interactions - check blacklist for slash commands"""
         # Only check application commands
         if interaction.type != discord.InteractionType.application_command:
             return
-        
+
         pass
-    
+
     async def on_command(self, ctx: commands.Context):
         """Track command usage"""
         self.commands_used += 1
         location = ctx.guild.name if ctx.guild else "DMs"
-        logger.info(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â‚¬Å¾Ã‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ {ctx.author} used '{ctx.command.name}' in {location}")
-    
+        logger.info(f"\U0001f4ac {ctx.author} used '{ctx.command.name}' in {location}")
+        await self._send_prefix_loading(ctx)
+
+    async def on_command_completion(self, ctx: commands.Context):
+        """Clear loading marker once a command completes successfully."""
+        await self._clear_prefix_loading_for_ctx(ctx)
+
     async def on_command_error(self, ctx: commands.Context, error: Exception):
         """Global command error handler"""
+        await self._clear_prefix_loading_for_ctx(ctx)
         self.errors_caught += 1
-        
-        # Ignore command not found
+
+        async def _send_error_response(embed: discord.Embed):
+            if ctx.guild is not None:
+                try:
+                    embed = await apply_status_emoji_overrides(embed, ctx.guild)
+                except Exception:
+                    pass
+            try:
+                return await ctx.reply(embed=embed, mention_author=False)
+            except Exception:
+                return await ctx.send(embed=embed)
+
         if isinstance(error, commands.CommandNotFound):
-            return
-        
-        # Missing permissions
+            invoked = (ctx.invoked_with or "unknown").strip()
+            embed = ModEmbed.error("Command not found", f"There's no command called `{invoked}`.")
+            return await _send_error_response(embed)
+
         if isinstance(error, commands.MissingPermissions):
-            embed = discord.Embed(
-                title="Missing Permissions",
-                description="You don't have permission to use this command.",
-                color=0xFF0000,
-            )
-            return await ctx.send(embed=embed, delete_after=10)
-        
-        # Bot missing permissions
+            embed = ModEmbed.error("Missing permissions", "You don't have permission to use this command.")
+            return await _send_error_response(embed)
+
         if isinstance(error, commands.BotMissingPermissions):
             missing = ", ".join(f"`{perm}`" for perm in error.missing_permissions)
-            embed = discord.Embed(
-                title="Bot Missing Permissions",
-                description=f"I need these permissions: {missing}",
-                color=0xFF0000,
-            )
-            return await ctx.send(embed=embed)
-        
-        # Missing required argument
+            embed = ModEmbed.error("Bot missing permissions", f"I need these permissions: {missing}")
+            return await _send_error_response(embed)
+
         if isinstance(error, commands.MissingRequiredArgument):
-            embed = discord.Embed(
-                title="Missing Argument",
-                description=(
+            embed = ModEmbed.error(
+                "Missing argument",
+                (
                     f"Missing required argument: `{error.param.name}`\n\n"
                     f"Use `{ctx.prefix}help {ctx.command}` for more info."
                 ),
-                color=0xFF0000,
             )
-            return await ctx.send(embed=embed, delete_after=10)
-        
-        # Bad argument
+            return await _send_error_response(embed)
+
         if isinstance(error, commands.BadArgument):
-            embed = discord.Embed(
-                title="Invalid Argument",
-                description=f"Invalid argument provided.\n\n{error}",
-                color=0xFF0000,
-            )
-            return await ctx.send(embed=embed, delete_after=10)
-        
-        # Command on cooldown
+            embed = ModEmbed.error("Invalid argument", f"Invalid argument provided.\n\n{error}")
+            return await _send_error_response(embed)
+
         if isinstance(error, commands.CommandOnCooldown):
-            embed = discord.Embed(
-                title="Cooldown",
-                description=f"Please wait {error.retry_after:.1f}s before using this command again.",
-                color=0xFF9900,
+            embed = ModEmbed.warning(
+                "Cooldown",
+                f"Please wait {error.retry_after:.1f}s before using this command again.",
             )
-            return await ctx.send(embed=embed, delete_after=5)
-        
-        # User input error
+            return await _send_error_response(embed)
+
         if isinstance(error, commands.UserInputError):
-            embed = discord.Embed(
-                title="Invalid Input",
-                description=(
-                    f"{error}\n\nUse `{ctx.prefix}help {ctx.command}` for usage info."
-                ),
-                color=0xFF0000,
+            embed = ModEmbed.error(
+                "Invalid input",
+                f"{error}\n\nUse `{ctx.prefix}help {ctx.command}` for usage info.",
             )
-            return await ctx.send(embed=embed, delete_after=10)
-        
-        # Check failure
+            return await _send_error_response(embed)
+
         if isinstance(error, commands.CheckFailure):
-            embed = discord.Embed(
-                title="Check Failed",
-                description="You cannot use this command here.",
-                color=0xFF0000,
-            )
-            return await ctx.send(embed=embed, delete_after=10)
-        
-        # Log unexpected errors
+            embed = ModEmbed.error("Check failed", "You cannot use this command here.")
+            return await _send_error_response(embed)
+
         logger.error(
             f"Command error in '{ctx.command}': {type(error).__name__}: {error}",
             exc_info=error,
         )
-        
-        # Send generic error message
-        embed = discord.Embed(
-            title="Command Error",
-            description=(
-                "An unexpected error occurred while executing this command.\n"
-                "The error has been logged."
-            ),
-            color=0xFF0000,
+
+        embed = ModEmbed.error(
+            "Command error",
+            "An unexpected error occurred while executing this command.\nThe error has been logged.",
         )
         embed.set_footer(text=f"Error: {type(error).__name__}")
-        
+
         try:
-            await ctx.send(embed=embed)
+            await _send_error_response(embed)
         except Exception:
             pass
-    
+
     async def on_message_delete(self, message: discord.Message):
         """Cache deleted messages for snipe command (with TTL)"""
         if message.author.bot or not message.guild:

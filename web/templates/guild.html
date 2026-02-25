@@ -4,34 +4,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{guild_name}} — ModBot</title>
+    <title>{{guild_name}} - ModBot</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+    <link
+        href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap"
         rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/panel-theme.css">
 </head>
 
 <body class="has-sidebar">
-    <!-- Top Navbar -->
-    <nav class="topbar">
+        <!-- Top Navbar -->
+    <nav class="topbar sapphire-topbar">
         <div class="topbar-left">
-            <button class="sidebar-toggle" onclick="document.body.classList.toggle('sidebar-collapsed')"
-                title="Toggle sidebar">☰</button>
-            <div class="logo-icon">🛡️</div>
-            <span class="logo-text">ModBot</span>
-        </div>
-        <div class="topbar-guild">
-            <img src="{{guild_icon}}" alt="" class="topbar-guild-icon">
-            <span>{{guild_name}}</span>
+            <button class="sidebar-toggle" onclick="toggleSidebar()" title="Toggle sidebar">&#9776;</button>
+            <div class="sapphire-brand">
+                <div class="logo-icon">MB</div>
+                <span class="logo-text">Sapphire</span>
+                <span class="server-chip">text</span>
+            </div>
         </div>
         <div class="topbar-right">
-            <a href="/dashboard" class="btn btn-ghost btn-sm">← Servers</a>
+            <a href="/dashboard" class="btn btn-ghost btn-sm">Servers</a>
+            <div class="sapphire-user">
+                <img src="{{user_avatar}}" alt="{{user_name}}" class="topbar-guild-icon">
+                <span>{{user_name}}</span>
+            </div>
             <a href="/logout" class="btn btn-ghost btn-sm">Logout</a>
         </div>
     </nav>
 
     <!-- Sidebar -->
-    <aside class="sidebar" id="sidebar">
+    <aside class="sidebar sapphire-sidebar" id="sidebar">
+        <div class="sidebar-controls">
+            <a href="/dashboard" class="mini-action icon-only" title="Back to servers">Home</a>
+            <button class="mini-action fetch-action" onclick="init()">Fetch roles/channels</button>
+        </div>
+
+        <div class="changelog-card">
+            <div class="changelog-head">
+                <span>CHANGELOG 09/24</span>
+                <button type="button" aria-label="Dismiss" class="changelog-close">&times;</button>
+            </div>
+            <h4><span class="badge-new">NEW</span> JoinGuard &amp; Randomized Welcome Messages</h4>
+            <p>You can now automatically take actions against suspicious users and send welcome messages randomly.</p>
+            <button class="changelog-link">View changelog</button>
+        </div>
+
         <div class="sidebar-header">
             <img src="{{guild_icon}}" alt="" class="sidebar-guild-icon">
             <div class="sidebar-guild-info">
@@ -39,52 +58,49 @@
                 <span>{{member_count}} members</span>
             </div>
         </div>
+
         <nav class="sidebar-nav">
-            <a class="nav-item active" data-section="bot-settings" onclick="switchSection('bot-settings')">
-                <span class="nav-icon">⚙️</span> Bot Settings
+            <a class="nav-item" data-section="bot-settings" onclick="switchSection('bot-settings')">
+                <span class="nav-icon">&#9881;</span> General Settings
             </a>
-            <div class="nav-divider"></div>
-            <span class="nav-label">AUTOMOD</span>
             <a class="nav-item" data-section="automod" onclick="switchSection('automod')">
-                <span class="nav-icon">🛡️</span> AutoMod
+                <span class="nav-icon">AM</span> Auto Moderation <span class="item-pill">NEW</span>
             </a>
-            <div class="nav-divider"></div>
-            <span class="nav-label">MANAGEMENT</span>
+            <a class="nav-item active" data-section="moderation" onclick="switchSection('moderation')">
+                <span class="nav-icon">MOD</span> Moderation
+            </a>
             <a class="nav-item" data-section="logging" onclick="switchSection('logging')">
-                <span class="nav-icon">📝</span> Logging
-            </a>
-            <a class="nav-item" data-section="moderation" onclick="switchSection('moderation')">
-                <span class="nav-icon">🔨</span> Moderation
+                <span class="nav-icon">LOG</span> Logging
             </a>
             <a class="nav-item" data-section="roles" onclick="switchSection('roles')">
-                <span class="nav-icon">👥</span> Roles
+                <span class="nav-icon">ROL</span> Immune Roles
             </a>
             <div class="nav-divider"></div>
             <span class="nav-label">FEATURES</span>
             <a class="nav-item" data-section="voice" onclick="switchSection('voice')">
-                <span class="nav-icon">🎤</span> Voice
+                <span class="nav-icon">VOC</span> Voice
             </a>
             <a class="nav-item" data-section="tickets" onclick="switchSection('tickets')">
-                <span class="nav-icon">🎫</span> Tickets
+                <span class="nav-icon">TKT</span> Tickets
             </a>
             <a class="nav-item" data-section="antiraid" onclick="switchSection('antiraid')">
-                <span class="nav-icon">🚨</span> Anti-Raid
+                <span class="nav-icon">ARD</span> Anti-Raid
             </a>
             <a class="nav-item" data-section="verification" onclick="switchSection('verification')">
-                <span class="nav-icon">✅</span> Verification
+                <span class="nav-icon">VER</span> Verification
             </a>
         </nav>
     </aside>
 
     <!-- Main Content -->
-    <main class="main-content" id="mainContent">
+    <main class="main-content panel-shell" id="mainContent">
         <!-- Toast -->
         <div class="toast" id="toast"></div>
 
-        <!-- ═══ BOT SETTINGS ═══ -->
-        <section class="content-section active" id="sec-bot-settings">
+        <!-- BOT SETTINGS -->
+        <section class="content-section" id="sec-bot-settings">
             <div class="section-title-bar">
-                <h1>⚙️ Bot Settings</h1>
+                <h1>Bot Settings</h1>
                 <span class="section-badge">General</span>
             </div>
             <div class="panel-row">
@@ -123,17 +139,17 @@
             </div>
         </section>
 
-        <!-- ═══ AUTOMOD ═══ -->
+        <!-- AUTOMOD -->
         <section class="content-section" id="sec-automod">
             <div class="section-title-bar">
-                <h1>🛡️ AutoMod</h1>
+                <h1>AutoMod</h1>
                 <span class="section-badge">Filters</span>
             </div>
             <div class="filter-grid" id="filterGrid">
                 <!-- JS will generate filter cards -->
             </div>
             <div class="panel glass" style="margin-top:1.5rem">
-                <h2>🚫 Bad Words <span class="list-count" id="badwordCount">0</span></h2>
+                <h2>Bad Words <span class="list-count" id="badwordCount">0</span></h2>
                 <div class="list-input-row">
                     <input type="text" placeholder="Add words (comma-separated)" id="badwordInput" class="input-field">
                     <button class="btn btn-primary btn-sm" onclick="addToList('badwords')">Add</button>
@@ -141,7 +157,7 @@
                 <div class="tag-list" id="badwordTags"></div>
             </div>
             <div class="panel glass" style="margin-top:1rem">
-                <h2>🌐 Whitelisted Domains <span class="list-count" id="domainCount">0</span></h2>
+                <h2>Whitelisted Domains <span class="list-count" id="domainCount">0</span></h2>
                 <div class="list-input-row">
                     <input type="text" placeholder="Add domains (comma-separated)" id="domainInput" class="input-field">
                     <button class="btn btn-primary btn-sm" onclick="addToList('domains')">Add</button>
@@ -150,58 +166,58 @@
             </div>
         </section>
 
-        <!-- ═══ LOGGING ═══ -->
+        <!-- LOGGING -->
         <section class="content-section" id="sec-logging">
             <div class="section-title-bar">
-                <h1>📝 Logging</h1>
+                <h1>Logging</h1>
                 <span class="section-badge">Channels</span>
             </div>
             <p class="section-desc">Configure which channels receive different types of log messages.</p>
             <div class="logging-grid">
                 <div class="log-card glass">
-                    <div class="log-card-header"><span class="log-icon">🔨</span>
+                    <div class="log-card-header"><span class="log-icon">MOD</span>
                         <h3>Mod Log</h3>
                     </div>
                     <p>Ban, kick, mute, warn actions</p>
                     <select data-key="log_channel_mod" class="input-field log-select"></select>
                 </div>
                 <div class="log-card glass">
-                    <div class="log-card-header"><span class="log-icon">📋</span>
+                    <div class="log-card-header"><span class="log-icon">AUD</span>
                         <h3>Audit Log</h3>
                     </div>
                     <p>Channel, role, server changes</p>
                     <select data-key="log_channel_audit" class="input-field log-select"></select>
                 </div>
                 <div class="log-card glass">
-                    <div class="log-card-header"><span class="log-icon">💬</span>
+                    <div class="log-card-header"><span class="log-icon">MSG</span>
                         <h3>Message Log</h3>
                     </div>
                     <p>Edits, deletes, bulk deletes</p>
                     <select data-key="log_channel_message" class="input-field log-select"></select>
                 </div>
                 <div class="log-card glass">
-                    <div class="log-card-header"><span class="log-icon">🎤</span>
+                    <div class="log-card-header"><span class="log-icon">VOC</span>
                         <h3>Voice Log</h3>
                     </div>
                     <p>Join, leave, move, mute events</p>
                     <select data-key="log_channel_voice" class="input-field log-select"></select>
                 </div>
                 <div class="log-card glass">
-                    <div class="log-card-header"><span class="log-icon">🛡️</span>
+                    <div class="log-card-header"><span class="log-icon">AMD</span>
                         <h3>AutoMod Log</h3>
                     </div>
                     <p>Filter triggers and actions</p>
                     <select data-key="log_channel_automod" class="input-field log-select"></select>
                 </div>
                 <div class="log-card glass">
-                    <div class="log-card-header"><span class="log-icon">🚩</span>
+                    <div class="log-card-header"><span class="log-icon">RPT</span>
                         <h3>Report Log</h3>
                     </div>
                     <p>User reports</p>
                     <select data-key="log_channel_report" class="input-field log-select"></select>
                 </div>
                 <div class="log-card glass">
-                    <div class="log-card-header"><span class="log-icon">🎫</span>
+                    <div class="log-card-header"><span class="log-icon">TKT</span>
                         <h3>Ticket Log</h3>
                     </div>
                     <p>Ticket open/close/claim</p>
@@ -210,12 +226,74 @@
             </div>
         </section>
 
-        <!-- ═══ MODERATION ═══ -->
-        <section class="content-section" id="sec-moderation">
-            <div class="section-title-bar">
-                <h1>🔨 Moderation</h1>
-                <span class="section-badge">Cases</span>
+        <!-- MODERATION -->
+        <section class="content-section active" id="sec-moderation">
+            <div class="section-title-bar sapphire-title">
+                <h1>Moderation</h1>
+                <span class="section-badge">Panel</span>
             </div>
+            <p class="section-desc sapphire-desc">Manage cases, reports, punishment defaults, and moderation automation.</p>
+
+            <div class="mod-top-grid">
+                <article class="mod-feature-card glass">
+                    <div class="mod-feature-icon">CA</div>
+                    <div>
+                        <h3>Cases</h3>
+                        <p>Manage all ban, kick, mute and warn cases.</p>
+                    </div>
+                    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('casesPanel').scrollIntoView({behavior:'smooth'})">View cases</button>
+                </article>
+                <article class="mod-feature-card glass">
+                    <div class="mod-feature-icon">RP</div>
+                    <div>
+                        <h3>User reports</h3>
+                        <p>Update this server's user report configuration.</p>
+                    </div>
+                    <button class="btn btn-primary btn-sm">Set up</button>
+                </article>
+            </div>
+
+            <div class="feature-rows">
+                <div class="feature-row glass">
+                    <div>
+                        <h3>Appeals</h3>
+                        <p>Create custom forms for users to appeal punishments.</p>
+                    </div>
+                    <button class="row-arrow" type="button" onclick="openAppealsModal()">&rsaquo;</button>
+                </div>
+                <div class="feature-row glass">
+                    <div>
+                        <h3>Message histories</h3>
+                        <p>View and share generated message histories of users.</p>
+                    </div>
+                    <button class="row-arrow" type="button">&rsaquo;</button>
+                </div>
+                <div class="feature-row glass">
+                    <div>
+                        <h3>Punish settings</h3>
+                        <p>Edit default ban, kick, mute and warn actions.</p>
+                    </div>
+                    <button class="row-arrow" type="button" onclick="document.getElementById('warningThresholds').scrollIntoView({behavior:'smooth'})">&rsaquo;</button>
+                </div>
+                <div class="feature-row glass">
+                    <div>
+                        <h3>Immune roles</h3>
+                        <p>Set roles that are immune to moderation actions.</p>
+                    </div>
+                    <button class="row-arrow" type="button" onclick="switchSection('roles')">&rsaquo;</button>
+                </div>
+                <div class="feature-row feature-row-toggle glass">
+                    <div>
+                        <h3>User notifications</h3>
+                        <p>Toggle direct messages for punishments.</p>
+                    </div>
+                    <label class="toggle">
+                        <input type="checkbox" data-key="automod_notify_users">
+                        <span class="toggle-slider"></span>
+                    </label>
+                </div>
+            </div>
+
             <div class="stats-row" id="statsRow">
                 <div class="stat-card glass">
                     <span class="stat-number" id="statCases">0</span>
@@ -234,7 +312,8 @@
                     <span class="stat-label">Tickets</span>
                 </div>
             </div>
-            <div class="panel glass" style="margin-top:1.5rem">
+
+            <div class="panel glass" id="casesPanel" style="margin-top:1.5rem">
                 <h2>Recent Cases</h2>
                 <div class="actions-table-wrap">
                     <table class="data-table">
@@ -256,14 +335,14 @@
                     </table>
                 </div>
             </div>
-            <div class="panel glass" style="margin-top:1.5rem">
-                <h2>⚠️ Warning Thresholds</h2>
-                <p class="section-desc">Automatically punish users when they reach a certain number of warnings (from
-                    both manual warns and AutoMod).</p>
+
+            <div class="panel glass" id="warningThresholds" style="margin-top:1.5rem">
+                <h2>Warning Thresholds</h2>
+                <p class="section-desc">Automatically punish users when they reach warning limits from manual warns and AutoMod.</p>
                 <div class="settings-grid cols-2">
                     <div class="setting-card">
                         <div class="setting-header">
-                            <span class="setting-icon">⚠️</span>
+                            <span class="setting-icon">TH</span>
                             <div>
                                 <h3>Enable Thresholds</h3>
                                 <p>Auto-punish at X warnings</p>
@@ -275,15 +354,15 @@
                         </label>
                     </div>
                     <div class="input-group">
-                        <label>🔇 Mute at <span class="hint">(warnings)</span></label>
+                        <label>Mute at <span class="hint">(warnings)</span></label>
                         <input type="number" data-key="warn_threshold_mute" min="1" max="50" class="input-field">
                     </div>
                     <div class="input-group">
-                        <label>👢 Kick at <span class="hint">(warnings)</span></label>
+                        <label>Kick at <span class="hint">(warnings)</span></label>
                         <input type="number" data-key="warn_threshold_kick" min="1" max="50" class="input-field">
                     </div>
                     <div class="input-group">
-                        <label>🔨 Ban at <span class="hint">(warnings)</span></label>
+                        <label>Ban at <span class="hint">(warnings)</span></label>
                         <input type="number" data-key="warn_threshold_ban" min="1" max="50" class="input-field">
                     </div>
                     <div class="input-group">
@@ -294,23 +373,23 @@
             </div>
         </section>
 
-        <!-- ═══ ROLES ═══ -->
+        <!-- ROLES -->
         <section class="content-section" id="sec-roles">
             <div class="section-title-bar">
-                <h1>👥 Roles</h1>
+                <h1>Roles</h1>
                 <span class="section-badge">Configuration</span>
             </div>
             <p class="section-desc">Assign special roles used by the bot's features.</p>
             <div class="roles-grid">
                 <div class="role-card glass">
-                    <div class="role-header"><span>🔇</span>
+                    <div class="role-header"><span>MR</span>
                         <h3>Mute Role</h3>
                     </div>
                     <p>Applied to muted users</p>
                     <select data-key="mute_role" class="input-field role-select" id="muteRoleSelect"></select>
                 </div>
                 <div class="role-card glass">
-                    <div class="role-header"><span>🔓</span>
+                    <div class="role-header"><span>BP</span>
                         <h3>Bypass Role</h3>
                     </div>
                     <p>Bypasses all AutoMod filters</p>
@@ -318,7 +397,7 @@
                         id="bypassRoleSelect"></select>
                 </div>
                 <div class="role-card glass">
-                    <div class="role-header"><span>🔒</span>
+                    <div class="role-header"><span>QR</span>
                         <h3>Quarantine Role</h3>
                     </div>
                     <p>Restricts suspicious users</p>
@@ -326,46 +405,46 @@
                         id="quarantineRoleSelect"></select>
                 </div>
                 <div class="role-card glass">
-                    <div class="role-header"><span>🛠️</span>
+                    <div class="role-header"><span>MG</span>
                         <h3>Manager Role</h3>
                     </div>
                     <p>Can configure bot settings</p>
                     <select data-key="manager_role" class="input-field role-select" id="managerRoleSelect"></select>
                 </div>
             </div>
-            <h2 style="margin-top:1.5rem">🏷️ Hierarchy Roles</h2>
+            <h2 style="margin-top:1.5rem">Hierarchy Roles</h2>
             <p class="section-desc">Define your server's staff hierarchy. These roles determine command permissions.</p>
             <div class="roles-grid">
                 <div class="role-card glass">
-                    <div class="role-header"><span>👑</span>
+                    <div class="role-header"><span>OW</span>
                         <h3>Owner Role</h3>
                     </div>
                     <p>Full access to all commands</p>
                     <select data-key="owner_role" class="input-field role-select"></select>
                 </div>
                 <div class="role-card glass">
-                    <div class="role-header"><span>⚡</span>
+                    <div class="role-header"><span>AD</span>
                         <h3>Admin Role</h3>
                     </div>
                     <p>Manage settings and moderation</p>
                     <select data-key="admin_role" class="input-field role-select"></select>
                 </div>
                 <div class="role-card glass">
-                    <div class="role-header"><span>🛡️</span>
+                    <div class="role-header"><span>MD</span>
                         <h3>Moderator Role</h3>
                     </div>
                     <p>Moderation commands access</p>
                     <select data-key="moderator_role" class="input-field role-select"></select>
                 </div>
                 <div class="role-card glass">
-                    <div class="role-header"><span>🤝</span>
+                    <div class="role-header"><span>HP</span>
                         <h3>Helper Role</h3>
                     </div>
                     <p>Limited moderation access</p>
                     <select data-key="helper_role" class="input-field role-select"></select>
                 </div>
                 <div class="role-card glass">
-                    <div class="role-header"><span>✅</span>
+                    <div class="role-header"><span>WL</span>
                         <h3>Whitelisted Role</h3>
                     </div>
                     <p>Bypasses certain restrictions</p>
@@ -374,16 +453,16 @@
             </div>
         </section>
 
-        <!-- ═══ VOICE ═══ -->
+        <!-- VOICE -->
         <section class="content-section" id="sec-voice">
             <div class="section-title-bar">
-                <h1>🎤 Voice</h1>
+                <h1>Voice</h1>
                 <span class="section-badge">Settings</span>
             </div>
             <div class="settings-grid cols-2">
                 <div class="setting-card">
                     <div class="setting-header">
-                        <span class="setting-icon">🔇</span>
+                        <span class="setting-icon">AFK</span>
                         <div>
                             <h3>AFK Detection</h3>
                             <p>Auto-detect inactive voice users</p>
@@ -405,10 +484,10 @@
             </div>
         </section>
 
-        <!-- ═══ TICKETS ═══ -->
+        <!-- TICKETS -->
         <section class="content-section" id="sec-tickets">
             <div class="section-title-bar">
-                <h1>🎫 Tickets</h1>
+                <h1>Tickets</h1>
                 <span class="section-badge">Support</span>
             </div>
             <div class="settings-grid cols-2">
@@ -425,16 +504,16 @@
             </div>
         </section>
 
-        <!-- ═══ ANTI-RAID ═══ -->
+        <!-- ANTI-RAID -->
         <section class="content-section" id="sec-antiraid">
             <div class="section-title-bar">
-                <h1>🚨 Anti-Raid</h1>
+                <h1>Anti-Raid</h1>
                 <span class="section-badge">Protection</span>
             </div>
             <div class="settings-grid cols-2">
                 <div class="setting-card">
                     <div class="setting-header">
-                        <span class="setting-icon">🚨</span>
+                        <span class="setting-icon">AR</span>
                         <div>
                             <h3>Anti-Raid</h3>
                             <p>Detect mass join raids</p>
@@ -456,24 +535,24 @@
                 <div class="input-group">
                     <label>Action</label>
                     <select data-key="antiraid_action" class="input-field">
-                        <option value="kick">👢 Kick</option>
-                        <option value="ban">🔨 Ban</option>
-                        <option value="lockdown">🔒 Lockdown</option>
+                        <option value="kick">Kick</option>
+                        <option value="ban">Ban</option>
+                        <option value="lockdown">Lockdown</option>
                     </select>
                 </div>
             </div>
         </section>
 
-        <!-- ═══ VERIFICATION ═══ -->
+        <!-- VERIFICATION -->
         <section class="content-section" id="sec-verification">
             <div class="section-title-bar">
-                <h1>✅ Verification</h1>
+                <h1>Verification</h1>
                 <span class="section-badge">Gate</span>
             </div>
             <div class="settings-grid cols-2">
                 <div class="setting-card">
                     <div class="setting-header">
-                        <span class="setting-icon">✅</span>
+                        <span class="setting-icon">VR</span>
                         <div>
                             <h3>Verification Gate</h3>
                             <p>Require new members to verify</p>
@@ -497,7 +576,7 @@
 
         <!-- Save Bar -->
         <div class="save-bar glass" id="saveBar">
-            <span>⚠️ You have unsaved changes</span>
+            <span>You have unsaved changes</span>
             <div class="save-actions">
                 <button class="btn btn-ghost" onclick="resetChanges()">Reset</button>
                 <button class="btn btn-primary btn-glow" onclick="saveAll()">Save Changes</button>
@@ -514,8 +593,10 @@
             </div>
             <div class="modal-body" id="modalBody"></div>
             <div class="modal-footer">
-                <button class="btn btn-ghost" onclick="closeModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="saveModal()">Save</button>
+                <button class="btn btn-ghost" id="modalCancelButton" onclick="closeModal()">Cancel</button>
+                <a class="btn btn-ghost modal-more-info" id="modalMoreInfo" href="https://appeal.gg"
+                    target="_blank" rel="noopener noreferrer">More info</a>
+                <button class="btn btn-primary" id="modalSaveButton" onclick="saveModal()">Save</button>
             </div>
         </div>
     </div>
@@ -528,70 +609,70 @@
         let channels = [];
         let hasChanges = false;
 
-        // ── Filter definitions ──
+        //  Filter definitions 
         const FILTERS = [
             {
-                key: "automod_enabled", name: "AutoMod Master", icon: "🛡️", desc: "Master toggle for all AutoMod", color: "#5865F2",
+                key: "automod_enabled", name: "AutoMod Master", icon: "AM", desc: "Master toggle for all AutoMod", color: "#5865F2",
                 settings: []
             },
             {
-                key: "automod_links_enabled", name: "Link Filter", icon: "🔗", desc: "Block unauthorized links", color: "#3ba55d",
+                key: "automod_links_enabled", name: "Link Filter", icon: "LN", desc: "Block unauthorized links", color: "#3ba55d",
                 settings: [
                     { key: "automod_links_whitelist", label: "Whitelisted Domains", type: "list" }
                 ]
             },
             {
-                key: "automod_invites_enabled", name: "Invite Filter", icon: "📨", desc: "Block Discord invite links", color: "#faa61a",
+                key: "automod_invites_enabled", name: "Invite Filter", icon: "IV", desc: "Block Discord invite links", color: "#faa61a",
                 settings: [
                     { key: "automod_allowed_invites", label: "Allowed Server Invites", type: "list" }
                 ]
             },
-            { key: "automod_scam_protection", name: "Scam Protection", icon: "🛡️", desc: "Detect scam & phishing links", color: "#ed4245" },
+            { key: "automod_scam_protection", name: "Scam Protection", icon: "SC", desc: "Detect scam & phishing links", color: "#ed4245" },
             {
-                key: "automod_ai_enabled", name: "AI Moderation", icon: "🤖", desc: "Groq-powered content analysis", color: "#9b59b6",
+                key: "automod_ai_enabled", name: "AI Moderation", icon: "AI", desc: "Groq-powered content analysis", color: "#9b59b6",
                 settings: [
                     { key: "automod_ai_min_severity", label: "Min Severity (1-10)", type: "number", min: 1, max: 10 }
                 ]
             },
-            { key: "automod_notify_users", name: "Notify Users", icon: "🔔", desc: "DM users when actioned", color: "#3498db" },
+            { key: "automod_notify_users", name: "Notify Users", icon: "NT", desc: "DM users when actioned", color: "#3498db" },
             {
-                key: "spam", name: "Spam Filter", icon: "📨", desc: "Rate-limit message spam", color: "#e67e22", isGroup: true,
+                key: "spam", name: "Spam Filter", icon: "SP", desc: "Rate-limit message spam", color: "#e67e22", isGroup: true,
                 settings: [
                     { key: "automod_spam_threshold", label: "Msgs per 5s (0=off)", type: "number", min: 0, max: 50 },
                     { key: "automod_duplicate_threshold", label: "Duplicate threshold", type: "number", min: 0, max: 20 }
                 ]
             },
             {
-                key: "caps", name: "Caps Filter", icon: "🔠", desc: "Block excessive CAPS", color: "#e74c3c", isGroup: true,
+                key: "caps", name: "Caps Filter", icon: "CP", desc: "Block excessive CAPS", color: "#e74c3c", isGroup: true,
                 settings: [
                     { key: "automod_caps_percentage", label: "Caps % (0-100)", type: "number", min: 0, max: 100 },
                     { key: "automod_caps_min_length", label: "Min msg length", type: "number", min: 1, max: 100 }
                 ]
             },
             {
-                key: "mentions", name: "Mention Spam", icon: "📢", desc: "Limit mass mentions", color: "#1abc9c", isGroup: true,
+                key: "mentions", name: "Mention Spam", icon: "MN", desc: "Limit mass mentions", color: "#1abc9c", isGroup: true,
                 settings: [
                     { key: "automod_max_mentions", label: "Max mentions (0=off)", type: "number", min: 0, max: 50 }
                 ]
             },
             {
-                key: "newaccount", name: "New Accounts", icon: "👶", desc: "Flag recently-created accounts", color: "#95a5a6", isGroup: true,
+                key: "newaccount", name: "New Accounts", icon: "NA", desc: "Flag recently-created accounts", color: "#95a5a6", isGroup: true,
                 settings: [
                     { key: "automod_newaccount_days", label: "Days threshold", type: "number", min: 0, max: 365 }
                 ]
             },
             {
-                key: "punishment", name: "Punishment", icon: "⚡", desc: "Default AutoMod action", color: "#e91e63", isGroup: true,
+                key: "punishment", name: "Punishment", icon: "PN", desc: "Default AutoMod action", color: "#e91e63", isGroup: true,
                 settings: [
                     {
                         key: "automod_punishment", label: "Action", type: "select",
                         options: [
-                            { value: "warn", label: "⚠️ Warn" },
-                            { value: "delete", label: "🗑️ Delete" },
-                            { value: "mute", label: "🔇 Mute" },
-                            { value: "kick", label: "👢 Kick" },
-                            { value: "ban", label: "🔨 Ban" },
-                            { value: "quarantine", label: "🔒 Quarantine" }
+                            { value: "warn", label: "Warn" },
+                            { value: "delete", label: "Delete" },
+                            { value: "mute", label: "Mute" },
+                            { value: "kick", label: "Kick" },
+                            { value: "ban", label: "Ban" },
+                            { value: "quarantine", label: "Quarantine" }
                         ]
                     },
                     { key: "automod_mute_duration", label: "Mute duration (secs)", type: "number", min: 60, max: 604800 },
@@ -602,12 +683,74 @@
 
         let currentModalFilter = null;
 
-        // ── Init ──
+        function toggleSidebar() {
+            if (window.innerWidth <= 1024) {
+                document.body.classList.toggle('sidebar-open');
+                return;
+            }
+            document.body.classList.toggle('sidebar-collapsed');
+        }
+
+        function applySectionStagger(sectionEl) {
+            if (!sectionEl) return;
+            const cards = sectionEl.querySelectorAll(
+                '.panel, .mod-feature-card, .feature-row, .stat-card, .log-card, .role-card, .setting-card, .filter-card'
+            );
+            cards.forEach((card, idx) => {
+                card.style.setProperty('--stagger-index', String(idx));
+            });
+        }
+
+        function resetModalFooter() {
+            const saveButton = document.getElementById('modalSaveButton');
+            const moreInfo = document.getElementById('modalMoreInfo');
+            if (!saveButton || !moreInfo) return;
+            moreInfo.style.display = 'none';
+            saveButton.style.display = 'inline-flex';
+            saveButton.textContent = 'Save';
+            saveButton.onclick = saveModal;
+        }
+
+        function openAppealsModal() {
+            const modal = document.getElementById('filterModal');
+            const title = document.getElementById('modalTitle');
+            const body = document.getElementById('modalBody');
+            const saveButton = document.getElementById('modalSaveButton');
+            const moreInfo = document.getElementById('modalMoreInfo');
+            if (!modal || !title || !body || !saveButton || !moreInfo) return;
+
+            currentModalFilter = null;
+            title.textContent = 'Set up Appeals';
+            body.innerHTML = `
+                <div class="appeals-copy">
+                    <p>Sapphire is fully compatible with appeal.gg and lets users submit punishment appeals from your server invite.</p>
+                    <p>Use appeal.gg to create forms, lock them behind punishments, and manage submissions in one moderation workflow.</p>
+                    <p class="muted">appeal.gg was made by the creator of Sapphire, Xge.</p>
+                </div>
+            `;
+
+            moreInfo.href = 'https://appeal.gg';
+            moreInfo.style.display = 'inline-flex';
+            saveButton.textContent = 'Set up';
+            saveButton.onclick = () => closeModal();
+            modal.classList.add('visible');
+        }
+
+        // Init
         async function init() {
             await loadSettings();
             await loadCases();
             await loadStats();
             await loadActions();
+            applySectionStagger(document.querySelector('.content-section.active'));
+
+            const changelogClose = document.querySelector('.changelog-close');
+            const changelogCard = document.querySelector('.changelog-card');
+            if (changelogClose && changelogCard) {
+                changelogClose.addEventListener('click', () => {
+                    changelogCard.classList.add('is-hidden');
+                });
+            }
         }
 
         async function loadSettings() {
@@ -671,7 +814,7 @@
             document.getElementById('domainCount').textContent = (currentSettings.automod_whitelisted_domains || []).length;
         }
 
-        // ── Filter Cards ──
+        //  Filter Cards 
         function buildFilterCards() {
             const grid = document.getElementById('filterGrid');
             grid.innerHTML = '';
@@ -690,7 +833,7 @@
                             <p>${f.desc}</p>
                         </div>
                     </div>
-                    ${hasSettings ? `<button class="gear-btn" onclick="openFilterModal('${f.key}')" title="Settings">⚙️</button>` : ''}
+                    ${hasSettings ? `<button class="gear-btn" onclick="openFilterModal('${f.key}')" title="Settings">CFG</button>` : ''}
                 </div>
                 <div class="filter-card-bottom">
                     ${!f.isGroup ? `
@@ -704,6 +847,7 @@
             `;
                 grid.appendChild(card);
             });
+            applySectionStagger(document.getElementById('sec-automod'));
         }
 
         function getFilterStatus(f) {
@@ -721,14 +865,17 @@
             buildFilterCards();
         }
 
-        // ── Filter Modal ──
+        //  Filter Modal 
         function openFilterModal(filterKey) {
             const f = FILTERS.find(x => x.key === filterKey);
             if (!f || !f.settings) return;
             currentModalFilter = f;
 
-            document.getElementById('modalTitle').textContent = f.icon + ' ' + f.name + ' Settings';
+            resetModalFooter();
+            const title = document.getElementById('modalTitle');
             const body = document.getElementById('modalBody');
+            if (!title || !body) return;
+            title.textContent = f.icon + ' ' + f.name + ' Settings';
             body.innerHTML = '';
 
             f.settings.forEach(s => {
@@ -763,7 +910,9 @@
         }
 
         function closeModal() {
-            document.getElementById('filterModal').classList.remove('visible');
+            const modal = document.getElementById('filterModal');
+            if (modal) modal.classList.remove('visible');
+            resetModalFooter();
             currentModalFilter = null;
         }
 
@@ -784,7 +933,7 @@
             applyToDOM();
         }
 
-        // ── Cases ──
+        //  Cases 
         async function loadCases() {
             try {
                 const res = await fetch(`/api/guild/${GUILD_ID}/cases?limit=25`);
@@ -807,7 +956,7 @@
             } catch (e) { }
         }
 
-        // ── Stats ──
+        //  Stats 
         async function loadStats() {
             try {
                 const res = await fetch(`/api/guild/${GUILD_ID}/stats`);
@@ -820,7 +969,7 @@
             } catch (e) { }
         }
 
-        // ── Recent Actions ──
+        //  Recent Actions 
         async function loadActions() {
             try {
                 const res = await fetch(`/api/guild/${GUILD_ID}/actions`);
@@ -836,15 +985,25 @@
             } catch (e) { }
         }
 
-        // ── Section Switching ──
+        //  Section Switching 
         function switchSection(name) {
             document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
             document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-            document.getElementById('sec-' + name).classList.add('active');
-            document.querySelector(`[data-section="${name}"]`).classList.add('active');
+
+            const section = document.getElementById('sec-' + name);
+            const navItem = document.querySelector(`[data-section="${name}"]`);
+            if (!section || !navItem) return;
+
+            section.classList.add('active');
+            navItem.classList.add('active');
+            applySectionStagger(section);
+
+            if (window.innerWidth <= 1024) {
+                document.body.classList.remove('sidebar-open');
+            }
         }
 
-        // ── Tags ──
+        //  Tags 
         function renderTags(containerId, items, type) {
             const container = document.getElementById(containerId);
             container.innerHTML = '';
@@ -877,7 +1036,7 @@
             applyToDOM();
         }
 
-        // ── Change Tracking ──
+        //  Change Tracking 
         function markChanged() {
             hasChanges = true;
             document.getElementById('saveBar').classList.add('visible');
@@ -920,7 +1079,7 @@
             }
         });
 
-        // ── Save ──
+        //  Save 
         async function saveAll() {
             const btn = document.querySelector('#saveBar .btn-primary');
             btn.textContent = 'Saving...';
@@ -951,7 +1110,7 @@
 
         function showToast(msg, type) {
             const toast = document.getElementById('toast');
-            toast.textContent = (type === 'success' ? '✅ ' : '❌ ') + msg;
+            toast.textContent = (type === 'success' ? 'Success: ' : 'Error: ') + msg;
             toast.className = 'toast visible ' + type;
             setTimeout(() => toast.classList.remove('visible'), 3000);
         }
@@ -961,3 +1120,7 @@
 </body>
 
 </html>
+
+
+
+

@@ -117,8 +117,8 @@ def _normalize_log_embeds_for_target(
 class ComponentsV2Config:
     """Global configuration for Components v2 behavior."""
     
-    enabled: bool = True
-    """Whether to convert embeds to v2 layouts by default."""
+    enabled: bool = False
+    """Whether to convert embeds to v2 layouts by default (opt-in)."""
     
     @classmethod
     def enable(cls) -> None:
@@ -502,6 +502,7 @@ def patch_components_v2() -> None:
 
     This allows existing embed-based code to work with Components v2 without changes.
     Respects ComponentsV2Config.enabled and per-message use_v2 flags.
+    Defaults to classic embed behavior (v1) unless explicitly enabled.
 
     Control behavior:
     - Global: ComponentsV2Config.enable() / .disable()
@@ -536,15 +537,28 @@ def patch_components_v2() -> None:
     original_webhook_edit_message = discord.Webhook.edit_message
     original_webhook_message_edit = discord.WebhookMessage.edit
 
+    def _parse_use_v2(value: Any) -> Optional[bool]:
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on"}:
+                return True
+            if normalized in {"0", "false", "no", "off"}:
+                return False
+        return bool(value)
+
     def _should_use_v2(kwargs: dict[str, Any]) -> bool:
         """Determine if v2 conversion should be applied based on config and flags."""
-        use_v2 = kwargs.pop("use_v2", None)
+        use_v2 = _parse_use_v2(kwargs.pop("use_v2", None))
         
         # Explicit per-message control
-        if use_v2 is False:
-            return False
         if use_v2 is True:
             return True
+        if use_v2 is False:
+            return False
         
         # Fall back to global config
         return ComponentsV2Config.enabled
@@ -632,8 +646,8 @@ def patch_components_v2() -> None:
             layout = ensure_layout_view_action_rows(layout)
             return (
                 MISSING,
-                embed if embed is not MISSING else None,
-                embeds if embeds is not MISSING else None,
+                None,
+                None,
                 layout,
             )
 
