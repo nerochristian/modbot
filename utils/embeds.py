@@ -66,8 +66,24 @@ def force_log_embed_size(embed: discord.Embed, *, target_lines: Optional[int] = 
     embed.description = _strip_existing_log_padding(getattr(embed, "description", None))
 
     # Strip any existing pad field so padding is deterministic and stays at the bottom.
+    # Never write to embed._fields directly; that can corrupt discord.Embed internals.
     try:
-        embed._fields = [f for f in (embed.fields or []) if getattr(f, "name", None) != _LOG_PAD_FIELD_NAME]
+        existing_fields = list(getattr(embed, "fields", []) or [])
+        kept_fields = [
+            f for f in existing_fields
+            if getattr(f, "name", None) != _LOG_PAD_FIELD_NAME
+        ]
+        if len(kept_fields) != len(existing_fields):
+            embed.clear_fields()
+            for field in kept_fields:
+                try:
+                    embed.add_field(
+                        name=str(getattr(field, "name", "")),
+                        value=str(getattr(field, "value", "")),
+                        inline=bool(getattr(field, "inline", False)),
+                    )
+                except Exception:
+                    continue
     except Exception:
         pass
 

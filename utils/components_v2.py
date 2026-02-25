@@ -47,6 +47,34 @@ def _is_log_style_channel(target: object) -> bool:
     return name.endswith("-logs") or name in _LOG_STYLE_CHANNEL_NAMES
 
 
+def _is_missing_like(value: Any) -> bool:
+    return value is None or value is ... or value is discord.utils.MISSING
+
+
+def _has_embed_payload(value: Any) -> bool:
+    """Safe truthiness check that never calls discord.Embed.__bool__."""
+    if _is_missing_like(value):
+        return False
+    if isinstance(value, discord.Embed):
+        return True
+    if isinstance(value, (list, tuple, set, frozenset, dict)):
+        return len(value) > 0
+    return True
+
+
+def _embed_candidates(value: Any) -> list[Any]:
+    if _is_missing_like(value):
+        return []
+    if isinstance(value, discord.Embed):
+        return [value]
+    if isinstance(value, (list, tuple, set, frozenset)):
+        return list(value)
+    try:
+        return list(value)
+    except TypeError:
+        return [value]
+
+
 def _normalize_log_embeds_for_target(
     target: object,
     *,
@@ -56,7 +84,7 @@ def _normalize_log_embeds_for_target(
     """Normalize embed visuals for log channels without touching non-log sends."""
     if not _is_log_style_channel(target):
         return embed, embeds
-    if embed is None and not embeds:
+    if not _has_embed_payload(embed) and not _has_embed_payload(embeds):
         return embed, embeds
 
     try:
@@ -67,15 +95,19 @@ def _normalize_log_embeds_for_target(
     normalized_embed = embed
     normalized_embeds = embeds
 
-    if embed is not None:
+    if isinstance(embed, discord.Embed):
         try:
             normalized_embed = normalize_log_embed(target, embed)
         except Exception:
             normalized_embed = embed
 
-    if embeds:
+    if _has_embed_payload(embeds):
         try:
-            normalized_embeds = [normalize_log_embed(target, e) for e in embeds]
+            normalized_embeds = [
+                normalize_log_embed(target, e)
+                for e in _embed_candidates(embeds)
+                if isinstance(e, discord.Embed)
+            ]
         except Exception:
             normalized_embeds = embeds
 
@@ -374,12 +406,28 @@ def _normalize_embeds(
 ) -> list[discord.Embed]:
     """Normalize embed/embeds arguments into a list of Embeds."""
     out: list[discord.Embed] = []
-    if embed and isinstance(embed, discord.Embed):
-        out.append(embed)
-    if embeds:
-        for e in embeds:
-            if isinstance(e, discord.Embed):
-                out.append(e)
+    candidates: list[Any] = []
+    if isinstance(embed, discord.Embed):
+        candidates.append(embed)
+    candidates.extend(_embed_candidates(embeds))
+
+    clone_embed = None
+    try:
+        from utils.logging import clone_embed as _clone_embed
+        clone_embed = _clone_embed
+    except Exception:
+        clone_embed = None
+
+    for e in candidates:
+        if not isinstance(e, discord.Embed):
+            continue
+        if clone_embed is None:
+            out.append(e)
+            continue
+        try:
+            out.append(clone_embed(e))
+        except Exception:
+            out.append(e)
     return out
 
 
@@ -429,7 +477,15 @@ async def layout_view_from_embeds(
 
     # Convert each embed to a Container
     for e in _normalize_embeds(embed=embed, embeds=embeds):
-        container = container_from_embed(e)
+        try:
+            container = container_from_embed(e)
+        except Exception:
+            # Recover from malformed embeds without hard-failing message sends.
+            try:
+                from utils.logging import clone_embed
+                container = container_from_embed(clone_embed(e))
+            except Exception:
+                continue
         if container.children:
             view.add_item(container)
 
@@ -507,7 +563,7 @@ def patch_components_v2() -> None:
         view = kwargs.get("view", MISSING)
 
         has_embed = embed is not MISSING and embed is not None
-        has_embeds = embeds is not MISSING and bool(embeds)
+        has_embeds = embeds is not MISSING and _has_embed_payload(embeds)
         has_content = content is not MISSING and content not in (None, "", ...)
         has_visual = has_embed or has_embeds
 
@@ -550,7 +606,7 @@ def patch_components_v2() -> None:
             return (content, embed, embeds, view)
 
         has_embed = embed is not MISSING and embed is not None
-        has_embeds = embeds is not MISSING and bool(embeds)
+        has_embeds = embeds is not MISSING and _has_embed_payload(embeds)
         has_content = content is not MISSING and content not in (None, "", ...)
         has_visual = has_embed or has_embeds
 
@@ -610,7 +666,7 @@ def patch_components_v2() -> None:
         view = kwargs.get("view", MISSING)
 
         has_embed = embed is not MISSING and embed is not None
-        has_embeds = embeds is not MISSING and bool(embeds)
+        has_embeds = embeds is not MISSING and _has_embed_payload(embeds)
         has_content = content is not MISSING and content not in (None, "", ...)
         has_visual = has_embed or has_embeds
 
@@ -650,7 +706,7 @@ def patch_components_v2() -> None:
         has_embeds_kw = "embeds" in kwargs
         maybe_embed = kwargs.get("embed", None)
         maybe_embeds = kwargs.get("embeds", None)
-        if maybe_embed is not None or maybe_embeds:
+        if maybe_embed is not None or _has_embed_payload(maybe_embeds):
             maybe_embed, maybe_embeds = _normalize_log_embeds_for_target(
                 self,
                 embed=maybe_embed,
@@ -671,7 +727,7 @@ def patch_components_v2() -> None:
         view = kwargs.get("view", None)
 
         has_embed = embed is not None
-        has_embeds = bool(embeds)
+        has_embeds = _has_embed_payload(embeds)
         has_content = content is not MISSING and content not in (None, "", ...)
         has_visual = has_embed or has_embeds
 

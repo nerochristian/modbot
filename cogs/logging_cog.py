@@ -345,20 +345,9 @@ class Logging(commands.Cog):
         # Set author to the deleted message author (shows their avatar)
         embed.set_footer(text=f"@{message.author.global_name or message.author.name}")
 
-        view: Optional[discord.ui.View] = None
-        try:
-            transcript_file = generate_html_transcript(
-                message.guild,
-                message.channel,
-                [],
-                purged_messages=[message],
-            )
-            transcript_name = f"delete-transcript-{message.guild.id}-{int(datetime.now(timezone.utc).timestamp())}.html"
-            view = EphemeralTranscriptView(io.BytesIO(transcript_file.getvalue()), filename=transcript_name)
-        except Exception as e:
-            logger.error(f"Failed to generate delete transcript view: {e}")
-
-        await self.safe_send_log(channel, embed, use_v2=False, view=view)
+        # Single-message deletes should not include transcript downloads.
+        # Transcript views are reserved for purge/bulk-delete events.
+        await self.safe_send_log(channel, embed, use_v2=False)
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message):

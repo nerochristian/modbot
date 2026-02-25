@@ -620,7 +620,7 @@ class TicketsSettingsView(BaseSettingsView):
         # Stats preview
         embed.add_field(
             name="📊 Usage",
-            value="Use `/ticket` to create tickets\nUse `/ticket close` to close",
+            value="Use `/ticket create` to create tickets\nUse `/ticket close` to close\nPrefix: `,ticket create`",
             inline=True,
         )
 

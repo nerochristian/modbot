@@ -33,6 +33,8 @@ class Moderation(
     # Named 'moderation' (not 'mod') to avoid collision with standalone commands from mixins
     mod_slash = app_commands.Group(name="moderation", description="🛡️ Moderation commands")
     
+    emoji_slash = app_commands.Group(name="emoji", description="Emoji request commands")
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._hierarchy_cache = {}
@@ -132,6 +134,12 @@ class Moderation(
         self.mod_slash.add_command(cmd("testwelcome", "Preview welcome card", self.testwelcome))
         self.mod_slash.add_command(cmd("welcomeall", "Welcome all members", self.welcomeall))
         self.mod_slash.add_command(cmd("ownerinfo", "View owner info", self.ownerinfo))
+
+        # Emoji slash commands
+        self.emoji_slash.add_command(cmd("tutorial", "Show emoji submission tutorial", self.emoji_tutorial_slash))
+        self.emoji_slash.add_command(cmd("add", "Request a new emoji", self.emoji_add_slash))
+        self.emoji_slash.add_command(cmd("steal", "Request emojis from pasted custom emojis", self.emoji_steal_slash))
+
     def cog_check(self, ctx: commands.Context) -> bool:
         return True
 
@@ -159,8 +167,12 @@ class Moderation(
     async def cog_unload(self):
         if self.check_quarantine_expiry.is_running():
             self.check_quarantine_expiry.cancel()
-        
-        self.bot.tree.remove_command("mod")
+
+        for command_name in ("moderation", "emoji", "mod"):
+            try:
+                self.bot.tree.remove_command(command_name)
+            except Exception:
+                pass
 
     @tasks.loop(minutes=1)
     async def check_quarantine_expiry(self):

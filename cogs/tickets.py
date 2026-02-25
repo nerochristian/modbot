@@ -398,275 +398,255 @@ class TicketCreateButton(ui.View):
         await interaction.response.send_modal(TicketDetailsModal(self.cog, category="general"))
 
 class Tickets(commands.Cog):
+    ticket_group = app_commands.Group(name="ticket", description="Ticket management commands")
+
     def __init__(self, bot):
         self.bot = bot
-        # Register persistent views
         self.bot.add_view(TicketCreateButton(self))
         self.bot.add_view(TicketCloseButton())
         self.bot.add_view(TicketPanelView(self))
-    
-    # ==================== CONSOLIDATED /ticket COMMAND ====================
-    
-    @app_commands.command(name="ticket", description="🎫 Ticket management commands")
-    @app_commands.describe(
-        action="The action to perform",
-        category="Ticket category (for create)",
-        reason="Reason (for close)",
-        user="Target user (for add/remove)",
-        name="New name (for rename)",
-    )
-    async def ticket(
+
+    @staticmethod
+    def _normalize_ticket_category(category: Optional[str]) -> str:
+        value = (category or "general").strip().lower()
+        if value not in {"general", "report", "appeal", "other"}:
+            return "general"
+        return value
+
+    @staticmethod
+    def _normalize_ticket_channel_name(name: str) -> Optional[str]:
+        candidate = (name or "").strip().lower()
+        candidate = re.sub(r"[^a-z0-9-]", "-", candidate)
+        candidate = re.sub(r"-{2,}", "-", candidate).strip("-")
+        return candidate or None
+
+    @staticmethod
+    def _close_delay_seconds() -> int:
+        try:
+            return max(1, int(getattr(Config, "TICKET_CLOSE_DELAY", 5)))
+        except Exception:
+            return 5
+
+    @staticmethod
+    def _ticket_file_name(ticket_number: Any) -> str:
+        return f"ticket-{ticket_number}.html"
+
+    async def _is_ticket_staff(self, member: discord.Member, settings: Optional[dict] = None) -> bool:
+        if is_bot_owner_id(member.id):
+            return True
+        if member.guild_permissions.administrator or member.guild_permissions.manage_messages:
+            return True
+
+        if settings is None:
+            settings = await self.bot.db.get_settings(member.guild.id)
+
+        role_ids: set[int] = set()
+        for key in (
+            "ticket_support_role",
+            "staff_role",
+            "owner_role",
+            "manager_role",
+            "admin_role",
+            "supervisor_role",
+            "senior_mod_role",
+            "mod_role",
+            "trial_mod_role",
+        ):
+            raw = settings.get(key)
+            if isinstance(raw, int) and raw > 0:
+                role_ids.add(raw)
+
+        for key in ("admin_roles", "mod_roles"):
+            raw = settings.get(key)
+            if isinstance(raw, list):
+                for rid in raw:
+                    if isinstance(rid, int) and rid > 0:
+                        role_ids.add(rid)
+
+        if not role_ids:
+            return False
+
+        member_role_ids = {r.id for r in member.roles}
+        return bool(role_ids & member_role_ids)
+
+    async def _build_ticket_transcript(
         self,
-        interaction: discord.Interaction,
-        action: Literal["create", "close", "add", "remove", "rename", "transcript"],
-        category: Optional[Literal['general', 'report', 'appeal', 'other']] = None,
+        guild: discord.Guild,
+        channel: discord.TextChannel,
+    ) -> io.BytesIO:
+        messages = [m async for m in channel.history(limit=None, oldest_first=True)]
+        transcript_file = generate_html_transcript(guild, channel, messages)
+        transcript_file.seek(0)
+        return transcript_file
+
+    async def _send_ticket_close_log(
+        self,
+        guild: discord.Guild,
+        ticket: dict,
+        closer: discord.Member,
+        transcript_file: io.BytesIO,
+        *,
         reason: Optional[str] = None,
-        user: Optional[discord.Member] = None,
-        name: Optional[str] = None,
-    ):
-        if action == "create":
-            await interaction.response.send_modal(
-                TicketDetailsModal(self, category=str(category or "general"))
-            )
-        elif action == "close":
-            await self._ticket_close(interaction, reason)
-        elif action == "add":
-            await self._ticket_add(interaction, user)
-        elif action == "remove":
-            await self._ticket_remove(interaction, user)
-        elif action == "rename":
-            await self._ticket_rename(interaction, name)
-        elif action == "transcript":
-            await self._ticket_transcript(interaction)
+    ) -> None:
+        settings = await self.bot.db.get_settings(guild.id)
+        log_channel_id = settings.get("ticket_log_channel")
+        if not isinstance(log_channel_id, int):
+            return
 
-    async def _ticket_close(self, interaction: discord.Interaction, reason: Optional[str]):
-        ticket = await self.bot.db.get_ticket(interaction.channel.id)
-        
-        if not ticket:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
-                ephemeral=True
-            )
-        
-        reason = reason or "No reason provided"
-        await interaction.response.send_message(
-            embed=ModEmbed.warning("Closing Ticket", f"This ticket will be closed in 5 seconds...\n**Reason:** {reason}")
+        log_channel = guild.get_channel(log_channel_id)
+        if not log_channel:
+            return
+
+        embed = discord.Embed(
+            title=f"Ticket #{ticket.get('ticket_number', '?')} Closed",
+            color=Config.COLOR_BRAND,
+            timestamp=datetime.utcnow(),
         )
-        
-        await asyncio.sleep(5)
-        
-        # Generate transcript
-        messages = [m async for m in interaction.channel.history(limit=None, oldest_first=True)]
-        transcript_file = generate_html_transcript(interaction.guild, interaction.channel, messages)
-        transcript_file.seek(0)
-        await self.bot.db.close_ticket(interaction.channel.id)
-        
-        # Send transcript to log channel
-        settings = await self.bot.db.get_settings(interaction.guild_id)
-        if settings.get('ticket_log_channel'):
-            log_channel = interaction.guild.get_channel(settings['ticket_log_channel'])
-            if log_channel:
-                embed = discord.Embed(
-                    title=f"🎫 Ticket #{ticket['ticket_number']} Closed",
-                    color=Config.COLOR_INFO,
-                    timestamp=datetime.utcnow()
-                )
-                creator = interaction.guild.get_member(ticket['user_id'])
-                embed.add_field(name="Created By", value=creator.mention if creator else f"ID: {ticket['user_id']}", inline=True)
-                embed.add_field(name="Closed By", value=interaction.user.mention, inline=True)
-                embed.add_field(name="Reason", value=reason, inline=False)
-                
-                file = discord.File(transcript_file, filename=f"ticket-{ticket['ticket_number']}.html")
-                await send_log_embed(log_channel, embed, file=file)
-        
-        await interaction.channel.delete(reason=f"Ticket closed by {interaction.user}: {reason}")
-
-    async def _ticket_add(self, interaction: discord.Interaction, user: Optional[discord.Member]):
-        # Check mod permission
-        if not interaction.user.guild_permissions.manage_messages and not is_bot_owner_id(interaction.user.id):
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Permission Denied", "You need mod permissions for this action."),
-                ephemeral=True
-            )
-
-        if not user:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Missing Argument", "Please specify a `user` to add."),
-                ephemeral=True
-            )
-
-        ticket = await self.bot.db.get_ticket(interaction.channel.id)
-        
-        if not ticket:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
-                ephemeral=True
-            )
-        
-        await interaction.channel.set_permissions(
-            user,
-            view_channel=True,
-            send_messages=True,
-            attach_files=True
+        creator = guild.get_member(ticket.get("user_id", 0))
+        embed.add_field(
+            name="Created By",
+            value=creator.mention if creator else f"ID: {ticket.get('user_id', 'unknown')}",
+            inline=True,
         )
-        
-        embed = ModEmbed.success("User Added", f"{user.mention} has been added to this ticket.")
-        await interaction.response.send_message(embed=embed)
+        embed.add_field(name="Closed By", value=closer.mention, inline=True)
+        embed.add_field(name="Category", value=ticket.get("category", "general"), inline=True)
+        if reason:
+            embed.add_field(name="Reason", value=reason, inline=False)
 
-    async def _ticket_remove(self, interaction: discord.Interaction, user: Optional[discord.Member]):
-        # Check mod permission
-        if not interaction.user.guild_permissions.manage_messages and not is_bot_owner_id(interaction.user.id):
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Permission Denied", "You need mod permissions for this action."),
-                ephemeral=True
-            )
-
-        if not user:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Missing Argument", "Please specify a `user` to remove."),
-                ephemeral=True
-            )
-
-        ticket = await self.bot.db.get_ticket(interaction.channel.id)
-        
-        if not ticket:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
-                ephemeral=True
-            )
-        
-        if user.id == ticket['user_id']:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Cannot Remove", "You cannot remove the ticket creator."),
-                ephemeral=True
-            )
-        
-        await interaction.channel.set_permissions(user, overwrite=None)
-        
-        embed = ModEmbed.success("User Removed", f"{user.mention} has been removed from this ticket.")
-        await interaction.response.send_message(embed=embed)
-
-    async def _ticket_rename(self, interaction: discord.Interaction, name: Optional[str]):
-        # Check mod permission
-        if not interaction.user.guild_permissions.manage_messages and not is_bot_owner_id(interaction.user.id):
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Permission Denied", "You need mod permissions for this action."),
-                ephemeral=True
-            )
-
-        if not name:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Missing Argument", "Please specify a `name` for the ticket."),
-                ephemeral=True
-            )
-
-        ticket = await self.bot.db.get_ticket(interaction.channel.id)
-        
-        if not ticket:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
-                ephemeral=True
-            )
-        
-        await interaction.channel.edit(name=name)
-        embed = ModEmbed.success("Ticket Renamed", f"Ticket renamed to **{name}**")
-        await interaction.response.send_message(embed=embed)
-
-    async def _ticket_transcript(self, interaction: discord.Interaction):
-        # Check mod permission
-        if not interaction.user.guild_permissions.manage_messages and not is_bot_owner_id(interaction.user.id):
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Permission Denied", "You need mod permissions for this action."),
-                ephemeral=True
-            )
-
-        await interaction.response.defer()
-        
-        messages = [m async for m in interaction.channel.history(limit=None, oldest_first=True)]
-        transcript_file = generate_html_transcript(interaction.guild, interaction.channel, messages)
         transcript_file.seek(0)
-        
-        file = discord.File(transcript_file, filename=f"transcript-{interaction.channel.name}.html")
-        
-        embed = ModEmbed.success("Transcript Generated", "Here is the transcript of this ticket.")
-        await interaction.followup.send(embed=embed, file=file)
+        file = discord.File(
+            transcript_file,
+            filename=self._ticket_file_name(ticket.get("ticket_number", "transcript")),
+        )
+        await send_log_embed(log_channel, embed, file=file)
 
-    async def _create_ticket_from_panel(self, interaction: discord.Interaction, *, category: str, details: str) -> None:
-        settings = await self.bot.db.get_settings(interaction.guild_id)
+    async def _finalize_ticket_close(
+        self,
+        *,
+        guild: discord.Guild,
+        channel: discord.TextChannel,
+        closer: discord.Member,
+        reason: Optional[str] = None,
+    ) -> tuple[bool, str]:
+        ticket = await self.bot.db.get_ticket(channel.id)
+        if not ticket:
+            return False, "This channel is not a ticket."
+
+        transcript_file = await self._build_ticket_transcript(guild, channel)
+        await self.bot.db.close_ticket(channel.id)
+        await self._send_ticket_close_log(guild, ticket, closer, transcript_file, reason=reason)
+
+        delete_reason = f"Ticket closed by {closer}"
+        if reason:
+            delete_reason = f"{delete_reason}: {reason}"
+
+        try:
+            await channel.delete(reason=delete_reason)
+        except Exception as exc:
+            return False, f"Ticket closed in database, but channel deletion failed: {exc}"
+
+        return True, ""
+
+    async def _create_ticket_channel(
+        self,
+        *,
+        guild: discord.Guild,
+        opener: discord.Member,
+        category: str,
+        details: str,
+    ) -> tuple[Optional[discord.TextChannel], Optional[str]]:
+        settings = await self.bot.db.get_settings(guild.id)
         category_id = settings.get("ticket_category")
+        if not isinstance(category_id, int):
+            return None, "Ticket system is not set up. Run `/setup` first."
 
-        if not category_id:
-            await interaction.followup.send(
-                embed=ModEmbed.error("Not Configured", "Ticket system is not set up. Run `/setup` first."),
-                ephemeral=True,
-            )
-            return
+        ticket_category = guild.get_channel(category_id)
+        if not isinstance(ticket_category, discord.CategoryChannel):
+            return None, "Ticket category is missing. Run `/setup` again."
 
-        ticket_category = interaction.guild.get_channel(category_id)
-        if not ticket_category:
-            await interaction.followup.send(
-                embed=ModEmbed.error("Category Missing", "Ticket category was deleted. Run `/setup` again."),
-                ephemeral=True,
-            )
-            return
+        topic_marker = f"({opener.id})"
+        for existing_channel in ticket_category.channels:
+            if getattr(existing_channel, "topic", None) and topic_marker in (existing_channel.topic or ""):
+                return None, f"You already have an open ticket: {existing_channel.mention}"
 
-        topic_marker = f"({interaction.user.id})"
-        for channel in ticket_category.channels:
-            if getattr(channel, "topic", None) and topic_marker in (channel.topic or ""):
-                await interaction.followup.send(
-                    embed=ModEmbed.error("Ticket Exists", f"You already have an open ticket: {channel.mention}"),
-                    ephemeral=True,
-                )
-                return
-
-        category = (category or "general").strip().lower()
-        category_label = _ticket_category_label(category)
-
-        display_slug = _slugify_display_name(getattr(interaction.user, "display_name", str(interaction.user)))
+        normalized_category = self._normalize_ticket_category(category)
+        category_label = _ticket_category_label(normalized_category)
+        display_slug = _slugify_display_name(getattr(opener, "display_name", str(opener)))
         base_name = f"{category_label.lower()}-{display_slug}"
         existing_names = {c.name for c in ticket_category.channels}
         channel_name = _unique_channel_name(base_name, existing_names)
 
-        ticket_number = await self.bot.db.get_next_ticket_number(interaction.guild_id)
+        ticket_number = await self.bot.db.get_next_ticket_number(guild.id)
 
-        overwrites = {
-            interaction.guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True),
-            interaction.guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True),
+        bot_member = guild.me
+        if bot_member is None and self.bot.user:
+            bot_member = guild.get_member(self.bot.user.id)
+
+        overwrites: dict[discord.abc.Snowflake, discord.PermissionOverwrite] = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            opener: discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True),
         }
+        if bot_member:
+            overwrites[bot_member] = discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                manage_channels=True,
+                manage_messages=True,
+                read_message_history=True,
+            )
 
-        staff_role_id = settings.get("staff_role")
-        if staff_role_id:
-            role = interaction.guild.get_role(staff_role_id)
+        role_ids: set[int] = set()
+        for key in (
+            "ticket_support_role",
+            "staff_role",
+            "owner_role",
+            "manager_role",
+            "admin_role",
+            "supervisor_role",
+            "senior_mod_role",
+            "mod_role",
+            "trial_mod_role",
+        ):
+            raw = settings.get(key)
+            if isinstance(raw, int) and raw > 0:
+                role_ids.add(raw)
+        for key in ("admin_roles", "mod_roles"):
+            raw = settings.get(key)
+            if isinstance(raw, list):
+                for rid in raw:
+                    if isinstance(rid, int) and rid > 0:
+                        role_ids.add(rid)
+
+        for rid in role_ids:
+            role = guild.get_role(rid)
             if role:
-                overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
+                overwrites[role] = discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                    attach_files=True,
+                )
 
-        for key in ["admin_role", "supervisor_role", "senior_mod_role", "mod_role", "trial_mod_role"]:
-            if settings.get(key):
-                role = interaction.guild.get_role(settings[key])
-                if role:
-                    overwrites[role] = discord.PermissionOverwrite(view_channel=True, send_messages=True)
-
-        channel = await interaction.guild.create_text_channel(
+        channel = await guild.create_text_channel(
             channel_name,
             category=ticket_category,
             overwrites=overwrites,
-            topic=f"Ticket for {interaction.user} ({interaction.user.id}) | Category: {category}",
+            topic=f"Ticket for {opener} ({opener.id}) | Category: {normalized_category}",
         )
 
         await self.bot.db.create_ticket(
-            interaction.guild_id,
+            guild.id,
             channel.id,
-            interaction.user.id,
+            opener.id,
             ticket_number,
-            category,
+            normalized_category,
             details=details,
         )
 
         panel_view = TicketThreadPanel(
             self,
-            opener=interaction.user,
-            category=category,
+            opener=opener,
+            category=normalized_category,
             details=details,
             claimed_by=None,
         )
@@ -675,6 +655,26 @@ class Tickets(commands.Cog):
             await panel_message.pin(reason="Ticket panel")
         except Exception:
             pass
+
+        return channel, None
+
+    async def _create_ticket_from_panel(self, interaction: discord.Interaction, *, category: str, details: str) -> None:
+        if not interaction.guild or not isinstance(interaction.user, discord.Member):
+            await interaction.followup.send(
+                embed=ModEmbed.error("Unavailable", "Tickets can only be created in a server."),
+                ephemeral=True,
+            )
+            return
+
+        channel, error = await self._create_ticket_channel(
+            guild=interaction.guild,
+            opener=interaction.user,
+            category=category,
+            details=(details or "").strip() or "No details provided.",
+        )
+        if error:
+            await interaction.followup.send(embed=ModEmbed.error("Ticket Error", error), ephemeral=True)
+            return
 
         await interaction.followup.send(
             embed=discord.Embed(
@@ -685,17 +685,10 @@ class Tickets(commands.Cog):
             ephemeral=True,
         )
 
-    async def _is_ticket_staff(self, member: discord.Member, settings: dict) -> bool:
-        if is_bot_owner_id(member.id):
-            return True
-        if member.guild_permissions.administrator:
-            return True
-        staff_role_id = settings.get("staff_role")
-        if staff_role_id:
-            staff_role = member.guild.get_role(staff_role_id)
-            if staff_role and staff_role in member.roles:
-                return True
-        return False
+    async def _send_ticket_panel_to_channel(self, channel: discord.TextChannel, guild: discord.Guild) -> None:
+        settings = await self.bot.db.get_settings(guild.id)
+        banner_url = settings.get("server_banner_url")
+        await channel.send(view=TicketPanelView(self, guild=guild, banner_url=banner_url))
 
     async def _handle_ticket_claim_button(self, interaction: discord.Interaction, *, panel: TicketThreadPanel) -> None:
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
@@ -711,7 +704,10 @@ class Tickets(commands.Cog):
 
         claimed_by = ticket.get("claimed_by")
         if claimed_by:
-            return await interaction.response.send_message(f"This ticket is already claimed by <@{claimed_by}>.", ephemeral=True)
+            return await interaction.response.send_message(
+                f"This ticket is already claimed by <@{claimed_by}>.",
+                ephemeral=True,
+            )
 
         await self.bot.db.claim_ticket(interaction.channel.id, interaction.user.id)
 
@@ -728,85 +724,429 @@ class Tickets(commands.Cog):
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
             return await interaction.response.send_message("This can only be used in a server.", ephemeral=True)
 
+        ticket = await self.bot.db.get_ticket(interaction.channel.id)
+        if not ticket:
+            return await interaction.response.send_message("This channel is not a ticket.", ephemeral=True)
+
         settings = await self.bot.db.get_settings(interaction.guild_id)
         is_staff = await self._is_ticket_staff(interaction.user, settings)
-        if not is_staff and interaction.user.id != panel.opener_id:
-            return await interaction.response.send_message("Only staff or the ticket creator can close this ticket.", ephemeral=True)
+        if not is_staff and interaction.user.id != ticket.get("user_id", panel.opener_id):
+            return await interaction.response.send_message(
+                "Only staff or the ticket creator can close this ticket.",
+                ephemeral=True,
+            )
 
-        await interaction.response.send_message("Closing ticket in 5 seconds...", ephemeral=True)
+        delay = self._close_delay_seconds()
+        await interaction.response.send_message(f"Closing ticket in {delay} seconds...", ephemeral=True)
         await interaction.channel.send(
             embed=discord.Embed(
                 title="Ticket Closing",
-                description="This ticket will be closed in 5 seconds...",
+                description=f"This ticket will be closed in {delay} seconds...",
                 color=Config.COLOR_BRAND,
             )
         )
 
-        await asyncio.sleep(Config.TICKET_CLOSE_DELAY)
+        await asyncio.sleep(delay)
+        ok, error = await self._finalize_ticket_close(
+            guild=interaction.guild,
+            channel=interaction.channel,
+            closer=interaction.user,
+            reason=None,
+        )
+        if not ok:
+            try:
+                await interaction.followup.send(embed=ModEmbed.error("Close Failed", error), ephemeral=True)
+            except Exception:
+                pass
 
-        # Generate transcript
-        messages = [m async for m in interaction.channel.history(limit=None, oldest_first=True)]
-        transcript_file = generate_html_transcript(interaction.guild, interaction.channel, messages)
-        transcript_file.seek(0)
+    @ticket_group.command(name="create", description="Create a support ticket")
+    @app_commands.describe(category="Ticket category")
+    async def ticket_create(
+        self,
+        interaction: discord.Interaction,
+        category: Literal["general", "report", "appeal", "other"] = "general",
+    ) -> None:
+        if not interaction.guild:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Unavailable", "Tickets can only be created in a server."),
+                ephemeral=True,
+            )
+        await interaction.response.send_modal(
+            TicketDetailsModal(self, category=self._normalize_ticket_category(str(category)))
+        )
+
+    @ticket_group.command(name="close", description="Close the current ticket")
+    @app_commands.describe(reason="Reason for closing the ticket")
+    async def ticket_close(self, interaction: discord.Interaction, reason: Optional[str] = None) -> None:
+        if not interaction.guild or not isinstance(interaction.user, discord.Member):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Unavailable", "This command can only be used in a server."),
+                ephemeral=True,
+            )
 
         ticket = await self.bot.db.get_ticket(interaction.channel.id)
-        if ticket:
-            await self.bot.db.close_ticket(interaction.channel.id)
+        if not ticket:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
+                ephemeral=True,
+            )
 
-            settings = await self.bot.db.get_settings(interaction.guild_id)
-            log_channel_id = settings.get("ticket_log_channel")
-            if log_channel_id:
-                log_channel = interaction.guild.get_channel(log_channel_id)
-                if log_channel:
-                    embed = discord.Embed(
-                        title=f"🎫 Ticket Closed",
-                        color=Config.COLOR_BRAND,
-                        timestamp=datetime.utcnow(),
-                    )
-                    creator = interaction.guild.get_member(ticket["user_id"])
-                    embed.add_field(
-                        name="Created By",
-                        value=creator.mention if creator else f"ID: {ticket['user_id']}",
-                        inline=True,
-                    )
-                    embed.add_field(name="Closed By", value=interaction.user.mention, inline=True)
-                    embed.add_field(name="Category", value=ticket.get("category", "unknown"), inline=True)
-
-                    file = discord.File(
-                        transcript_file,
-                        filename=f"ticket-{ticket['ticket_number']}.html",
-                    )
-                    await send_log_embed(log_channel, embed, file=file)
-
-        try:
-            await interaction.channel.delete(reason=f"Ticket closed by {interaction.user}")
-        except Exception:
-            pass
-    
-    
-    @app_commands.command(name="ticketpanel", description="Create a ticket panel embed")
-    @is_mod()
-    async def ticketpanel(self, interaction:  discord.Interaction):
-        embed = discord.Embed(
-            title="🎫 Support Tickets",
-            description="Need help?  Click the button below to create a support ticket!\n\n"
-                        "**Guidelines:**\n"
-                        "• Be patient and respectful\n"
-                        "• Provide as much detail as possible\n"
-                        "• Don't create multiple tickets for the same issue\n"
-                        "• Don't ping staff unnecessarily",
-            color=Config.COLOR_EMBED
-        )
-        embed.set_footer(text="Click the button below to open a ticket")
-        
         settings = await self.bot.db.get_settings(interaction.guild_id)
-        banner_url = settings.get("server_banner_url")
+        is_staff = await self._is_ticket_staff(interaction.user, settings)
+        if not is_staff and interaction.user.id != ticket.get("user_id"):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", "Only ticket staff or the ticket creator can close this ticket."),
+                ephemeral=True,
+            )
 
-        await interaction.channel.send(view=TicketPanelView(self, guild=interaction.guild, banner_url=banner_url))
+        close_reason = (reason or "No reason provided").strip()
+        delay = self._close_delay_seconds()
         await interaction.response.send_message(
-            embed=ModEmbed. success("Panel Created", "Ticket panel has been created! "),
-            ephemeral=True
+            embed=ModEmbed.warning(
+                "Closing Ticket",
+                f"This ticket will be closed in {delay} seconds.\n**Reason:** {close_reason}",
+            )
         )
+
+        await asyncio.sleep(delay)
+        ok, error = await self._finalize_ticket_close(
+            guild=interaction.guild,
+            channel=interaction.channel,
+            closer=interaction.user,
+            reason=close_reason,
+        )
+        if not ok:
+            await interaction.followup.send(embed=ModEmbed.error("Close Failed", error), ephemeral=True)
+
+    @ticket_group.command(name="add", description="Add a user to this ticket")
+    @app_commands.describe(user="User to add to this ticket")
+    async def ticket_add(self, interaction: discord.Interaction, user: discord.Member) -> None:
+        if not interaction.guild or not isinstance(interaction.user, discord.Member):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Unavailable", "This command can only be used in a server."),
+                ephemeral=True,
+            )
+        if not await self._is_ticket_staff(interaction.user):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", "You need ticket staff permissions for this action."),
+                ephemeral=True,
+            )
+
+        ticket = await self.bot.db.get_ticket(interaction.channel.id)
+        if not ticket:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
+                ephemeral=True,
+            )
+
+        await interaction.channel.set_permissions(
+            user,
+            view_channel=True,
+            send_messages=True,
+            attach_files=True,
+            read_message_history=True,
+        )
+        await interaction.response.send_message(
+            embed=ModEmbed.success("User Added", f"{user.mention} has been added to this ticket.")
+        )
+
+    @ticket_group.command(name="remove", description="Remove a user from this ticket")
+    @app_commands.describe(user="User to remove from this ticket")
+    async def ticket_remove(self, interaction: discord.Interaction, user: discord.Member) -> None:
+        if not interaction.guild or not isinstance(interaction.user, discord.Member):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Unavailable", "This command can only be used in a server."),
+                ephemeral=True,
+            )
+        if not await self._is_ticket_staff(interaction.user):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", "You need ticket staff permissions for this action."),
+                ephemeral=True,
+            )
+
+        ticket = await self.bot.db.get_ticket(interaction.channel.id)
+        if not ticket:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
+                ephemeral=True,
+            )
+        if user.id == ticket.get("user_id"):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Cannot Remove", "You cannot remove the ticket creator."),
+                ephemeral=True,
+            )
+
+        await interaction.channel.set_permissions(user, overwrite=None)
+        await interaction.response.send_message(
+            embed=ModEmbed.success("User Removed", f"{user.mention} has been removed from this ticket.")
+        )
+
+    @ticket_group.command(name="rename", description="Rename this ticket channel")
+    @app_commands.describe(name="New ticket channel name")
+    async def ticket_rename(self, interaction: discord.Interaction, name: str) -> None:
+        if not interaction.guild or not isinstance(interaction.user, discord.Member):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Unavailable", "This command can only be used in a server."),
+                ephemeral=True,
+            )
+        if not await self._is_ticket_staff(interaction.user):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", "You need ticket staff permissions for this action."),
+                ephemeral=True,
+            )
+
+        ticket = await self.bot.db.get_ticket(interaction.channel.id)
+        if not ticket:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
+                ephemeral=True,
+            )
+
+        normalized = self._normalize_ticket_channel_name(name)
+        if not normalized:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Invalid Name", "Please provide a valid channel name."),
+                ephemeral=True,
+            )
+
+        await interaction.channel.edit(name=normalized)
+        await interaction.response.send_message(
+            embed=ModEmbed.success("Ticket Renamed", f"Ticket renamed to **{normalized}**")
+        )
+
+    @ticket_group.command(name="transcript", description="Generate a transcript for this ticket")
+    async def ticket_transcript(self, interaction: discord.Interaction) -> None:
+        if not interaction.guild or not isinstance(interaction.user, discord.Member):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Unavailable", "This command can only be used in a server."),
+                ephemeral=True,
+            )
+        if not await self._is_ticket_staff(interaction.user):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Permission Denied", "You need ticket staff permissions for this action."),
+                ephemeral=True,
+            )
+
+        ticket = await self.bot.db.get_ticket(interaction.channel.id)
+        if not ticket:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."),
+                ephemeral=True,
+            )
+
+        await interaction.response.defer()
+        transcript_file = await self._build_ticket_transcript(interaction.guild, interaction.channel)
+        file = discord.File(transcript_file, filename=f"transcript-{interaction.channel.id}.html")
+        await interaction.followup.send(
+            embed=ModEmbed.success("Transcript Generated", "Here is the transcript of this ticket."),
+            file=file,
+        )
+
+    @ticket_group.command(name="panel", description="Post the ticket creation panel")
+    @is_mod()
+    async def ticket_panel(self, interaction: discord.Interaction) -> None:
+        if not interaction.guild or not isinstance(interaction.channel, discord.TextChannel):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Unavailable", "This command can only be used in a text channel."),
+                ephemeral=True,
+            )
+        await self._send_ticket_panel_to_channel(interaction.channel, interaction.guild)
+        await interaction.response.send_message(
+            embed=ModEmbed.success("Panel Created", "Ticket panel has been created."),
+            ephemeral=True,
+        )
+
+    @app_commands.command(name="ticketpanel", description="Post the ticket panel (legacy alias)")
+    @is_mod()
+    async def ticketpanel_alias(self, interaction: discord.Interaction) -> None:
+        if not interaction.guild or not isinstance(interaction.channel, discord.TextChannel):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Unavailable", "This command can only be used in a text channel."),
+                ephemeral=True,
+            )
+        await self._send_ticket_panel_to_channel(interaction.channel, interaction.guild)
+        await interaction.response.send_message(
+            embed=ModEmbed.success("Panel Created", "Ticket panel has been created."),
+            ephemeral=True,
+        )
+
+    @commands.group(name="ticket", aliases=["tickets"], invoke_without_command=True)
+    @commands.guild_only()
+    async def ticket_prefix(self, ctx: commands.Context) -> None:
+        if ctx.invoked_subcommand:
+            return
+        await ctx.send(
+            "Ticket commands: `,ticket create`, `,ticket close`, `,ticket add`, "
+            "`,ticket remove`, `,ticket rename`, `,ticket transcript`, `,ticket panel`"
+        )
+
+    @ticket_prefix.command(name="create", aliases=["open", "new"])
+    async def ticket_create_prefix(
+        self,
+        ctx: commands.Context,
+        category: Optional[str] = "general",
+        *,
+        details: Optional[str] = None,
+    ) -> None:
+        if not isinstance(ctx.author, discord.Member) or not ctx.guild:
+            return
+
+        requested_category = (category or "general").strip().lower()
+        final_category = self._normalize_ticket_category(requested_category)
+        final_details = (details or "").strip()
+        if requested_category not in {"general", "report", "appeal", "other"}:
+            final_details = f"{(category or '').strip()} {final_details}".strip()
+
+        channel, error = await self._create_ticket_channel(
+            guild=ctx.guild,
+            opener=ctx.author,
+            category=final_category,
+            details=final_details or "No details provided.",
+        )
+        if error:
+            return await ctx.send(embed=ModEmbed.error("Ticket Error", error))
+        await ctx.send(embed=ModEmbed.success("Ticket Created", f"Your ticket has been created: {channel.mention}"))
+
+    @ticket_prefix.command(name="close", aliases=["c"])
+    async def ticket_close_prefix(self, ctx: commands.Context, *, reason: Optional[str] = None) -> None:
+        if not isinstance(ctx.author, discord.Member) or not ctx.guild:
+            return
+
+        ticket = await self.bot.db.get_ticket(ctx.channel.id)
+        if not ticket:
+            return await ctx.send(embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."))
+
+        settings = await self.bot.db.get_settings(ctx.guild.id)
+        is_staff = await self._is_ticket_staff(ctx.author, settings)
+        if not is_staff and ctx.author.id != ticket.get("user_id"):
+            return await ctx.send(
+                embed=ModEmbed.error("Permission Denied", "Only ticket staff or the ticket creator can close this ticket.")
+            )
+
+        close_reason = (reason or "No reason provided").strip()
+        delay = self._close_delay_seconds()
+        await ctx.send(
+            embed=ModEmbed.warning(
+                "Closing Ticket",
+                f"This ticket will be closed in {delay} seconds.\n**Reason:** {close_reason}",
+            )
+        )
+        await asyncio.sleep(delay)
+        ok, error = await self._finalize_ticket_close(
+            guild=ctx.guild,
+            channel=ctx.channel,
+            closer=ctx.author,
+            reason=close_reason,
+        )
+        if not ok:
+            await ctx.send(embed=ModEmbed.error("Close Failed", error))
+
+    @ticket_prefix.command(name="add")
+    async def ticket_add_prefix(self, ctx: commands.Context, user: discord.Member) -> None:
+        if not isinstance(ctx.author, discord.Member):
+            return
+        if not await self._is_ticket_staff(ctx.author):
+            return await ctx.send(
+                embed=ModEmbed.error("Permission Denied", "You need ticket staff permissions for this action.")
+            )
+
+        ticket = await self.bot.db.get_ticket(ctx.channel.id)
+        if not ticket:
+            return await ctx.send(embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."))
+
+        await ctx.channel.set_permissions(
+            user,
+            view_channel=True,
+            send_messages=True,
+            attach_files=True,
+            read_message_history=True,
+        )
+        await ctx.send(embed=ModEmbed.success("User Added", f"{user.mention} has been added to this ticket."))
+
+    @ticket_prefix.command(name="remove")
+    async def ticket_remove_prefix(self, ctx: commands.Context, user: discord.Member) -> None:
+        if not isinstance(ctx.author, discord.Member):
+            return
+        if not await self._is_ticket_staff(ctx.author):
+            return await ctx.send(
+                embed=ModEmbed.error("Permission Denied", "You need ticket staff permissions for this action.")
+            )
+
+        ticket = await self.bot.db.get_ticket(ctx.channel.id)
+        if not ticket:
+            return await ctx.send(embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."))
+        if user.id == ticket.get("user_id"):
+            return await ctx.send(embed=ModEmbed.error("Cannot Remove", "You cannot remove the ticket creator."))
+
+        await ctx.channel.set_permissions(user, overwrite=None)
+        await ctx.send(embed=ModEmbed.success("User Removed", f"{user.mention} has been removed from this ticket."))
+
+    @ticket_prefix.command(name="rename")
+    async def ticket_rename_prefix(self, ctx: commands.Context, *, name: str) -> None:
+        if not isinstance(ctx.author, discord.Member):
+            return
+        if not await self._is_ticket_staff(ctx.author):
+            return await ctx.send(
+                embed=ModEmbed.error("Permission Denied", "You need ticket staff permissions for this action.")
+            )
+
+        ticket = await self.bot.db.get_ticket(ctx.channel.id)
+        if not ticket:
+            return await ctx.send(embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."))
+
+        normalized = self._normalize_ticket_channel_name(name)
+        if not normalized:
+            return await ctx.send(embed=ModEmbed.error("Invalid Name", "Please provide a valid channel name."))
+
+        await ctx.channel.edit(name=normalized)
+        await ctx.send(embed=ModEmbed.success("Ticket Renamed", f"Ticket renamed to **{normalized}**"))
+
+    @ticket_prefix.command(name="transcript", aliases=["logs"])
+    async def ticket_transcript_prefix(self, ctx: commands.Context) -> None:
+        if not isinstance(ctx.author, discord.Member) or not ctx.guild:
+            return
+        if not await self._is_ticket_staff(ctx.author):
+            return await ctx.send(
+                embed=ModEmbed.error("Permission Denied", "You need ticket staff permissions for this action.")
+            )
+
+        ticket = await self.bot.db.get_ticket(ctx.channel.id)
+        if not ticket:
+            return await ctx.send(embed=ModEmbed.error("Not a Ticket", "This channel is not a ticket."))
+
+        transcript_file = await self._build_ticket_transcript(ctx.guild, ctx.channel)
+        file = discord.File(transcript_file, filename=f"transcript-{ctx.channel.id}.html")
+        await ctx.send(embed=ModEmbed.success("Transcript Generated", "Here is the transcript of this ticket."), file=file)
+
+    @ticket_prefix.command(name="panel")
+    async def ticket_panel_prefix(self, ctx: commands.Context) -> None:
+        if not isinstance(ctx.author, discord.Member) or not ctx.guild:
+            return
+        if not await self._is_ticket_staff(ctx.author):
+            return await ctx.send(
+                embed=ModEmbed.error("Permission Denied", "You need ticket staff permissions for this action.")
+            )
+        if not isinstance(ctx.channel, discord.TextChannel):
+            return await ctx.send(embed=ModEmbed.error("Unavailable", "This command can only be used in text channels."))
+
+        await self._send_ticket_panel_to_channel(ctx.channel, ctx.guild)
+        await ctx.send(embed=ModEmbed.success("Panel Created", "Ticket panel has been created."))
+
+    @commands.command(name="ticketpanel")
+    @commands.guild_only()
+    async def ticketpanel_prefix_alias(self, ctx: commands.Context) -> None:
+        if not isinstance(ctx.author, discord.Member) or not ctx.guild:
+            return
+        if not await self._is_ticket_staff(ctx.author):
+            return await ctx.send(
+                embed=ModEmbed.error("Permission Denied", "You need ticket staff permissions for this action.")
+            )
+        if not isinstance(ctx.channel, discord.TextChannel):
+            return await ctx.send(embed=ModEmbed.error("Unavailable", "This command can only be used in text channels."))
+
+        await self._send_ticket_panel_to_channel(ctx.channel, ctx.guild)
+        await ctx.send(embed=ModEmbed.success("Panel Created", "Ticket panel has been created."))
+
 
 async def setup(bot):
     await bot.add_cog(Tickets(bot))

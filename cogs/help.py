@@ -70,11 +70,11 @@ def _chunked(items: list, *, size: int) -> Iterable[list]:
         yield items[i : i + size]
 
 
-def _usage_line(cmd: app_commands.Command | commands.Command) -> str:
+def _usage_line(cmd: app_commands.Command | app_commands.Group | commands.Command) -> str:
     parts = [_format_invocation(cmd)]
     
     if isinstance(cmd, (app_commands.Command, app_commands.Group)):
-        for p in cmd.parameters:
+        for p in getattr(cmd, "parameters", []):
             if p.required:
                 parts.append(f"<{p.name}>")
             else:
@@ -90,13 +90,14 @@ def _usage_line(cmd: app_commands.Command | commands.Command) -> str:
     return " ".join(parts)
 
 
-def _parameter_lines(cmd: app_commands.Command | commands.Command) -> str:
+def _parameter_lines(cmd: app_commands.Command | app_commands.Group | commands.Command) -> str:
     lines: list[str] = []
     
     if isinstance(cmd, (app_commands.Command, app_commands.Group)):
-        if not cmd.parameters:
+        params = list(getattr(cmd, "parameters", []))
+        if not params:
             return "No parameters."
-        for p in cmd.parameters:
+        for p in params:
             desc = (p.description or "No description").strip()
             required = "required" if p.required else "optional"
             lines.append(f"• `{p.name}` ({required}) — {desc}")
@@ -136,16 +137,25 @@ class _HelpIndex:
                 by_name[_normalize_command_name(cmd.qualified_name)] = cmd
 
         if include_prefix:
-            for cmd in bot.commands:
+            seen_prefix: set[str] = set()
+            for cmd in bot.walk_commands():
                 if cmd.hidden:
                     continue
 
+                qname = _normalize_command_name(cmd.qualified_name)
+                if qname in seen_prefix:
+                    continue
+                seen_prefix.add(qname)
+
                 category = _category_for_command(cmd)
                 categories.setdefault(category, []).append(cmd)
-                by_name[_normalize_command_name(cmd.qualified_name)] = cmd
+                by_name[qname] = cmd
 
                 for alias in cmd.aliases:
                     by_name[_normalize_command_name(alias)] = cmd
+                    if cmd.parent:
+                        parent_name = _normalize_command_name(cmd.parent.qualified_name)
+                        by_name[_normalize_command_name(f"{parent_name} {alias}")] = cmd
 
         for cat in categories:
             categories[cat].sort(key=lambda c: c.qualified_name)
@@ -337,19 +347,23 @@ class HelpView(discord.ui.View):
 
     def _details_hint(self) -> str:
         if self.mode == "prefix":
-            return "Use ,help <name> for details"
-        return "Use /help command:<name> for details"
+            return "Use ,help <name> (example: ,help ticket close)"
+        return "Use /help command:<name> (example: /help command:ticket close)"
 
     def _build_overview_embed(self) -> discord.Embed:
         total = sum(len(v) for v in self.index.categories.values())
         help_label = self._help_label()
 
         if self.mode == "prefix":
-            quick_access = f"? `{help_label} <name>` ? Detailed command info\n"
+            quick_access = (
+                f"? `{help_label} <name>` ? Detailed command info\n"
+                "? `,ticket create` ? Open a ticket from prefix commands\n"
+            )
         else:
             quick_access = (
                 "? `/modpanel` ? Moderation quick actions\n"
                 "? `/adminpanel` ? Server configuration\n"
+                "? `/ticket create` ? Open a ticket\n"
                 f"? `{help_label} command:<name>` ? Detailed command info\n"
             )
 
@@ -386,7 +400,7 @@ class HelpView(discord.ui.View):
             tips = (
                 "? Use the dropdown menu to browse categories\n"
                 f"? Use `{help_label} command:ban` for detailed info\n"
-                "? Commands with `action:` have multiple functions"
+                "? Group commands use subcommands (example: /ticket close)"
             )
 
         embed.add_field(
@@ -452,12 +466,13 @@ class HelpView(discord.ui.View):
         )
         if self.mode != "prefix":
             embed.add_field(
-                name="Action Commands",
+                name="Command Patterns",
                 value=(
-                    "Many commands use an `action` parameter:\n"
+                    "Common patterns you can use:\n"
                     "? `/vc action:mute` ? Mute in voice\n"
                     "? `/roles action:add` ? Add a role\n"
-                    "? `/ticket action:close` ? Close a ticket"
+                    "? `/ticket close` ? Close a ticket\n"
+                    "? `/help command:ticket close` ? Command details"
                 ),
                 inline=False
             )
@@ -1155,34 +1170,80 @@ class Help(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    def _build_details_embed(self, cmd: app_commands.Command | app_commands.Group) -> discord.Embed:
+    def _build_details_embed(
+        self,
+        cmd: app_commands.Command | app_commands.Group | commands.Command,
+    ) -> discord.Embed:
         category = _category_for_command(cmd)
         emoji = get_category_icon(category)
         title = f"{emoji} {_format_invocation(cmd)}"
         desc = (getattr(cmd, "description", None) or "No description").strip()
+        is_slash = isinstance(cmd, (app_commands.Command, app_commands.Group))
 
         embed = discord.Embed(
-            title=title, 
+            title=title,
             description=desc,
             color=Config.COLOR_EMBED,
         )
         embed.add_field(name="Category", value=category, inline=True)
+        embed.add_field(name="Type", value="Slash" if is_slash else "Prefix", inline=True)
+        embed.add_field(name="Usage", value=f"`{_usage_line(cmd)}`", inline=False)
+        embed.add_field(name="Parameters", value=_parameter_lines(cmd), inline=False)
 
-        if isinstance(cmd, app_commands.Command):
-            embed.add_field(name="Usage", value=f"`{_usage_line(cmd)}`", inline=False)
-            embed.add_field(name="Parameters", value=_parameter_lines(cmd), inline=False)
-        else:
-            embed.add_field(
-                name="Usage",
-                value=f"`{_format_invocation(cmd)}` (command group with subcommands)",
-                inline=False,
-            )
+        if isinstance(cmd, commands.Command) and cmd.aliases:
+            aliases = ", ".join(f"`{alias}`" for alias in cmd.aliases[:15])
+            embed.add_field(name="Aliases", value=aliases, inline=False)
 
-        if isinstance(cmd, app_commands.Command):
-            footer = "Use /help to browse all commands"
+        if isinstance(cmd, app_commands.Group):
+            subcommands = sorted(child.qualified_name for child in cmd.commands)
+            if subcommands:
+                lines = [f"`/{name}`" for name in subcommands[:10]]
+                if len(subcommands) > 10:
+                    lines.append(f"... and {len(subcommands) - 10} more")
+                embed.add_field(name="Subcommands", value="\n".join(lines), inline=False)
+        elif isinstance(cmd, commands.Group):
+            subcommands = sorted(child.qualified_name for child in cmd.commands)
+            if subcommands:
+                lines = [f"`,{name}`" for name in subcommands[:10]]
+                if len(subcommands) > 10:
+                    lines.append(f"... and {len(subcommands) - 10} more")
+                embed.add_field(name="Subcommands", value="\n".join(lines), inline=False)
+
+        examples: list[str] = []
+        if cmd.qualified_name.startswith("ticket"):
+            if is_slash:
+                examples = [
+                    "`/ticket create`",
+                    "`/ticket close reason:resolved`",
+                    "`/ticket transcript`",
+                ]
+            else:
+                examples = [
+                    "`,ticket create general Need help with appeals`",
+                    "`,ticket close issue resolved`",
+                    "`,ticket transcript`",
+                ]
+        elif is_slash:
+            examples.append(f"`/{cmd.qualified_name}`")
+            if isinstance(cmd, app_commands.Command):
+                first_required = next((p for p in cmd.parameters if p.required), None)
+                if first_required:
+                    examples.append(f"`/{cmd.qualified_name} {first_required.name}:<value>`")
         else:
-            footer = "Use ,help to browse all commands"
-        embed.set_footer(text=footer)
+            examples.append(f"`,{cmd.qualified_name}`")
+            if cmd.clean_params:
+                parts = []
+                for name, param in cmd.clean_params.items():
+                    if param.default is param.empty:
+                        parts.append(f"<{name}>")
+                    else:
+                        parts.append(f"[{name}]")
+                examples.append(f"`,{cmd.qualified_name} {' '.join(parts)}`")
+
+        if examples:
+            embed.add_field(name="Examples", value="\n".join(examples), inline=False)
+
+        embed.set_footer(text="Use /help to browse slash commands or ,help to browse prefix commands")
         return embed
 
     @commands.command(name="help", help="Browse commands and get detailed help")

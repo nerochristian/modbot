@@ -213,6 +213,175 @@ class MiscCommands:
         
         await ctx.reply(embed=ModEmbed.success("Steal Report", msg or "Nothing processed."))
 
+    # Slash command - registered dynamically in __init__.py
+    async def emoji_tutorial_slash(self, interaction: discord.Interaction):
+        """Show emoji submission tutorial."""
+        if not interaction.guild:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not Available", "This command can only be used in a server."),
+                ephemeral=True,
+            )
+
+        steps = (
+            "This server uses **admin approval** for new emojis.\n\n"
+            "**Step 1: Get a direct image URL**\n"
+            "• Use a direct link to a `.png`, `.jpg`, or `.gif`.\n"
+            "• If you're using a Discord attachment, copy the attachment URL.\n\n"
+            "**Step 2: Pick a name**\n"
+            "• Only letters, numbers, and underscores.\n"
+            "• Example: `cool_cat`, `pepe_laugh`.\n\n"
+            "**Step 3: Submit the request**\n"
+            "• Run: `/emoji add <name> <url>`\n\n"
+            "**Step 4: Wait for approval**\n"
+            "• An admin will approve/reject in `#emoji-logs`.\n\n"
+        )
+        embed = discord.Embed(
+            title="Emoji Tutorial",
+            description=steps,
+            color=Colors.EMBED,
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.set_footer(text="Tip: The bot will reject files over ~256KB.")
+
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        try:
+            gif = await _fetch_addemoji_tutorial_gif_file()
+        except Exception:
+            gif = None
+
+        if gif:
+            embed.set_image(url=f"attachment://{ADD_EMOJI_TUTORIAL_GIF_FILENAME}")
+            return await interaction.followup.send(embed=embed, file=gif, ephemeral=True)
+
+        embed.set_image(url=ADD_EMOJI_TUTORIAL_GIF_URL)
+        return await interaction.followup.send(embed=embed, ephemeral=True)
+
+    # Slash command - registered dynamically in __init__.py
+    @app_commands.describe(
+        name="Emoji name (letters/numbers/underscores)",
+        url="Direct image URL (png/jpg/gif)",
+    )
+    async def emoji_add_slash(self, interaction: discord.Interaction, name: str, url: str):
+        """Request to add a new emoji."""
+        if not interaction.guild or not interaction.channel:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not Available", "This command can only be used in a server."),
+                ephemeral=True,
+            )
+
+        settings = await self.bot.db.get_settings(interaction.guild.id)
+        restricted = settings.get("emoji_command_channel") or settings.get("emoji_command_channel_id") or EMOJI_COMMAND_CHANNEL_ID
+        if restricted and interaction.channel.id != int(restricted):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Wrong Channel", f"Use emoji commands in <#{int(restricted)}>."),
+                ephemeral=True,
+            )
+
+        url = self._normalize_asset_url(url)
+        url_error = self._validate_asset_url(url)
+        if url_error:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Invalid URL", f"{url_error}\n\nExample: `https://.../image.png`"),
+                ephemeral=True,
+            )
+
+        emoji_name = self._sanitize_emoji_name(name)
+        if len(emoji_name) < 2:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Invalid Name", "Names must be 2+ chars."),
+                ephemeral=True,
+            )
+
+        if any(e.name == emoji_name for e in interaction.guild.emojis):
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Exists", f"`:{emoji_name}:` exists."),
+                ephemeral=True,
+            )
+
+        log_channel = await self._get_emoji_log_channel(interaction.guild)
+        if not log_channel:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not Configured", "Ask admin to setup `#emoji-logs`."),
+                ephemeral=True,
+            )
+
+        view = EmojiApprovalView(self, requester_id=interaction.user.id, emoji_name=emoji_name, emoji_url=url)
+        try:
+            msg = await log_channel.send(view=view)
+            view.message = msg
+            await interaction.response.send_message(
+                embed=ModEmbed.success("Submitted", f"Sent to {log_channel.mention}."),
+                ephemeral=True,
+            )
+        except Exception as e:
+            await interaction.response.send_message(
+                embed=ModEmbed.error("Failed", f"Error: {e}"),
+                ephemeral=True,
+            )
+
+    # Slash command - registered dynamically in __init__.py
+    @app_commands.describe(emojis="Paste one or more custom emojis, e.g. <:name:id>")
+    async def emoji_steal_slash(self, interaction: discord.Interaction, emojis: str):
+        """Request one or more pasted custom emojis."""
+        if not interaction.guild:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not Available", "This command can only be used in a server."),
+                ephemeral=True,
+            )
+
+        matches = list(re.finditer(r"<(a?):([A-Za-z0-9_]+):(\d+)>", emojis))
+        if not matches:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("No Emojis", "Paste custom emojis."),
+                ephemeral=True,
+            )
+
+        log_channel = await self._get_emoji_log_channel(interaction.guild)
+        if not log_channel:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not Configured", "Ask admin to setup `#emoji-logs`."),
+                ephemeral=True,
+            )
+
+        submitted = []
+        skipped = []
+        failed = []
+        existing_names = {e.name for e in interaction.guild.emojis}
+        seen_names = set()
+
+        for match in matches[:25]:
+            try:
+                animated = bool(match.group(1))
+                ename = match.group(2)
+                eid = match.group(3)
+                dname = self._sanitize_emoji_name(ename)
+                eurl = f"https://cdn.discordapp.com/emojis/{eid}.{'gif' if animated else 'png'}"
+
+                if dname in existing_names or dname in seen_names:
+                    skipped.append(ename)
+                    continue
+                seen_names.add(dname)
+
+                view = EmojiApprovalView(self, requester_id=interaction.user.id, emoji_name=dname, emoji_url=eurl)
+                msg = await log_channel.send(view=view)
+                view.message = msg
+                submitted.append(f"`:{dname}:`")
+            except Exception as e:
+                failed.append(f"{match.group(2)} ({type(e).__name__})")
+
+        msg = ""
+        if submitted:
+            msg += f"Submitted {len(submitted)} to {log_channel.mention}."
+        if skipped:
+            msg += f"\nSkipped: {', '.join(skipped[:10])}"
+        if failed:
+            msg += f"\nFailed: {', '.join(failed[:10])}"
+
+        await interaction.response.send_message(
+            embed=ModEmbed.success("Steal Report", msg or "Nothing processed."),
+            ephemeral=True,
+        )
+
     # ==================== WELCOME SYSTEM ====================
 
     async def _send_welcome_message(
