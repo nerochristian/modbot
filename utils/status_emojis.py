@@ -177,5 +177,5 @@ async def apply_status_emoji_overrides(
 def status_embed_pad_line(pad_chars: int) -> str:
     if pad_chars <= 0:
         return ""
-    return f"> {_BRAILLE_BLANK * pad_chars}"
-
+    # Keep horizontal padding invisible without adding a new quoted line.
+    return _BRAILLE_BLANK * pad_chars
