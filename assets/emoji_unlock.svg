@@ -5,27 +5,26 @@
     fill="#22C55E"
   />
 
-  <!-- Tick (animated stroke draw) -->
+  <!-- Lock body -->
+  <rect x="8.2" y="11" width="7.6" height="6.2" rx="1.5" fill="#FFFFFF" />
+
+  <!-- Open shackle -->
   <path
-    d="M9.2 12.5L11.2 14.5L15.5 9.8"
+    d="M14.4 11V9.4C14.4 8.1 13.4 7 12.1 7C10.8 7 9.8 8.1 9.8 9.4"
     fill="none"
     stroke="#FFFFFF"
-    stroke-width="2"
+    stroke-width="1.8"
     stroke-linecap="round"
-    stroke-linejoin="round"
-    stroke-dasharray="20"
-    stroke-dashoffset="20"
-  >
-    <animate
-      attributeName="stroke-dashoffset"
-      values="20;0;0;20"
-      keyTimes="0;0.45;0.8;1"
-      dur="1.6s"
-      repeatCount="indefinite"
-    />
-  </path>
+  />
+  <path
+    d="M9.6 9.4V10.2"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="1.8"
+    stroke-linecap="round"
+  />
 
-  <!-- subtle pop -->
+  <!-- Subtle pop -->
   <animateTransform
     attributeName="transform"
     type="scale"

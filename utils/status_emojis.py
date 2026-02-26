@@ -26,6 +26,34 @@ _EMOJI_META = {
         "default_name": "mod_error",
         "asset": "emoji_error.png",
     },
+    "warning": {
+        "config_icon": "EMOJI_WARNING",
+        "default_icon": "\u26a0\ufe0f",
+        "config_name": "STATUS_WARNING_EMOJI_NAME",
+        "default_name": "mod_warning",
+        "asset": "emoji_warning.png",
+    },
+    "info": {
+        "config_icon": "EMOJI_INFO",
+        "default_icon": "\u2139\ufe0f",
+        "config_name": "STATUS_INFO_EMOJI_NAME",
+        "default_name": "mod_info",
+        "asset": "emoji_info.png",
+    },
+    "lock": {
+        "config_icon": "EMOJI_LOCK",
+        "default_icon": "\U0001f512",
+        "config_name": "STATUS_LOCK_EMOJI_NAME",
+        "default_name": "mod_lock",
+        "asset": "emoji_lock.png",
+    },
+    "unlock": {
+        "config_icon": "EMOJI_UNLOCK",
+        "default_icon": "\U0001f513",
+        "config_name": "STATUS_UNLOCK_EMOJI_NAME",
+        "default_name": "mod_unlock",
+        "asset": "emoji_unlock.png",
+    },
 }
 
 _emoji_cache: dict[tuple[int, str], str] = {}
@@ -65,6 +93,7 @@ def _member_can_manage_emojis(member: Optional[discord.Member]) -> bool:
     return bool(
         getattr(perms, "manage_emojis_and_stickers", False)
         or getattr(perms, "manage_emojis", False)
+        or getattr(perms, "manage_expressions", False)
     )
 
 
@@ -92,6 +121,11 @@ async def _ensure_custom_status_emoji(guild: discord.Guild, kind: str) -> Option
         return None
 
     bot_member = guild.me
+    if bot_member is None:
+        bot_user = getattr(guild, "_state", None)
+        bot_id = getattr(getattr(bot_user, "user", None), "id", None)
+        if bot_id is not None:
+            bot_member = guild.get_member(bot_id)
     if not _member_can_manage_emojis(bot_member):
         return None
 
@@ -146,10 +180,14 @@ async def apply_status_emoji_overrides(
         return embed
 
     description = getattr(embed, "description", None)
-    if not description:
+    title = getattr(embed, "title", None)
+    if not description and not title:
         return embed
 
-    updated = str(description)
+    updated_description = str(description) if description else None
+    updated_title = str(title) if title else None
+    changed = False
+
     for kind, meta in _EMOJI_META.items():
         configured_icon = str(getattr(Config, meta["config_icon"], meta["default_icon"]) or "").strip()
         if not configured_icon:
@@ -158,18 +196,26 @@ async def apply_status_emoji_overrides(
             continue
 
         prefix = f"{configured_icon} "
-        if not updated.startswith(prefix):
-            continue
+        mention: Optional[str] = None
 
-        mention = await _ensure_custom_status_emoji(guild, kind)
-        if not mention:
-            continue
+        if updated_description and updated_description.startswith(prefix):
+            mention = await _ensure_custom_status_emoji(guild, kind)
+            if mention:
+                updated_description = updated_description.replace(prefix, f"{mention} ", 1)
+                changed = True
 
-        updated = updated.replace(prefix, f"{mention} ", 1)
-        break
+        if updated_title and updated_title.startswith(prefix):
+            if mention is None:
+                mention = await _ensure_custom_status_emoji(guild, kind)
+            if mention:
+                updated_title = updated_title.replace(prefix, f"{mention} ", 1)
+                changed = True
 
-    if updated != description:
-        embed.description = updated
+    if changed:
+        if updated_description is not None:
+            embed.description = updated_description
+        if updated_title is not None:
+            embed.title = updated_title
 
     return embed
 
@@ -177,5 +223,4 @@ async def apply_status_emoji_overrides(
 def status_embed_pad_line(pad_chars: int) -> str:
     if pad_chars <= 0:
         return ""
-    return f"> {_BRAILLE_BLANK * pad_chars}"
-
+    return _BRAILLE_BLANK * pad_chars

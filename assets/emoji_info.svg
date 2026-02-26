@@ -2,30 +2,40 @@
   <!-- Shield -->
   <path
     d="M12 2L4 6V11C4 16 7.5 19.5 12 22C16.5 19.5 20 16 20 11V6L12 2Z"
-    fill="#22C55E"
+    fill="#3B82F6"
   />
 
-  <!-- Tick (animated stroke draw) -->
+  <!-- Info stem -->
   <path
-    d="M9.2 12.5L11.2 14.5L15.5 9.8"
+    d="M12 10.2V15.2"
     fill="none"
     stroke="#FFFFFF"
     stroke-width="2"
     stroke-linecap="round"
-    stroke-linejoin="round"
-    stroke-dasharray="20"
-    stroke-dashoffset="20"
+    stroke-dasharray="8"
+    stroke-dashoffset="8"
   >
     <animate
       attributeName="stroke-dashoffset"
-      values="20;0;0;20"
+      values="8;0;0;8"
       keyTimes="0;0.45;0.8;1"
       dur="1.6s"
       repeatCount="indefinite"
     />
   </path>
 
-  <!-- subtle pop -->
+  <!-- Info dot -->
+  <circle cx="12" cy="7.5" r="1.15" fill="#FFFFFF">
+    <animate
+      attributeName="opacity"
+      values="0;1;1;0"
+      keyTimes="0;0.3;0.8;1"
+      dur="1.6s"
+      repeatCount="indefinite"
+    />
+  </circle>
+
+  <!-- Subtle pop -->
   <animateTransform
     attributeName="transform"
     type="scale"

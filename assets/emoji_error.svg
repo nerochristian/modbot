@@ -5,12 +5,52 @@
     fill="#EF4444"
   />
 
-  <!-- X -->
+  <!-- X line 1 -->
   <path
-    d="M9 9L15 15M15 9L9 15"
+    d="M9 9L15 15"
     fill="none"
-    stroke="white"
+    stroke="#FFFFFF"
     stroke-width="2"
     stroke-linecap="round"
+    stroke-dasharray="12"
+    stroke-dashoffset="12"
+  >
+    <animate
+      attributeName="stroke-dashoffset"
+      values="12;0;0;12"
+      keyTimes="0;0.4;0.8;1"
+      dur="1.6s"
+      repeatCount="indefinite"
+    />
+  </path>
+
+  <!-- X line 2 (slightly delayed) -->
+  <path
+    d="M15 9L9 15"
+    fill="none"
+    stroke="#FFFFFF"
+    stroke-width="2"
+    stroke-linecap="round"
+    stroke-dasharray="12"
+    stroke-dashoffset="12"
+  >
+    <animate
+      attributeName="stroke-dashoffset"
+      values="12;12;0;0;12"
+      keyTimes="0;0.25;0.6;0.85;1"
+      dur="1.6s"
+      repeatCount="indefinite"
+    />
+  </path>
+
+  <!-- subtle pop -->
+  <animateTransform
+    attributeName="transform"
+    type="scale"
+    additive="sum"
+    values="1;1.03;1"
+    keyTimes="0;0.25;1"
+    dur="1.6s"
+    repeatCount="indefinite"
   />
 </svg>

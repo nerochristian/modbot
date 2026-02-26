@@ -166,9 +166,14 @@ class ModEmbed:
                 stripped = line.replace("**", "").replace("`", "")
                 longest = max(longest, len(stripped))
             if longest < min_chars:
-                pad_line = status_embed_pad_line(min_chars - longest)
-                if pad_line:
-                    message = f"{message}\n{pad_line}"
+                pad = status_embed_pad_line(min_chars - longest)
+                if pad:
+                    lines = message.splitlines()
+                    if lines:
+                        lines[0] = f"{lines[0]}{pad}"
+                        message = "\n".join(lines)
+                    else:
+                        message = pad
 
         return discord.Embed(description=message, color=color)
 

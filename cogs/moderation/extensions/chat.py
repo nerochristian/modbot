@@ -61,7 +61,7 @@ class ChatCommands:
             return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to edit channel permissions."), ephemeral=True)
         
         embed = discord.Embed(
-            title="🔒 Channel Locked",
+            title=f"{Config.EMOJI_WARNING} Channel locked",
             description=f"{channel.mention} has been locked.{role_msg}",
             color=Colors.ERROR
         )
@@ -75,7 +75,7 @@ class ChatCommands:
         
         if channel != (source.channel if isinstance(source, discord.Interaction) else source.channel):
              lock_notice = discord.Embed(
-                title="🔒 Channel Locked",
+                title=f"{Config.EMOJI_WARNING} Channel locked",
                 description=f"Locked by {author.mention}\n**Reason:** {reason}",
                 color=Colors.ERROR
             )
@@ -113,7 +113,7 @@ class ChatCommands:
              return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to edit channel permissions."), ephemeral=True)
         
         embed = discord.Embed(
-            title="🔓 Channel Unlocked",
+            title=f"{Config.EMOJI_SUCCESS} Channel unlocked",
             description=f"{channel.mention} has been unlocked.",
             color=Colors.SUCCESS
         )
@@ -583,3 +583,4 @@ class ChatCommands:
     async def purgelinks_slash(self, interaction: discord.Interaction, amount: int = 100):
         url_pattern = re.compile(r'https?://')
         await self._purge_logic(interaction, amount, check=lambda m: url_pattern.search(m.content))
+

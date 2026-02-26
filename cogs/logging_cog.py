@@ -269,81 +269,51 @@ class Logging(commands.Cog):
 
         if self._is_message_delete_suppressed(message.channel.id):
             return
-        
+
         # Ignore empty messages
         if not message.content and not message.attachments and not message.embeds:
             return
-        
+
         channel = await self.get_log_channel(message.guild, 'message')
         if not channel:
             return
-        
-        # Build embed matching the screenshot format
+
         embed = discord.Embed(
             title="Message deleted",
-            color=0xFF0000,
-            timestamp=datetime.now(timezone.utc)
+            color=Colors.ERROR,
+            timestamp=datetime.now(timezone.utc),
         )
-        
-        # Get channel emoji based on channel type
-        channel_emoji = "💬" if isinstance(message.channel, discord.TextChannel) else "🔊"
-        
-        # Channel field with emoji and link (matching screenshot)
-        embed.add_field(
-            name="Channel:",
-            value=f"{channel_emoji} | {message.channel.name} (# 🔗 | {message.channel.name})",
-            inline=False
-        )
-        
-        # Message ID field
-        embed.add_field(
-            name="Message ID:",
-            value=f"{message.id}",
-            inline=False
-        )
-        
-        # Message author field with mention and username
-        embed.add_field(
-            name="Message author:",
-            value=f"@{message.author.name} ({message.author.mention})",
-            inline=False
-        )
-        
-        # Message created field with relative timestamp
-        created_ts = int(message.created_at.timestamp())
-        embed.add_field(
-            name="Message created:",
-            value=f"<t:{created_ts}:R>",
-            inline=False
-        )
-        
-        # Message content
-        content_value = message.content
-        if not content_value and not message.embeds and not message.attachments:
-            content_value = "*No content*"
-        elif not content_value:
-            content_value = ""
 
+        channel_name = getattr(message.channel, "name", "unknown")
+        created_ts = int(message.created_at.timestamp())
+        details_lines = [
+            f"**Channel:** {message.channel.mention} (`#{channel_name}`)",
+            f"**Message ID:** `{message.id}`",
+            f"**Message author:** {message.author.mention} (`@{message.author.name}`)",
+            f"**Message created:** <t:{created_ts}:R>",
+        ]
+        embed.add_field(name="\u200b", value="> " + "\n> ".join(details_lines), inline=False)
+
+        content_value = (message.content or "").strip()
+        if not content_value:
+            content_value = "*No text content*" if (message.embeds or message.attachments) else "*No content*"
         if len(content_value) > 1024:
-            content_value = content_value[:1021] + "..."
-            
-        if content_value:
-            embed.add_field(name="Message", value=content_value, inline=False)
-        
-        # Attachments (matching screenshot format)
+            content_value = content_value[:1021].rstrip() + "..."
+        embed.add_field(name="Message", value=content_value, inline=False)
+
         if message.attachments:
-            attachments_list = [a.filename for a in message.attachments[:10]]
-            attachments_text = ", ".join(attachments_list)
+            attachment_names = [a.filename for a in message.attachments[:10]]
+            attachments_text = ", ".join(attachment_names)
             if len(message.attachments) > 10:
-                attachments_text += f", ...and {len(message.attachments) - 10} more"
+                attachments_text += f", +{len(message.attachments) - 10} more"
             embed.add_field(
-                name=f"{len(message.attachments)} Attachment(s)",
+                name=f"Attachments ({len(message.attachments)})",
                 value=attachments_text,
-                inline=False
+                inline=False,
             )
-        
-        # Set author to the deleted message author (shows their avatar)
-        embed.set_footer(text=f"@{message.author.global_name or message.author.name}")
+
+        footer_name = message.author.global_name or message.author.name
+        embed.set_footer(text=f"@{footer_name}", icon_url=message.author.display_avatar.url)
 
         # Single-message deletes should not include transcript downloads.
         # Transcript views are reserved for purge/bulk-delete events.
@@ -357,53 +327,46 @@ class Logging(commands.Cog):
             return
         if before.content == after.content:
             return
-        
+
         # Ignore if both empty
         if not before.content and not after.content:
             return
-        
+
         channel = await self.get_log_channel(before.guild, 'message')
         if not channel:
             return
-        
+
         embed = discord.Embed(
-            title="Message Edited",
+            title="Message edited",
             color=Colors.WARNING,
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.utc),
         )
-        
-        embed.set_author(name=f"{before.author.name}", icon_url=before.author.display_avatar.url)
-        
-        embed.add_field(
-            name="Author",
-            value=f"{before.author.mention} ({before.author.name})",
-            inline=True
-        )
-        embed.add_field(
-            name="Channel",
-            value=before.channel.mention,
-            inline=True
-        )
-        embed.add_field(
-            name="Jump",
-            value=f"[Go to Message]({after.jump_url})",
-            inline=True
-        )
-        
-        # Before content
-        before_content = before.content[:500] if before.content else "*Empty*"
-        if len(before.content) > 500:
-            before_content += "..."
-        embed.add_field(name="Before", value=before_content, inline=False)
-        
-        # After content
-        after_content = after.content[:500] if after.content else "*Empty*"
-        if len(after.content) > 500:
-            after_content += "..."
-        embed.add_field(name="After", value=after_content, inline=False)
-        
-        embed.set_footer(text=f"Message ID: {before.id}")
-        
+
+        channel_name = getattr(before.channel, "name", "unknown")
+        created_ts = int(before.created_at.timestamp())
+        details_lines = [
+            f"**Channel:** {before.channel.mention} (`#{channel_name}`)",
+            f"**Message ID:** `{before.id}`",
+            f"**Message author:** {before.author.mention} (`@{before.author.name}`)",
+            f"**Message created:** <t:{created_ts}:R>",
+            f"**Jump:** [Open message]({after.jump_url})",
+        ]
+        embed.add_field(name="\u200b", value="> " + "\n> ".join(details_lines), inline=False)
+
+        before_content = (before.content or "").strip() or "*Empty*"
+        if len(before_content) > 1024:
+            before_content = before_content[:1021].rstrip() + "..."
+
+        after_content = (after.content or "").strip() or "*Empty*"
+        if len(after_content) > 1024:
+            after_content = after_content[:1021].rstrip() + "..."
+
+        embed.add_field(name="Before", value=before_content, inline=True)
+        embed.add_field(name="After", value=after_content, inline=True)
+
+        footer_name = before.author.global_name or before.author.name
+        embed.set_footer(text=f"@{footer_name}", icon_url=before.author.display_avatar.url)
+
         await self.safe_send_log(channel, embed)
 
     @commands.Cog.listener()
@@ -414,30 +377,35 @@ class Logging(commands.Cog):
 
         if self._is_bulk_delete_suppressed(messages[0].channel.id):
             return
-        
+
         # Get guild from first message
         guild = messages[0].guild
         if not guild:
             return
-        
+
         channel = await self.get_log_channel(guild, 'message')
         if not channel:
             return
-        
+
+        deleted_count = len(messages)
         embed = discord.Embed(
-            title="Bulk Message Delete",
-            description=f"**{len(messages)}** messages were deleted in {messages[0].channel.mention}",
+            title=f"{deleted_count} messages deleted",
             color=Colors.ERROR,
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.utc),
         )
-        
-        # Add some stats
-        authors = set(m.author for m in messages if not m.author.bot)
+
+        channel_name = getattr(messages[0].channel, "name", "unknown")
+        details_lines = [
+            f"**Channel:** {messages[0].channel.mention} (`#{channel_name}`)",
+        ]
+        embed.add_field(name="\u200b", value="> " + "\n> ".join(details_lines), inline=False)
+
+        authors = {m.author.id for m in messages if not m.author.bot}
         bot_count = sum(1 for m in messages if m.author.bot)
-        
-        embed.add_field(name="Human Messages", value=str(len(messages) - bot_count), inline=True)
-        embed.add_field(name="Bot Messages", value=str(bot_count), inline=True)
-        embed.add_field(name="Unique Authors", value=str(len(authors)), inline=True)
+
+        embed.add_field(name="Human messages", value=str(deleted_count - bot_count), inline=True)
+        embed.add_field(name="Bot messages", value=str(bot_count), inline=True)
+        embed.add_field(name="Unique authors", value=str(len(authors)), inline=True)
 
         transcript_file = generate_html_transcript(
             guild,

@@ -93,9 +93,9 @@ def normalize_log_embed(
     channel: Optional[discord.abc.Messageable],
     embed: discord.Embed,
     *,
-    include_banner: bool = True,
+    include_banner: bool = False,
 ) -> discord.Embed:
-    """Apply the same visual normalization used by audit logs."""
+    """Normalize log embeds into a compact, consistent card style."""
     normalized = clone_embed(embed)
 
     if normalized.timestamp is None:
@@ -104,12 +104,24 @@ def normalize_log_embed(
     guild = getattr(channel, "guild", None) if channel else None
 
     try:
-        if not _get_url(normalized, "thumbnail"):
-            author_icon = getattr(getattr(normalized, "author", None), "icon_url", None)
-            if author_icon:
-                normalized.set_thumbnail(url=author_icon)
-            elif guild and getattr(guild, "icon", None):
-                normalized.set_thumbnail(url=guild.icon.url)
+        # Compact logs: remove media by default so cards stay readable and consistent.
+        normalized.set_thumbnail(url=None)
+        normalized.set_image(url=None)
+    except Exception:
+        pass
+
+    try:
+        # Keep log cards focused on content; author rows create visual noise.
+        normalized.remove_author()
+    except Exception:
+        pass
+
+    try:
+        # Footer fallback helps logs still look complete when no footer was set.
+        footer = getattr(normalized, "footer", None)
+        footer_text = (getattr(footer, "text", "") or "").strip()
+        if not footer_text and guild is not None:
+            normalized.set_footer(text=guild.name)
     except Exception:
         pass
 
@@ -137,11 +149,11 @@ async def send_log_embed(
     channel: Optional[discord.abc.Messageable],
     embed: discord.Embed,
     *,
-    include_banner: bool = True,
+    include_banner: bool = False,
     **kwargs: Any,
 ) -> None:
     """
-    Send a normalized log embed with the same style used by audit logs.
+    Send a normalized log embed with a compact, consistent style.
     """
     if channel is None:
         return

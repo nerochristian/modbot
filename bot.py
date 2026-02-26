@@ -6,6 +6,7 @@ Version 3.3.0 - Complete Database Overhaul
 
 import discord
 from discord.ext import commands
+from discord.ext.commands.converter import run_converters
 import logging
 import os
 import re
@@ -13,8 +14,11 @@ import sys
 import asyncio
 import atexit
 import subprocess
+import shlex
+from difflib import SequenceMatcher
+import inspect
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, get_args, get_origin
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -327,6 +331,104 @@ def _stop_lifesim_process(proc: Optional[subprocess.Popen]) -> None:
     except Exception as e:
         logger.error(f"Error while stopping LifeSimBot child process: {e}")
 
+
+class TargetResolvePromptView(discord.ui.View):
+    """Confirm/cancel prompt when a member argument was close but not exact."""
+
+    def __init__(
+        self,
+        *,
+        bot: "ModBot",
+        ctx: commands.Context,
+        candidate: discord.Member,
+        args_tail: str,
+    ) -> None:
+        super().__init__(timeout=45)
+        self._bot = bot
+        self._ctx = ctx
+        self._candidate = candidate
+        self._args_tail = args_tail
+
+        confirm_emoji = str(getattr(Config, "EMOJI_SUCCESS", "\u2705") or "\u2705").strip()
+        cancel_emoji = str(getattr(Config, "EMOJI_ERROR", "\u274c") or "\u274c").strip()
+
+        confirm_button = discord.ui.Button(
+            style=discord.ButtonStyle.success,
+            emoji=confirm_emoji,
+        )
+        cancel_button = discord.ui.Button(
+            style=discord.ButtonStyle.danger,
+            emoji=cancel_emoji,
+        )
+
+        async def _confirm(interaction: discord.Interaction):
+            await self._on_confirm(interaction)
+
+        async def _cancel(interaction: discord.Interaction):
+            await self._on_cancel(interaction)
+
+        confirm_button.callback = _confirm
+        cancel_button.callback = _cancel
+        self.add_item(confirm_button)
+        self.add_item(cancel_button)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id == self._ctx.author.id:
+            return True
+        try:
+            await interaction.response.send_message("Only the command author can use these buttons.", ephemeral=True)
+        except Exception:
+            pass
+        return False
+
+    async def _disable_and_update(self, interaction: discord.Interaction) -> None:
+        for child in self.children:
+            try:
+                child.disabled = True
+            except Exception:
+                continue
+        try:
+            await interaction.message.edit(view=self)
+        except Exception:
+            pass
+
+    async def _on_confirm(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
+        await self._disable_and_update(interaction)
+
+        try:
+            ok, error_message = await self._bot._invoke_with_resolved_target(
+                self._ctx,
+                target=self._candidate,
+                args_tail=self._args_tail,
+            )
+        except Exception as exc:
+            ok = False
+            error_message = str(exc)
+        if ok:
+            return
+
+        try:
+            embed = ModEmbed.error(
+                "Could not continue command",
+                error_message or "I couldn't rebuild that command from the provided arguments.",
+            )
+            embed = await apply_status_emoji_overrides(embed, self._ctx.guild)
+            await interaction.followup.send(embed=embed)
+        except Exception:
+            pass
+
+    async def _on_cancel(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer()
+        await self._disable_and_update(interaction)
+
+    async def on_timeout(self) -> None:
+        for child in self.children:
+            try:
+                child.disabled = True
+            except Exception:
+                continue
+
 # ==================== BOT CLASS ====================
 class ModBot(commands.Bot):
     """
@@ -450,6 +552,153 @@ class ModBot(commands.Bot):
     async def _clear_prefix_loading_for_ctx(self, ctx: commands.Context) -> None:
         message = getattr(ctx, "message", None)
         await self._clear_prefix_loading(getattr(message, "id", None))
+
+    @staticmethod
+    def _is_member_like_annotation(annotation: object) -> bool:
+        if annotation in (discord.Member, discord.User):
+            return True
+        origin = get_origin(annotation)
+        if origin is None:
+            return False
+        return any(ModBot._is_member_like_annotation(arg) for arg in get_args(annotation))
+
+    def _extract_first_argument_and_tail(self, ctx: commands.Context) -> tuple[str, str]:
+        content = (getattr(ctx.message, "content", "") or "").strip()
+        prefix = str(getattr(ctx, "prefix", "") or "")
+        if prefix and content.startswith(prefix):
+            content = content[len(prefix):].lstrip()
+
+        if not content:
+            return "", ""
+
+        # Remove command token, then split into first arg + tail.
+        command_name, _, arg_text = content.partition(" ")
+        if not command_name or not arg_text:
+            return "", ""
+        first_arg, _, tail = arg_text.strip().partition(" ")
+        return first_arg.strip(), tail.strip()
+
+    @staticmethod
+    def _normalize_member_query(raw: str) -> str:
+        value = (raw or "").strip()
+        # Mention style: <@123> / <@!123>
+        mention = re.fullmatch(r"<@!?(\d{15,22})>", value)
+        if mention:
+            return mention.group(1)
+        return value.strip("@").strip()
+
+    def _find_best_member_match(self, guild: discord.Guild, raw_query: str) -> Optional[discord.Member]:
+        query = self._normalize_member_query(raw_query)
+        if not query:
+            return None
+
+        if query.isdigit():
+            member = guild.get_member(int(query))
+            if member is not None:
+                return member
+
+        q = query.casefold()
+        best_member: Optional[discord.Member] = None
+        best_score = 0.0
+
+        for member in guild.members:
+            names = [
+                (member.display_name or "").strip(),
+                (member.name or "").strip(),
+                (getattr(member, "global_name", "") or "").strip(),
+            ]
+            local_best = 0.0
+            for name in names:
+                if not name:
+                    continue
+                n = name.casefold()
+                if q == n:
+                    return member
+                if n.startswith(q):
+                    local_best = max(local_best, 0.96)
+                elif q in n:
+                    local_best = max(local_best, 0.86)
+                else:
+                    local_best = max(local_best, SequenceMatcher(None, q, n).ratio())
+
+            if local_best > best_score:
+                best_score = local_best
+                best_member = member
+
+        if best_member is None:
+            return None
+        return best_member if best_score >= 0.55 else None
+
+    @staticmethod
+    def _split_tokens(arg_text: str) -> list[str]:
+        text = (arg_text or "").strip()
+        if not text:
+            return []
+        try:
+            return shlex.split(text)
+        except Exception:
+            return text.split()
+
+    async def _invoke_with_resolved_target(
+        self,
+        ctx: commands.Context,
+        *,
+        target: discord.Member,
+        args_tail: str,
+    ) -> tuple[bool, str]:
+        command = ctx.command
+        if command is None:
+            return False, "Command context is missing."
+
+        params = list(command.clean_params.items())
+        if not params:
+            return False, "Command has no usable parameters."
+
+        first_name, _ = params[0]
+        kwargs: dict[str, Any] = {first_name: target}
+        tokens = self._split_tokens(args_tail)
+
+        async def _convert_param(param: inspect.Parameter, raw_value: str) -> Any:
+            if param.annotation is inspect.Parameter.empty:
+                return raw_value
+            return await run_converters(
+                ctx,
+                param.annotation,
+                raw_value,
+                param,
+            )
+
+        for name, param in params[1:]:
+            # Unsupported shape for this generic resolver.
+            if param.kind is inspect.Parameter.VAR_POSITIONAL:
+                return False, "This command format is not supported by the quick resolver."
+
+            if param.kind is inspect.Parameter.KEYWORD_ONLY:
+                raw_value = " ".join(tokens).strip()
+                tokens = []
+                if not raw_value:
+                    if param.default is inspect.Parameter.empty:
+                        return False, f"Missing required argument `{name}`."
+                    kwargs[name] = param.default
+                else:
+                    kwargs[name] = await _convert_param(param, raw_value)
+                continue
+
+            # Positional-or-keyword parameter.
+            if tokens:
+                raw_value = tokens.pop(0)
+                kwargs[name] = await _convert_param(param, raw_value)
+            elif param.default is not inspect.Parameter.empty:
+                kwargs[name] = param.default
+            else:
+                return False, f"Missing required argument `{name}`."
+
+        if tokens:
+            extra = " ".join(tokens)
+            return False, f"Too many arguments: `{extra}`."
+
+        await ctx.invoke(command, **kwargs)
+        return True, ""
     
     async def setup_hook(self):
         """Load cogs and sync slash commands"""
@@ -810,16 +1059,16 @@ class ModBot(commands.Bot):
         await self._clear_prefix_loading_for_ctx(ctx)
         self.errors_caught += 1
 
-        async def _send_error_response(embed: discord.Embed):
+        async def _send_error_response(embed: discord.Embed, *, view: Optional[discord.ui.View] = None):
             if ctx.guild is not None:
                 try:
                     embed = await apply_status_emoji_overrides(embed, ctx.guild)
                 except Exception:
                     pass
             try:
-                return await ctx.reply(embed=embed, mention_author=False)
+                return await ctx.reply(embed=embed, view=view, mention_author=False)
             except Exception:
-                return await ctx.send(embed=embed)
+                return await ctx.send(embed=embed, view=view)
 
         if isinstance(error, commands.CommandNotFound):
             invoked = (ctx.invoked_with or "unknown").strip()
@@ -844,6 +1093,26 @@ class ModBot(commands.Bot):
                 ),
             )
             return await _send_error_response(embed)
+
+        if isinstance(error, (commands.MemberNotFound, commands.UserNotFound)):
+            if ctx.guild is not None and ctx.command is not None:
+                params = list(ctx.command.clean_params.values())
+                if params and self._is_member_like_annotation(params[0].annotation):
+                    first_arg, tail = self._extract_first_argument_and_tail(ctx)
+                    unresolved = str(getattr(error, "argument", "") or first_arg).strip()
+                    candidate = self._find_best_member_match(ctx.guild, unresolved)
+                    if candidate is not None:
+                        embed = ModEmbed.warning(
+                            "No exact user could be found.",
+                            f"Do you want to continue with {candidate.mention} (`@{candidate.display_name}`)?",
+                        )
+                        view = TargetResolvePromptView(
+                            bot=self,
+                            ctx=ctx,
+                            candidate=candidate,
+                            args_tail=tail,
+                        )
+                        return await _send_error_response(embed, view=view)
 
         if isinstance(error, commands.BadArgument):
             embed = ModEmbed.error("Invalid argument", f"Invalid argument provided.\n\n{error}")
