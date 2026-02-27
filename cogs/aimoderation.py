@@ -1019,7 +1019,7 @@ async def handle_timeout(ctx: ToolContext) -> ToolResult:
     seconds = max(1, min(raw_seconds, ctx.cog.config.timeout_max_seconds))
     reason = ctx.str_arg("reason")
 
-    await target.timeout(timedelta(seconds=seconds), reason=f"AI Mod ({ctx.actor}): {reason}")
+    await target.timeout(timedelta(seconds=seconds), reason=reason)
 
     minutes = seconds // 60
     embed = action_embed(
@@ -1042,7 +1042,7 @@ async def handle_untimeout(ctx: ToolContext) -> ToolResult:
         return ToolResult.fail("Could not resolve target member.")
 
     reason = ctx.str_arg("reason", "Timeout removed.")
-    await target.timeout(None, reason=f"AI Mod ({ctx.actor}): {reason}")
+    await target.timeout(None, reason=reason)
 
     embed = action_embed(
         title="🔊 Timeout Removed", color=discord.Color.green(),

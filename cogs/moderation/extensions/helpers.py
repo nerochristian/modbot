@@ -63,14 +63,25 @@ class HelperCommands:
         """
         try:
             settings = await self.bot.db.get_settings(guild.id)
-            
-            # Determine which log channel to use
+
+            def _resolve_channel_id(*keys: str) -> Optional[int]:
+                for key in keys:
+                    raw = settings.get(key)
+                    try:
+                        channel_id = int(raw)
+                    except (TypeError, ValueError):
+                        continue
+                    if channel_id > 0:
+                        return channel_id
+                return None
+
+            # Determine which log channel to use.
             if log_type == "voice":
-                log_channel_id = settings.get('voice_log_channel')
+                log_channel_id = _resolve_channel_id("voice_log_channel", "log_channel_voice")
             elif log_type == "audit":
-                log_channel_id = settings.get('audit_log_channel')
+                log_channel_id = _resolve_channel_id("audit_log_channel", "log_channel_audit")
             else:
-                log_channel_id = settings.get('mod_log_channel')
+                log_channel_id = _resolve_channel_id("mod_log_channel", "log_channel_mod")
             
             if not log_channel_id:
                 return
@@ -106,35 +117,38 @@ class HelperCommands:
         case_num: Optional[int] = None,
         extra_fields: Optional[dict[str, str]] = None
     ) -> discord.Embed:
-        """Create standardized moderation embed (audit-log style)"""
+        """Create Sapphire-style moderation embed."""
         embed = discord.Embed(
             title=title,
             color=color,
             timestamp=datetime.now(timezone.utc)
         )
 
-        # Author line: target user's name + avatar (like audit logs)
-        embed.set_author(
-            name=f"{user.name}",
-            icon_url=user.display_avatar.url
-        )
+        user_primary = str(user)
+        user_mention = getattr(user, "mention", None)
+        if user_mention:
+            user_ref = f"{user_primary} ({user_mention})"
+        else:
+            user_ref = user_primary
 
-        embed.add_field(name="User", value=f"{user.mention} ({user.name})", inline=True)
-        embed.add_field(name="Moderator", value=f"{moderator.mention}", inline=True)
-
+        details_lines = [
+            f"**User:** {user_ref}",
+            f"**Reason:** {reason or 'No reason provided'}",
+        ]
         if extra_fields:
             for field_name, field_value in extra_fields.items():
-                embed.add_field(name=field_name, value=field_value, inline=True)
+                details_lines.append(f"**{field_name}:** {field_value}")
 
-        embed.add_field(name="Reason", value=reason, inline=False)
+        embed.add_field(
+            name="\u200b",
+            value="\n".join(f"> {line}" for line in details_lines),
+            inline=False,
+        )
         embed.set_thumbnail(url=user.display_avatar.url)
 
-        # Footer: Case # + User ID (like audit logs show IDs)
-        footer_parts = []
-        if case_num:
-            footer_parts.append(f"Case #{case_num}")
-        footer_parts.append(f"User ID: {user.id}")
-        embed.set_footer(text=" • ".join(footer_parts))
+        moderator_name = getattr(moderator, "name", str(moderator))
+        moderator_icon = getattr(getattr(moderator, "display_avatar", None), "url", None)
+        embed.set_footer(text=f"@{moderator_name}", icon_url=moderator_icon)
 
         return embed
 

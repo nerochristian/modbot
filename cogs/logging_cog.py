@@ -7,7 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from datetime import datetime, timezone, timedelta
-from typing import Optional, Literal
+from typing import Optional, Literal, Any
 import logging
 import io
 
@@ -25,6 +25,15 @@ class Logging(commands.Cog):
     
     # Command group for logging configuration
     log_group = app_commands.Group(name="log", description="📝 Logging configuration")
+    _LOG_CHANNEL_KEY_ALIASES: dict[str, tuple[str, ...]] = {
+        "mod": ("mod_log_channel", "log_channel_mod"),
+        "audit": ("audit_log_channel", "log_channel_audit"),
+        "message": ("message_log_channel", "log_channel_message"),
+        "voice": ("voice_log_channel", "log_channel_voice"),
+        "automod": ("automod_log_channel", "log_channel_automod"),
+        "report": ("report_log_channel", "log_channel_report"),
+        "ticket": ("ticket_log_channel", "log_channel_ticket"),
+    }
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -32,6 +41,32 @@ class Logging(commands.Cog):
         self._audit_search_window_seconds = 15
         self._suppress_message_delete_until: dict[int, datetime] = {}
         self._suppress_bulk_delete_until: dict[int, datetime] = {}
+        self._suppress_timeout_change_until: dict[tuple[int, int], datetime] = {}
+        self._seen_webhook_create_entries: dict[int, datetime] = {}
+        self._recent_message_snapshots: dict[int, dict[str, Any]] = {}
+        self._recent_message_snapshot_ttl = timedelta(hours=3)
+        self._recent_message_snapshot_max = 20000
+
+    def _log_channel_setting_keys(self, log_type: str) -> tuple[str, ...]:
+        aliases = self._LOG_CHANNEL_KEY_ALIASES.get(log_type)
+        if aliases:
+            return aliases
+        return (f"log_channel_{log_type}", f"{log_type}_log_channel")
+
+    @staticmethod
+    def _coerce_channel_id(value: Any) -> Optional[int]:
+        try:
+            channel_id = int(value)
+        except (TypeError, ValueError):
+            return None
+        return channel_id if channel_id > 0 else None
+
+    def _resolve_log_channel_id(self, settings: dict[str, Any], log_type: str) -> Optional[int]:
+        for key in self._log_channel_setting_keys(log_type):
+            channel_id = self._coerce_channel_id(settings.get(key))
+            if channel_id:
+                return channel_id
+        return None
 
     def suppress_message_delete_log(self, channel_id: int, seconds: int = 6) -> None:
         self._suppress_message_delete_until[channel_id] = datetime.now(timezone.utc) + timedelta(seconds=seconds)
@@ -57,10 +92,99 @@ class Logging(commands.Cog):
             return False
         return True
 
+    def suppress_timeout_change_log(self, guild_id: int, user_id: int, seconds: int = 8) -> None:
+        key = (guild_id, user_id)
+        self._suppress_timeout_change_until[key] = datetime.now(timezone.utc) + timedelta(seconds=seconds)
+
+    def _is_timeout_change_suppressed(self, guild_id: int, user_id: int) -> bool:
+        key = (guild_id, user_id)
+        until = self._suppress_timeout_change_until.get(key)
+        if not until:
+            return False
+        if datetime.now(timezone.utc) >= until:
+            self._suppress_timeout_change_until.pop(key, None)
+            return False
+        return True
+
+    def _remember_webhook_entry(self, entry_id: int) -> bool:
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(minutes=5)
+        stale_ids = [seen_id for seen_id, seen_at in self._seen_webhook_create_entries.items() if seen_at < cutoff]
+        for seen_id in stale_ids:
+            self._seen_webhook_create_entries.pop(seen_id, None)
+
+        if entry_id in self._seen_webhook_create_entries:
+            return False
+
+        self._seen_webhook_create_entries[entry_id] = now
+        return True
+
+    def _prune_recent_message_snapshots(self) -> None:
+        if not self._recent_message_snapshots:
+            return
+        now = datetime.now(timezone.utc)
+        cutoff = now - self._recent_message_snapshot_ttl
+        stale_ids = [
+            message_id
+            for message_id, data in self._recent_message_snapshots.items()
+            if data.get("stored_at", now) < cutoff
+        ]
+        for message_id in stale_ids:
+            self._recent_message_snapshots.pop(message_id, None)
+
+        while len(self._recent_message_snapshots) > self._recent_message_snapshot_max:
+            oldest_id = min(
+                self._recent_message_snapshots,
+                key=lambda mid: self._recent_message_snapshots[mid].get("stored_at", now),
+            )
+            self._recent_message_snapshots.pop(oldest_id, None)
+
+    def _cache_message_snapshot(self, message: discord.Message) -> None:
+        if not message.guild:
+            return
+        self._recent_message_snapshots[message.id] = {
+            "stored_at": datetime.now(timezone.utc),
+            "guild_id": message.guild.id,
+            "channel_id": message.channel.id,
+            "author_id": getattr(message.author, "id", None),
+            "author_name": getattr(message.author, "name", ""),
+            "author_display": getattr(message.author, "display_name", ""),
+            "content": message.content or "",
+            "created_ts": int(message.created_at.timestamp()) if getattr(message, "created_at", None) else None,
+            "attachments": [a.filename for a in (message.attachments or [])[:10]],
+            "attachment_count": len(message.attachments or []),
+        }
+        if len(self._recent_message_snapshots) % 250 == 0:
+            self._prune_recent_message_snapshots()
+
+    def _pop_message_snapshot(
+        self,
+        message_id: int,
+        *,
+        guild_id: Optional[int] = None,
+        channel_id: Optional[int] = None,
+    ) -> Optional[dict[str, Any]]:
+        data = self._recent_message_snapshots.pop(message_id, None)
+        if not data:
+            return None
+
+        if guild_id is not None and data.get("guild_id") != guild_id:
+            return None
+        if channel_id is not None and data.get("channel_id") != channel_id:
+            return None
+
+        stored_at = data.get("stored_at")
+        if isinstance(stored_at, datetime):
+            if datetime.now(timezone.utc) - stored_at > self._recent_message_snapshot_ttl:
+                return None
+        return data
+
     async def get_log_channel(
         self, 
         guild: discord.Guild, 
-        log_type: str
+        log_type: str,
+        *,
+        allow_audit_fallback: bool = False,
     ) -> Optional[discord.TextChannel]:
         """
         Get the appropriate log channel for a log type
@@ -73,11 +197,28 @@ class Logging(commands.Cog):
             # Fetch from DB
             try:
                 settings = await self.bot.db.get_settings(guild.id)
-                # Check both key formats: {type}_log_channel (standard) and log_channel_{type} (settings.py)
-                channel_id = settings.get(f'{log_type}_log_channel')
-                if not channel_id:
-                     channel_id = settings.get(f'log_channel_{log_type}')
-                
+                channel_id = self._resolve_log_channel_id(settings, log_type)
+
+                # Global audit fallback: if a type-specific channel is not configured,
+                # route logs into the audit channel so events are never dropped.
+                if allow_audit_fallback and not channel_id and log_type != "audit":
+                    channel_id = self._resolve_log_channel_id(settings, "audit")
+
+                # Keep mod logs strictly moderation-only.
+                # If a non-mod log type resolves to the mod log channel, drop it.
+                if log_type != "mod" and channel_id:
+                    mod_channel_id = self._resolve_log_channel_id(settings, "mod")
+                    if mod_channel_id and channel_id == mod_channel_id:
+                        # For audit specifically, prefer any alternate audit key first.
+                        if log_type == "audit":
+                            for key in self._log_channel_setting_keys("audit"):
+                                candidate_id = self._coerce_channel_id(settings.get(key))
+                                if candidate_id and candidate_id != mod_channel_id:
+                                    channel_id = candidate_id
+                                    break
+                        if channel_id == mod_channel_id:
+                            channel_id = None
+                 
                 # Cache the result (even if None)
                 await self._channel_cache.set(guild.id, log_type, channel_id)
             except Exception as e:
@@ -103,8 +244,12 @@ class Logging(commands.Cog):
             
             # Remove from database
             settings = await self.bot.db.get_settings(guild_id)
-            if f'{log_type}_log_channel' in settings:
-                del settings[f'{log_type}_log_channel']
+            removed = False
+            for key in self._log_channel_setting_keys(log_type):
+                if key in settings:
+                    del settings[key]
+                    removed = True
+            if removed:
                 await self.bot.db.update_settings(guild_id, settings)
             
             logger.warning(f"Removed invalid {log_type} log channel for guild {guild_id}")
@@ -118,6 +263,7 @@ class Logging(commands.Cog):
         *,
         use_v2: bool = False,
         view: Optional[discord.ui.View] = None,
+        mirror_to_audit: bool = False,
     ) -> bool:
         """
         Safely send a log embed with enhanced error handling
@@ -128,30 +274,53 @@ class Logging(commands.Cog):
             embed: The embed to send
             use_v2: Whether to use Components v2 (default False for classic v1 embeds)
             view: Optional view to Attach to the log message
+            mirror_to_audit: Also send this log to the configured audit log channel
         """
         if not channel:
             return False
-        
+
+        sent_primary = False
         try:
             normalized = normalize_log_embed(channel, embed)
             await channel.send(embed=normalized, use_v2=use_v2, view=view)
-            return True
+            sent_primary = True
         except discord.Forbidden:
             logger.warning(f"Missing permissions to log in {channel.guild.name} #{channel.name}")
             # Invalidate cache for this channel
             await self._channel_cache.invalidate(channel.guild.id, "unknown")
-            return False
         except discord.NotFound:
             logger.warning(f"Log channel not found: {channel.guild.name} #{channel.name}")
             # Channel was deleted
             await self._channel_cache.invalidate(channel.guild.id, "unknown")
-            return False
         except discord.HTTPException as e:
             logger.error(f"Failed to send log in {channel.guild.name}: {e}")
-            return False
         except Exception as e:
             logger.error(f"Unexpected error sending log: {e}")
-            return False
+        sent_audit = False
+        if mirror_to_audit:
+            try:
+                audit_channel = await self.get_log_channel(channel.guild, "audit")
+            except Exception:
+                audit_channel = None
+
+            if audit_channel and audit_channel.id != channel.id:
+                try:
+                    # Do not reuse the same View object across multiple messages.
+                    normalized_audit = normalize_log_embed(audit_channel, embed)
+                    await audit_channel.send(embed=normalized_audit, use_v2=use_v2)
+                    sent_audit = True
+                except discord.Forbidden:
+                    logger.warning(f"Missing permissions to log in {audit_channel.guild.name} #{audit_channel.name}")
+                    await self._channel_cache.invalidate(audit_channel.guild.id, "audit")
+                except discord.NotFound:
+                    logger.warning(f"Audit log channel not found: {audit_channel.guild.name} #{audit_channel.name}")
+                    await self._channel_cache.invalidate(audit_channel.guild.id, "audit")
+                except discord.HTTPException as e:
+                    logger.error(f"Failed to mirror log to audit in {audit_channel.guild.name}: {e}")
+                except Exception as e:
+                    logger.error(f"Unexpected error mirroring audit log: {e}")
+
+        return sent_primary or sent_audit
 
     def _shorten(self, text: Optional[str], limit: int) -> str:
         if not text:
@@ -188,6 +357,163 @@ class Logging(commands.Cog):
             logger.error(f"Failed to query audit logs in {guild.name}: {e}")
             return None
         return None
+
+    def _format_user_reference(self, user: Optional[discord.abc.User]) -> str:
+        if user is None:
+            return "*Unknown*"
+        mention = getattr(user, "mention", None)
+        primary = str(user)
+        if mention:
+            return f"{primary} ({mention})"
+        return primary
+
+    def _format_channel_reference(self, channel: Optional[object], *, fallback_id: Optional[int] = None) -> str:
+        if channel is None:
+            if fallback_id is not None:
+                return f"<#{fallback_id}>"
+            return "*Unknown*"
+        channel_name = getattr(channel, "name", "unknown")
+        mention = getattr(channel, "mention", None)
+        if mention:
+            return f"{channel_name} ({mention})"
+        return channel_name
+
+    @staticmethod
+    def _classify_misrouted_log_embed(embed: discord.Embed) -> Optional[str]:
+        """Return target log type for known misplaced cards, otherwise None."""
+        title = (getattr(embed, "title", "") or "").strip().lower()
+        if not title:
+            return None
+
+        # Message delete cards should live in message logs only.
+        if (
+            title == "message deleted"
+            or title.endswith("messages deleted")
+            or title == "bulk message delete"
+        ):
+            return "message"
+
+        # Audit/system cards should not appear in mod logs.
+        audit_markers = (
+            "permissions updated",
+            "channel created",
+            "channel deleted",
+            "role created",
+            "role deleted",
+            "role updated",
+            "webhook created",
+            "emoji created",
+            "emoji deleted",
+            "sticker created",
+            "sticker deleted",
+            "sticker updated",
+            "invite created",
+            "invite deleted",
+        )
+        if any(marker in title for marker in audit_markers):
+            return "audit"
+
+        return None
+
+    async def _reroute_misplaced_log_message(self, message: discord.Message) -> None:
+        """
+        Move known misrouted log cards out of mod logs.
+
+        This is a safety net for emitters that still post audit/message cards to
+        the mod log channel.
+        """
+        if not message.guild or not message.embeds:
+            return
+
+        if not self.bot.user or message.author.id != self.bot.user.id:
+            return
+
+        settings = await self.bot.db.get_settings(message.guild.id)
+        mod_channel_id = self._resolve_log_channel_id(settings, "mod")
+        if not mod_channel_id or message.channel.id != mod_channel_id:
+            return
+
+        destination_type = self._classify_misrouted_log_embed(message.embeds[0])
+        if not destination_type:
+            return
+
+        destination_id = self._resolve_log_channel_id(settings, destination_type)
+        if not destination_id or destination_id == message.channel.id:
+            return
+
+        destination_channel = message.guild.get_channel(destination_id)
+        if destination_channel is None:
+            return
+
+        try:
+            normalized_embeds = [
+                normalize_log_embed(destination_channel, embed)
+                for embed in message.embeds[:10]
+            ]
+            send_kwargs: dict[str, Any] = {"embeds": normalized_embeds}
+            if message.content:
+                send_kwargs["content"] = message.content
+            await destination_channel.send(**send_kwargs)
+            await message.delete()
+        except discord.Forbidden:
+            logger.warning(
+                "Missing permissions while rerouting misplaced log in %s",
+                message.guild.name,
+            )
+        except discord.HTTPException as e:
+            logger.error(
+                "Failed to reroute misplaced log in %s: %s",
+                message.guild.name,
+                e,
+            )
+        except Exception as e:
+            logger.error(
+                "Unexpected error rerouting misplaced log in %s: %s",
+                message.guild.name,
+                e,
+            )
+
+    @staticmethod
+    def _quote_lines(lines: list[str]) -> str:
+        return "\n".join(f"> {line}" for line in lines if line)
+
+    def _build_sapphire_log_embed(
+        self,
+        *,
+        title: str,
+        color: int,
+        details_lines: list[str],
+        message_text: Optional[str] = None,
+        thumbnail_url: Optional[str] = None,
+        footer_user: Optional[discord.abc.User] = None,
+        footer_text: Optional[str] = None,
+    ) -> discord.Embed:
+        embed = discord.Embed(
+            title=title,
+            color=color,
+            timestamp=datetime.now(timezone.utc),
+        )
+
+        if details_lines:
+            embed.add_field(name="\u200b", value=self._quote_lines(details_lines), inline=False)
+
+        if message_text is not None:
+            value = (message_text or "").strip() or "*No content*"
+            if len(value) > 1024:
+                value = value[:1021].rstrip() + "..."
+            embed.add_field(name="Message", value=value, inline=False)
+
+        if thumbnail_url:
+            embed.set_thumbnail(url=thumbnail_url)
+
+        if footer_user is not None:
+            footer_name = f"@{getattr(footer_user, 'name', str(footer_user))}"
+            footer_icon = getattr(getattr(footer_user, "display_avatar", None), "url", None)
+            embed.set_footer(text=footer_name, icon_url=footer_icon)
+        elif footer_text:
+            embed.set_footer(text=footer_text)
+
+        return embed
 
     def _add_channel_details_fields(self, embed: discord.Embed, channel: discord.abc.GuildChannel) -> None:
         category = getattr(channel, "category", None)
@@ -259,47 +585,62 @@ class Logging(commands.Cog):
         embed.add_field(name="Key Perms", value=perms_text, inline=False)
 
     # ==================== MESSAGE LOGGING ====================
+
+    @commands.Cog.listener()
+    async def on_message(self, message: discord.Message):
+        """Cache recent messages so raw delete fallback can still show author/content."""
+        if not message.guild:
+            return
+        try:
+            await self._reroute_misplaced_log_message(message)
+        except Exception:
+            pass
+        try:
+            self._cache_message_snapshot(message)
+        except Exception:
+            pass
     
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message):
         """Log deleted messages"""
-        # Ignore DMs and bot messages
-        if not message.guild or message.author.bot:
+        # Ignore DMs
+        if not message.guild:
             return
+
+        self._pop_message_snapshot(
+            message.id,
+            guild_id=message.guild.id,
+            channel_id=message.channel.id,
+        )
 
         if self._is_message_delete_suppressed(message.channel.id):
             return
 
-        # Ignore empty messages
-        if not message.content and not message.attachments and not message.embeds:
-            return
-
-        channel = await self.get_log_channel(message.guild, 'message')
+        channel = await self.get_log_channel(message.guild, 'message', allow_audit_fallback=False)
         if not channel:
             return
 
-        embed = discord.Embed(
-            title="Message deleted",
-            color=Colors.ERROR,
-            timestamp=datetime.now(timezone.utc),
+        message_link = (
+            f"https://discord.com/channels/"
+            f"{message.guild.id}/{message.channel.id}/{message.id}"
         )
-
-        channel_name = getattr(message.channel, "name", "unknown")
-        created_ts = int(message.created_at.timestamp())
         details_lines = [
-            f"**Channel:** {message.channel.mention} (`#{channel_name}`)",
-            f"**Message ID:** `{message.id}`",
-            f"**Message author:** {message.author.mention} (`@{message.author.name}`)",
-            f"**Message created:** <t:{created_ts}:R>",
+            f"**Source channel:** {self._format_channel_reference(message.channel)}",
+            f"**Message ID:** [{message.id}]({message_link})",
+            f"**Message author:** {self._format_user_reference(message.author)}",
+            f"**Message created:** <t:{int(message.created_at.timestamp())}:R>",
         ]
-        embed.add_field(name="\u200b", value="> " + "\n> ".join(details_lines), inline=False)
 
         content_value = (message.content or "").strip()
         if not content_value:
             content_value = "*No text content*" if (message.embeds or message.attachments) else "*No content*"
-        if len(content_value) > 1024:
-            content_value = content_value[:1021].rstrip() + "..."
-        embed.add_field(name="Message", value=content_value, inline=False)
+
+        embed = self._build_sapphire_log_embed(
+            title="Message deleted",
+            color=Colors.ERROR,
+            details_lines=details_lines,
+            message_text=content_value,
+        )
 
         if message.attachments:
             attachment_names = [a.filename for a in message.attachments[:10]]
@@ -312,12 +653,99 @@ class Logging(commands.Cog):
                 inline=False,
             )
 
-        footer_name = message.author.global_name or message.author.name
-        embed.set_footer(text=f"@{footer_name}", icon_url=message.author.display_avatar.url)
-
         # Single-message deletes should not include transcript downloads.
         # Transcript views are reserved for purge/bulk-delete events.
-        await self.safe_send_log(channel, embed, use_v2=False)
+        await self.safe_send_log(channel, embed, use_v2=False, mirror_to_audit=False)
+
+    @commands.Cog.listener()
+    async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
+        """
+        Fallback delete logger for uncached messages.
+
+        `on_message_delete` only fires for cached messages. This raw event ensures
+        we still emit logs when Discord does not have a cached Message object.
+        """
+        # Cached deletes are already handled by on_message_delete.
+        if payload.cached_message is not None:
+            return
+
+        guild_id = payload.guild_id
+        if guild_id is None:
+            return
+
+        guild = self.bot.get_guild(guild_id)
+        if guild is None:
+            return
+
+        channel_id = payload.channel_id
+        if self._is_message_delete_suppressed(channel_id):
+            return
+
+        log_channel = await self.get_log_channel(guild, "message", allow_audit_fallback=False)
+        if not log_channel:
+            return
+
+        source_channel = guild.get_channel(channel_id) or guild.get_thread(channel_id)
+
+        message_id = payload.message_id
+        snapshot = self._pop_message_snapshot(
+            message_id,
+            guild_id=guild.id,
+            channel_id=channel_id,
+        )
+        message_link = (
+            f"https://discord.com/channels/"
+            f"{guild.id}/{channel_id}/{message_id}"
+        )
+
+        if snapshot:
+            author_id = snapshot.get("author_id")
+            author_display = snapshot.get("author_display") or snapshot.get("author_name") or "unknown"
+            author_ref = f"<@{author_id}> (`@{author_display}`)" if author_id else f"`@{author_display}`"
+            created_ts = snapshot.get("created_ts")
+            content_text = str(snapshot.get("content", "") or "").strip()
+            attachment_count = int(snapshot.get("attachment_count", 0) or 0)
+            if not content_text:
+                content_text = "*No text content*" if attachment_count > 0 else "*No content*"
+
+            details_lines = [
+                f"**Source channel:** {self._format_channel_reference(source_channel, fallback_id=channel_id)}",
+                f"**Message ID:** [{message_id}]({message_link})",
+                f"**Message author:** {author_ref}",
+                f"**Message created:** <t:{created_ts}:R>" if created_ts else "**Message created:** *Unknown*",
+            ]
+            embed = self._build_sapphire_log_embed(
+                title="Message deleted",
+                color=Colors.ERROR,
+                details_lines=details_lines,
+                message_text=content_text,
+            )
+
+            attachments = [str(name) for name in (snapshot.get("attachments") or []) if str(name).strip()]
+            if attachments:
+                attachments_text = ", ".join(attachments)
+                if attachment_count > len(attachments):
+                    attachments_text += f", +{attachment_count - len(attachments)} more"
+                embed.add_field(
+                    name=f"Attachments ({attachment_count})",
+                    value=attachments_text,
+                    inline=False,
+                )
+        else:
+            details_lines = [
+                f"**Source channel:** {self._format_channel_reference(source_channel, fallback_id=channel_id)}",
+                f"**Message ID:** [{message_id}]({message_link})",
+                "**Message author:** *Unknown (message not cached)*",
+                "**Message created:** *Unknown*",
+            ]
+            embed = self._build_sapphire_log_embed(
+                title="Message deleted",
+                color=Colors.ERROR,
+                details_lines=details_lines,
+                message_text="*Content unavailable (message was not cached by the bot).*",
+            )
+
+        await self.safe_send_log(log_channel, embed, use_v2=False, mirror_to_audit=False)
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
@@ -383,29 +811,39 @@ class Logging(commands.Cog):
         if not guild:
             return
 
-        channel = await self.get_log_channel(guild, 'message')
+        channel = await self.get_log_channel(guild, 'message', allow_audit_fallback=False)
         if not channel:
             return
 
         deleted_count = len(messages)
-        embed = discord.Embed(
+        source_channel = messages[0].channel
+        details_lines = [
+            f"**Source channel:** {self._format_channel_reference(source_channel)}",
+        ]
+
+        actor = None
+        now = datetime.now(timezone.utc)
+        try:
+            async for entry in guild.audit_logs(limit=6, action=discord.AuditLogAction.message_bulk_delete):
+                age = (now - entry.created_at).total_seconds()
+                if age > self._audit_search_window_seconds:
+                    continue
+                entry_channel = getattr(getattr(entry, "extra", None), "channel", None)
+                if entry_channel and getattr(entry_channel, "id", None) != source_channel.id:
+                    continue
+                actor = getattr(entry, "user", None)
+                break
+        except discord.Forbidden:
+            actor = None
+        except Exception as e:
+            logger.error(f"Failed to query bulk delete audit logs in {guild.name}: {e}")
+
+        embed = self._build_sapphire_log_embed(
             title=f"{deleted_count} messages deleted",
             color=Colors.ERROR,
-            timestamp=datetime.now(timezone.utc),
+            details_lines=details_lines,
+            footer_user=actor,
         )
-
-        channel_name = getattr(messages[0].channel, "name", "unknown")
-        details_lines = [
-            f"**Channel:** {messages[0].channel.mention} (`#{channel_name}`)",
-        ]
-        embed.add_field(name="\u200b", value="> " + "\n> ".join(details_lines), inline=False)
-
-        authors = {m.author.id for m in messages if not m.author.bot}
-        bot_count = sum(1 for m in messages if m.author.bot)
-
-        embed.add_field(name="Human messages", value=str(deleted_count - bot_count), inline=True)
-        embed.add_field(name="Bot messages", value=str(bot_count), inline=True)
-        embed.add_field(name="Unique authors", value=str(len(authors)), inline=True)
 
         transcript_file = generate_html_transcript(
             guild,
@@ -416,7 +854,7 @@ class Logging(commands.Cog):
         transcript_name = f"purge-transcript-{guild.id}-{int(datetime.now(timezone.utc).timestamp())}.html"
         view = EphemeralTranscriptView(io.BytesIO(transcript_file.getvalue()), filename=transcript_name)
 
-        await self.safe_send_log(channel, embed, view=view)
+        await self.safe_send_log(channel, embed, view=view, mirror_to_audit=False)
 
     # ==================== MEMBER LOGGING ====================
     
@@ -663,86 +1101,60 @@ class Logging(commands.Cog):
         
         # ===== TIMEOUT CHANGES =====
         if before.timed_out_until != after.timed_out_until:
-            if after.timed_out_until and after.timed_out_until > datetime.now(timezone.utc):
-                # User was timed out
-                embed = discord.Embed(
-                    title="Member Timed Out",
-                    color=Colors.WARNING,
-                    timestamp=datetime.now(timezone.utc)
-                )
-                
-                embed.set_author(name=f"{after.name}", icon_url=after.display_avatar.url)
-                
-                embed.add_field(
-                    name="User",
-                    value=f"{after.mention} ({after.name})",
-                    inline=True
-                )
-                embed.add_field(
-                    name="Until",
-                    value=f"<t:{int(after.timed_out_until.timestamp())}:F>",
-                    inline=True
-                )
-                embed.add_field(
-                    name="Duration",
-                    value=f"<t:{int(after.timed_out_until.timestamp())}:R>",
-                    inline=True
-                )
-                
-                entry = await self._find_recent_audit_entry(
-                    before.guild,
-                    action=discord.AuditLogAction.member_update,
-                    target_id=after.id,
-                )
-                moderator = getattr(entry, "user", None)
-                reason = getattr(entry, "reason", None)
+            if not self._is_timeout_change_suppressed(before.guild.id, after.id):
+                if after.timed_out_until and after.timed_out_until > datetime.now(timezone.utc):
+                    # User was timed out
+                    entry = await self._find_recent_audit_entry(
+                        before.guild,
+                        action=discord.AuditLogAction.member_update,
+                        target_id=after.id,
+                    )
+                    moderator = getattr(entry, "user", None)
+                    reason = getattr(entry, "reason", None)
 
-                embed.add_field(
-                    name="Moderator",
-                    value=moderator.mention if moderator else "*Unknown*",
-                    inline=True
-                )
-                embed.add_field(name="Reason", value=self._shorten(reason, 250), inline=False)
+                    until_ts = int(after.timed_out_until.timestamp())
+                    details_lines = [
+                        f"**User:** {self._format_user_reference(after)}",
+                        f"**Until:** <t:{until_ts}:F>",
+                        f"**Duration:** <t:{until_ts}:R>",
+                    ]
+                    if reason:
+                        details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
 
-                embed.set_footer(text=f"User ID: {after.id}")
-                
-                await self.safe_send_log(channel, embed)
-            elif before.timed_out_until and not after.timed_out_until:
-                # Timeout removed
-                embed = discord.Embed(
-                    title="Timeout Removed",
-                    color=Colors.SUCCESS,
-                    timestamp=datetime.now(timezone.utc)
-                )
-                
-                embed.set_author(name=f"{after.name}", icon_url=after.display_avatar.url)
-                
-                embed.add_field(
-                    name="User",
-                    value=f"{after.mention} ({after.name})",
-                    inline=True
-                )
-                
-                entry = await self._find_recent_audit_entry(
-                    before.guild,
-                    action=discord.AuditLogAction.member_update,
-                    target_id=after.id,
-                )
-                moderator = getattr(entry, "user", None)
-                reason = getattr(entry, "reason", None)
+                    embed = self._build_sapphire_log_embed(
+                        title="User timed out",
+                        color=Colors.ERROR,
+                        details_lines=details_lines,
+                        thumbnail_url=after.display_avatar.url,
+                        footer_user=moderator,
+                    )
+                    
+                    await self.safe_send_log(channel, embed)
+                elif before.timed_out_until and not after.timed_out_until:
+                    # Timeout removed
+                    entry = await self._find_recent_audit_entry(
+                        before.guild,
+                        action=discord.AuditLogAction.member_update,
+                        target_id=after.id,
+                    )
+                    moderator = getattr(entry, "user", None)
+                    reason = getattr(entry, "reason", None)
 
-                prev_ts = int(before.timed_out_until.timestamp())
-                embed.add_field(name="Previous Until", value=f"<t:{prev_ts}:F>", inline=True)
-                embed.add_field(
-                    name="Moderator",
-                    value=moderator.mention if moderator else "*Unknown*",
-                    inline=True
-                )
-                embed.add_field(name="Reason", value=self._shorten(reason, 250), inline=False)
+                    details_lines = [
+                        f"**User:** {self._format_user_reference(after)}",
+                    ]
+                    if reason:
+                        details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
 
-                embed.set_footer(text=f"User ID: {after.id}")
-                
-                await self.safe_send_log(channel, embed)
+                    embed = self._build_sapphire_log_embed(
+                        title="User timeout removed",
+                        color=Colors.SUCCESS,
+                        details_lines=details_lines,
+                        thumbnail_url=after.display_avatar.url,
+                        footer_user=moderator,
+                    )
+                    
+                    await self.safe_send_log(channel, embed)
 
     # ==================== VOICE LOGGING ====================
     
@@ -959,6 +1371,64 @@ class Logging(commands.Cog):
         await self.safe_send_log(channel, embed)
 
     # ==================== SERVER EVENTS ====================
+
+    @commands.Cog.listener()
+    async def on_webhooks_update(self, channel: discord.abc.GuildChannel):
+        """Log webhook creation events."""
+        log_channel = await self.get_log_channel(channel.guild, "audit")
+        if not log_channel:
+            return
+
+        now = datetime.now(timezone.utc)
+        entry = None
+        try:
+            async for candidate in channel.guild.audit_logs(limit=8, action=discord.AuditLogAction.webhook_create):
+                age = (now - candidate.created_at).total_seconds()
+                if age > self._audit_search_window_seconds:
+                    continue
+
+                webhook = getattr(candidate, "target", None)
+                webhook_channel = getattr(webhook, "channel", None)
+                webhook_channel_id = getattr(webhook_channel, "id", None) or getattr(webhook, "channel_id", None)
+                if webhook_channel_id is not None and webhook_channel_id != channel.id:
+                    continue
+
+                entry = candidate
+                break
+        except discord.Forbidden:
+            return
+        except Exception as e:
+            logger.error(f"Failed to query webhook audit logs in {channel.guild.name}: {e}")
+            return
+
+        if entry is None:
+            return
+
+        entry_id = getattr(entry, "id", None)
+        if entry_id is None or not self._remember_webhook_entry(entry_id):
+            return
+
+        webhook = getattr(entry, "target", None)
+        webhook_name = getattr(webhook, "name", "Unknown")
+        webhook_id = getattr(webhook, "id", "Unknown")
+        webhook_type = str(getattr(getattr(webhook, "type", None), "name", "incoming")).upper()
+
+        details_lines = [
+            f"**Webhook:** {webhook_name} (`{webhook_id}`)",
+            f"**Channel:** {self._format_channel_reference(channel)}",
+            f"**Type:** {webhook_type}",
+            f"**Reason:** {self._shorten(getattr(entry, 'reason', None), 250)}",
+        ]
+
+        embed = self._build_sapphire_log_embed(
+            title="Webhook created",
+            color=Colors.SUCCESS,
+            details_lines=details_lines,
+            thumbnail_url=channel.guild.icon.url if channel.guild.icon else None,
+            footer_user=getattr(entry, "user", None),
+        )
+
+        await self.safe_send_log(log_channel, embed)
     
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel):
@@ -1143,7 +1613,8 @@ class Logging(commands.Cog):
             
             if channel:
                 # Set channel
-                settings[f'{log_type}_log_channel'] = channel.id
+                for key in self._log_channel_setting_keys(log_type):
+                    settings[key] = channel.id
                 await self.bot.db.update_settings(interaction.guild_id, settings)
                 
                 # Update cache
@@ -1155,8 +1626,12 @@ class Logging(commands.Cog):
                 )
             else:
                 # Disable logging for this type
-                if f'{log_type}_log_channel' in settings:
-                    del settings[f'{log_type}_log_channel']
+                removed = False
+                for key in self._log_channel_setting_keys(log_type):
+                    if key in settings:
+                        del settings[key]
+                        removed = True
+                if removed:
                     await self.bot.db.update_settings(interaction.guild_id, settings)
                 
                 # Clear cache
@@ -1192,7 +1667,7 @@ class Logging(commands.Cog):
             log_types = ['mod', 'audit', 'message', 'voice', 'automod', 'report', 'ticket']
             
             for log_type in log_types:
-                channel_id = settings.get(f'{log_type}_log_channel')
+                channel_id = self._resolve_log_channel_id(settings, log_type)
                 if channel_id:
                     channel = interaction.guild.get_channel(channel_id)
                     value = channel.mention if channel else "❌ Channel not found"
@@ -1218,3 +1693,5 @@ class Logging(commands.Cog):
 async def setup(bot: commands.Bot):
     """Load the Logging cog"""
     await bot.add_cog(Logging(bot))
+
+

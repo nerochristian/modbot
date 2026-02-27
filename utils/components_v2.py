@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime
 import re
+import types
 from typing import Any, Optional, Literal
 
 import discord
@@ -450,6 +451,7 @@ async def layout_view_from_embeds(
     Returns:
         A LayoutView with Containers for each embed and preserved view items
     """
+    source_view_for_hooks: Optional[discord.ui.BaseView] = None
     if existing_view is None:
         view = discord.ui.LayoutView()
         existing_children: list[discord.ui.Item[Any]] = []
@@ -460,6 +462,45 @@ async def layout_view_from_embeds(
         else:
             timeout = getattr(existing_view, "timeout", 180.0)
             view = discord.ui.LayoutView(timeout=timeout)
+            source_view_for_hooks = existing_view
+
+    if source_view_for_hooks is not None:
+        async def _delegated_interaction_check(self: discord.ui.LayoutView, interaction: discord.Interaction) -> bool:
+            try:
+                checker = getattr(source_view_for_hooks, "interaction_check", None)
+                if checker is None:
+                    return True
+                return bool(await checker(interaction))
+            except Exception:
+                return False
+
+        async def _delegated_on_timeout(self: discord.ui.LayoutView) -> None:
+            handler = getattr(source_view_for_hooks, "on_timeout", None)
+            if handler is None:
+                return
+            try:
+                await handler()
+            except Exception:
+                pass
+
+        async def _delegated_on_error(
+            self: discord.ui.LayoutView,
+            interaction: discord.Interaction,
+            error: Exception,
+            item: discord.ui.Item[Any],
+            /,
+        ) -> None:
+            handler = getattr(source_view_for_hooks, "on_error", None)
+            if handler is None:
+                return
+            try:
+                await handler(interaction, error, item)
+            except Exception:
+                pass
+
+        view.interaction_check = types.MethodType(_delegated_interaction_check, view)
+        view.on_timeout = types.MethodType(_delegated_on_timeout, view)
+        view.on_error = types.MethodType(_delegated_on_error, view)
 
     if existing_children:
         view.clear_items()

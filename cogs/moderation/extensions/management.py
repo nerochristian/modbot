@@ -287,9 +287,13 @@ class ManagementCommands:
         delta, human_duration = parsed
         if delta.total_seconds() > 28 * 24 * 60 * 60:
             return await self._respond(source, embed=ModEmbed.error("Duration Too Long", "Max 28 days."), ephemeral=True)
+
+        logging_cog = self.bot.get_cog("Logging")
+        if logging_cog and hasattr(logging_cog, "suppress_timeout_change_log"):
+            logging_cog.suppress_timeout_change_log(guild.id, user.id)
         
         try:
-            await user.timeout(delta, reason=f"{moderator}: {reason}")
+            await user.timeout(delta, reason=reason)
         except discord.Forbidden:
             return await self._respond(
                 source,
@@ -306,22 +310,22 @@ class ManagementCommands:
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Mute", reason, human_duration)
 
         log_embed = await self.create_mod_embed(
-            title="🔇 User Muted",
+            title=f"Mute {user.display_name}",
             user=user,
             moderator=moderator,
             reason=reason,
-            color=Colors.WARNING,
+            color=Colors.ERROR,
             case_num=case_num,
             extra_fields={"Duration": human_duration},
         )
         response_embed = ModEmbed.success(
             f"{user.mention} muted",
-            f"Duration: {human_duration}",
+            f"**Duration:** {human_duration}",
         )
         await self._respond(source, embed=response_embed)
         await self.log_action(guild, log_embed)
         
-        dm_embed = discord.Embed(title=f"🔇 Muted in {guild.name}", description=f"**Reason:** {reason}\n**Duration:** {human_duration}", color=Colors.WARNING)
+        dm_embed = discord.Embed(title=f"🔇 Muted in {guild.name}", description=f"**Reason:** {reason}\n**Duration:** {human_duration}", color=Colors.ERROR)
         await self.dm_user(user, dm_embed)
 
     async def _unmute_logic(self, source, user: discord.Member, reason: str):
@@ -335,15 +339,19 @@ class ManagementCommands:
         if not bot_member.guild_permissions.moderate_members:
             return await self._respond(source, embed=ModEmbed.error("Bot Missing Permissions", "I need **Timeout Members** permission."), ephemeral=True)
 
+        logging_cog = self.bot.get_cog("Logging")
+        if logging_cog and hasattr(logging_cog, "suppress_timeout_change_log"):
+            logging_cog.suppress_timeout_change_log(guild.id, user.id)
+
         try:
-            await user.timeout(None, reason=f"{moderator}: {reason}")
+            await user.timeout(None, reason=reason)
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not unmute: {e}"), ephemeral=True)
             
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Unmute", reason)
 
         log_embed = await self.create_mod_embed(
-            title="🔊 User Unmuted",
+            title=f"Unmute {user.display_name}",
             user=user,
             moderator=moderator,
             reason=reason,

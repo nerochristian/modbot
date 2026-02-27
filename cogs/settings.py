@@ -154,7 +154,9 @@ class GeneralSettingsView(BaseSettingsView):
 
     @discord.ui.select(cls=discord.ui.ChannelSelect, placeholder="📜 Set Mod Log Channel", min_values=0, max_values=1, channel_types=[discord.ChannelType.text], row=3)
     async def mod_log_select(self, interaction: discord.Interaction, select: discord.ui.ChannelSelect):
-        self.settings["mod_log_channel"] = select.values[0].id if select.values else None
+        channel_id = select.values[0].id if select.values else None
+        self.settings["mod_log_channel"] = channel_id
+        self.settings["log_channel_mod"] = channel_id
         await _save(self.cog, self.guild.id, self.settings)
         await interaction.response.edit_message(embed=self.get_embed(), view=self)
 
@@ -414,11 +416,27 @@ LOG_PAGES = [
 ]
 
 class LoggingSettingsView(BaseSettingsView):
+    _LEGACY_LOG_KEY_MAP = {
+        "log_channel_mod": "mod_log_channel",
+        "log_channel_audit": "audit_log_channel",
+        "log_channel_message": "message_log_channel",
+        "log_channel_voice": "voice_log_channel",
+        "log_channel_automod": "automod_log_channel",
+        "log_channel_report": "report_log_channel",
+        "log_channel_ticket": "ticket_log_channel",
+    }
+
     def __init__(self, cog, guild, settings):
         super().__init__(cog, guild, "logging")
         self.settings = settings
         self.page = 0
         self._update_placeholders()
+
+    def _set_log_channel_setting(self, key: str, channel_id: Optional[int]) -> None:
+        self.settings[key] = channel_id
+        legacy_key = self._LEGACY_LOG_KEY_MAP.get(key)
+        if legacy_key:
+            self.settings[legacy_key] = channel_id
 
     def _update_placeholders(self):
         page = LOG_PAGES[self.page]
@@ -466,21 +484,24 @@ class LoggingSettingsView(BaseSettingsView):
     @discord.ui.select(cls=discord.ui.ChannelSelect, placeholder="Set Channel 1", min_values=0, max_values=1, channel_types=[discord.ChannelType.text], row=1)
     async def ch_1(self, interaction: discord.Interaction, select: discord.ui.ChannelSelect):
         key = LOG_PAGES[self.page][0][0]
-        self.settings[key] = select.values[0].id if select.values else None
+        channel_id = select.values[0].id if select.values else None
+        self._set_log_channel_setting(key, channel_id)
         await _save(self.cog, self.guild.id, self.settings)
         await interaction.response.edit_message(embed=self.get_embed(), view=self)
 
     @discord.ui.select(cls=discord.ui.ChannelSelect, placeholder="Set Channel 2", min_values=0, max_values=1, channel_types=[discord.ChannelType.text], row=2)
     async def ch_2(self, interaction: discord.Interaction, select: discord.ui.ChannelSelect):
         key = LOG_PAGES[self.page][1][0]
-        self.settings[key] = select.values[0].id if select.values else None
+        channel_id = select.values[0].id if select.values else None
+        self._set_log_channel_setting(key, channel_id)
         await _save(self.cog, self.guild.id, self.settings)
         await interaction.response.edit_message(embed=self.get_embed(), view=self)
 
     @discord.ui.select(cls=discord.ui.ChannelSelect, placeholder="Set Channel 3", min_values=0, max_values=1, channel_types=[discord.ChannelType.text], row=3)
     async def ch_3(self, interaction: discord.Interaction, select: discord.ui.ChannelSelect):
         key = LOG_PAGES[self.page][2][0]
-        self.settings[key] = select.values[0].id if select.values else None
+        channel_id = select.values[0].id if select.values else None
+        self._set_log_channel_setting(key, channel_id)
         await _save(self.cog, self.guild.id, self.settings)
         await interaction.response.edit_message(embed=self.get_embed(), view=self)
 

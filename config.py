@@ -84,8 +84,8 @@ class Config:
     )
     
     # Emojis (can be unicode or custom emoji string like <:check:123456789012345678>)
-    # Note: Discord message text does not support raw SVG. Upload custom emojis to a
-    # server first, then set the env var to the emoji mention string.
+    # Note: Discord does not accept raw SVG as message/reaction emoji input.
+    # Upload/custom-create emoji in a server first, then set the env var to the mention string.
     EMOJI_SUCCESS = os.getenv("EMOJI_SUCCESS", "\u2705")
     EMOJI_ERROR = os.getenv("EMOJI_ERROR", "\u274c")
     EMOJI_WARNING = os.getenv("EMOJI_WARNING", "\u26a0\ufe0f")
@@ -106,6 +106,7 @@ class Config:
     STATUS_INFO_EMOJI_NAME = os.getenv("STATUS_INFO_EMOJI_NAME", "mod_info_v1")
     STATUS_LOCK_EMOJI_NAME = os.getenv("STATUS_LOCK_EMOJI_NAME", "mod_lock_v1")
     STATUS_UNLOCK_EMOJI_NAME = os.getenv("STATUS_UNLOCK_EMOJI_NAME", "mod_unlock_v1")
+    STATUS_LOADING_EMOJI_NAME = os.getenv("STATUS_LOADING_EMOJI_NAME", "mod_loading_v2")
     STATUS_EMOJI_CREATE_REASON = os.getenv(
         "STATUS_EMOJI_CREATE_REASON",
         "Auto-create status emojis for moderation responses.",

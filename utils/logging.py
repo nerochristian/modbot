@@ -97,6 +97,7 @@ def normalize_log_embed(
 ) -> discord.Embed:
     """Normalize log embeds into a compact, consistent card style."""
     normalized = clone_embed(embed)
+    had_timestamp = normalized.timestamp is not None
 
     if normalized.timestamp is None:
         normalized.timestamp = datetime.now(timezone.utc)
@@ -104,8 +105,7 @@ def normalize_log_embed(
     guild = getattr(channel, "guild", None) if channel else None
 
     try:
-        # Compact logs: remove media by default so cards stay readable and consistent.
-        normalized.set_thumbnail(url=None)
+        # Keep thumbnails for audit-card parity; only strip large images by default.
         normalized.set_image(url=None)
     except Exception:
         pass
@@ -120,7 +120,7 @@ def normalize_log_embed(
         # Footer fallback helps logs still look complete when no footer was set.
         footer = getattr(normalized, "footer", None)
         footer_text = (getattr(footer, "text", "") or "").strip()
-        if not footer_text and guild is not None:
+        if not footer_text and guild is not None and not had_timestamp:
             normalized.set_footer(text=guild.name)
     except Exception:
         pass

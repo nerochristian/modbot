@@ -24,7 +24,12 @@ from dotenv import load_dotenv
 
 from config import Config
 from utils.embeds import ModEmbed
-from utils.status_emojis import apply_status_emoji_overrides
+from utils.status_emojis import (
+    apply_status_emoji_overrides,
+    get_loading_emoji_for_guild,
+    get_status_emoji_for_guild,
+    sync_status_emojis_to_application,
+)
 
 # Load environment variables
 load_dotenv()
@@ -224,7 +229,11 @@ logger = setup_logging()
 try:
     from database import Database
     from utils.cache import SnipeCache, PrefixCache
-    from utils.components_v2 import ComponentsV2Config, patch_components_v2
+    from utils.components_v2 import (
+        ComponentsV2Config,
+        patch_components_v2,
+        layout_view_from_embeds,
+    )
 except ImportError as e:
     logger.critical(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Failed to import required modules: {e}")
     sys.exit(1)
@@ -342,22 +351,33 @@ class TargetResolvePromptView(discord.ui.View):
         ctx: commands.Context,
         candidate: discord.Member,
         args_tail: str,
+        confirm_emoji: object = None,
+        cancel_emoji: object = None,
     ) -> None:
         super().__init__(timeout=45)
         self._bot = bot
         self._ctx = ctx
         self._candidate = candidate
         self._args_tail = args_tail
+        self._finalized = False
 
-        confirm_emoji = str(getattr(Config, "EMOJI_SUCCESS", "\u2705") or "\u2705").strip()
-        cancel_emoji = str(getattr(Config, "EMOJI_ERROR", "\u274c") or "\u274c").strip()
+        confirm_emoji = self._safe_button_emoji(
+            confirm_emoji if confirm_emoji is not None else getattr(Config, "EMOJI_SUCCESS", "\u2705"),
+            "\u2705",
+        )
+        cancel_emoji = self._safe_button_emoji(
+            cancel_emoji if cancel_emoji is not None else getattr(Config, "EMOJI_ERROR", "\u274c"),
+            "\u274c",
+        )
 
         confirm_button = discord.ui.Button(
             style=discord.ButtonStyle.success,
+            label="Confirm",
             emoji=confirm_emoji,
         )
         cancel_button = discord.ui.Button(
             style=discord.ButtonStyle.danger,
+            label="Cancel",
             emoji=cancel_emoji,
         )
 
@@ -372,27 +392,55 @@ class TargetResolvePromptView(discord.ui.View):
         self.add_item(confirm_button)
         self.add_item(cancel_button)
 
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id == self._ctx.author.id:
+    def _safe_button_emoji(self, value: object, fallback: str) -> object:
+        text = str(value or "").strip()
+        if not text:
+            return fallback
+        if text.startswith("<:") or text.startswith("<a:"):
+            try:
+                parsed = discord.PartialEmoji.from_str(text)
+                return parsed
+            except Exception:
+                return fallback
+        return text
+
+    async def _verify_interaction(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self._ctx.author.id:
+            try:
+                await interaction.response.send_message("Only the command author can use these buttons.", ephemeral=True)
+            except Exception:
+                pass
+            return False
+        if not self._finalized:
             return True
         try:
-            await interaction.response.send_message("Only the command author can use these buttons.", ephemeral=True)
+            await interaction.response.send_message("This prompt is already resolved.", ephemeral=True)
         except Exception:
             pass
         return False
 
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        return await self._verify_interaction(interaction)
+
     async def _disable_and_update(self, interaction: discord.Interaction) -> None:
+        self._finalized = True
         for child in self.children:
             try:
                 child.disabled = True
             except Exception:
                 continue
+        # When this prompt is sent as Components v2, editing with a classic View can
+        # strip the card container. Skip visual disable there and rely on _finalized.
+        if not list(getattr(interaction.message, "embeds", []) or []):
+            return
         try:
             await interaction.message.edit(view=self)
         except Exception:
             pass
 
     async def _on_confirm(self, interaction: discord.Interaction) -> None:
+        if not await self._verify_interaction(interaction):
+            return
         await interaction.response.defer()
         await self._disable_and_update(interaction)
 
@@ -419,10 +467,13 @@ class TargetResolvePromptView(discord.ui.View):
             pass
 
     async def _on_cancel(self, interaction: discord.Interaction) -> None:
+        if not await self._verify_interaction(interaction):
+            return
         await interaction.response.defer()
         await self._disable_and_update(interaction)
 
     async def on_timeout(self) -> None:
+        self._finalized = True
         for child in self.children:
             try:
                 child.disabled = True
@@ -466,7 +517,7 @@ class ModBot(commands.Bot):
         self.messages_seen: int = 0
         self.errors_caught: int = 0
         self.loading_emoji: str = getattr(Config, "EMOJI_LOADING", "\u23f3")
-        self._prefix_loading_messages: dict[int, discord.Message] = {}
+        self._prefix_loading_messages: dict[int, tuple[discord.Message, object]] = {}
         
         # Internal flags
         self._ready_once: bool = False
@@ -518,36 +569,76 @@ class ModBot(commands.Bot):
         return commands.when_mentioned_or(prefix)(self, message)
 
     async def _send_prefix_loading(self, ctx: commands.Context) -> None:
-        """Send a temporary loading marker for prefix commands."""
+        """Add a temporary loading reaction for prefix commands."""
         message = getattr(ctx, "message", None)
         if not message:
             return
         if message.id in self._prefix_loading_messages:
             return
 
-        loading_message: Optional[discord.Message] = None
-        try:
-            loading_message = await ctx.reply(self.loading_emoji, mention_author=False)
-        except Exception:
+        reaction = await self._try_add_loading_reaction(message)
+        if reaction is not None:
+            self._prefix_loading_messages[message.id] = (message, reaction)
+
+    def _resolve_loading_reaction(self, configured_emoji: Optional[str] = None) -> object:
+        fallback = "\u23f3"
+        raw = str(configured_emoji if configured_emoji is not None else self.loading_emoji or fallback).strip()
+        if not raw:
+            return fallback
+        if raw.startswith("<:") or raw.startswith("<a:"):
             try:
-                loading_message = await ctx.send(self.loading_emoji)
+                partial = discord.PartialEmoji.from_str(raw)
+                emoji_id = getattr(partial, "id", None)
+                if emoji_id is None:
+                    return fallback
+                return partial
             except Exception:
-                loading_message = None
+                return fallback
+        return raw
 
-        if loading_message:
-            self._prefix_loading_messages[message.id] = loading_message
+    async def _try_add_loading_reaction(self, message: discord.Message) -> Optional[object]:
+        configured = self.loading_emoji
+        if message.guild is not None:
+            try:
+                configured = await get_loading_emoji_for_guild(
+                    message.guild,
+                    configured_emoji=self.loading_emoji,
+                )
+            except Exception:
+                configured = self.loading_emoji
 
-    async def _clear_prefix_loading(self, message_id: Optional[int]) -> None:
-        """Delete a previously sent loading marker."""
-        if message_id is None:
-            return
-        loading_message = self._prefix_loading_messages.pop(message_id, None)
-        if loading_message is None:
+        reaction = self._resolve_loading_reaction(configured)
+        try:
+            await message.add_reaction(reaction)
+            return reaction
+        except Exception:
+            fallback = "\u23f3"
+            if reaction == fallback:
+                return None
+            try:
+                await message.add_reaction(fallback)
+                return fallback
+            except Exception:
+                return None
+
+    async def _try_remove_loading_reaction(self, message: discord.Message, reaction: object) -> None:
+        bot_user = self.user
+        if bot_user is None:
             return
         try:
-            await loading_message.delete()
+            await message.remove_reaction(reaction, bot_user)
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             pass
+
+    async def _clear_prefix_loading(self, message_id: Optional[int]) -> None:
+        """Remove a previously added loading reaction."""
+        if message_id is None:
+            return
+        loading_state = self._prefix_loading_messages.pop(message_id, None)
+        if loading_state is None:
+            return
+        loading_message, reaction = loading_state
+        await self._try_remove_loading_reaction(loading_message, reaction)
 
     async def _clear_prefix_loading_for_ctx(self, ctx: commands.Context) -> None:
         message = getattr(ctx, "message", None)
@@ -922,6 +1013,16 @@ class ModBot(commands.Bot):
         
         # Set presence
         await self.update_presence()
+
+        # Ensure status emojis are provisioned in Developer Portal > Application Emojis.
+        try:
+            synced_emojis = await sync_status_emojis_to_application(self)
+            if synced_emojis:
+                logger.info(f"Synced {len(synced_emojis)} status emoji assets to application emojis.")
+            else:
+                logger.warning("Application emoji sync skipped/unavailable; falling back to guild emoji provisioning.")
+        except Exception as e:
+            logger.warning(f"Failed to sync application emojis: {e}")
         
         # Load blacklist cache
         await self._load_blacklist_cache()
@@ -997,14 +1098,7 @@ class ModBot(commands.Bot):
         if ctx.command is None:
             invoked = (ctx.invoked_with or "").strip()
             if invoked:
-                loading_message: Optional[discord.Message] = None
-                try:
-                    loading_message = await message.reply(self.loading_emoji, mention_author=False)
-                except Exception:
-                    try:
-                        loading_message = await message.channel.send(self.loading_emoji)
-                    except Exception:
-                        loading_message = None
+                loading_reaction = await self._try_add_loading_reaction(message)
 
                 embed = ModEmbed.error(
                     "Command not found",
@@ -1014,23 +1108,13 @@ class ModBot(commands.Bot):
                     embed = await apply_status_emoji_overrides(embed, message.guild)
                 except Exception:
                     pass
-                if loading_message is not None:
-                    try:
-                        await loading_message.edit(content=None, embed=embed)
-                    except Exception:
-                        try:
-                            await loading_message.delete()
-                        except Exception:
-                            pass
-                        try:
-                            await message.reply(embed=embed, mention_author=False)
-                        except Exception:
-                            await message.channel.send(embed=embed)
-                else:
-                    try:
-                        await message.reply(embed=embed, mention_author=False)
-                    except Exception:
-                        await message.channel.send(embed=embed)
+                try:
+                    await message.reply(embed=embed, mention_author=False)
+                except Exception:
+                    await message.channel.send(embed=embed)
+                finally:
+                    if loading_reaction is not None:
+                        await self._try_remove_loading_reaction(message, loading_reaction)
             return
 
         await self.invoke(ctx)
@@ -1059,12 +1143,37 @@ class ModBot(commands.Bot):
         await self._clear_prefix_loading_for_ctx(ctx)
         self.errors_caught += 1
 
-        async def _send_error_response(embed: discord.Embed, *, view: Optional[discord.ui.View] = None):
+        async def _send_error_response(
+            embed: discord.Embed,
+            *,
+            view: Optional[discord.ui.View] = None,
+            use_v2: bool = False,
+        ):
             if ctx.guild is not None:
                 try:
                     embed = await apply_status_emoji_overrides(embed, ctx.guild)
                 except Exception:
                     pass
+            if use_v2 and ctx.channel is not None:
+                # Explicitly build a LayoutView via the shared v2 converter.
+                send_kwargs: dict[str, Any] = {}
+                msg = getattr(ctx, "message", None)
+                if msg is not None:
+                    try:
+                        send_kwargs["reference"] = msg.to_reference(fail_if_not_exists=False)
+                    except Exception:
+                        send_kwargs["reference"] = msg
+                    send_kwargs["mention_author"] = False
+                try:
+                    layout = await layout_view_from_embeds(
+                        embed=embed,
+                        existing_view=view,
+                    )
+                    send_kwargs["view"] = layout
+                    return await ctx.channel.send(**send_kwargs)
+                except Exception:
+                    pass
+
             try:
                 return await ctx.reply(embed=embed, view=view, mention_author=False)
             except Exception:
@@ -1102,6 +1211,25 @@ class ModBot(commands.Bot):
                     unresolved = str(getattr(error, "argument", "") or first_arg).strip()
                     candidate = self._find_best_member_match(ctx.guild, unresolved)
                     if candidate is not None:
+                        confirm_icon = getattr(Config, "EMOJI_SUCCESS", "\u2705")
+                        cancel_icon = getattr(Config, "EMOJI_ERROR", "\u274c")
+                        try:
+                            confirm_icon = await get_status_emoji_for_guild(
+                                ctx.guild,
+                                kind="success",
+                                configured_emoji=str(confirm_icon),
+                            )
+                        except Exception:
+                            pass
+                        try:
+                            cancel_icon = await get_status_emoji_for_guild(
+                                ctx.guild,
+                                kind="error",
+                                configured_emoji=str(cancel_icon),
+                            )
+                        except Exception:
+                            pass
+
                         embed = ModEmbed.warning(
                             "No exact user could be found.",
                             f"Do you want to continue with {candidate.mention} (`@{candidate.display_name}`)?",
@@ -1111,8 +1239,10 @@ class ModBot(commands.Bot):
                             ctx=ctx,
                             candidate=candidate,
                             args_tail=tail,
+                            confirm_emoji=confirm_icon,
+                            cancel_emoji=cancel_icon,
                         )
-                        return await _send_error_response(embed, view=view)
+                        return await _send_error_response(embed, view=view, use_v2=True)
 
         if isinstance(error, commands.BadArgument):
             embed = ModEmbed.error("Invalid argument", f"Invalid argument provided.\n\n{error}")
