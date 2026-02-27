@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 from pathlib import Path
+import re
 from typing import Any, Optional
 
 import discord
@@ -10,6 +12,9 @@ from config import Config
 
 _ASSETS_DIR = Path(__file__).resolve().parents[1] / "assets"
 _BRAILLE_BLANK = "\u2800"
+_INVALID_EMOJI_NAME_RE = re.compile(r"[^a-z0-9_]")
+_DUP_UNDERSCORE_RE = re.compile(r"_+")
+_VERSION_SUFFIX_RE = re.compile(r"_v\d+$", re.IGNORECASE)
 
 _EMOJI_META = {
     "success": {
@@ -58,7 +63,7 @@ _EMOJI_META = {
         "config_icon": "EMOJI_LOADING",
         "default_icon": "\u23f3",
         "config_name": "STATUS_LOADING_EMOJI_NAME",
-        "default_name": "mod_loading_v2",
+        "default_name": "mod_loading",
         # Prefer animated loading emoji when a GIF asset is available.
         "assets": ("emoji_loading.gif", "emoji_loading.png"),
     },
@@ -95,10 +100,35 @@ def _looks_custom_emoji(value: str) -> bool:
     return text.startswith("<:") or text.startswith("<a:")
 
 
+def _normalize_emoji_name(value: str) -> str:
+    name = str(value or "").strip().lower()
+    if not name:
+        return ""
+    name = _INVALID_EMOJI_NAME_RE.sub("_", name)
+    name = _DUP_UNDERSCORE_RE.sub("_", name).strip("_")
+    name = _VERSION_SUFFIX_RE.sub("", name)
+    return name[:32]
+
+
 def _emoji_name(meta: dict[str, Any]) -> str:
-    return str(
+    configured = str(
         getattr(Config, meta["config_name"], meta["default_name"]) or meta["default_name"]
-    ).strip() or meta["default_name"]
+    ).strip()
+    normalized = _normalize_emoji_name(configured)
+    if normalized:
+        return normalized
+
+    fallback = _normalize_emoji_name(str(meta.get("default_name", "") or "").strip())
+    if fallback:
+        return fallback
+
+    return "mod_status"
+
+
+def _is_legacy_version_name(name: str, base_name: str) -> bool:
+    if not base_name:
+        return False
+    return bool(re.fullmatch(rf"{re.escape(base_name)}_v\d+", str(name), flags=re.IGNORECASE))
 
 
 def _asset_candidates(meta: dict[str, Any]) -> list[str]:
@@ -131,6 +161,101 @@ def _pick_existing_emoji(
     return same_name[0]
 
 
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+async def _pick_asset_payload(
+    meta: dict[str, Any],
+) -> Optional[tuple[str, bytes, bool, str]]:
+    for asset_name in _asset_candidates(meta):
+        asset_path = _ASSETS_DIR / asset_name
+        if not asset_path.exists():
+            continue
+
+        emoji_bytes = await asyncio.to_thread(asset_path.read_bytes)
+        if len(emoji_bytes) > 256 * 1024:
+            continue
+
+        return (
+            asset_name,
+            emoji_bytes,
+            asset_name.lower().endswith(".gif"),
+            _sha256_bytes(emoji_bytes),
+        )
+    return None
+
+
+async def _read_emoji_bytes(emoji: Any) -> Optional[bytes]:
+    reader = getattr(emoji, "read", None)
+    if callable(reader):
+        try:
+            return await reader()
+        except Exception:
+            pass
+
+    url = getattr(emoji, "url", None)
+    url_reader = getattr(url, "read", None) if url is not None else None
+    if callable(url_reader):
+        try:
+            return await url_reader()
+        except Exception:
+            return None
+
+    return None
+
+
+async def _emoji_matches_payload(
+    emoji: Any,
+    *,
+    payload_hash: str,
+    require_animated: bool = False,
+) -> bool:
+    if require_animated and not bool(getattr(emoji, "animated", False)):
+        return False
+
+    existing_bytes = await _read_emoji_bytes(emoji)
+    if existing_bytes is None:
+        # If we cannot fetch bytes, keep an existing non-animated requirement emoji
+        # to avoid deleting/re-uploading on transient CDN/network failures.
+        return not require_animated
+
+    return _sha256_bytes(existing_bytes) == payload_hash
+
+
+async def _delete_application_emoji(bot: discord.Client, emoji: Any) -> bool:
+    deleter = getattr(emoji, "delete", None)
+    if callable(deleter):
+        try:
+            await deleter()
+            return True
+        except Exception:
+            pass
+
+    emoji_id = getattr(emoji, "id", None)
+    bot_deleter = getattr(bot, "delete_application_emoji", None)
+    if emoji_id is not None and callable(bot_deleter):
+        try:
+            await bot_deleter(emoji_id)
+            return True
+        except Exception:
+            return False
+
+    return False
+
+
+async def _delete_guild_emoji(
+    emoji: discord.Emoji,
+    *,
+    reason: Optional[str] = None,
+) -> bool:
+    try:
+        await emoji.delete(reason=reason)
+        return True
+    except Exception:
+        return False
+
+
 def _cached_application_mention(kind: str, meta: dict[str, Any]) -> Optional[str]:
     key = (kind, _emoji_name(meta))
     return _application_emoji_cache.get(key) or _application_kind_cache.get(kind)
@@ -146,7 +271,7 @@ async def sync_status_emojis_to_application(bot: discord.Client) -> dict[str, st
     synced: dict[str, str] = {}
 
     try:
-        existing = await bot.fetch_application_emojis()
+        existing = list(await bot.fetch_application_emojis())
     except Exception:
         return synced
 
@@ -170,37 +295,68 @@ async def sync_status_emojis_to_application(bot: discord.Client) -> dict[str, st
                 synced[kind] = cached
                 continue
 
+            payload = await _pick_asset_payload(meta) if auto_create else None
+            prefer_animated = (kind == "loading")
+            require_animated = bool(payload and prefer_animated and payload[2])
+            payload_hash = payload[3] if payload is not None else ""
+
+            same_name = [emoji for emoji in existing if emoji.name == emoji_name]
             selected = _pick_existing_emoji(
-                existing,
+                same_name,
                 name=emoji_name,
-                prefer_animated=(kind == "loading"),
+                prefer_animated=prefer_animated,
             )
 
-            if selected is None and auto_create:
-                for asset_name in _asset_candidates(meta):
-                    asset_path = _ASSETS_DIR / asset_name
-                    if not asset_path.exists():
-                        continue
+            up_to_date: Optional[Any] = None
+            if payload is not None:
+                for emoji in same_name:
+                    if await _emoji_matches_payload(
+                        emoji,
+                        payload_hash=payload_hash,
+                        require_animated=require_animated,
+                    ):
+                        up_to_date = emoji
+                        break
+            elif selected is not None:
+                up_to_date = selected
 
-                    emoji_bytes = await asyncio.to_thread(asset_path.read_bytes)
-                    if len(emoji_bytes) > 256 * 1024:
-                        continue
+            stale: list[Any] = []
+            if auto_create and payload is not None:
+                keep_id = getattr(up_to_date, "id", None)
+                for emoji in existing:
+                    if emoji.name == emoji_name or _is_legacy_version_name(emoji.name, emoji_name):
+                        if keep_id is not None and getattr(emoji, "id", None) == keep_id:
+                            continue
+                        stale.append(emoji)
 
+                if stale:
+                    deleted_ids: set[int] = set()
+                    for emoji in stale:
+                        if await _delete_application_emoji(bot, emoji):
+                            emoji_id = getattr(emoji, "id", None)
+                            if isinstance(emoji_id, int):
+                                deleted_ids.add(emoji_id)
+                    if deleted_ids:
+                        existing = [
+                            emoji
+                            for emoji in existing
+                            if getattr(emoji, "id", None) not in deleted_ids
+                        ]
+
+                selected = up_to_date
+                if selected is None:
                     try:
                         selected = await bot.create_application_emoji(
                             name=emoji_name,
-                            image=emoji_bytes,
+                            image=payload[1],
                         )
                     except discord.Forbidden:
                         selected = None
-                        break
                     except discord.HTTPException:
                         selected = None
-                        continue
 
                     if selected is not None:
                         existing.append(selected)
-                        break
 
             if selected is not None:
                 mention = str(selected)
@@ -236,18 +392,9 @@ async def _ensure_custom_status_emoji(guild: discord.Guild, kind: str) -> Option
     if cached:
         return cached
 
-    existing = _pick_existing_emoji(
-        list(guild.emojis),
-        name=emoji_name,
-        prefer_animated=(kind == "loading"),
-    )
-    if existing is not None:
-        mention = str(existing)
-        _emoji_cache[key] = mention
-        return mention
-
-    if not _bool(getattr(Config, "AUTO_CREATE_STATUS_EMOJIS", True), default=True):
-        return None
+    auto_create = _bool(getattr(Config, "AUTO_CREATE_STATUS_EMOJIS", True), default=True)
+    prefer_animated = (kind == "loading")
+    payload = await _pick_asset_payload(meta) if auto_create else None
 
     bot_member = guild.me
     if bot_member is None:
@@ -255,8 +402,6 @@ async def _ensure_custom_status_emoji(guild: discord.Guild, kind: str) -> Option
         bot_id = getattr(getattr(bot_user, "user", None), "id", None)
         if bot_id is not None:
             bot_member = guild.get_member(bot_id)
-    if not _member_can_manage_emojis(bot_member):
-        return None
 
     lock = await _get_lock(key)
     async with lock:
@@ -264,20 +409,34 @@ async def _ensure_custom_status_emoji(guild: discord.Guild, kind: str) -> Option
         if cached:
             return cached
 
-        existing = _pick_existing_emoji(
-            list(guild.emojis),
+        guild_emojis = list(guild.emojis)
+        same_name = [emoji for emoji in guild_emojis if emoji.name == emoji_name]
+        selected = _pick_existing_emoji(
+            same_name,
             name=emoji_name,
-            prefer_animated=(kind == "loading"),
+            prefer_animated=prefer_animated,
         )
-        if existing is not None:
-            mention = str(existing)
+
+        up_to_date: Optional[discord.Emoji] = None
+        if payload is not None:
+            require_animated = bool(prefer_animated and payload[2])
+            for emoji in same_name:
+                if await _emoji_matches_payload(
+                    emoji,
+                    payload_hash=payload[3],
+                    require_animated=require_animated,
+                ):
+                    up_to_date = emoji
+                    break
+        elif selected is not None:
+            up_to_date = selected
+
+        if not auto_create:
+            if selected is None:
+                return None
+            mention = str(selected)
             _emoji_cache[key] = mention
             return mention
-
-        asset_candidates = _asset_candidates(meta)
-
-        if not asset_candidates:
-            return None
 
         reason = str(
             getattr(
@@ -287,31 +446,39 @@ async def _ensure_custom_status_emoji(guild: discord.Guild, kind: str) -> Option
             )
         )
 
-        for asset_name in asset_candidates:
-            asset_path = _ASSETS_DIR / asset_name
-            if not asset_path.exists():
-                continue
+        can_manage = _member_can_manage_emojis(bot_member)
+        if payload is not None and can_manage:
+            keep_id = getattr(up_to_date, "id", None)
+            stale = [
+                emoji
+                for emoji in guild_emojis
+                if (emoji.name == emoji_name or _is_legacy_version_name(emoji.name, emoji_name))
+                and (keep_id is None or emoji.id != keep_id)
+            ]
+            for emoji in stale:
+                await _delete_guild_emoji(emoji, reason=reason)
 
-            emoji_bytes = await asyncio.to_thread(asset_path.read_bytes)
-            if len(emoji_bytes) > 256 * 1024:
-                continue
+            selected = up_to_date
+            if selected is None:
+                try:
+                    selected = await guild.create_custom_emoji(
+                        name=emoji_name,
+                        image=payload[1],
+                        reason=reason,
+                    )
+                except discord.Forbidden:
+                    selected = None
+                except discord.HTTPException:
+                    selected = None
+        elif up_to_date is not None:
+            selected = up_to_date
 
-            try:
-                created = await guild.create_custom_emoji(
-                    name=emoji_name,
-                    image=emoji_bytes,
-                    reason=reason,
-                )
-            except discord.Forbidden:
-                return None
-            except discord.HTTPException:
-                continue
+        if selected is None:
+            return None
 
-            mention = str(created)
-            _emoji_cache[key] = mention
-            return mention
-
-        return None
+        mention = str(selected)
+        _emoji_cache[key] = mention
+        return mention
 
 
 async def apply_status_emoji_overrides(

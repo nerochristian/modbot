@@ -8,9 +8,11 @@ from discord import app_commands
 from discord.ext import commands
 from datetime import datetime, timezone
 from typing import Optional, Literal
+import asyncio
 import re
 from utils.embeds import ModEmbed
 from utils.checks import is_mod, is_admin, is_bot_owner_id
+from utils.status_emojis import apply_status_emoji_overrides
 from config import Config
 
 
@@ -111,6 +113,11 @@ class Roles(commands.Cog):
         ephemeral: bool = False,
     ):
         """Reply via initial response or followup depending on interaction state."""
+        if interaction.guild is not None and embed is not None:
+            try:
+                embed = await apply_status_emoji_overrides(embed, interaction.guild)
+            except Exception:
+                pass
         if interaction.response.is_done():
             return await interaction.followup.send(embed=embed, ephemeral=ephemeral)
         return await interaction.response.send_message(embed=embed, ephemeral=ephemeral)

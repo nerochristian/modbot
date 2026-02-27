@@ -13,6 +13,47 @@ from utils.status_emojis import apply_status_emoji_overrides
 logger = logging.getLogger(__name__)
 
 class HelperCommands:
+    @staticmethod
+    def _classify_log_type_from_title(embed: discord.Embed, default: str = "mod") -> str:
+        title = (getattr(embed, "title", "") or "").strip().lower()
+        if not title:
+            return default
+
+        if (
+            title == "message deleted"
+            or title.endswith("messages deleted")
+            or title == "bulk message delete"
+            or title == "message edited"
+        ):
+            return "message"
+
+        audit_markers = (
+            "permissions updated",
+            "channel created",
+            "channel deleted",
+            "role created",
+            "role deleted",
+            "role updated",
+            "roles updated",
+            "webhook created",
+            "webhook deleted",
+            "webhook updated",
+            "emoji created",
+            "emoji deleted",
+            "emoji updated",
+            "emoji removed",
+            "sticker created",
+            "sticker deleted",
+            "sticker updated",
+            "invite created",
+            "invite deleted",
+            "invite updated",
+        )
+        if any(marker in title for marker in audit_markers):
+            return "audit"
+
+        return default
+
     async def _respond(
         self,
         source: Union[discord.Interaction, commands.Context],
@@ -62,6 +103,27 @@ class HelperCommands:
         log_type: "mod", "voice", or "audit"
         """
         try:
+            # Caller defaults to mod; promote obviously audit/message titles so they
+            # do not pollute mod logs.
+            resolved_log_type = log_type
+            if log_type == "mod":
+                resolved_log_type = self._classify_log_type_from_title(embed, default=log_type)
+
+            logging_cog = self.bot.get_cog("Logging")
+            if logging_cog and hasattr(logging_cog, "get_log_channel") and hasattr(logging_cog, "safe_send_log"):
+                try:
+                    channel = await logging_cog.get_log_channel(
+                        guild,
+                        resolved_log_type,
+                        allow_audit_fallback=False,
+                    )
+                except TypeError:
+                    channel = await logging_cog.get_log_channel(guild, resolved_log_type)
+                if not channel:
+                    return
+                await logging_cog.safe_send_log(channel, embed, view=view, mirror_to_audit=False)
+                return
+
             settings = await self.bot.db.get_settings(guild.id)
 
             def _resolve_channel_id(*keys: str) -> Optional[int]:
@@ -76,10 +138,12 @@ class HelperCommands:
                 return None
 
             # Determine which log channel to use.
-            if log_type == "voice":
+            if resolved_log_type == "voice":
                 log_channel_id = _resolve_channel_id("voice_log_channel", "log_channel_voice")
-            elif log_type == "audit":
+            elif resolved_log_type == "audit":
                 log_channel_id = _resolve_channel_id("audit_log_channel", "log_channel_audit")
+            elif resolved_log_type == "message":
+                log_channel_id = _resolve_channel_id("message_log_channel", "log_channel_message")
             else:
                 log_channel_id = _resolve_channel_id("mod_log_channel", "log_channel_mod")
             

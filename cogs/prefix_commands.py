@@ -12,6 +12,7 @@ import random
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_bot_owner_id, has_permissions_or_owner
+from utils.status_emojis import apply_status_emoji_overrides
 
 
 class PrefixCommands(commands.Cog):
@@ -22,6 +23,72 @@ class PrefixCommands(commands.Cog):
         self.afk_users = {}
         self.snipes = {}
         self.edit_snipes = {}
+
+    async def _send_role_embed(self, ctx: commands.Context, embed: discord.Embed) -> None:
+        if ctx.guild is not None:
+            try:
+                embed = await apply_status_emoji_overrides(embed, ctx.guild)
+            except Exception:
+                pass
+        await ctx.send(embed=embed)
+
+    def _role_edit_error(
+        self,
+        ctx: commands.Context,
+        member: discord.Member,
+        role: discord.Role,
+    ) -> Optional[discord.Embed]:
+        if ctx.guild is None or ctx.guild.me is None:
+            return ModEmbed.error("Guild Only", "This command can only be used in a server.")
+
+        # Security checks
+        if role >= ctx.author.top_role and ctx.author.id != ctx.guild.owner_id and not is_bot_owner_id(ctx.author.id):
+            return ModEmbed.error("Permission Denied", "You cannot manage a role equal to or higher than your highest role.")
+
+        if role >= ctx.guild.me.top_role:
+            return ModEmbed.error("Bot Error", "I cannot manage this role as it's higher than or equal to my highest role.")
+
+        if role.managed:
+            return ModEmbed.error("Managed Role", "This role is managed by an integration and cannot be manually assigned.")
+
+        # Protect dangerous roles from being assigned by non-admins
+        if (
+            (role.permissions.administrator or role.permissions.manage_guild or role.permissions.manage_roles)
+            and not ctx.author.guild_permissions.administrator
+            and not is_bot_owner_id(ctx.author.id)
+        ):
+            return ModEmbed.error("Permission Denied", "Only administrators can assign roles with dangerous permissions.")
+
+        # Can't modify server owner's roles unless you're the owner
+        if member.id == ctx.guild.owner_id and ctx.author.id != ctx.guild.owner_id and not is_bot_owner_id(ctx.author.id):
+            return ModEmbed.error("Permission Denied", "You cannot modify the server owner's roles.")
+
+        # Can't modify someone with higher role than you
+        if (
+            member.top_role >= ctx.author.top_role
+            and member.id != ctx.author.id
+            and ctx.author.id != ctx.guild.owner_id
+            and not is_bot_owner_id(ctx.author.id)
+        ):
+            return ModEmbed.error("Permission Denied", "You cannot modify roles for someone with equal or higher role.")
+
+        return None
+
+    async def _toggle_role(self, ctx: commands.Context, member: discord.Member, role: discord.Role) -> None:
+        error_embed = self._role_edit_error(ctx, member, role)
+        if error_embed is not None:
+            await self._send_role_embed(ctx, error_embed)
+            return
+
+        try:
+            if role in member.roles:
+                await member.remove_roles(role, reason=f"Removed by {ctx.author}")
+                await self._send_role_embed(ctx, ModEmbed.success("Role Removed", f"Removed {role.mention} from {member.mention}."))
+            else:
+                await member.add_roles(role, reason=f"Added by {ctx.author}")
+                await self._send_role_embed(ctx, ModEmbed.success("Role Added", f"Added {role.mention} to {member.mention}."))
+        except Exception as e:
+            await self._send_role_embed(ctx, ModEmbed.error("Role Update Failed", str(e)))
 
     # ═══════════════════════════════════════════════════════════════
     # MODERATION COMMANDS (30+)
@@ -263,46 +330,70 @@ class PrefixCommands(commands.Cog):
         """Clear all warnings for a user"""
         await ctx.send(embed=ModEmbed.success("🧹 Cleared", f"Warnings cleared for {member.mention}."))
 
-    @commands.command(name="role", aliases=["giverole", "addrole"])
+    @commands.group(name="role", aliases=["giverole", "addrole"], invoke_without_command=True)
     @has_permissions_or_owner(manage_roles=True)
-    async def role_cmd(self, ctx, member: discord.Member, role: discord.Role):
-        """Add or remove a role from a user"""
-        # Security checks
-        if role >= ctx.author.top_role and ctx.author.id != ctx.guild.owner_id and not is_bot_owner_id(ctx.author.id):
-            return await ctx.send(embed=ModEmbed.error("Permission Denied", "You cannot manage a role equal to or higher than your highest role."))
-        
-        if role >= ctx.guild.me.top_role:
-            return await ctx.send(embed=ModEmbed.error("Bot Error", "I cannot manage this role as it's higher than or equal to my highest role."))
-        
-        if role.managed:
-            return await ctx.send(embed=ModEmbed.error("Managed Role", "This role is managed by an integration and cannot be manually assigned."))
-        
-        # Protect dangerous roles from being assigned by non-admins
-        if (
-            (role.permissions.administrator or role.permissions.manage_guild or role.permissions.manage_roles)
-            and not ctx.author.guild_permissions.administrator
-            and not is_bot_owner_id(ctx.author.id)
-        ):
-            return await ctx.send(embed=ModEmbed.error("Permission Denied", "Only administrators can assign roles with dangerous permissions."))
-        
-        # Can't modify server owner's roles unless you're the owner
-        if member.id == ctx.guild.owner_id and ctx.author.id != ctx.guild.owner_id and not is_bot_owner_id(ctx.author.id):
-            return await ctx.send(embed=ModEmbed.error("Permission Denied", "You cannot modify the server owner's roles."))
-        # Can't modify someone with higher role than you
-        if (
-            member.top_role >= ctx.author.top_role
-            and member.id != ctx.author.id
-            and ctx.author.id != ctx.guild.owner_id
-            and not is_bot_owner_id(ctx.author.id)
-        ):
-            return await ctx.send(embed=ModEmbed.error("Permission Denied", "You cannot modify roles for someone with equal or higher role."))
-        
+    async def role_cmd(
+        self,
+        ctx,
+        member: Optional[discord.Member] = None,
+        role: Optional[discord.Role] = None,
+    ):
+        """Role management commands."""
+        if member is not None and role is not None:
+            await self._toggle_role(ctx, member, role)
+            return
+
+        usage = (
+            f"`{ctx.prefix}role add <member> <role>`\n"
+            f"`{ctx.prefix}role remove <member> <role>`\n"
+            f"`{ctx.prefix}role toggle <member> <role>`\n"
+            f"`{ctx.prefix}role <member> <role>` (toggle shortcut)"
+        )
+        await self._send_role_embed(ctx, ModEmbed.info("Role Commands", usage))
+
+    @role_cmd.command(name="add")
+    @has_permissions_or_owner(manage_roles=True)
+    async def role_add_cmd(self, ctx, member: discord.Member, role: discord.Role):
+        """Add a role to a user."""
+        error_embed = self._role_edit_error(ctx, member, role)
+        if error_embed is not None:
+            await self._send_role_embed(ctx, error_embed)
+            return
+
         if role in member.roles:
-            await member.remove_roles(role, reason=f"Removed by {ctx.author}")
-            await ctx.send(embed=ModEmbed.success("🎭 Role Removed", f"Removed {role.mention} from {member.mention}."))
-        else:
+            await self._send_role_embed(ctx, ModEmbed.error("Role Add Failed", f"{member.mention} already has {role.mention}."))
+            return
+
+        try:
             await member.add_roles(role, reason=f"Added by {ctx.author}")
-            await ctx.send(embed=ModEmbed.success("🎭 Role Added", f"Added {role.mention} to {member.mention}."))
+            await self._send_role_embed(ctx, ModEmbed.success("Role Added", f"Added {role.mention} to {member.mention}."))
+        except Exception as e:
+            await self._send_role_embed(ctx, ModEmbed.error("Role Add Failed", str(e)))
+
+    @role_cmd.command(name="remove", aliases=["rm"])
+    @has_permissions_or_owner(manage_roles=True)
+    async def role_remove_cmd(self, ctx, member: discord.Member, role: discord.Role):
+        """Remove a role from a user."""
+        error_embed = self._role_edit_error(ctx, member, role)
+        if error_embed is not None:
+            await self._send_role_embed(ctx, error_embed)
+            return
+
+        if role not in member.roles:
+            await self._send_role_embed(ctx, ModEmbed.error("Role Remove Failed", f"{member.mention} does not have {role.mention}."))
+            return
+
+        try:
+            await member.remove_roles(role, reason=f"Removed by {ctx.author}")
+            await self._send_role_embed(ctx, ModEmbed.success("Role Removed", f"Removed {role.mention} from {member.mention}."))
+        except Exception as e:
+            await self._send_role_embed(ctx, ModEmbed.error("Role Remove Failed", str(e)))
+
+    @role_cmd.command(name="toggle")
+    @has_permissions_or_owner(manage_roles=True)
+    async def role_toggle_cmd(self, ctx, member: discord.Member, role: discord.Role):
+        """Toggle a role on a user."""
+        await self._toggle_role(ctx, member, role)
 
     # ═══════════════════════════════════════════════════════════════
     # INFO & UTILITY COMMANDS (15+)

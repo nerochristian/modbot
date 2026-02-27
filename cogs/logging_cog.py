@@ -279,31 +279,62 @@ class Logging(commands.Cog):
         if not channel:
             return False
 
+        # Hard routing guard: if an audit/message card is about to be posted in the
+        # wrong channel, reroute before sending.
+        routed_channel = channel
+        try:
+            destination_type = self._classify_misrouted_log_embed(embed)
+            if destination_type:
+                settings = await self.bot.db.get_settings(channel.guild.id)
+                mod_channel_id = self._resolve_log_channel_id(settings, "mod")
+                source_is_mod = bool(mod_channel_id and channel.id == mod_channel_id)
+                destination_id = self._resolve_log_channel_id(settings, destination_type)
+                if destination_id and destination_id != channel.id:
+                    destination_channel = channel.guild.get_channel(destination_id)
+                    if isinstance(destination_channel, discord.TextChannel):
+                        routed_channel = destination_channel
+                    elif source_is_mod:
+                        logger.warning(
+                            "Dropping %s log in %s: destination channel is invalid.",
+                            destination_type,
+                            channel.guild.name,
+                        )
+                        return False
+                elif source_is_mod:
+                    logger.warning(
+                        "Dropping %s log in %s: destination channel is not configured.",
+                        destination_type,
+                        channel.guild.name,
+                    )
+                    return False
+        except Exception:
+            routed_channel = channel
+
         sent_primary = False
         try:
-            normalized = normalize_log_embed(channel, embed)
-            await channel.send(embed=normalized, use_v2=use_v2, view=view)
+            normalized = normalize_log_embed(routed_channel, embed)
+            await routed_channel.send(embed=normalized, use_v2=use_v2, view=view)
             sent_primary = True
         except discord.Forbidden:
-            logger.warning(f"Missing permissions to log in {channel.guild.name} #{channel.name}")
+            logger.warning(f"Missing permissions to log in {routed_channel.guild.name} #{routed_channel.name}")
             # Invalidate cache for this channel
-            await self._channel_cache.invalidate(channel.guild.id, "unknown")
+            await self._channel_cache.invalidate(routed_channel.guild.id, "unknown")
         except discord.NotFound:
-            logger.warning(f"Log channel not found: {channel.guild.name} #{channel.name}")
+            logger.warning(f"Log channel not found: {routed_channel.guild.name} #{routed_channel.name}")
             # Channel was deleted
-            await self._channel_cache.invalidate(channel.guild.id, "unknown")
+            await self._channel_cache.invalidate(routed_channel.guild.id, "unknown")
         except discord.HTTPException as e:
-            logger.error(f"Failed to send log in {channel.guild.name}: {e}")
+            logger.error(f"Failed to send log in {routed_channel.guild.name}: {e}")
         except Exception as e:
             logger.error(f"Unexpected error sending log: {e}")
         sent_audit = False
         if mirror_to_audit:
             try:
-                audit_channel = await self.get_log_channel(channel.guild, "audit")
+                audit_channel = await self.get_log_channel(routed_channel.guild, "audit")
             except Exception:
                 audit_channel = None
 
-            if audit_channel and audit_channel.id != channel.id:
+            if audit_channel and audit_channel.id != routed_channel.id:
                 try:
                     # Do not reuse the same View object across multiple messages.
                     normalized_audit = normalize_log_embed(audit_channel, embed)
@@ -404,6 +435,8 @@ class Logging(commands.Cog):
             "webhook created",
             "emoji created",
             "emoji deleted",
+            "emoji updated",
+            "emoji removed",
             "sticker created",
             "sticker deleted",
             "sticker updated",
@@ -425,7 +458,9 @@ class Logging(commands.Cog):
         if not message.guild or not message.embeds:
             return
 
-        if not self.bot.user or message.author.id != self.bot.user.id:
+        # Accept bot/webhook-authored cards, not only this exact user ID.
+        # Some paths may post via alternate bot identity/webhook wrappers.
+        if not getattr(message.author, "bot", False) and message.webhook_id is None:
             return
 
         settings = await self.bot.db.get_settings(message.guild.id)
@@ -583,6 +618,67 @@ class Logging(commands.Cog):
         ]
         perms_text = " | ".join([f"{name}: {self._yn(val)}" for name, val in key_perms])
         embed.add_field(name="Key Perms", value=perms_text, inline=False)
+
+    def _channel_detail_lines(self, channel: discord.abc.GuildChannel) -> list[str]:
+        category = getattr(channel, "category", None)
+        category_value = category.mention if category else "*None*"
+        lines = [
+            f"**Category:** {category_value}",
+            f"**Position:** {getattr(channel, 'position', '*N/A*')}",
+            f"**Overwrites:** {len(getattr(channel, 'overwrites', {}) or {})}",
+        ]
+
+        nsfw = getattr(channel, "nsfw", None)
+        lines.append(f"**NSFW:** {self._yn(nsfw) if nsfw is not None else '*N/A*'}")
+
+        slowmode_delay = getattr(channel, "slowmode_delay", None)
+        lines.append(
+            f"**Slowmode:** {f'{slowmode_delay}s' if slowmode_delay is not None else '*N/A*'}"
+        )
+
+        permissions_synced = getattr(channel, "permissions_synced", None)
+        lines.append(
+            f"**Synced:** {self._yn(permissions_synced) if permissions_synced is not None else '*N/A*'}"
+        )
+
+        topic = getattr(channel, "topic", None)
+        if topic:
+            lines.append(f"**Topic:** {self._shorten(topic, 180)}")
+
+        bitrate = getattr(channel, "bitrate", None)
+        user_limit = getattr(channel, "user_limit", None)
+        if bitrate is not None or user_limit is not None:
+            bitrate_text = f"{int(bitrate/1000)}kbps" if bitrate else "*N/A*"
+            limit_text = str(user_limit) if user_limit else "∞"
+            lines.append(f"**Voice:** Bitrate {bitrate_text}, Limit {limit_text}")
+
+        return lines
+
+    def _role_detail_lines(self, role: discord.Role, *, include_members: bool = True) -> list[str]:
+        color_value = role.color.value
+        color_text = f"#{color_value:06x}" if color_value else "Default"
+        lines = [
+            f"**Color:** {color_text}",
+            f"**Position:** {role.position}",
+            f"**Hoist:** {self._yn(role.hoist)}",
+            f"**Mentionable:** {self._yn(role.mentionable)}",
+            f"**Managed:** {self._yn(role.managed)}",
+        ]
+        if include_members:
+            lines.insert(2, f"**Members:** {len(role.members)}")
+
+        perms = role.permissions
+        key_perms = [
+            ("Administrator", perms.administrator),
+            ("Manage Server", perms.manage_guild),
+            ("Manage Roles", perms.manage_roles),
+            ("Manage Channels", perms.manage_channels),
+            ("Ban Members", perms.ban_members),
+            ("Kick Members", perms.kick_members),
+        ]
+        enabled = [name for name, enabled in key_perms if enabled]
+        lines.append(f"**Key perms:** {', '.join(enabled) if enabled else 'None'}")
+        return lines
 
     # ==================== MESSAGE LOGGING ====================
 
@@ -864,63 +960,32 @@ class Logging(commands.Cog):
         channel = await self.get_log_channel(member.guild, 'audit')
         if not channel:
             return
-        
-        # Calculate account age
+
         account_age = (datetime.now(timezone.utc) - member.created_at).days
-        
-        embed = discord.Embed(
-            title="Member Joined",
-            color=Colors.SUCCESS,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-        
-        embed.add_field(
-            name="User",
-            value=f"{member.mention} ({member.name})",
-            inline=True
-        )
-        embed.add_field(
-            name="Account Age",
-            value=f"{account_age} days",
-            inline=True
-        )
-        embed.add_field(
-            name="Created",
-            value=f"<t:{int(member.created_at.timestamp())}:R>",
-            inline=True
-        )
-        
-        embed.add_field(
-            name="Member Count",
-            value=f"#{member.guild.member_count}",
-            inline=False
-        )
-        
-        embed.set_footer(text=f"User ID: {member.id}")
-        
-        # Warning for new accounts
+        details_lines = [
+            f"**User:** {self._format_user_reference(member)}",
+            f"**Account age:** {account_age} day(s)",
+            f"**Created:** <t:{int(member.created_at.timestamp())}:R>",
+            f"**Member count:** #{member.guild.member_count}",
+        ]
+
+        color = Colors.SUCCESS
+        suspicious_tokens = ("discord", "nitro", "mod", "admin", "support")
         if account_age < 7:
-            embed.add_field(
-                name="⚠️ Warning",
-                value=f"Account created **{account_age}** day(s) ago",
-                inline=False
-            )
-            embed.color = Colors.WARNING
-        
-        # Warning for suspicious usernames
-        suspicious_chars = ['discord', 'nitro', 'mod', 'admin', 'support']
-        username_lower = member.name.lower()
-        if any(char in username_lower for char in suspicious_chars):
-            embed.add_field(
-                name="⚠️ Suspicious Username",
-                value="Username contains common scam keywords",
-                inline=False
-            )
-            embed.color = Colors.WARNING
-        
+            details_lines.append("**Warning:** New account")
+            color = Colors.WARNING
+        if any(token in member.name.lower() for token in suspicious_tokens):
+            details_lines.append("**Warning:** Username contains common scam keywords")
+            color = Colors.WARNING
+
+        embed = self._build_sapphire_log_embed(
+            title="Member joined",
+            color=color,
+            details_lines=details_lines,
+            thumbnail_url=member.display_avatar.url,
+        )
         await self.safe_send_log(channel, embed)
+        return
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
@@ -928,73 +993,54 @@ class Logging(commands.Cog):
         channel = await self.get_log_channel(member.guild, 'audit')
         if not channel:
             return
-        
-        embed = discord.Embed(
-            title="Member Left",
-            color=Colors.ERROR,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-        
-        embed.add_field(
-            name="User",
-            value=f"{member.mention} ({member.name})",
-            inline=True
-        )
-        
-        # Join date
+
         if member.joined_at:
             days_in_server = (datetime.now(timezone.utc) - member.joined_at).days
-            embed.add_field(
-                name="Time in Server",
-                value=f"{days_in_server} days",
-                inline=True
-            )
+            tenure = f"{days_in_server} day(s)"
         else:
-             embed.add_field(name="Time in Server", value="Unknown", inline=True)
-             
-        embed.add_field(
-            name="Members",
-            value=f"#{member.guild.member_count}",
-            inline=True
-        )
-        
-        # Roles
+            tenure = "Unknown"
+
+        details_lines = [
+            f"**User:** {self._format_user_reference(member)}",
+            f"**Time in server:** {tenure}",
+            f"**Member count:** #{member.guild.member_count}",
+        ]
+
         roles = [r.mention for r in member.roles[1:] if r.name != "@everyone"]
         if roles:
             roles_text = ", ".join(roles[:10])
             if len(roles) > 10:
-                roles_text += f" *+{len(roles) - 10} more*"
-            embed.add_field(name="Roles", value=roles_text, inline=False)
-        
-        embed.set_footer(text=f"User ID: {member.id}")
-        
-        # Check audit log for kick
+                roles_text += f" +{len(roles) - 10} more"
+            details_lines.append(f"**Roles:** {roles_text}")
+
+        title = "Member left"
+        footer_user = None
         try:
             async for entry in member.guild.audit_logs(limit=5, action=discord.AuditLogAction.kick):
-                if entry.target.id == member.id:
-                    # Check if kick happened within last 5 seconds
-                    if (datetime.now(timezone.utc) - entry.created_at).seconds < 5:
-                        embed.title = "👢 Member Kicked"
-                        embed.add_field(
-                            name="Kicked By",
-                            value=entry.user.mention,
-                            inline=True
-                        )
-                        if entry.reason:
-                            embed.add_field(
-                                name="Reason",
-                                value=entry.reason,
-                                inline=False
-                            )
-                        break
+                target_id = getattr(getattr(entry, "target", None), "id", None)
+                if target_id != member.id:
+                    continue
+                if (datetime.now(timezone.utc) - entry.created_at).seconds < 5:
+                    title = "Member kicked"
+                    footer_user = getattr(entry, "user", None)
+                    reason = getattr(entry, "reason", None)
+                    if reason:
+                        details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
+                    break
         except discord.Forbidden:
             pass
         except Exception as e:
             logger.error(f"Failed to check audit log for kick: {e}")
-        
+
+        embed = self._build_sapphire_log_embed(
+            title=title,
+            color=Colors.ERROR,
+            details_lines=details_lines,
+            thumbnail_url=member.display_avatar.url,
+            footer_user=footer_user,
+        )
         await self.safe_send_log(channel, embed)
+        return
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
@@ -1002,33 +1048,8 @@ class Logging(commands.Cog):
         channel = await self.get_log_channel(before.guild, 'audit')
         if not channel:
             return
-        
-        # ===== NICKNAME CHANGE =====
+
         if before.nick != after.nick:
-            embed = discord.Embed(
-                title="Nickname Changed",
-                color=Colors.INFO,
-                timestamp=datetime.now(timezone.utc)
-            )
-            
-            embed.set_author(name=f"{after.name}", icon_url=after.display_avatar.url)
-            
-            embed.add_field(
-                name="User",
-                value=f"{after.mention} ({after.name})",
-                inline=True
-            )
-            embed.add_field(
-                name="Before",
-                value=before.nick or "*None*",
-                inline=True
-            )
-            embed.add_field(
-                name="After",
-                value=after.nick or "*None*",
-                inline=True
-            )
-            
             entry = await self._find_recent_audit_entry(
                 before.guild,
                 action=discord.AuditLogAction.member_update,
@@ -1036,50 +1057,39 @@ class Logging(commands.Cog):
             )
             moderator = getattr(entry, "user", None)
             reason = getattr(entry, "reason", None)
-            embed.add_field(
-                name="Moderator",
-                value=moderator.mention if moderator else "*Unknown*",
-                inline=True
-            )
-            embed.add_field(name="Reason", value=self._shorten(reason, 250), inline=False)
+            details_lines = [
+                f"**User:** {self._format_user_reference(after)}",
+                f"**Before:** {before.nick or '*None*'}",
+                f"**After:** {after.nick or '*None*'}",
+            ]
+            if reason:
+                details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
 
-            embed.set_footer(text=f"User ID: {after.id}")
-            
+            embed = self._build_sapphire_log_embed(
+                title="Nickname changed",
+                color=Colors.INFO,
+                details_lines=details_lines,
+                thumbnail_url=after.display_avatar.url,
+                footer_user=moderator,
+            )
             await self.safe_send_log(channel, embed)
-        
-        # ===== ROLE CHANGES =====
+
         if before.roles != after.roles:
             added = [r for r in after.roles if r not in before.roles]
             removed = [r for r in before.roles if r not in after.roles]
-            
+
             if added or removed:
-                embed = discord.Embed(
-                    title="Roles Updated",
-                    color=Colors.INFO,
-                    timestamp=datetime.now(timezone.utc)
-                )
-                
-                embed.set_author(name=f"{after.name}", icon_url=after.display_avatar.url)
-                
-                embed.add_field(
-                    name="User",
-                    value=f"{after.mention} ({after.name})",
-                    inline=True
-                )
-                
                 added_text = "*None*"
                 if added:
                     added_text = ", ".join([r.mention for r in added[:10]])
                     if len(added) > 10:
-                        added_text += f" *+{len(added) - 10} more*"
-                embed.add_field(name="✅ Added", value=added_text, inline=False)
+                        added_text += f" +{len(added) - 10} more"
 
                 removed_text = "*None*"
                 if removed:
                     removed_text = ", ".join([r.mention for r in removed[:10]])
                     if len(removed) > 10:
-                        removed_text += f" *+{len(removed) - 10} more*"
-                embed.add_field(name="❌ Removed", value=removed_text, inline=False)
+                        removed_text += f" +{len(removed) - 10} more"
 
                 entry = await self._find_recent_audit_entry(
                     before.guild,
@@ -1088,15 +1098,22 @@ class Logging(commands.Cog):
                 )
                 moderator = getattr(entry, "user", None)
                 reason = getattr(entry, "reason", None)
-                embed.add_field(
-                    name="Moderator",
-                    value=moderator.mention if moderator else "*Unknown*",
-                    inline=True
-                )
-                embed.add_field(name="Reason", value=self._shorten(reason, 250), inline=False)
 
-                embed.set_footer(text=f"User ID: {after.id}")
-                
+                details_lines = [
+                    f"**User:** {self._format_user_reference(after)}",
+                    f"**Added:** {added_text}",
+                    f"**Removed:** {removed_text}",
+                ]
+                if reason:
+                    details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
+
+                embed = self._build_sapphire_log_embed(
+                    title="Roles updated",
+                    color=Colors.INFO,
+                    details_lines=details_lines,
+                    thumbnail_url=after.display_avatar.url,
+                    footer_user=moderator,
+                )
                 await self.safe_send_log(channel, embed)
         
         # ===== TIMEOUT CHANGES =====
@@ -1282,46 +1299,38 @@ class Logging(commands.Cog):
         channel = await self.get_log_channel(guild, 'audit')
         if not channel:
             return
-        
-        embed = discord.Embed(
-            title="🔨 Member Banned",
-            color=Colors.DARK_RED,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.add_field(
-            name="User",
-            value=f"{user.mention} (`{user.id}`)",
-            inline=True
-        )
-        if getattr(user, "created_at", None):
-            embed.add_field(
-                name="Account Created",
-                value=f"<t:{int(user.created_at.timestamp())}:R>",
-                inline=True
-            )
-        embed.add_field(name="Bot", value=self._yn(getattr(user, "bot", False)), inline=True)
-        embed.set_thumbnail(url=user.display_avatar.url)
-        embed.set_footer(text=f"User ID: {user.id}")
-        
-        # Try to get ban reason from audit log
-        moderator_text = "*Unknown*"
+
+        moderator = None
         ban_reason = None
         try:
             async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
-                if entry.target.id == user.id:
-                    moderator_text = entry.user.mention
-                    ban_reason = entry.reason
+                target_id = getattr(getattr(entry, "target", None), "id", None)
+                if target_id == user.id:
+                    moderator = getattr(entry, "user", None)
+                    ban_reason = getattr(entry, "reason", None)
                     break
         except discord.Forbidden:
             logger.warning(f"Missing audit log permissions in {guild.name}")
         except Exception as e:
             logger.error(f"Failed to check audit log for ban: {e}")
 
-        embed.add_field(name="Moderator", value=moderator_text, inline=True)
-        embed.add_field(name="Reason", value=self._shorten(ban_reason, 250), inline=False)
-        
+        details_lines = [
+            f"**User:** {self._format_user_reference(user)}",
+            f"**Bot:** {self._yn(getattr(user, 'bot', False))}",
+            f"**Reason:** {self._shorten(ban_reason, 250)}",
+        ]
+        if getattr(user, "created_at", None):
+            details_lines.insert(1, f"**Account created:** <t:{int(user.created_at.timestamp())}:R>")
+
+        embed = self._build_sapphire_log_embed(
+            title="Member banned",
+            color=Colors.DARK_RED,
+            details_lines=details_lines,
+            thumbnail_url=user.display_avatar.url,
+            footer_user=moderator,
+        )
         await self.safe_send_log(channel, embed)
+        return
 
     @commands.Cog.listener()
     async def on_member_unban(self, guild: discord.Guild, user: discord.User):
@@ -1329,48 +1338,38 @@ class Logging(commands.Cog):
         channel = await self.get_log_channel(guild, 'audit')
         if not channel:
             return
-        
-        embed = discord.Embed(
-            title="🔓 Member Unbanned",
-            color=Colors.SUCCESS,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.add_field(
-            name="User",
-            value=f"{user.mention} (`{user.id}`)",
-            inline=True
-        )
-        if getattr(user, "created_at", None):
-            embed.add_field(
-                name="Account Created",
-                value=f"<t:{int(user.created_at.timestamp())}:R>",
-                inline=True
-            )
-        embed.add_field(name="Bot", value=self._yn(getattr(user, "bot", False)), inline=True)
-        embed.set_thumbnail(url=user.display_avatar.url)
-        embed.set_footer(text=f"User ID: {user.id}")
-        
-        # Try to get unban info from audit log
-        moderator_text = "*Unknown*"
+
+        moderator = None
         unban_reason = None
         try:
             async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.unban):
-                if entry.target.id == user.id:
-                    moderator_text = entry.user.mention
-                    unban_reason = entry.reason
+                target_id = getattr(getattr(entry, "target", None), "id", None)
+                if target_id == user.id:
+                    moderator = getattr(entry, "user", None)
+                    unban_reason = getattr(entry, "reason", None)
                     break
         except discord.Forbidden:
             pass
         except Exception as e:
             logger.error(f"Failed to check audit log for unban: {e}")
 
-        embed.add_field(name="Moderator", value=moderator_text, inline=True)
-        embed.add_field(name="Reason", value=self._shorten(unban_reason, 250), inline=False)
-        
-        await self.safe_send_log(channel, embed)
+        details_lines = [
+            f"**User:** {self._format_user_reference(user)}",
+            f"**Bot:** {self._yn(getattr(user, 'bot', False))}",
+            f"**Reason:** {self._shorten(unban_reason, 250)}",
+        ]
+        if getattr(user, "created_at", None):
+            details_lines.insert(1, f"**Account created:** <t:{int(user.created_at.timestamp())}:R>")
 
-    # ==================== SERVER EVENTS ====================
+        embed = self._build_sapphire_log_embed(
+            title="Member unbanned",
+            color=Colors.SUCCESS,
+            details_lines=details_lines,
+            thumbnail_url=user.display_avatar.url,
+            footer_user=moderator,
+        )
+        await self.safe_send_log(channel, embed)
+        return
 
     @commands.Cog.listener()
     async def on_webhooks_update(self, channel: discord.abc.GuildChannel):
@@ -1436,7 +1435,7 @@ class Logging(commands.Cog):
         log_channel = await self.get_log_channel(channel.guild, 'audit')
         if not log_channel:
             return
-        
+
         entry = await self._find_recent_audit_entry(
             channel.guild,
             action=discord.AuditLogAction.channel_create,
@@ -1445,31 +1444,26 @@ class Logging(commands.Cog):
         actor = getattr(entry, "user", None)
         reason = getattr(entry, "reason", None)
 
-        embed = discord.Embed(
-            title="➕ Channel Created",
-            color=Colors.SUCCESS,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.add_field(name="Channel", value=channel.mention, inline=True)
-        embed.add_field(name="Type", value=str(channel.type).title(), inline=True)
-        embed.add_field(name="ID", value=f"`{channel.id}`", inline=True)
-
         created_at = getattr(channel, "created_at", None)
-        embed.add_field(
-            name="Created",
-            value=f"<t:{int(created_at.timestamp())}:R>" if created_at else "*N/A*",
-            inline=True,
-        )
-        embed.add_field(name="By", value=actor.mention if actor else "*Unknown*", inline=True)
-        embed.add_field(name="Reason", value=self._shorten(reason, 250), inline=False)
-        self._add_channel_details_fields(embed, channel)
+        details_lines = [
+            f"**Channel:** {self._format_channel_reference(channel)}",
+            f"**Type:** {str(channel.type).title()}",
+            f"**ID:** `{channel.id}`",
+            f"**Created:** {f'<t:{int(created_at.timestamp())}:R>' if created_at else '*N/A*'}",
+        ]
+        details_lines.extend(self._channel_detail_lines(channel))
+        if reason:
+            details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
 
-        if channel.guild.icon:
-            embed.set_thumbnail(url=channel.guild.icon.url)
-        embed.set_footer(text=f"Channel ID: {channel.id}")
-        
+        embed = self._build_sapphire_log_embed(
+            title="Channel created",
+            color=Colors.SUCCESS,
+            details_lines=details_lines,
+            thumbnail_url=channel.guild.icon.url if channel.guild.icon else None,
+            footer_user=actor,
+        )
         await self.safe_send_log(log_channel, embed)
+        return
 
     @commands.Cog.listener()
     async def on_guild_channel_delete(self, channel: discord.abc.GuildChannel):
@@ -1477,7 +1471,7 @@ class Logging(commands.Cog):
         log_channel = await self.get_log_channel(channel.guild, 'audit')
         if not log_channel:
             return
-        
+
         entry = await self._find_recent_audit_entry(
             channel.guild,
             action=discord.AuditLogAction.channel_delete,
@@ -1486,31 +1480,26 @@ class Logging(commands.Cog):
         actor = getattr(entry, "user", None)
         reason = getattr(entry, "reason", None)
 
-        embed = discord.Embed(
-            title="➖ Channel Deleted",
-            color=Colors.ERROR,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.add_field(name="Channel", value=f"#{channel.name}", inline=True)
-        embed.add_field(name="Type", value=str(channel.type).title(), inline=True)
-        embed.add_field(name="ID", value=f"`{channel.id}`", inline=True)
-
         created_at = getattr(channel, "created_at", None)
-        embed.add_field(
-            name="Created",
-            value=f"<t:{int(created_at.timestamp())}:R>" if created_at else "*N/A*",
-            inline=True,
-        )
-        embed.add_field(name="By", value=actor.mention if actor else "*Unknown*", inline=True)
-        embed.add_field(name="Reason", value=self._shorten(reason, 250), inline=False)
-        self._add_channel_details_fields(embed, channel)
+        details_lines = [
+            f"**Channel:** {self._format_channel_reference(channel)}",
+            f"**Type:** {str(channel.type).title()}",
+            f"**ID:** `{channel.id}`",
+            f"**Created:** {f'<t:{int(created_at.timestamp())}:R>' if created_at else '*N/A*'}",
+        ]
+        details_lines.extend(self._channel_detail_lines(channel))
+        if reason:
+            details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
 
-        if channel.guild.icon:
-            embed.set_thumbnail(url=channel.guild.icon.url)
-        embed.set_footer(text=f"Channel ID: {channel.id}")
-        
+        embed = self._build_sapphire_log_embed(
+            title="Channel deleted",
+            color=Colors.ERROR,
+            details_lines=details_lines,
+            thumbnail_url=channel.guild.icon.url if channel.guild.icon else None,
+            footer_user=actor,
+        )
         await self.safe_send_log(log_channel, embed)
+        return
 
     @commands.Cog.listener()
     async def on_guild_role_create(self, role: discord.Role):
@@ -1518,7 +1507,7 @@ class Logging(commands.Cog):
         channel = await self.get_log_channel(role.guild, 'audit')
         if not channel:
             return
-        
+
         entry = await self._find_recent_audit_entry(
             role.guild,
             action=discord.AuditLogAction.role_create,
@@ -1527,30 +1516,25 @@ class Logging(commands.Cog):
         actor = getattr(entry, "user", None)
         reason = getattr(entry, "reason", None)
 
-        embed = discord.Embed(
-            title="➕ Role Created",
-            color=role.color if role.color.value != 0 else Colors.SUCCESS,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.add_field(name="Role", value=role.mention, inline=True)
-        embed.add_field(name="ID", value=f"`{role.id}`", inline=True)
-
         created_at = getattr(role, "created_at", None)
-        embed.add_field(
-            name="Created",
-            value=f"<t:{int(created_at.timestamp())}:R>" if created_at else "*N/A*",
-            inline=True,
-        )
-        embed.add_field(name="By", value=actor.mention if actor else "*Unknown*", inline=True)
-        embed.add_field(name="Reason", value=self._shorten(reason, 250), inline=False)
-        self._add_role_details_fields(embed, role)
+        details_lines = [
+            f"**Role:** {role.mention}",
+            f"**ID:** `{role.id}`",
+            f"**Created:** {f'<t:{int(created_at.timestamp())}:R>' if created_at else '*N/A*'}",
+        ]
+        details_lines.extend(self._role_detail_lines(role, include_members=True))
+        if reason:
+            details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
 
-        if role.guild.icon:
-            embed.set_thumbnail(url=role.guild.icon.url)
-        embed.set_footer(text=f"Role ID: {role.id}")
-        
+        embed = self._build_sapphire_log_embed(
+            title="Role created",
+            color=role.color if role.color.value != 0 else Colors.SUCCESS,
+            details_lines=details_lines,
+            thumbnail_url=role.guild.icon.url if role.guild.icon else None,
+            footer_user=actor,
+        )
         await self.safe_send_log(channel, embed)
+        return
 
     @commands.Cog.listener()
     async def on_guild_role_delete(self, role: discord.Role):
@@ -1558,7 +1542,7 @@ class Logging(commands.Cog):
         channel = await self.get_log_channel(role.guild, 'audit')
         if not channel:
             return
-        
+
         entry = await self._find_recent_audit_entry(
             role.guild,
             action=discord.AuditLogAction.role_delete,
@@ -1567,31 +1551,26 @@ class Logging(commands.Cog):
         actor = getattr(entry, "user", None)
         reason = getattr(entry, "reason", None)
 
-        embed = discord.Embed(
-            title="➖ Role Deleted",
-            color=Colors.ERROR,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.add_field(name="Role", value=f"@{role.name}", inline=True)
-        embed.add_field(name="ID", value=f"`{role.id}`", inline=True)
-        embed.add_field(name="Members", value=str(len(role.members)), inline=True)
-
         created_at = getattr(role, "created_at", None)
-        embed.add_field(
-            name="Created",
-            value=f"<t:{int(created_at.timestamp())}:R>" if created_at else "*N/A*",
-            inline=True,
-        )
-        embed.add_field(name="By", value=actor.mention if actor else "*Unknown*", inline=True)
-        embed.add_field(name="Reason", value=self._shorten(reason, 250), inline=False)
-        self._add_role_details_fields(embed, role, include_members=False)
+        details_lines = [
+            f"**Role:** @{role.name}",
+            f"**ID:** `{role.id}`",
+            f"**Members at deletion:** {len(role.members)}",
+            f"**Created:** {f'<t:{int(created_at.timestamp())}:R>' if created_at else '*N/A*'}",
+        ]
+        details_lines.extend(self._role_detail_lines(role, include_members=False))
+        if reason:
+            details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
 
-        if role.guild.icon:
-            embed.set_thumbnail(url=role.guild.icon.url)
-        embed.set_footer(text=f"Role ID: {role.id}")
-        
+        embed = self._build_sapphire_log_embed(
+            title="Role deleted",
+            color=Colors.ERROR,
+            details_lines=details_lines,
+            thumbnail_url=role.guild.icon.url if role.guild.icon else None,
+            footer_user=actor,
+        )
         await self.safe_send_log(channel, embed)
+        return
 
     # ==================== CONFIGURATION COMMAND ====================
     

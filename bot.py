@@ -627,8 +627,47 @@ class ModBot(commands.Bot):
             return
         try:
             await message.remove_reaction(reaction, bot_user)
+            return
         except (discord.NotFound, discord.Forbidden, discord.HTTPException):
             pass
+
+        def _emoji_id(value: object) -> Optional[int]:
+            emoji_id = getattr(value, "id", None)
+            if isinstance(emoji_id, int):
+                return emoji_id
+            text = str(value or "").strip()
+            match = re.fullmatch(r"<a?:\w+:(\d+)>", text)
+            if match:
+                try:
+                    return int(match.group(1))
+                except ValueError:
+                    return None
+            return None
+
+        expected_id = _emoji_id(reaction)
+        expected_text = str(reaction or "").strip()
+        target_message = message
+
+        try:
+            target_message = await message.channel.fetch_message(message.id)
+        except Exception:
+            pass
+
+        for reaction_obj in getattr(target_message, "reactions", []) or []:
+            emoji_value = getattr(reaction_obj, "emoji", None)
+            emoji_id = _emoji_id(emoji_value)
+            matched = False
+            if expected_id is not None and emoji_id is not None:
+                matched = expected_id == emoji_id
+            elif expected_text:
+                matched = str(emoji_value or "").strip() == expected_text
+            if not matched:
+                continue
+            try:
+                await target_message.remove_reaction(emoji_value, bot_user)
+                return
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                continue
 
     async def _clear_prefix_loading(self, message_id: Optional[int]) -> None:
         """Remove a previously added loading reaction."""

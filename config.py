@@ -100,13 +100,13 @@ class Config:
 
     # Auto-create per-guild custom status emojis from local assets when needed.
     AUTO_CREATE_STATUS_EMOJIS = str(os.getenv("AUTO_CREATE_STATUS_EMOJIS", "1")).strip().lower() in {"1", "true", "yes", "on"}
-    STATUS_SUCCESS_EMOJI_NAME = os.getenv("STATUS_SUCCESS_EMOJI_NAME", "mod_success_v3")
-    STATUS_ERROR_EMOJI_NAME = os.getenv("STATUS_ERROR_EMOJI_NAME", "mod_error_v3")
-    STATUS_WARNING_EMOJI_NAME = os.getenv("STATUS_WARNING_EMOJI_NAME", "mod_warning_v1")
-    STATUS_INFO_EMOJI_NAME = os.getenv("STATUS_INFO_EMOJI_NAME", "mod_info_v1")
-    STATUS_LOCK_EMOJI_NAME = os.getenv("STATUS_LOCK_EMOJI_NAME", "mod_lock_v1")
-    STATUS_UNLOCK_EMOJI_NAME = os.getenv("STATUS_UNLOCK_EMOJI_NAME", "mod_unlock_v1")
-    STATUS_LOADING_EMOJI_NAME = os.getenv("STATUS_LOADING_EMOJI_NAME", "mod_loading_v2")
+    STATUS_SUCCESS_EMOJI_NAME = os.getenv("STATUS_SUCCESS_EMOJI_NAME", "mod_success")
+    STATUS_ERROR_EMOJI_NAME = os.getenv("STATUS_ERROR_EMOJI_NAME", "mod_error")
+    STATUS_WARNING_EMOJI_NAME = os.getenv("STATUS_WARNING_EMOJI_NAME", "mod_warning")
+    STATUS_INFO_EMOJI_NAME = os.getenv("STATUS_INFO_EMOJI_NAME", "mod_info")
+    STATUS_LOCK_EMOJI_NAME = os.getenv("STATUS_LOCK_EMOJI_NAME", "mod_lock")
+    STATUS_UNLOCK_EMOJI_NAME = os.getenv("STATUS_UNLOCK_EMOJI_NAME", "mod_unlock")
+    STATUS_LOADING_EMOJI_NAME = os.getenv("STATUS_LOADING_EMOJI_NAME", "mod_loading")
     STATUS_EMOJI_CREATE_REASON = os.getenv(
         "STATUS_EMOJI_CREATE_REASON",
         "Auto-create status emojis for moderation responses.",
