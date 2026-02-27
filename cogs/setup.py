@@ -13,6 +13,7 @@ from typing import Optional
 from utils.embeds import ModEmbed
 from utils.checks import get_owner_ids, is_admin
 from utils.components_v2 import layout_view_from_embeds
+from utils.status_emojis import apply_status_emoji_overrides
 from config import Config
 
 
@@ -43,9 +44,12 @@ class Setup(commands.Cog):
         created_roles: list[str] = []
         errors: list[str] = []
 
-        await interaction.followup.send(
-            embed=ModEmbed.info("Setup in Progress", "Creating roles and applying branding...")
-        )
+        setup_progress_embed = ModEmbed.info("Setup in Progress", "Creating roles and applying branding...")
+        try:
+            setup_progress_embed = await apply_status_emoji_overrides(setup_progress_embed, guild)
+        except Exception:
+            pass
+        await interaction.followup.send(embed=setup_progress_embed)
 
         # ==================== SERVER BRANDING ====================
         branding_url = "https://media.discordapp.net/attachments/1430639019582034013/1454273701716693053/unbranded.jpg?ex=696f78ad&is=696e272d&hm=f3f879e6b8d5f7f66ebdecab9a91007957d1cf7e1949624342f4ad1bd5e5f8f5&=&format=webp"

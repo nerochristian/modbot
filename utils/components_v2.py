@@ -115,6 +115,78 @@ def _normalize_log_embeds_for_target(
     return normalized_embed, normalized_embeds
 
 
+def _resolve_guild_for_target(target: object) -> Optional[discord.Guild]:
+    """Best-effort guild lookup for send/edit targets across discord.py wrappers."""
+    guild = getattr(target, "guild", None)
+    if isinstance(guild, discord.Guild):
+        return guild
+
+    parent = getattr(target, "_parent", None)
+    parent_guild = getattr(parent, "guild", None)
+    if isinstance(parent_guild, discord.Guild):
+        return parent_guild
+
+    guild_id = getattr(target, "guild_id", None) or getattr(parent, "guild_id", None)
+    if guild_id is None:
+        return None
+
+    state = getattr(target, "_state", None) or getattr(parent, "_state", None)
+    getter = getattr(state, "_get_guild", None) if state is not None else None
+    if callable(getter):
+        try:
+            resolved = getter(int(guild_id))
+            if isinstance(resolved, discord.Guild):
+                return resolved
+        except Exception:
+            return None
+    return None
+
+
+async def _apply_status_emojis_for_target(
+    target: object,
+    *,
+    embed: Any,
+    embeds: Any,
+) -> tuple[Any, Any]:
+    """Apply status emoji overrides (auto-create custom emojis when needed)."""
+    if not _has_embed_payload(embed) and not _has_embed_payload(embeds):
+        return embed, embeds
+
+    guild = _resolve_guild_for_target(target)
+    if guild is None:
+        return embed, embeds
+
+    try:
+        from utils.status_emojis import apply_status_emoji_overrides
+    except Exception:
+        return embed, embeds
+
+    updated_embed = embed
+    updated_embeds = embeds
+
+    if isinstance(embed, discord.Embed):
+        try:
+            updated_embed = await apply_status_emoji_overrides(embed, guild)
+        except Exception:
+            updated_embed = embed
+
+    if _has_embed_payload(embeds):
+        try:
+            converted: list[Any] = []
+            for candidate in _embed_candidates(embeds):
+                if isinstance(candidate, discord.Embed):
+                    try:
+                        candidate = await apply_status_emoji_overrides(candidate, guild)
+                    except Exception:
+                        pass
+                converted.append(candidate)
+            updated_embeds = converted
+        except Exception:
+            updated_embeds = embeds
+
+    return updated_embed, updated_embeds
+
+
 class ComponentsV2Config:
     """Global configuration for Components v2 behavior."""
     
@@ -605,6 +677,19 @@ def patch_components_v2() -> None:
         return ComponentsV2Config.enabled
 
     async def patched_interaction_send_message(self, *args, **kwargs):
+        existing_embed = kwargs.get("embed", MISSING)
+        existing_embeds = kwargs.get("embeds", MISSING)
+        if not _is_missing_like(existing_embed) or _has_embed_payload(existing_embeds):
+            patched_embed, patched_embeds = await _apply_status_emojis_for_target(
+                self,
+                embed=existing_embed,
+                embeds=existing_embeds,
+            )
+            if not _is_missing_like(existing_embed):
+                kwargs["embed"] = patched_embed
+            if not _is_missing_like(existing_embeds):
+                kwargs["embeds"] = patched_embeds
+
         if not _should_use_v2(kwargs):
             content = args[0] if args else kwargs.get("content", MISSING)
             if args:
@@ -708,6 +793,19 @@ def patch_components_v2() -> None:
         )
 
     async def patched_webhook_send(self, *args, **kwargs):
+        existing_embed = kwargs.get("embed", MISSING)
+        existing_embeds = kwargs.get("embeds", MISSING)
+        if not _is_missing_like(existing_embed) or _has_embed_payload(existing_embeds):
+            patched_embed, patched_embeds = await _apply_status_emojis_for_target(
+                self,
+                embed=existing_embed,
+                embeds=existing_embeds,
+            )
+            if not _is_missing_like(existing_embed):
+                kwargs["embed"] = patched_embed
+            if not _is_missing_like(existing_embeds):
+                kwargs["embeds"] = patched_embeds
+
         if not _should_use_v2(kwargs):
             content = args[0] if args else kwargs.get("content", MISSING)
             if args:
@@ -763,6 +861,11 @@ def patch_components_v2() -> None:
         maybe_embeds = kwargs.get("embeds", None)
         if maybe_embed is not None or _has_embed_payload(maybe_embeds):
             maybe_embed, maybe_embeds = _normalize_log_embeds_for_target(
+                self,
+                embed=maybe_embed,
+                embeds=maybe_embeds,
+            )
+            maybe_embed, maybe_embeds = await _apply_status_emojis_for_target(
                 self,
                 embed=maybe_embed,
                 embeds=maybe_embeds,
@@ -824,6 +927,13 @@ def patch_components_v2() -> None:
         embeds = kwargs.get("embeds", MISSING)
         view = kwargs.get("view", MISSING)
 
+        if not _is_missing_like(embed) or _has_embed_payload(embeds):
+            embed, embeds = await _apply_status_emojis_for_target(
+                self,
+                embed=embed,
+                embeds=embeds,
+            )
+
         content, embed, embeds, view = await _coerce_to_v2_view(
             content=content,
             embed=embed,
@@ -851,6 +961,13 @@ def patch_components_v2() -> None:
         embed = kwargs.get("embed", MISSING)
         embeds = kwargs.get("embeds", MISSING)
         view = kwargs.get("view", MISSING)
+
+        if not _is_missing_like(embed) or _has_embed_payload(embeds):
+            embed, embeds = await _apply_status_emojis_for_target(
+                self,
+                embed=embed,
+                embeds=embeds,
+            )
 
         content, embed, embeds, view = await _coerce_to_v2_view(
             content=content,
@@ -880,6 +997,13 @@ def patch_components_v2() -> None:
         embeds = kwargs.get("embeds", MISSING)
         view = kwargs.get("view", MISSING)
 
+        if not _is_missing_like(embed) or _has_embed_payload(embeds):
+            embed, embeds = await _apply_status_emojis_for_target(
+                self,
+                embed=embed,
+                embeds=embeds,
+            )
+
         content, embed, embeds, view = await _coerce_to_v2_view(
             content=content,
             embed=embed,
@@ -908,6 +1032,13 @@ def patch_components_v2() -> None:
         embeds = kwargs.get("embeds", MISSING)
         view = kwargs.get("view", MISSING)
 
+        if not _is_missing_like(embed) or _has_embed_payload(embeds):
+            embed, embeds = await _apply_status_emojis_for_target(
+                self,
+                embed=embed,
+                embeds=embeds,
+            )
+
         content, embed, embeds, view = await _coerce_to_v2_view(
             content=content,
             embed=embed,
@@ -935,6 +1066,13 @@ def patch_components_v2() -> None:
         embed = kwargs.get("embed", MISSING)
         embeds = kwargs.get("embeds", MISSING)
         view = kwargs.get("view", MISSING)
+
+        if not _is_missing_like(embed) or _has_embed_payload(embeds):
+            embed, embeds = await _apply_status_emojis_for_target(
+                self,
+                embed=embed,
+                embeds=embeds,
+            )
 
         content, embed, embeds, view = await _coerce_to_v2_view(
             content=content,

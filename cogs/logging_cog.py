@@ -416,15 +416,38 @@ class Logging(commands.Cog):
         if not title:
             return None
 
-        # Message delete cards should live in message logs only.
+        # Message delete/edit cards should live in message logs only.
         if (
             title == "message deleted"
             or title.endswith("messages deleted")
             or title == "bulk message delete"
+            or title == "message edited"
         ):
             return "message"
 
-        # Audit/system cards should not appear in mod logs.
+        # Moderation action cards belong in mod logs, not audit.
+        mod_markers = (
+            "user kicked",
+            "user banned",
+            "user softbanned",
+            "user temporarily banned",
+            "user unbanned",
+            "member kicked",
+            "member banned",
+            "member unbanned",
+            "user timed out",
+            "user timeout removed",
+            "user warned",
+            "user muted",
+            "user unmuted",
+            "user quarantined",
+            "quarantine lifted",
+            "mass ban",
+        )
+        if any(marker in title for marker in mod_markers):
+            return "mod"
+
+        # Audit/server event cards should not appear in mod logs.
         audit_markers = (
             "permissions updated",
             "channel created",
@@ -432,6 +455,8 @@ class Logging(commands.Cog):
             "role created",
             "role deleted",
             "role updated",
+            "roles updated",
+            "role name update",
             "webhook created",
             "emoji created",
             "emoji deleted",
@@ -442,6 +467,9 @@ class Logging(commands.Cog):
             "sticker updated",
             "invite created",
             "invite deleted",
+            "nickname changed",
+            "member joined",
+            "member left",
         )
         if any(marker in title for marker in audit_markers):
             return "audit"
@@ -990,10 +1018,6 @@ class Logging(commands.Cog):
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
         """Log member leaves/kicks"""
-        channel = await self.get_log_channel(member.guild, 'audit')
-        if not channel:
-            return
-
         if member.joined_at:
             days_in_server = (datetime.now(timezone.utc) - member.joined_at).days
             tenure = f"{days_in_server} day(s)"
@@ -1015,6 +1039,7 @@ class Logging(commands.Cog):
 
         title = "Member left"
         footer_user = None
+        was_kicked = False
         try:
             async for entry in member.guild.audit_logs(limit=5, action=discord.AuditLogAction.kick):
                 target_id = getattr(getattr(entry, "target", None), "id", None)
@@ -1026,11 +1051,18 @@ class Logging(commands.Cog):
                     reason = getattr(entry, "reason", None)
                     if reason:
                         details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
+                    was_kicked = True
                     break
         except discord.Forbidden:
             pass
         except Exception as e:
             logger.error(f"Failed to check audit log for kick: {e}")
+
+        # Kicks are mod actions → mod logs; voluntary leaves → audit logs
+        log_type = "mod" if was_kicked else "audit"
+        channel = await self.get_log_channel(member.guild, log_type)
+        if not channel:
+            return
 
         embed = self._build_sapphire_log_embed(
             title=title,
@@ -1117,61 +1149,64 @@ class Logging(commands.Cog):
                 await self.safe_send_log(channel, embed)
         
         # ===== TIMEOUT CHANGES =====
+        # Timeouts are moderation actions → send to mod logs, not audit
         if before.timed_out_until != after.timed_out_until:
             if not self._is_timeout_change_suppressed(before.guild.id, after.id):
-                if after.timed_out_until and after.timed_out_until > datetime.now(timezone.utc):
-                    # User was timed out
-                    entry = await self._find_recent_audit_entry(
-                        before.guild,
-                        action=discord.AuditLogAction.member_update,
-                        target_id=after.id,
-                    )
-                    moderator = getattr(entry, "user", None)
-                    reason = getattr(entry, "reason", None)
+                mod_channel = await self.get_log_channel(before.guild, 'mod')
+                if mod_channel:
+                    if after.timed_out_until and after.timed_out_until > datetime.now(timezone.utc):
+                        # User was timed out
+                        entry = await self._find_recent_audit_entry(
+                            before.guild,
+                            action=discord.AuditLogAction.member_update,
+                            target_id=after.id,
+                        )
+                        moderator = getattr(entry, "user", None)
+                        reason = getattr(entry, "reason", None)
 
-                    until_ts = int(after.timed_out_until.timestamp())
-                    details_lines = [
-                        f"**User:** {self._format_user_reference(after)}",
-                        f"**Until:** <t:{until_ts}:F>",
-                        f"**Duration:** <t:{until_ts}:R>",
-                    ]
-                    if reason:
-                        details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
+                        until_ts = int(after.timed_out_until.timestamp())
+                        details_lines = [
+                            f"**User:** {self._format_user_reference(after)}",
+                            f"**Until:** <t:{until_ts}:F>",
+                            f"**Duration:** <t:{until_ts}:R>",
+                        ]
+                        if reason:
+                            details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
 
-                    embed = self._build_sapphire_log_embed(
-                        title="User timed out",
-                        color=Colors.ERROR,
-                        details_lines=details_lines,
-                        thumbnail_url=after.display_avatar.url,
-                        footer_user=moderator,
-                    )
-                    
-                    await self.safe_send_log(channel, embed)
-                elif before.timed_out_until and not after.timed_out_until:
-                    # Timeout removed
-                    entry = await self._find_recent_audit_entry(
-                        before.guild,
-                        action=discord.AuditLogAction.member_update,
-                        target_id=after.id,
-                    )
-                    moderator = getattr(entry, "user", None)
-                    reason = getattr(entry, "reason", None)
+                        embed = self._build_sapphire_log_embed(
+                            title="User timed out",
+                            color=Colors.ERROR,
+                            details_lines=details_lines,
+                            thumbnail_url=after.display_avatar.url,
+                            footer_user=moderator,
+                        )
+                        
+                        await self.safe_send_log(mod_channel, embed)
+                    elif before.timed_out_until and not after.timed_out_until:
+                        # Timeout removed
+                        entry = await self._find_recent_audit_entry(
+                            before.guild,
+                            action=discord.AuditLogAction.member_update,
+                            target_id=after.id,
+                        )
+                        moderator = getattr(entry, "user", None)
+                        reason = getattr(entry, "reason", None)
 
-                    details_lines = [
-                        f"**User:** {self._format_user_reference(after)}",
-                    ]
-                    if reason:
-                        details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
+                        details_lines = [
+                            f"**User:** {self._format_user_reference(after)}",
+                        ]
+                        if reason:
+                            details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
 
-                    embed = self._build_sapphire_log_embed(
-                        title="User timeout removed",
-                        color=Colors.SUCCESS,
-                        details_lines=details_lines,
-                        thumbnail_url=after.display_avatar.url,
-                        footer_user=moderator,
-                    )
-                    
-                    await self.safe_send_log(channel, embed)
+                        embed = self._build_sapphire_log_embed(
+                            title="User timeout removed",
+                            color=Colors.SUCCESS,
+                            details_lines=details_lines,
+                            thumbnail_url=after.display_avatar.url,
+                            footer_user=moderator,
+                        )
+                        
+                        await self.safe_send_log(mod_channel, embed)
 
     # ==================== VOICE LOGGING ====================
     
@@ -1295,8 +1330,8 @@ class Logging(commands.Cog):
     
     @commands.Cog.listener()
     async def on_member_ban(self, guild: discord.Guild, user: discord.User):
-        """Log bans"""
-        channel = await self.get_log_channel(guild, 'audit')
+        """Log bans — moderation action, goes to mod logs"""
+        channel = await self.get_log_channel(guild, 'mod')
         if not channel:
             return
 
@@ -1334,8 +1369,8 @@ class Logging(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_unban(self, guild: discord.Guild, user: discord.User):
-        """Log unbans"""
-        channel = await self.get_log_channel(guild, 'audit')
+        """Log unbans — moderation action, goes to mod logs"""
+        channel = await self.get_log_channel(guild, 'mod')
         if not channel:
             return
 

@@ -27,6 +27,28 @@ class HelperCommands:
         ):
             return "message"
 
+        # Moderation action cards belong in mod logs.
+        mod_markers = (
+            "user kicked",
+            "user banned",
+            "user softbanned",
+            "user temporarily banned",
+            "user unbanned",
+            "member kicked",
+            "member banned",
+            "member unbanned",
+            "user timed out",
+            "user timeout removed",
+            "user warned",
+            "user muted",
+            "user unmuted",
+            "user quarantined",
+            "quarantine lifted",
+            "mass ban",
+        )
+        if any(marker in title for marker in mod_markers):
+            return "mod"
+
         audit_markers = (
             "permissions updated",
             "channel created",
@@ -35,6 +57,7 @@ class HelperCommands:
             "role deleted",
             "role updated",
             "roles updated",
+            "role name update",
             "webhook created",
             "webhook deleted",
             "webhook updated",
@@ -48,6 +71,9 @@ class HelperCommands:
             "invite created",
             "invite deleted",
             "invite updated",
+            "nickname changed",
+            "member joined",
+            "member left",
         )
         if any(marker in title for marker in audit_markers):
             return "audit"
