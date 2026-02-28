@@ -1,56 +1,27 @@
-<svg width="64" height="64" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <!-- Shield -->
-  <path
-    d="M12 2L4 6V11C4 16 7.5 19.5 12 22C16.5 19.5 20 16 20 11V6L12 2Z"
-    fill="#EF4444"
-  />
+<svg width="128" height="128" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="errGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EF4444"/>
+      <stop offset="100%" stop-color="#991B1B"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
 
-  <!-- X line 1 -->
-  <path
-    d="M9 9L15 15"
-    fill="none"
-    stroke="#FFFFFF"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-dasharray="12"
-    stroke-dashoffset="12"
-  >
-    <animate
-      attributeName="stroke-dashoffset"
-      values="12;0;0;12"
-      keyTimes="0;0.4;0.8;1"
-      dur="1.6s"
-      repeatCount="indefinite"
-    />
-  </path>
+  <g transform-origin="12 12">
+    <animateTransform attributeName="transform" type="translate" values="0 0; -0.5 0; 0.5 0; -0.5 0; 0 0; 0 0" keyTimes="0; 0.05; 0.1; 0.15; 0.2; 1" dur="2.5s" repeatCount="indefinite" />
+    
+    <path d="M12 2L4 6V11C4 16 7.5 19.5 12 22C16.5 19.5 20 16 20 11V6L12 2Z" fill="url(#errGrad)" filter="url(#shadow)"/>
+    <path d="M12 2.5L4.5 6.3V11C4.5 15.6 7.8 18.9 12 21.2C16.2 18.9 19.5 15.6 19.5 11V6.3L12 2.5Z" fill="none" stroke="white" stroke-opacity="0.2" stroke-width="0.5"/>
 
-  <!-- X line 2 (slightly delayed) -->
-  <path
-    d="M15 9L9 15"
-    fill="none"
-    stroke="#FFFFFF"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-dasharray="12"
-    stroke-dashoffset="12"
-  >
-    <animate
-      attributeName="stroke-dashoffset"
-      values="12;12;0;0;12"
-      keyTimes="0;0.25;0.6;0.85;1"
-      dur="1.6s"
-      repeatCount="indefinite"
-    />
-  </path>
-
-  <!-- subtle pop -->
-  <animateTransform
-    attributeName="transform"
-    type="scale"
-    additive="sum"
-    values="1;1.03;1"
-    keyTimes="0;0.25;1"
-    dur="1.6s"
-    repeatCount="indefinite"
-  />
+    <g stroke="white" stroke-width="2.2" stroke-linecap="round" filter="url(#shadow)">
+      <path d="M8.5 8.5L15.5 15.5" stroke-dasharray="12" stroke-dashoffset="12">
+        <animate attributeName="stroke-dashoffset" values="12; 0; 0; 12" keyTimes="0; 0.15; 0.85; 1" dur="2.5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.2 1; 0 0 1 1; 0.4 0 0.2 1"/>
+      </path>
+      <path d="M15.5 8.5L8.5 15.5" stroke-dasharray="12" stroke-dashoffset="12">
+        <animate attributeName="stroke-dashoffset" values="12; 12; 0; 0; 12" keyTimes="0; 0.1; 0.25; 0.85; 1" dur="2.5s" repeatCount="indefinite" calcMode="spline" keySplines="0 0 1 1; 0.4 0 0.2 1; 0 0 1 1; 0.4 0 0.2 1"/>
+      </path>
+    </g>
+  </g>
 </svg>

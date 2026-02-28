@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from config import Config
-from utils.status_emojis import status_embed_pad_line
+from utils.status_emojis import status_embed_pad_line, get_app_emoji
 
 _ZWS = "\u200b"
 _LOG_PAD_MARKER = _ZWS * 5
@@ -125,6 +125,25 @@ class ModEmbed:
 
     @staticmethod
     def _emoji(config_attr: str, fallback: str) -> str:
+        # Map config attrs to emoji kinds for app emoji lookup
+        _CONFIG_TO_KIND = {
+            "EMOJI_SUCCESS": "success",
+            "EMOJI_ERROR": "error",
+            "EMOJI_WARNING": "warning",
+            "EMOJI_INFO": "info",
+            "EMOJI_LOCK": "lock",
+            "EMOJI_UNLOCK": "unlock",
+            "EMOJI_LOADING": "loading",
+            "EMOJI_BAN": "ban",
+            "EMOJI_KICK": "kick",
+            "EMOJI_MUTE": "mute",
+            "EMOJI_WARN": "warn",
+        }
+        kind = _CONFIG_TO_KIND.get(config_attr)
+        if kind:
+            app_emoji = get_app_emoji(kind)
+            if app_emoji:
+                return app_emoji
         value = str(getattr(Config, config_attr, "") or "").strip()
         return value or fallback
 

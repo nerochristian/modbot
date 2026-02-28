@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="100%" height="100%">
+  <defs>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6"/>
+    </filter>
+    
+    <path id="wedge" d="M 120,120 C 150,90 200,100 220,120 A 100,100 0 0,1 170,206.6 C 177.32,179.28 160.98,130.98 120,120 Z" />
+  </defs>
+
+  <circle cx="120" cy="125" r="95" fill="#000000" opacity="0.2" filter="url(#shadow)" />
+
+  <g>
+    <animateTransform 
+      attributeName="transform" 
+      type="rotate" 
+      from="0 120 120" 
+      to="360 120 120" 
+      dur="1.2s" 
+      repeatCount="indefinite" 
+    />
+
+    <use href="#wedge" fill="#AF52DE" stroke="#AF52DE" stroke-width="0.5" />
+    <use href="#wedge" fill="#00AEEF" stroke="#00AEEF" stroke-width="0.5" transform="rotate(60 120 120)" />
+    <use href="#wedge" fill="#34C759" stroke="#34C759" stroke-width="0.5" transform="rotate(120 120 120)" />
+    <use href="#wedge" fill="#FFCC00" stroke="#FFCC00" stroke-width="0.5" transform="rotate(180 120 120)" />
+    <use href="#wedge" fill="#FF9500" stroke="#FF9500" stroke-width="0.5" transform="rotate(240 120 120)" />
+    <use href="#wedge" fill="#FF3B30" stroke="#FF3B30" stroke-width="0.5" transform="rotate(300 120 120)" />
+  </g>
+</svg>

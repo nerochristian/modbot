@@ -1,37 +1,48 @@
-<svg width="64" height="64" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <!-- Shield -->
-  <path
-    d="M12 2L4 6V11C4 16 7.5 19.5 12 22C16.5 19.5 20 16 20 11V6L12 2Z"
-    fill="#22C55E"
-  />
+<svg width="128" height="128" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="unlockGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22C55E"/>
+      <stop offset="100%" stop-color="#14532D"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
 
-  <!-- Lock body -->
-  <rect x="8.2" y="11" width="7.6" height="6.2" rx="1.5" fill="#FFFFFF" />
+  <path d="M12 2L4 6V11C4 16 7.5 19.5 12 22C16.5 19.5 20 16 20 11V6L12 2Z" fill="url(#unlockGrad)" filter="url(#shadow)"/>
+  <path d="M12 2.5L4.5 6.3V11C4.5 15.6 7.8 18.9 12 21.2C16.2 18.9 19.5 15.6 19.5 11V6.3L12 2.5Z" fill="none" stroke="white" stroke-opacity="0.2" stroke-width="0.5"/>
 
-  <!-- Open shackle -->
-  <path
-    d="M14.4 11V9.4C14.4 8.1 13.4 7 12.1 7C10.8 7 9.8 8.1 9.8 9.4"
-    fill="none"
-    stroke="#FFFFFF"
-    stroke-width="1.8"
-    stroke-linecap="round"
-  />
-  <path
-    d="M9.6 9.4V10.2"
-    fill="none"
-    stroke="#FFFFFF"
-    stroke-width="1.8"
-    stroke-linecap="round"
-  />
+  <g opacity="1">
+    <animate attributeName="opacity" values="1; 1; 0; 0; 1" keyTimes="0; 0.75; 0.85; 0.95; 1" dur="2.5s" repeatCount="indefinite" />
 
-  <!-- Subtle pop -->
-  <animateTransform
-    attributeName="transform"
-    type="scale"
-    additive="sum"
-    values="1;1.03;1"
-    keyTimes="0;0.25;1"
-    dur="1.6s"
-    repeatCount="indefinite"
-  />
+    <g>
+      <animateTransform attributeName="transform" type="translate"
+        values="0 0; 0 0; 0 -2.5; 0 -2.5; 0 0"
+        keyTimes="0; 0.1; 0.25; 0.85; 1"
+        dur="2.5s" repeatCount="indefinite" calcMode="spline"
+        keySplines="0 0 1 1; 0.3 0.8 0.3 1; 0 0 1 1; 0 0 1 1" />
+
+      <g transform-origin="9.5 11.5">
+        <animateTransform attributeName="transform" type="rotate"
+          values="0; 0; -45; -45; 0"
+          keyTimes="0; 0.25; 0.45; 0.85; 1"
+          dur="2.5s" repeatCount="indefinite" calcMode="spline"
+          keySplines="0 0 1 1; 0.4 0 0.2 1; 0 0 1 1; 0 0 1 1" />
+
+        <path d="M9.5 11.5V7.5A2.5 2.5 0 0 1 14.5 7.5V10.5" stroke="#BBF7D0" stroke-width="2.2" stroke-linecap="round" fill="none" filter="url(#shadow)"/>
+      </g>
+    </g>
+
+    <g>
+      <animateTransform attributeName="transform" type="translate"
+        values="0 0; 0 1; 0 0; 0 0"
+        keyTimes="0; 0.05; 0.15; 1"
+        dur="2.5s" repeatCount="indefinite" />
+      
+      <rect x="7" y="10.5" width="10" height="7.5" rx="1.5" fill="white" filter="url(#shadow)"/>
+      
+      <circle cx="12" cy="13.5" r="1.2" fill="#14532D" />
+      <path d="M11.2 14.5 L12.8 14.5 L12.4 16.2 L11.6 16.2 Z" fill="#14532D" />
+    </g>
+  </g>
 </svg>

@@ -1,0 +1,50 @@
+<svg width="128" height="128" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="kickGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#F97316"/>
+      <stop offset="100%" stop-color="#9A3412"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <g transform-origin="12 12">
+    <path d="M12 2L4 6V11C4 16 7.5 19.5 12 22C16.5 19.5 20 16 20 11V6L12 2Z" fill="url(#kickGrad)" filter="url(#shadow)"/>
+    <path d="M12 2.5L4.5 6.3V11C4.5 15.6 7.8 18.9 12 21.2C16.2 18.9 19.5 15.6 19.5 11V6.3L12 2.5Z" fill="none" stroke="white" stroke-opacity="0.2" stroke-width="0.5"/>
+
+    <path d="M 8 6 L 16 6 L 16 18 L 8 18 Z" fill="#7A2209" stroke="white" stroke-width="1" filter="url(#shadow)"/>
+
+    <path fill="white" filter="url(#shadow)">
+      <animate attributeName="d"
+        values="M 8 6 L 16 6 L 16 18 L 8 18 Z;
+                M 8 6 L 16 6 L 16 18 L 8 18 Z;
+                M 8 6 L 11.5 8 L 11.5 16 L 8 18 Z;
+                M 8 6 L 11.5 8 L 11.5 16 L 8 18 Z;
+                M 8 6 L 16 6 L 16 18 L 8 18 Z;
+                M 8 6 L 16 6 L 16 18 L 8 18 Z"
+        keyTimes="0; 0.15; 0.35; 0.65; 0.85; 1"
+        dur="2.5s" repeatCount="indefinite"
+        calcMode="spline" keySplines="0 0 1 1; 0.4 0 0.2 1; 0 0 1 1; 0.4 0 0.2 1; 0 0 1 1" />
+    </path>
+
+    <circle r="0.8" fill="#F97316">
+      <animate attributeName="cx"
+        values="14.5; 14.5; 10.8; 10.8; 14.5; 14.5"
+        keyTimes="0; 0.15; 0.35; 0.65; 0.85; 1"
+        dur="2.5s" repeatCount="indefinite"
+        calcMode="spline" keySplines="0 0 1 1; 0.4 0 0.2 1; 0 0 1 1; 0.4 0 0.2 1; 0 0 1 1" />
+      <animate attributeName="cy"
+        values="12; 12; 12; 12; 12; 12"
+        keyTimes="0; 0.15; 0.35; 0.65; 0.85; 1"
+        dur="2.5s" repeatCount="indefinite" />
+    </circle>
+    
+    <g fill="none" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0">
+      <animate attributeName="opacity" values="0; 0; 1; 0; 0" keyTimes="0; 0.15; 0.25; 0.4; 1" dur="2.5s" repeatCount="indefinite" />
+      <path d="M 17 9 L 19 8" />
+      <path d="M 17 15 L 19 16" />
+    </g>
+
+  </g>
+</svg>

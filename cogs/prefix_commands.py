@@ -353,8 +353,18 @@ class PrefixCommands(commands.Cog):
 
     @role_cmd.command(name="add")
     @has_permissions_or_owner(manage_roles=True)
-    async def role_add_cmd(self, ctx, member: discord.Member, role: discord.Role):
+    async def role_add_cmd(
+        self,
+        ctx,
+        member: discord.Member,
+        role: Optional[discord.Role] = None,
+    ):
         """Add a role to a user."""
+        if role is None:
+            usage = f"Usage: `{ctx.prefix}role add <member> <role>`"
+            await self._send_role_embed(ctx, ModEmbed.error("Missing Role", usage))
+            return
+
         error_embed = self._role_edit_error(ctx, member, role)
         if error_embed is not None:
             await self._send_role_embed(ctx, error_embed)
@@ -372,8 +382,18 @@ class PrefixCommands(commands.Cog):
 
     @role_cmd.command(name="remove", aliases=["rm"])
     @has_permissions_or_owner(manage_roles=True)
-    async def role_remove_cmd(self, ctx, member: discord.Member, role: discord.Role):
+    async def role_remove_cmd(
+        self,
+        ctx,
+        member: discord.Member,
+        role: Optional[discord.Role] = None,
+    ):
         """Remove a role from a user."""
+        if role is None:
+            usage = f"Usage: `{ctx.prefix}role remove <member> <role>`"
+            await self._send_role_embed(ctx, ModEmbed.error("Missing Role", usage))
+            return
+
         error_embed = self._role_edit_error(ctx, member, role)
         if error_embed is not None:
             await self._send_role_embed(ctx, error_embed)
@@ -391,8 +411,18 @@ class PrefixCommands(commands.Cog):
 
     @role_cmd.command(name="toggle")
     @has_permissions_or_owner(manage_roles=True)
-    async def role_toggle_cmd(self, ctx, member: discord.Member, role: discord.Role):
+    async def role_toggle_cmd(
+        self,
+        ctx,
+        member: discord.Member,
+        role: Optional[discord.Role] = None,
+    ):
         """Toggle a role on a user."""
+        if role is None:
+            usage = f"Usage: `{ctx.prefix}role toggle <member> <role>`"
+            await self._send_role_embed(ctx, ModEmbed.error("Missing Role", usage))
+            return
+
         await self._toggle_role(ctx, member, role)
 
     # ═══════════════════════════════════════════════════════════════

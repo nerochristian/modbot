@@ -360,6 +360,8 @@ class TargetResolvePromptView(discord.ui.View):
         self._candidate = candidate
         self._args_tail = args_tail
         self._finalized = False
+        self._cleanup_task: Optional[asyncio.Task] = None
+        self.prompt_message: Optional[discord.Message] = None
 
         confirm_emoji = self._safe_button_emoji(
             confirm_emoji if confirm_emoji is not None else getattr(Config, "EMOJI_SUCCESS", "\u2705"),
@@ -424,6 +426,7 @@ class TargetResolvePromptView(discord.ui.View):
 
     async def _disable_and_update(self, interaction: discord.Interaction) -> None:
         self._finalized = True
+        self.prompt_message = interaction.message or self.prompt_message
         for child in self.children:
             try:
                 child.disabled = True
@@ -438,11 +441,29 @@ class TargetResolvePromptView(discord.ui.View):
         except Exception:
             pass
 
+    def _schedule_prompt_cleanup(self, delay_seconds: int = 10) -> None:
+        if self._cleanup_task is not None and not self._cleanup_task.done():
+            return
+
+        async def _cleanup() -> None:
+            await asyncio.sleep(max(1, delay_seconds))
+            msg = self.prompt_message
+            if msg is None:
+                return
+            try:
+                await msg.delete()
+            except Exception:
+                pass
+
+        self._cleanup_task = asyncio.create_task(_cleanup())
+
     async def _on_confirm(self, interaction: discord.Interaction) -> None:
         if not await self._verify_interaction(interaction):
             return
         await interaction.response.defer()
+        await self._bot._clear_prefix_loading_for_ctx(self._ctx)
         await self._disable_and_update(interaction)
+        self._schedule_prompt_cleanup(delay_seconds=10)
 
         try:
             ok, error_message = await self._bot._invoke_with_resolved_target(
@@ -453,6 +474,8 @@ class TargetResolvePromptView(discord.ui.View):
         except Exception as exc:
             ok = False
             error_message = str(exc)
+        finally:
+            await self._bot._clear_prefix_loading_for_ctx(self._ctx)
         if ok:
             return
 
@@ -470,7 +493,9 @@ class TargetResolvePromptView(discord.ui.View):
         if not await self._verify_interaction(interaction):
             return
         await interaction.response.defer()
+        await self._bot._clear_prefix_loading_for_ctx(self._ctx)
         await self._disable_and_update(interaction)
+        self._schedule_prompt_cleanup(delay_seconds=10)
 
     async def on_timeout(self) -> None:
         self._finalized = True
@@ -1269,10 +1294,35 @@ class ModBot(commands.Bot):
                         except Exception:
                             pass
 
+                        warning_icon = getattr(Config, "EMOJI_WARNING", "\u26a0\ufe0f")
+                        try:
+                            warning_icon = await get_status_emoji_for_guild(
+                                ctx.guild,
+                                kind="warning",
+                                configured_emoji=str(warning_icon),
+                            )
+                        except Exception:
+                            pass
+                        warning_icon_text = str(warning_icon or "").strip() or "\u26a0\ufe0f"
+                        shortcode = re.fullmatch(r":([A-Za-z0-9_]{2,32}):", warning_icon_text)
+                        if shortcode:
+                            named = discord.utils.get(ctx.guild.emojis, name=shortcode.group(1))
+                            if named is not None:
+                                warning_icon_text = str(named)
+                        if re.fullmatch(r":[A-Za-z0-9_]{2,32}:", warning_icon_text):
+                            warning_icon_text = "\u26a0\ufe0f"
+
                         embed = ModEmbed.warning(
                             "No exact user could be found.",
                             f"Do you want to continue with {candidate.mention} (`@{candidate.display_name}`)?",
                         )
+                        if embed.description:
+                            embed.description = re.sub(
+                                r"^:[A-Za-z0-9_]{2,32}:\s+",
+                                f"{warning_icon_text} ",
+                                str(embed.description),
+                                count=1,
+                            )
                         view = TargetResolvePromptView(
                             bot=self,
                             ctx=ctx,
@@ -1281,6 +1331,7 @@ class ModBot(commands.Bot):
                             confirm_emoji=confirm_icon,
                             cancel_emoji=cancel_icon,
                         )
+                        await self._clear_prefix_loading_for_ctx(ctx)
                         return await _send_error_response(embed, view=view, use_v2=True)
 
         if isinstance(error, commands.BadArgument):

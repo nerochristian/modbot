@@ -1,38 +1,22 @@
-<svg width="64" height="64" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-  <!-- Shield -->
-  <path
-    d="M12 2L4 6V11C4 16 7.5 19.5 12 22C16.5 19.5 20 16 20 11V6L12 2Z"
-    fill="#22C55E"
-  />
+<svg width="128" height="128" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="succGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#22C55E"/>
+      <stop offset="100%" stop-color="#14532D"/>
+    </linearGradient>
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
 
-  <!-- Tick (animated stroke draw) -->
-  <path
-    d="M9.2 12.5L11.2 14.5L15.5 9.8"
-    fill="none"
-    stroke="#FFFFFF"
-    stroke-width="2"
-    stroke-linecap="round"
-    stroke-linejoin="round"
-    stroke-dasharray="20"
-    stroke-dashoffset="20"
-  >
-    <animate
-      attributeName="stroke-dashoffset"
-      values="20;0;0;20"
-      keyTimes="0;0.45;0.8;1"
-      dur="1.6s"
-      repeatCount="indefinite"
-    />
-  </path>
+  <g transform-origin="12 12">
+    <animateTransform attributeName="transform" type="scale" values="1; 1.05; 1; 1" keyTimes="0; 0.15; 0.3; 1" dur="2.5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.2 1; 0.4 0 0.2 1; 0 0 1 1"/>
+    
+    <path d="M12 2L4 6V11C4 16 7.5 19.5 12 22C16.5 19.5 20 16 20 11V6L12 2Z" fill="url(#succGrad)" filter="url(#shadow)"/>
+    <path d="M12 2.5L4.5 6.3V11C4.5 15.6 7.8 18.9 12 21.2C16.2 18.9 19.5 15.6 19.5 11V6.3L12 2.5Z" fill="none" stroke="white" stroke-opacity="0.2" stroke-width="0.5"/>
 
-  <!-- subtle pop -->
-  <animateTransform
-    attributeName="transform"
-    type="scale"
-    additive="sum"
-    values="1;1.03;1"
-    keyTimes="0;0.25;1"
-    dur="1.6s"
-    repeatCount="indefinite"
-  />
+    <path d="M8 12.5L11 15.5L16 9.5" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="15" stroke-dashoffset="15">
+      <animate attributeName="stroke-dashoffset" values="15; 0; 0; 15" keyTimes="0; 0.2; 0.85; 1" dur="2.5s" repeatCount="indefinite" calcMode="spline" keySplines="0.4 0 0.2 1; 0 0 1 1; 0.4 0 0.2 1"/>
+    </path>
+  </g>
 </svg>

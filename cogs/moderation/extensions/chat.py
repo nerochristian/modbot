@@ -11,9 +11,49 @@ from utils.embeds import ModEmbed, Colors
 from utils.checks import is_mod, is_admin, is_bot_owner_id
 from utils.time_parser import parse_time
 from utils.transcript import EphemeralTranscriptView, generate_html_transcript
-from config import Config
+from utils.status_emojis import get_app_emoji
 
 class ChatCommands:
+    @staticmethod
+    def _has_reason(reason: Optional[str]) -> bool:
+        if not reason:
+            return False
+        return reason.strip().lower() != "no reason provided"
+
+    @staticmethod
+    def _build_channel_status_embed(
+        *,
+        emoji: str,
+        title: str,
+        color: int,
+        moderator: Union[discord.Member, discord.User],
+        reason: Optional[str] = None,
+        extra_line: Optional[str] = None,
+    ) -> discord.Embed:
+        lines = [f"{emoji} **{title}**"]
+
+        if ChatCommands._has_reason(reason):
+            for raw in str(reason).splitlines():
+                line = raw.strip()
+                if line:
+                    lines.append(f"> {line}")
+
+        if extra_line:
+            for raw in str(extra_line).splitlines():
+                line = raw.strip()
+                if line:
+                    lines.append(f"> {line}")
+
+        embed = discord.Embed(
+            description="\n".join(lines),
+            color=color,
+            timestamp=datetime.now(timezone.utc),
+        )
+        moderator_name = getattr(moderator, "name", str(moderator))
+        moderator_icon = getattr(getattr(moderator, "display_avatar", None), "url", None)
+        embed.set_footer(text=f"@{moderator_name}", icon_url=moderator_icon)
+        return embed
+
     async def _lock_logic(self, source, channel: discord.TextChannel = None, reason: str = "No reason provided", role: discord.Role = None):
         author = source.user if isinstance(source, discord.Interaction) else source.author
         channel = channel or (source.channel if isinstance(source, discord.Interaction) else source.channel)
@@ -48,37 +88,38 @@ class ChatCommands:
                         reason=f"{author} (Lock): {reason}"
                     )
             
-            role_msg = ""
+            role_msg = None
             if role:
                 await channel.set_permissions(
                     role,
                     send_messages=True,
                     reason=f"{author} (Lock Bypass): {reason}"
                 )
-                role_msg = f"\n✅ Allowed: {role.mention}"
+                role_msg = f"Allowed: {role.mention}"
                 
         except discord.Forbidden:
             return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to edit channel permissions."), ephemeral=True)
         
-        embed = discord.Embed(
-            title=f"{Config.EMOJI_WARNING} Channel locked",
-            description=f"{channel.mention} has been locked.{role_msg}",
-            color=Colors.ERROR
+        embed = self._build_channel_status_embed(
+            emoji=get_app_emoji("lock"),
+            title="Channel locked",
+            color=Colors.WARNING,
+            moderator=author,
+            reason=reason,
+            extra_line=role_msg,
         )
-        embed.add_field(name="Reason", value=reason, inline=False)
-        embed.add_field(name="Moderator", value=author.mention, inline=False)
-
-        if author.guild_permissions.administrator:
-            embed.set_footer(text="Note: You are an Administrator, so you can bypass this lock.")
         
         await self._respond(source, embed=embed)
         
         if channel != (source.channel if isinstance(source, discord.Interaction) else source.channel):
-             lock_notice = discord.Embed(
-                title=f"{Config.EMOJI_WARNING} Channel locked",
-                description=f"Locked by {author.mention}\n**Reason:** {reason}",
-                color=Colors.ERROR
-            )
+             lock_notice = self._build_channel_status_embed(
+                emoji=get_app_emoji("lock"),
+                title="Channel locked",
+                color=Colors.WARNING,
+                moderator=author,
+                reason=reason,
+                extra_line=role_msg,
+             )
              await channel.send(embed=lock_notice)
 
     async def _unlock_logic(self, source, channel: discord.TextChannel = None, reason: str = "No reason provided"):
@@ -112,12 +153,13 @@ class ChatCommands:
         except discord.Forbidden:
              return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to edit channel permissions."), ephemeral=True)
         
-        embed = discord.Embed(
-            title=f"{Config.EMOJI_SUCCESS} Channel unlocked",
-            description=f"{channel.mention} has been unlocked.",
-            color=Colors.SUCCESS
+        embed = self._build_channel_status_embed(
+            emoji=get_app_emoji("unlock"),
+            title="Channel unlocked",
+            color=Colors.SUCCESS,
+            moderator=author,
+            reason=reason,
         )
-        embed.add_field(name="Moderator", value=author.mention, inline=False)
         
         await self._respond(source, embed=embed)
 
@@ -155,7 +197,7 @@ class ChatCommands:
                 failed.append(channel.mention)
         
         embed = discord.Embed(
-            title="🚨 Server Lockdown Initiated",
+            title=f"{get_app_emoji('error')} Server Lockdown Initiated",
             description=f"Locked **{len(locked)}** channels.",
             color=Colors.DARK_RED,
             timestamp=datetime.now(timezone.utc)
@@ -166,7 +208,7 @@ class ChatCommands:
         
         if failed:
             embed.add_field(
-                name=f"❌ Failed ({len(failed)})",
+                name=f"{get_app_emoji('error')} Failed ({len(failed)})",
                 value=", ".join(failed[:10]) + (f" ...and {len(failed) - 10} more" if len(failed) > 10 else ""),
                 inline=False
             )
@@ -194,7 +236,7 @@ class ChatCommands:
                 failed.append(channel.mention)
         
         embed = discord.Embed(
-            title="✅ Lockdown Lifted",
+            title=f"{get_app_emoji('success')} Lockdown Lifted",
             description=f"Unlocked **{len(unlocked)}** channels.",
             color=Colors.SUCCESS,
             timestamp=datetime.now(timezone.utc)
@@ -204,7 +246,7 @@ class ChatCommands:
         
         if failed:
             embed.add_field(
-                name=f"❌ Failed ({len(failed)})",
+                name=f"{get_app_emoji('error')} Failed ({len(failed)})",
                 value=", ".join(failed[:10]) + (f" ...and {len(failed) - 10} more" if len(failed) > 10 else ""),
                 inline=False
             )
@@ -386,10 +428,6 @@ class ChatCommands:
                 return False
             if check and not check(m):
                 return False
-            
-            # Use pinned check if needed, referenced in original file?
-            # Assuming pins are safe unless specified? Original logic not fully visible but standard is to skip pins often.
-            # I'll Assume standard purge behavior.
             return True
 
         deleted = await channel.purge(limit=amount, check=combined_check)
@@ -583,4 +621,3 @@ class ChatCommands:
     async def purgelinks_slash(self, interaction: discord.Interaction, amount: int = 100):
         url_pattern = re.compile(r'https?://')
         await self._purge_logic(interaction, amount, check=lambda m: url_pattern.search(m.content))
-

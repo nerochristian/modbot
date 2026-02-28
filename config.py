@@ -102,11 +102,15 @@ class Config:
     AUTO_CREATE_STATUS_EMOJIS = str(os.getenv("AUTO_CREATE_STATUS_EMOJIS", "1")).strip().lower() in {"1", "true", "yes", "on"}
     STATUS_SUCCESS_EMOJI_NAME = os.getenv("STATUS_SUCCESS_EMOJI_NAME", "mod_success")
     STATUS_ERROR_EMOJI_NAME = os.getenv("STATUS_ERROR_EMOJI_NAME", "mod_error")
-    STATUS_WARNING_EMOJI_NAME = os.getenv("STATUS_WARNING_EMOJI_NAME", "mod_warning")
+    STATUS_WARNING_EMOJI_NAME = os.getenv("STATUS_WARNING_EMOJI_NAME", "mod_warn")
     STATUS_INFO_EMOJI_NAME = os.getenv("STATUS_INFO_EMOJI_NAME", "mod_info")
     STATUS_LOCK_EMOJI_NAME = os.getenv("STATUS_LOCK_EMOJI_NAME", "mod_lock")
     STATUS_UNLOCK_EMOJI_NAME = os.getenv("STATUS_UNLOCK_EMOJI_NAME", "mod_unlock")
     STATUS_LOADING_EMOJI_NAME = os.getenv("STATUS_LOADING_EMOJI_NAME", "mod_loading")
+    STATUS_BAN_EMOJI_NAME = os.getenv("STATUS_BAN_EMOJI_NAME", "mod_ban")
+    STATUS_KICK_EMOJI_NAME = os.getenv("STATUS_KICK_EMOJI_NAME", "mod_kick")
+    STATUS_MUTE_EMOJI_NAME = os.getenv("STATUS_MUTE_EMOJI_NAME", "mod_mute")
+    STATUS_WARN_EMOJI_NAME = os.getenv("STATUS_WARN_EMOJI_NAME", "mod_warn")
     STATUS_EMOJI_CREATE_REASON = os.getenv(
         "STATUS_EMOJI_CREATE_REASON",
         "Auto-create status emojis for moderation responses.",

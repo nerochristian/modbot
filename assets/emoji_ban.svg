@@ -1,0 +1,35 @@
+<svg width="128" height="128" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="banGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#EF4444"/>
+      <stop offset="100%" stop-color="#991B1B"/>
+    </linearGradient>
+    
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <path d="M12 2L4 6V11C4 16 7.5 19.5 12 22C16.5 19.5 20 16 20 11V6L12 2Z" fill="url(#banGrad)" filter="url(#shadow)"/>
+  
+  <path d="M12 2.5L4.5 6.3V11C4.5 15.6 7.8 18.9 12 21.2C16.2 18.9 19.5 15.6 19.5 11V6.3L12 2.5Z" fill="none" stroke="white" stroke-opacity="0.2" stroke-width="0.5"/>
+
+  <circle cx="12" cy="18" r="0" fill="none" stroke="white" stroke-width="1.2" opacity="0">
+    <animate attributeName="r" values="0; 9; 11; 0" keyTimes="0; 0.2; 0.4; 1" dur="2.5s" repeatCount="indefinite" begin="0.1s" />
+    <animate attributeName="opacity" values="0; 1; 0; 0" keyTimes="0; 0.2; 0.4; 1" dur="2.5s" repeatCount="indefinite" begin="0.1s" />
+  </circle>
+
+  <g transform-origin="12 18">
+    <animateTransform attributeName="transform" type="rotate"
+      values="-70; 15; -8; 0; 0; -70"
+      keyTimes="0; 0.15; 0.25; 0.35; 0.85; 1"
+      dur="2.5s"
+      repeatCount="indefinite"
+      calcMode="spline"
+      keySplines="0.4 0 0.2 1; 0.2 0.8 0.2 1; 0.4 0 0.2 1; 0 0 1 1; 0.4 0 0.2 1" />
+
+    <rect x="11.2" y="9" width="1.6" height="9" rx="0.8" fill="#FCA5A5" />
+    <rect x="7.5" y="5" width="9" height="4.5" rx="1" fill="white" filter="url(#shadow)"/>
+    <rect x="10.5" y="5" width="3" height="4.5" fill="#E2E8F0" opacity="0.6"/>
+  </g>
+</svg>

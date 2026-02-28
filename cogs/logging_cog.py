@@ -39,6 +39,7 @@ class Logging(commands.Cog):
         self.bot = bot
         self._channel_cache = ChannelCache(ttl=300)  # 5 minute TTL
         self._audit_search_window_seconds = 15
+        self._seen_generic_audit_entries: dict[int, datetime] = {}
         self._suppress_message_delete_until: dict[int, datetime] = {}
         self._suppress_bulk_delete_until: dict[int, datetime] = {}
         self._suppress_timeout_change_until: dict[tuple[int, int], datetime] = {}
@@ -408,6 +409,278 @@ class Logging(commands.Cog):
         if mention:
             return f"{channel_name} ({mention})"
         return channel_name
+
+    def _format_role_reference(self, role: Optional[discord.Role]) -> str:
+        if role is None:
+            return "*Unknown*"
+        role_name = getattr(role, "name", "unknown") or "unknown"
+        mention = getattr(role, "mention", None)
+        if mention:
+            # Keep plain role name first so any custom emoji in the role name renders.
+            return f"{role_name} ({mention})"
+        role_id = getattr(role, "id", None)
+        if role_id is not None:
+            return f"{role_name} (`{role_id}`)"
+        return role_name
+
+    def _remember_generic_audit_entry(self, entry_id: int) -> bool:
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(minutes=30)
+        stale_ids = [
+            seen_id
+            for seen_id, seen_at in self._seen_generic_audit_entries.items()
+            if seen_at < cutoff
+        ]
+        for seen_id in stale_ids:
+            self._seen_generic_audit_entries.pop(seen_id, None)
+
+        if entry_id in self._seen_generic_audit_entries:
+            return False
+
+        self._seen_generic_audit_entries[entry_id] = now
+        return True
+
+    @staticmethod
+    def _audit_channel_kind(target: Optional[object]) -> str:
+        if isinstance(target, discord.TextChannel):
+            return "Text channel"
+        if isinstance(target, discord.VoiceChannel):
+            return "Voice channel"
+        if isinstance(target, discord.StageChannel):
+            return "Stage channel"
+        if isinstance(target, discord.CategoryChannel):
+            return "Category channel"
+        if isinstance(target, discord.ForumChannel):
+            return "Forum channel"
+        if isinstance(target, discord.Thread):
+            return "Thread"
+        return "Channel"
+
+    def _audit_action_title(self, entry: discord.AuditLogEntry) -> str:
+        action = entry.action
+        target = getattr(entry, "target", None)
+        names: dict[discord.AuditLogAction, str] = {
+            discord.AuditLogAction.guild_update: "Server updated",
+            discord.AuditLogAction.channel_update: f"{self._audit_channel_kind(target)} updated",
+            discord.AuditLogAction.overwrite_create: f"{self._audit_channel_kind(target)} permissions created",
+            discord.AuditLogAction.overwrite_update: f"{self._audit_channel_kind(target)} permissions updated",
+            discord.AuditLogAction.overwrite_delete: f"{self._audit_channel_kind(target)} permissions deleted",
+            discord.AuditLogAction.role_update: "Role updated",
+            discord.AuditLogAction.webhook_update: "Webhook updated",
+            discord.AuditLogAction.webhook_delete: "Webhook deleted",
+            discord.AuditLogAction.invite_create: "Invite created",
+            discord.AuditLogAction.invite_update: "Invite updated",
+            discord.AuditLogAction.invite_delete: "Invite deleted",
+            discord.AuditLogAction.emoji_create: "Emoji created",
+            discord.AuditLogAction.emoji_update: "Emoji updated",
+            discord.AuditLogAction.emoji_delete: "Emoji deleted",
+            discord.AuditLogAction.sticker_create: "Sticker created",
+            discord.AuditLogAction.sticker_update: "Sticker updated",
+            discord.AuditLogAction.sticker_delete: "Sticker deleted",
+            discord.AuditLogAction.integration_create: "Integration created",
+            discord.AuditLogAction.integration_update: "Integration updated",
+            discord.AuditLogAction.integration_delete: "Integration deleted",
+            discord.AuditLogAction.stage_instance_create: "Stage instance created",
+            discord.AuditLogAction.stage_instance_update: "Stage instance updated",
+            discord.AuditLogAction.stage_instance_delete: "Stage instance deleted",
+            discord.AuditLogAction.scheduled_event_create: "Scheduled event created",
+            discord.AuditLogAction.scheduled_event_update: "Scheduled event updated",
+            discord.AuditLogAction.scheduled_event_delete: "Scheduled event deleted",
+            discord.AuditLogAction.thread_create: "Thread created",
+            discord.AuditLogAction.thread_update: "Thread updated",
+            discord.AuditLogAction.thread_delete: "Thread deleted",
+            discord.AuditLogAction.app_command_permission_update: "Application command permissions updated",
+            discord.AuditLogAction.soundboard_sound_create: "Soundboard sound created",
+            discord.AuditLogAction.soundboard_sound_update: "Soundboard sound updated",
+            discord.AuditLogAction.soundboard_sound_delete: "Soundboard sound deleted",
+            discord.AuditLogAction.automod_rule_create: "AutoMod rule created",
+            discord.AuditLogAction.automod_rule_update: "AutoMod rule updated",
+            discord.AuditLogAction.automod_rule_delete: "AutoMod rule deleted",
+            discord.AuditLogAction.onboarding_prompt_create: "Onboarding prompt created",
+            discord.AuditLogAction.onboarding_prompt_update: "Onboarding prompt updated",
+            discord.AuditLogAction.onboarding_prompt_delete: "Onboarding prompt deleted",
+            discord.AuditLogAction.onboarding_create: "Onboarding created",
+            discord.AuditLogAction.onboarding_update: "Onboarding updated",
+            discord.AuditLogAction.home_settings_create: "Home settings created",
+            discord.AuditLogAction.home_settings_update: "Home settings updated",
+            discord.AuditLogAction.member_prune: "Member prune executed",
+            discord.AuditLogAction.bot_add: "Bot added",
+        }
+        if action in names:
+            return names[action]
+        return action.name.replace("_", " ").title()
+
+    @staticmethod
+    def _audit_action_color(action: discord.AuditLogAction) -> int:
+        name = action.name
+        if name.endswith("_create") or name in {"bot_add"}:
+            return Colors.SUCCESS
+        if name.endswith("_delete") or name in {"kick", "ban", "member_disconnect"}:
+            return Colors.ERROR
+        if name.endswith("_update") or name in {"guild_update"}:
+            return Colors.INFO
+        if name.startswith("automod_"):
+            return Colors.WARNING
+        return Colors.INFO
+
+    def _format_audit_value(self, value: Any) -> str:
+        if value is None:
+            return "*None*"
+        if isinstance(value, bool):
+            return self._yn(value)
+        if isinstance(value, datetime):
+            return f"<t:{int(value.timestamp())}:F>"
+        if isinstance(value, discord.Role):
+            return self._format_role_reference(value)
+        if isinstance(value, (discord.Member, discord.User)):
+            return self._format_user_reference(value)
+        if isinstance(value, discord.abc.GuildChannel):
+            return self._format_channel_reference(value)
+        if isinstance(value, discord.Object):
+            return f"`{value.id}`"
+        if isinstance(value, (list, tuple, set, frozenset)):
+            values = list(value)
+            if not values:
+                return "*None*"
+            rendered = [self._format_audit_value(v) for v in values[:5]]
+            text = ", ".join(rendered)
+            if len(values) > 5:
+                text += f", +{len(values) - 5} more"
+            return self._shorten(text, 300)
+
+        text = str(value).strip()
+        if not text:
+            return "*None*"
+        return self._shorten(text, 300)
+
+    def _audit_target_lines(self, entry: discord.AuditLogEntry) -> list[str]:
+        target = getattr(entry, "target", None)
+        lines: list[str] = []
+
+        if isinstance(target, discord.abc.GuildChannel):
+            lines.append(f"**Name:** {self._format_channel_reference(target)}")
+            lines.append(f"**ID:** `{target.id}`")
+            return lines
+
+        if isinstance(target, discord.Role):
+            lines.append(f"**Role:** {self._format_role_reference(target)}")
+            lines.append(f"**ID:** `{target.id}`")
+            return lines
+
+        if isinstance(target, (discord.Member, discord.User)):
+            lines.append(f"**User:** {self._format_user_reference(target)}")
+            lines.append(f"**ID:** `{target.id}`")
+            return lines
+
+        if isinstance(target, discord.Emoji):
+            lines.append(f"**Name:** {target.name}")
+            lines.append(f"**ID:** `{target.id}`")
+            lines.append(f"**Animated:** {self._yn(getattr(target, 'animated', None))}")
+            return lines
+
+        if isinstance(target, discord.Invite):
+            code = getattr(target, "code", None)
+            lines.append(f"**Invite:** `{code}`" if code else "**Invite:** *Unknown*")
+            invite_channel = getattr(target, "channel", None)
+            if invite_channel is not None:
+                lines.append(f"**Channel:** {self._format_channel_reference(invite_channel)}")
+            return lines
+
+        target_name = getattr(target, "name", None)
+        target_id = getattr(target, "id", None)
+        if target_name:
+            lines.append(f"**Target:** {target_name}")
+        elif target is not None:
+            lines.append(f"**Target:** {self._shorten(str(target), 180)}")
+        else:
+            lines.append("**Target:** *Unknown*")
+        if target_id is not None:
+            lines.append(f"**ID:** `{target_id}`")
+
+        return lines
+
+    def _audit_extra_lines(self, entry: discord.AuditLogEntry) -> list[str]:
+        extra = getattr(entry, "extra", None)
+        if extra is None:
+            return []
+
+        lines: list[str] = []
+
+        extra_channel = getattr(extra, "channel", None)
+        if extra_channel is not None:
+            lines.append(f"**Channel:** {self._format_channel_reference(extra_channel)}")
+
+        extra_role = getattr(extra, "role", None)
+        if isinstance(extra_role, discord.Role):
+            lines.append(f"**Role:** {self._format_role_reference(extra_role)}")
+
+        count = getattr(extra, "count", None)
+        if count is not None:
+            lines.append(f"**Count:** {count}")
+
+        members_removed = getattr(extra, "members_removed", None)
+        if members_removed is not None:
+            lines.append(f"**Members removed:** {members_removed}")
+
+        delete_member_days = getattr(extra, "delete_member_days", None)
+        if delete_member_days is not None:
+            lines.append(f"**Delete message days:** {delete_member_days}")
+
+        return lines
+
+    def _audit_change_lines(self, entry: discord.AuditLogEntry, *, max_items: int = 8) -> list[str]:
+        raw_changes = getattr(entry, "changes", None)
+        if raw_changes is None:
+            return []
+
+        try:
+            changes = list(raw_changes)
+        except TypeError:
+            return []
+
+        lines: list[str] = []
+        for change in changes[:max_items]:
+            key = str(getattr(change, "key", "change")).replace("_", " ").title()
+            before = self._format_audit_value(getattr(change, "before", None))
+            after = self._format_audit_value(getattr(change, "after", None))
+            if before == after:
+                continue
+            lines.append(f"**{key}:** {before} -> {after}")
+
+        if len(changes) > max_items:
+            lines.append(f"**Additional changes:** +{len(changes) - max_items} more")
+
+        return lines
+
+    @staticmethod
+    def _should_skip_generic_audit_action(action: discord.AuditLogAction) -> bool:
+        # Skip actions already logged in other channels (or by dedicated handlers).
+        skip_actions = {
+            # Message log channel
+            discord.AuditLogAction.message_delete,
+            discord.AuditLogAction.message_bulk_delete,
+            # Mod log channel
+            discord.AuditLogAction.kick,
+            discord.AuditLogAction.ban,
+            discord.AuditLogAction.unban,
+            discord.AuditLogAction.member_update,
+            # Existing dedicated audit/member handlers
+            discord.AuditLogAction.member_role_update,
+            discord.AuditLogAction.channel_create,
+            discord.AuditLogAction.channel_delete,
+            discord.AuditLogAction.role_create,
+            discord.AuditLogAction.role_delete,
+            discord.AuditLogAction.webhook_create,
+            # Voice log channel
+            discord.AuditLogAction.member_move,
+            discord.AuditLogAction.member_disconnect,
+            # AutoMod channel already captures execution-level events
+            discord.AuditLogAction.automod_block_message,
+            discord.AuditLogAction.automod_flag_message,
+            discord.AuditLogAction.automod_timeout_member,
+            discord.AuditLogAction.automod_quarantine_user,
+        }
+        return action in skip_actions
 
     @staticmethod
     def _classify_misrouted_log_embed(embed: discord.Embed) -> Optional[str]:
@@ -1463,6 +1736,47 @@ class Logging(commands.Cog):
         )
 
         await self.safe_send_log(log_channel, embed)
+
+    @commands.Cog.listener()
+    async def on_audit_log_entry_create(self, entry: discord.AuditLogEntry):
+        """
+        Generic audit stream for actions that do not already have dedicated log paths.
+        """
+        guild = getattr(entry, "guild", None)
+        if guild is None:
+            return
+
+        action = entry.action
+        if self._should_skip_generic_audit_action(action):
+            return
+
+        entry_id = getattr(entry, "id", None)
+        if not isinstance(entry_id, int):
+            return
+        if not self._remember_generic_audit_entry(entry_id):
+            return
+
+        channel = await self.get_log_channel(guild, "audit")
+        if not channel:
+            return
+
+        details_lines = []
+        details_lines.extend(self._audit_target_lines(entry))
+        details_lines.extend(self._audit_extra_lines(entry))
+        details_lines.extend(self._audit_change_lines(entry))
+
+        reason = getattr(entry, "reason", None)
+        if reason:
+            details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
+
+        embed = self._build_sapphire_log_embed(
+            title=self._audit_action_title(entry),
+            color=self._audit_action_color(action),
+            details_lines=details_lines or ["**Details:** *No additional fields*"],
+            footer_user=getattr(entry, "user", None),
+        )
+
+        await self.safe_send_log(channel, embed)
     
     @commands.Cog.listener()
     async def on_guild_channel_create(self, channel: discord.abc.GuildChannel):
@@ -1553,7 +1867,7 @@ class Logging(commands.Cog):
 
         created_at = getattr(role, "created_at", None)
         details_lines = [
-            f"**Role:** {role.mention}",
+            f"**Role:** {self._format_role_reference(role)}",
             f"**ID:** `{role.id}`",
             f"**Created:** {f'<t:{int(created_at.timestamp())}:R>' if created_at else '*N/A*'}",
         ]
