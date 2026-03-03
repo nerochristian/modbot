@@ -16,4 +16,4 @@ cmds = [
 ]
 
 [start]
-cmd = ". /opt/venv/bin/activate && python bot.py"
+cmd = "mkdir -p /app/data && chmod -R 777 /app/data && . /opt/venv/bin/activate && python bot.py"

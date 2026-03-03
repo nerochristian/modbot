@@ -35,6 +35,13 @@ class Database:
     
     def __init__(self) -> None:
         self.db_path = DATABASE_PATH
+        db_dir = os.path.dirname(self.db_path)
+        if db_dir and db_dir.strip():
+            try:
+                os.makedirs(db_dir, exist_ok=True)
+            except Exception as e:
+                logger.error(f"Failed to create database directory {db_dir}: {e}")
+                
         self._lock = asyncio.Lock()
         self._initialized = False
         self._pool: Optional[aiosqlite.Connection] = None
