@@ -1,30 +1,18 @@
-# Render Blueprint — deploys bot + web dashboard as a single Web Service
+# Render Blueprint — Static site for the frontend only
+# Bot + API run on WispByte, not Render
 # https://render.com/docs/blueprint-spec
 
 services:
   - type: web
-    name: modbot
-    runtime: python
-    plan: starter
-    buildCommand: ./render-build.sh
-    startCommand: python bot.py
-    healthCheckPath: /health
-    envVars:
-      - key: DISCORD_TOKEN
-        sync: false
-      - key: DISCORD_CLIENT_ID
-        sync: false
-      - key: DISCORD_CLIENT_SECRET
-        sync: false
-      - key: DASHBOARD_REDIRECT_URI
-        sync: false  # Set to https://your-app.onrender.com/auth/callback
-      - key: SESSION_SECRET
-        generateValue: true  # Render generates a random persistent secret
-      - key: OWNER_IDS
-        sync: false
-      - key: GROQ_API_KEY
-        sync: false
-      - key: PYTHON_VERSION
-        value: "3.12.3"
-      - key: NODE_VERSION
-        value: "20.11.1"
+    name: modbot-dashboard
+    runtime: static
+    buildCommand: cd website && npm ci && npm run build
+    staticPublishPath: ./website/dist
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

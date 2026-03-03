@@ -36,9 +36,15 @@ export class VersionConflictError extends ApiHttpError {
     }
 }
 
-// ─── Base Fetch Wrapper ─────────────────────────────────────────────────────
+// Base URL for API calls — set VITE_API_URL in .env.production to point to WispByte
+// Falls back to '/api' for local dev (proxied by Vite)
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
-const API_BASE = '/api';
+// Base URL for auth routes (same origin as API, but without /api suffix)
+// e.g. if VITE_API_URL is "https://wispbyte-host:1234/api", AUTH_BASE is "https://wispbyte-host:1234"
+export const AUTH_BASE = API_BASE.endsWith('/api')
+    ? API_BASE.slice(0, -4)
+    : '';
 
 async function apiFetch<T>(
     path: string,

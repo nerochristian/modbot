@@ -1361,25 +1361,15 @@ async def main() -> int:
                 except Exception as e:
                     logger.warning(f"[WARN] Dashboard failed to start: {e}")
 
-            logger.info("[NET] Connecting to Discord...")
+            # On Render, wait a few seconds before connecting to Discord.
+            # This gives the previous deployment's process time to fully
+            # die, avoiding IDENTIFY rate limits from overlapping sessions.
+            if IS_RENDER:
+                logger.info("[NET] Waiting 5s for previous session to expire...")
+                await asyncio.sleep(5)
 
-            # Retry loop for Discord rate limits (429)
-            # Prevents Render restart loops which make rate limiting worse.
-            max_retries = 5
-            for attempt in range(max_retries):
-                try:
-                    await bot.start(token)
-                    break
-                except discord.HTTPException as e:
-                    if e.status == 429 and attempt < max_retries - 1:
-                        wait_time = 30 * (attempt + 1)
-                        logger.warning(
-                            f"[WARN] Rate limited by Discord (attempt {attempt + 1}/{max_retries}). "
-                            f"Waiting {wait_time}s..."
-                        )
-                        await asyncio.sleep(wait_time)
-                    else:
-                        raise
+            logger.info("[NET] Connecting to Discord...")
+            await bot.start(token)
     except KeyboardInterrupt:
         logger.info("[BYE] Received shutdown signal (Ctrl+C)")
     except discord.LoginFailure:
