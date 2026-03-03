@@ -1,7 +1,7 @@
 """
 ModBot - Advanced Discord Moderation Bot
-Enterprise-grade moderation system with comprehensive logging
-Version 3.3.0 - Complete Database Overhaul
+Production-ready for Render deployment.
+Version 3.4.0
 """
 
 import discord
@@ -12,11 +12,10 @@ import os
 import re
 import sys
 import asyncio
-import atexit
-import subprocess
 import shlex
-from difflib import SequenceMatcher
+import signal
 import inspect
+from difflib import SequenceMatcher
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, get_args, get_origin
 from pathlib import Path
@@ -34,16 +33,53 @@ from utils.status_emojis import (
 # Load environment variables
 load_dotenv()
 
+# ==================== ENVIRONMENT HELPERS ====================
+IS_RENDER = os.getenv("RENDER", "").lower() in ("true", "1", "yes")
+
+
+def _env_enabled(var_name: str, default: bool = False) -> bool:
+    raw = os.getenv(var_name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _get_modbot_token() -> Optional[str]:
+    """Resolve ModBot token with explicit override support."""
+    return os.getenv("MODBOT_DISCORD_TOKEN") or os.getenv("DISCORD_TOKEN")
+
+
+def validate_environment() -> None:
+    """Validate required environment variables."""
+    optional_warnings = ["GROQ_API_KEY", "OWNER_IDS"]
+    log = logging.getLogger("ModBot")
+
+    if not _get_modbot_token():
+        log.critical("[FATAL] Missing required bot token: set MODBOT_DISCORD_TOKEN or DISCORD_TOKEN.")
+        sys.exit(1)
+
+    for var in optional_warnings:
+        if not os.getenv(var):
+            log.warning(f"[WARN] Optional environment variable not set: {var}")
+
+
 # ==================== SINGLE-INSTANCE LOCK ====================
 _LOCK_HANDLE = None
 
+
 def _acquire_single_instance_lock() -> None:
-    """Prevent multiple bot instances on the same machine (cross-platform)."""
+    """Prevent multiple bot instances on the same machine.
+    Skipped on Render (container isolation handles this).
+    """
+    if IS_RENDER:
+        return
+
     global _LOCK_HANDLE
+    import atexit
+
     lock_path = Path(".modbot.lock")
 
     if sys.platform == "win32":
-        # Windows: use msvcrt file locking
         try:
             import msvcrt
         except ImportError:
@@ -54,7 +90,7 @@ def _acquire_single_instance_lock() -> None:
         except OSError:
             raise RuntimeError("Another ModBot instance is already running.")
 
-        def _release_lock():
+        def _release():
             try:
                 msvcrt.locking(_LOCK_HANDLE.fileno(), msvcrt.LK_UNLCK, 1)
             except Exception:
@@ -64,9 +100,8 @@ def _acquire_single_instance_lock() -> None:
             except Exception:
                 pass
 
-        atexit.register(_release_lock)
+        atexit.register(_release)
     else:
-        # Linux / macOS: use fcntl file locking
         try:
             import fcntl
         except ImportError:
@@ -77,7 +112,7 @@ def _acquire_single_instance_lock() -> None:
         except OSError:
             raise RuntimeError("Another ModBot instance is already running.")
 
-        def _release_lock():
+        def _release():
             try:
                 fcntl.flock(_LOCK_HANDLE.fileno(), fcntl.LOCK_UN)
             except Exception:
@@ -87,9 +122,8 @@ def _acquire_single_instance_lock() -> None:
             except Exception:
                 pass
 
-        atexit.register(_release_lock)
+        atexit.register(_release)
 
-    # Write PID (best-effort metadata)
     try:
         _LOCK_HANDLE.seek(0)
         _LOCK_HANDLE.truncate()
@@ -98,17 +132,17 @@ def _acquire_single_instance_lock() -> None:
     except OSError:
         pass
 
-# Initialize static-ffmpeg if installed (ensures ffmpeg binary is in PATH)
+
+# ==================== STATIC FFMPEG ====================
 try:
     import static_ffmpeg
     static_ffmpeg.add_paths()
-    print("[Setup] Static FFmpeg initialized successfully")
 except ImportError:
     pass
 
 # ==================== GLOBAL EMBED DEFAULT COLOR ====================
-# Applies Config.EMBED_ACCENT_COLOR only when no explicit embed color is set.
 _ORIGINAL_EMBED_INIT = discord.Embed.__init__
+
 
 def _embed_init_force_accent(self, *args, **kwargs):
     explicit_colour = kwargs.pop("colour", None)
@@ -118,29 +152,8 @@ def _embed_init_force_accent(self, *args, **kwargs):
         kwargs["color"] = getattr(Config, "EMBED_ACCENT_COLOR", 0x5865F2)
     return _ORIGINAL_EMBED_INIT(self, *args, **kwargs)
 
+
 discord.Embed.__init__ = _embed_init_force_accent
-
-# ==================== ENVIRONMENT VALIDATION ====================
-def _get_modbot_token() -> Optional[str]:
-    """Resolve ModBot token with explicit override support."""
-    return os.getenv("MODBOT_DISCORD_TOKEN") or os.getenv("DISCORD_TOKEN")
-
-
-def validate_environment() -> None:
-    """Validate required environment variables"""
-    optional_warnings = ["GROQ_API_KEY", "OWNER_IDS"]
-    logger = logging.getLogger("ModBot")
-
-    if not _get_modbot_token():
-        logger.critical(
-            "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Missing required bot token: set MODBOT_DISCORD_TOKEN "
-            "(or DISCORD_TOKEN fallback)."
-        )
-        sys.exit(1)
-
-    for var in optional_warnings:
-        if not os.getenv(var):
-            logger.warning(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Optional environment variable not set: {var}")
 
 # ==================== CONSOLE ENCODING FIX ====================
 if sys.platform == "win32":
@@ -152,9 +165,10 @@ if sys.platform == "win32":
     except Exception:
         pass
 
-# ==================== CUSTOM LOGGING ====================
+
+# ==================== LOGGING ====================
 class ColoredFormatter(logging.Formatter):
-    """Custom formatter with ANSI colors"""
+    """Clean formatter with optional ANSI colors for TTY output."""
 
     COLORS = {
         "DEBUG": "\x1b[36m",
@@ -165,70 +179,16 @@ class ColoredFormatter(logging.Formatter):
         "RESET": "\x1b[0m",
     }
 
-    EMOJI_FALLBACK = {
-        "\u2705": "[OK]",
-        "\u274c": "[ERR]",
-        "\u26a1": "[>>]",
-        "\U0001f916": "[BOT]",
-        "\U0001f4e1": "[NET]",
-        "\U0001f44b": "[BYE]",
-        "\u26a0\ufe0f": "[!]",
-        "\U0001f527": "[CFG]",
-        "\U0001f4ac": "[CMD]",
-        "\U0001f4e6": "[COG]",
-        "\U0001f465": "[USR]",
-        "\U0001f680": "[START]",
-        "\U0001f5c4\ufe0f": "[DB]",
-    }
-
-    @staticmethod
-    def _repair_mojibake(text: str) -> str:
-        repaired = text
-        for _ in range(3):
-            if not any(ch in repaired for ch in ("\u00c3", "\u00c2", "\u00e2", "\u00f0")):
-                break
-
-            candidate = repaired
-            for source_encoding in ("cp1252", "latin-1"):
-                try:
-                    candidate = repaired.encode(source_encoding).decode("utf-8")
-                    break
-                except UnicodeError:
-                    continue
-
-            if candidate == repaired:
-                break
-
-            repaired = candidate
-
-        return repaired
-
     def format(self, record: logging.LogRecord) -> str:
         msg = super().format(record)
-        msg = self._repair_mojibake(msg)
-        for emoji, fallback in self.EMOJI_FALLBACK.items():
-            msg = msg.replace(emoji, fallback)
-
-        # Last-resort cleanup for any remaining mojibake fragments.
-        if any(ch in msg for ch in ("\u00c3", "\u00c2", "\u00e2", "\u00f0")):
-            msg = msg.encode("ascii", "ignore").decode("ascii")
-
-        try:
-            encoding = getattr(sys.stdout, "encoding", "utf-8") or "utf-8"
-            msg.encode(encoding)
-        except (UnicodeEncodeError, LookupError, AttributeError):
-            for emoji, fallback in self.EMOJI_FALLBACK.items():
-                msg = msg.replace(emoji, fallback)
-
         if hasattr(sys.stdout, "isatty") and sys.stdout.isatty():
             color = self.COLORS.get(record.levelname, self.COLORS["RESET"])
             msg = f"{color}{msg}{self.COLORS['RESET']}"
-
         return msg
 
 
 def setup_logging() -> logging.Logger:
-    """Configure logging with custom formatter"""
+    """Configure logging with clean formatter."""
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(
         ColoredFormatter(
@@ -236,18 +196,19 @@ def setup_logging() -> logging.Logger:
             datefmt="%Y-%m-%d %H:%M:%S",
         )
     )
-    
+
     logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
-    logger = logging.getLogger("ModBot")
-    logger.setLevel(logging.INFO)
-    
+    log = logging.getLogger("ModBot")
+    log.setLevel(logging.INFO)
+
     # Reduce discord.py verbosity
     logging.getLogger("discord").setLevel(logging.WARNING)
     logging.getLogger("discord.http").setLevel(logging.WARNING)
     logging.getLogger("discord.gateway").setLevel(logging.INFO)
     logging.getLogger("discord.client").setLevel(logging.WARNING)
-    
-    return logger
+
+    return log
+
 
 logger = setup_logging()
 
@@ -261,112 +222,23 @@ try:
         layout_view_from_embeds,
     )
 except ImportError as e:
-    logger.critical(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Failed to import required modules: {e}")
+    logger.critical(f"[FATAL] Failed to import required modules: {e}")
     sys.exit(1)
 
-# Web dashboard (optional ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â runs if DISCORD_CLIENT_ID + DISCORD_CLIENT_SECRET are set)
+# Web dashboard (optional)
 try:
     from web.app import start_dashboard
+
     _DASHBOARD_AVAILABLE = True
 except ImportError:
     _DASHBOARD_AVAILABLE = False
 
-# Install Components v2 patching, but keep classic v1 embeds as default.
+# Install Components v2 patching, keep classic v1 embeds as default.
 patch_components_v2()
 ComponentsV2Config.disable()
 
 
-def _env_enabled(var_name: str, default: bool = False) -> bool:
-    raw = os.getenv(var_name)
-    if raw is None:
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
-
-
-def _start_lifesim_process() -> Optional[subprocess.Popen]:
-    """
-    Optionally start LifeSimBot as a managed child process.
-
-    Requires LIFESIM_DISCORD_TOKEN to avoid running two clients on one token.
-    """
-    if not _env_enabled("RUN_LIFESIM_WITH_MODBOT", default=True):
-        logger.info("LifeSimBot child process disabled via RUN_LIFESIM_WITH_MODBOT")
-        return None
-
-    project_root = Path(__file__).resolve().parent
-    lifesim_script: Optional[Path] = None
-    for folder_name in ("lifesimbot", "LifeSimBot"):
-        candidate = project_root / folder_name / "bot.py"
-        if candidate.exists():
-            lifesim_script = candidate
-            break
-    if lifesim_script is None:
-        for child in project_root.iterdir():
-            if child.is_dir() and child.name.lower() == "lifesimbot":
-                candidate = child / "bot.py"
-                if candidate.exists():
-                    lifesim_script = candidate
-                    break
-    if lifesim_script is None:
-        logger.warning("LifeSimBot entrypoint not found in ./lifesimbot/bot.py")
-        return None
-
-    mod_token = _get_modbot_token()
-    lifesim_token = os.getenv("LIFESIM_DISCORD_TOKEN")
-
-    if not lifesim_token:
-        logger.warning(
-            "LIFESIM_DISCORD_TOKEN is not set; skipping LifeSimBot child process."
-        )
-        return None
-
-    if mod_token and lifesim_token == mod_token:
-        logger.warning(
-            "LIFESIM_DISCORD_TOKEN matches the ModBot token "
-            "(MODBOT_DISCORD_TOKEN / DISCORD_TOKEN); skipping LifeSimBot "
-            "to prevent token session conflicts."
-        )
-        return None
-
-    child_env = os.environ.copy()
-    # LifeSimBot reads LIFESIM_DISCORD_TOKEN first, then DISCORD_TOKEN.
-    child_env["DISCORD_TOKEN"] = lifesim_token
-
-    try:
-        proc = subprocess.Popen(
-            [sys.executable, str(lifesim_script)],
-            cwd=str(lifesim_script.parent),
-            env=child_env,
-        )
-        logger.info(f"Started LifeSimBot (pid={proc.pid})")
-        return proc
-    except Exception as e:
-        logger.error(f"Failed to start LifeSimBot child process: {e}", exc_info=True)
-        return None
-
-
-def _stop_lifesim_process(proc: Optional[subprocess.Popen]) -> None:
-    """Stop managed LifeSimBot child process if it's still running."""
-    if not proc:
-        return
-
-    try:
-        if proc.poll() is not None:
-            logger.info(f"LifeSimBot exited with code {proc.returncode}")
-            return
-
-        proc.terminate()
-        try:
-            proc.wait(timeout=10)
-            logger.info("LifeSimBot child process stopped")
-        except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait(timeout=5)
-            logger.warning("LifeSimBot child process was force-killed after timeout")
-    except Exception as e:
-        logger.error(f"Error while stopping LifeSimBot child process: {e}")
-
-
+# ==================== TARGET RESOLVE PROMPT ====================
 class TargetResolvePromptView(discord.ui.View):
     """Confirm/cancel prompt when a member argument was close but not exact."""
 
@@ -426,8 +298,7 @@ class TargetResolvePromptView(discord.ui.View):
             return fallback
         if text.startswith("<:") or text.startswith("<a:"):
             try:
-                parsed = discord.PartialEmoji.from_str(text)
-                return parsed
+                return discord.PartialEmoji.from_str(text)
             except Exception:
                 return fallback
         return text
@@ -435,7 +306,9 @@ class TargetResolvePromptView(discord.ui.View):
     async def _verify_interaction(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self._ctx.author.id:
             try:
-                await interaction.response.send_message("Only the command author can use these buttons.", ephemeral=True)
+                await interaction.response.send_message(
+                    "Only the command author can use these buttons.", ephemeral=True
+                )
             except Exception:
                 pass
             return False
@@ -458,8 +331,6 @@ class TargetResolvePromptView(discord.ui.View):
                 child.disabled = True
             except Exception:
                 continue
-        # When this prompt is sent as Components v2, editing with a classic View can
-        # strip the card container. Skip visual disable there and rely on _finalized.
         if not list(getattr(interaction.message, "embeds", []) or []):
             return
         try:
@@ -531,6 +402,7 @@ class TargetResolvePromptView(discord.ui.View):
             except Exception:
                 continue
 
+
 # ==================== BOT CLASS ====================
 class ModBot(commands.Bot):
     """
@@ -539,9 +411,9 @@ class ModBot(commands.Bot):
     - Command and message statistics
     - Snipe/editsnipe caching
     - Automatic guild initialization
-    - Complete feature support for all cogs
+    - Web dashboard integration
     """
-    
+
     def __init__(self):
         intents = discord.Intents.all()
         super().__init__(
@@ -552,35 +424,35 @@ class ModBot(commands.Bot):
             strip_after_prefix=True,
             owner_ids=self._load_owner_ids(),
         )
-        
+
         # Core systems
         self.db: Database = Database()
         self.start_time: datetime = datetime.now(timezone.utc)
-        self.version: str = "3.3.0"
-        
-        # Advanced caching with TTL (prevents memory leaks)
+        self.version: str = "3.4.0"
+
+        # Caching with TTL
         self.snipe_cache = SnipeCache(max_age_seconds=300, max_size=500)
         self.edit_snipe_cache = SnipeCache(max_age_seconds=300, max_size=500)
         self.prefix_cache = PrefixCache(ttl=600)
-        
+
         # Statistics
         self.commands_used: int = 0
         self.messages_seen: int = 0
         self.errors_caught: int = 0
         self.loading_emoji: str = getattr(Config, "EMOJI_LOADING", "\u23f3")
         self._prefix_loading_messages: dict[int, tuple[discord.Message, object]] = {}
-        
+
         # Internal flags
         self._ready_once: bool = False
         self._cache_cleanup_task: Optional[asyncio.Task] = None
         self._dashboard_runner = None
-        
+
         # Global blacklist cache (set of user IDs)
         self.blacklist_cache: set[int] = set()
-    
+
     @staticmethod
     def _load_owner_ids() -> set[int]:
-        """Load bot owner IDs from environment"""
+        """Load bot owner IDs from environment."""
         owner_ids_str = os.getenv("OWNER_IDS") or os.getenv("OWNER_ID") or ""
         try:
             owner_ids = {1269772767516033025}
@@ -591,33 +463,32 @@ class ModBot(commands.Bot):
                 owner_ids.add(int(part))
             return owner_ids
         except ValueError:
-            logger.warning("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Invalid OWNER_IDS in .env, using default")
+            logger.warning("[WARN] Invalid OWNER_IDS in .env, using default")
             return {1269772767516033025}
-    
+
     async def get_prefix(self, message: discord.Message):
-        """Dynamic prefix handler with advanced caching"""
+        """Dynamic prefix handler with database-backed caching."""
         if not message.guild:
             return commands.when_mentioned_or("!")(self, message)
-        
-        # Check cache with TTL
+
+        # Check cache first
         prefix = await self.prefix_cache.get(message.guild.id)
-        
+
         if prefix is None:
             # Load from database
             try:
                 settings = await self.db.get_settings(message.guild.id)
-                if prefix is None:
-                    prefix = "!" # Fallback if None but key exists
-                
-                # Check config override just in case
-                if prefix == "!":
-                    prefix = ","
+                prefix = settings.get("prefix") if settings else None
+                if not prefix:
+                    prefix = getattr(Config, "PREFIX", ",")
                 await self.prefix_cache.set(message.guild.id, prefix)
             except Exception as e:
                 logger.error(f"Failed to get prefix for {message.guild.name}: {e}")
-                prefix = ","
-        
+                prefix = getattr(Config, "PREFIX", ",")
+
         return commands.when_mentioned_or(prefix)(self, message)
+
+    # ─── Loading Reaction Helpers ─────────────────────────────────────────
 
     async def _send_prefix_loading(self, ctx: commands.Context) -> None:
         """Add a temporary loading reaction for prefix commands."""
@@ -639,8 +510,7 @@ class ModBot(commands.Bot):
         if raw.startswith("<:") or raw.startswith("<a:"):
             try:
                 partial = discord.PartialEmoji.from_str(raw)
-                emoji_id = getattr(partial, "id", None)
-                if emoji_id is None:
+                if getattr(partial, "id", None) is None:
                     return fallback
                 return partial
             except Exception:
@@ -683,9 +553,9 @@ class ModBot(commands.Bot):
             pass
 
         def _emoji_id(value: object) -> Optional[int]:
-            emoji_id = getattr(value, "id", None)
-            if isinstance(emoji_id, int):
-                return emoji_id
+            eid = getattr(value, "id", None)
+            if isinstance(eid, int):
+                return eid
             text = str(value or "").strip()
             match = re.fullmatch(r"<a?:\w+:(\d+)>", text)
             if match:
@@ -734,6 +604,8 @@ class ModBot(commands.Bot):
         message = getattr(ctx, "message", None)
         await self._clear_prefix_loading(getattr(message, "id", None))
 
+    # ─── Member Resolution Helpers ────────────────────────────────────────
+
     @staticmethod
     def _is_member_like_annotation(annotation: object) -> bool:
         if annotation in (discord.Member, discord.User):
@@ -747,12 +619,11 @@ class ModBot(commands.Bot):
         content = (getattr(ctx.message, "content", "") or "").strip()
         prefix = str(getattr(ctx, "prefix", "") or "")
         if prefix and content.startswith(prefix):
-            content = content[len(prefix):].lstrip()
+            content = content[len(prefix) :].lstrip()
 
         if not content:
             return "", ""
 
-        # Remove command token, then split into first arg + tail.
         command_name, _, arg_text = content.partition(" ")
         if not command_name or not arg_text:
             return "", ""
@@ -762,7 +633,6 @@ class ModBot(commands.Bot):
     @staticmethod
     def _normalize_member_query(raw: str) -> str:
         value = (raw or "").strip()
-        # Mention style: <@123> / <@!123>
         mention = re.fullmatch(r"<@!?(\d{15,22})>", value)
         if mention:
             return mention.group(1)
@@ -842,15 +712,9 @@ class ModBot(commands.Bot):
         async def _convert_param(param: inspect.Parameter, raw_value: str) -> Any:
             if param.annotation is inspect.Parameter.empty:
                 return raw_value
-            return await run_converters(
-                ctx,
-                param.annotation,
-                raw_value,
-                param,
-            )
+            return await run_converters(ctx, param.annotation, raw_value, param)
 
         for name, param in params[1:]:
-            # Unsupported shape for this generic resolver.
             if param.kind is inspect.Parameter.VAR_POSITIONAL:
                 return False, "This command format is not supported by the quick resolver."
 
@@ -865,7 +729,6 @@ class ModBot(commands.Bot):
                     kwargs[name] = await _convert_param(param, raw_value)
                 continue
 
-            # Positional-or-keyword parameter.
             if tokens:
                 raw_value = tokens.pop(0)
                 kwargs[name] = await _convert_param(param, raw_value)
@@ -880,30 +743,30 @@ class ModBot(commands.Bot):
 
         await ctx.invoke(command, **kwargs)
         return True, ""
-    
+
+    # ─── Setup & Lifecycle ────────────────────────────────────────────────
+
     async def setup_hook(self):
-        """Load cogs and sync slash commands"""
-        logger.info("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ Initializing bot systems...")
-        
-        # Initialize database connection pool
+        """Load cogs, sync slash commands, initialize systems."""
+        logger.info("[>>] Initializing bot systems...")
+
+        # Initialize database
         try:
             await self.db.init_pool()
         except Exception as e:
-            logger.error(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Failed to initialize database pool: {e}")
+            logger.error(f"[ERR] Failed to initialize database pool: {e}")
             raise
-        
+
         # Start cache cleanup task
         self._cache_cleanup_task = self.loop.create_task(self._cache_cleanup_loop())
-        
+
         # Ensure cogs directory exists
         cogs_path = Path("./cogs")
         if not cogs_path.exists():
-            logger.warning("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Cogs directory not found, creating...")
+            logger.warning("[WARN] Cogs directory not found, creating...")
             cogs_path.mkdir(exist_ok=True)
-        
-        # Cog list - CORE MODERATION BOT ONLY
-        # AI cogs are in bot_ai.py
-        # Support cogs are in bot_support.py
+
+        # Cog list
         cogs = [
             "cogs.moderation",
             "cogs.setup",
@@ -916,14 +779,12 @@ class ModBot(commands.Bot):
             "cogs.blacklist",
             "cogs.forum_moderation",
             "cogs.prefix_commands",
-            # AI & Automation (Merged)
             "cogs.aimoderation",
             "cogs.automod",
             "cogs.antiraid",
             "cogs.voice",
             "cogs.settings",
             "cogs.polls",
-            # Support & Tickets (Merged)
             "cogs.tickets",
             "cogs.modmail",
             "cogs.utility",
@@ -932,88 +793,75 @@ class ModBot(commands.Bot):
             "cogs.court",
             "cogs.whitelist",
         ]
-        
+
         loaded: list[str] = []
         failed: list[tuple[str, str]] = []
         skipped: list[str] = []
-        
-        # Load each cog
+
         for cog in cogs:
             try:
                 await self.load_extension(cog)
                 loaded.append(cog)
-                logger.info(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ Loaded: {cog}")
+                logger.info(f"  [OK] Loaded: {cog}")
             except commands.ExtensionNotFound:
                 skipped.append(cog)
-                logger.debug(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Skipped: {cog} (not found)")
+                logger.debug(f"  [--] Skipped: {cog} (not found)")
             except commands.ExtensionAlreadyLoaded:
-                logger.debug(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Skipped: {cog} (already loaded)")
+                logger.debug(f"  [--] Skipped: {cog} (already loaded)")
             except Exception as e:
                 failed.append((cog, str(e)))
-                logger.error(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Failed: {cog} - {e}")
-        
+                logger.error(f"  [ERR] Failed: {cog} - {e}")
+
         # Summary
         logger.info("=" * 60)
-        logger.info("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¦ Cog Loading Summary:")
-        logger.info(f"  ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ Loaded: {len(loaded)}")
-        logger.info(f"  ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Skipped: {len(skipped)}")
-        logger.info(f"  ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Failed: {len(failed)}")
+        logger.info("[COG] Cog Loading Summary:")
+        logger.info(f"  Loaded:  {len(loaded)}")
+        logger.info(f"  Skipped: {len(skipped)}")
+        logger.info(f"  Failed:  {len(failed)}")
         if failed:
-            logger.warning("  Failed cogs:")
             for cog, error in failed:
-                logger.warning(f"    ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ {cog}: {error}")
+                logger.warning(f"    > {cog}: {error}")
+        total_prefix = len(list(self.walk_commands()))
+        total_slash = len(self.tree.get_commands())
+        logger.info(f"  Commands: {total_prefix} prefix, {total_slash} slash")
         logger.info("=" * 60)
-        
-        # Display loaded commands
-        logger.info("=" * 60)
-        logger.info(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ Loaded {len(self.cogs)} cogs successfully")
-        logger.info(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â  Total Commands: {len(list(self.walk_commands()))} prefix, {len(self.tree.get_commands())} slash")
-        logger.info("=" * 60)
-        
-        # Set global interaction check for the tree
+
+        # Set global interaction check
         self.tree.interaction_check = self._check_global_blacklist
-        
+
         # Sync slash commands
         sync_guild_id = os.getenv("SYNC_GUILD_ID")
         try:
             if sync_guild_id:
                 guild_object = discord.Object(id=int(sync_guild_id))
-                logger.info(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ Syncing slash commands to specific guild: {sync_guild_id}...")
+                logger.info(f"[CMD] Syncing slash commands to guild {sync_guild_id}...")
                 self.tree.copy_global_to(guild=guild_object)
                 synced = await self.tree.sync(guild=guild_object)
-                logger.info(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ Successfully synced {len(synced)} slash commands to guild {sync_guild_id}")
+                logger.info(f"[CMD] Synced {len(synced)} slash commands to guild")
             else:
-                logger.info("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ Syncing slash commands globally (this may take up to 1 hour)...")
+                logger.info("[CMD] Syncing slash commands globally...")
                 synced = await self.tree.sync()
-                logger.info(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¡ Successfully synced {len(synced)} slash commands globally")
+                logger.info(f"[CMD] Synced {len(synced)} slash commands globally")
         except discord.HTTPException as e:
-            logger.error(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Failed to sync commands: {e}")
+            logger.error(f"[ERR] Failed to sync commands: {e}")
             self.errors_caught += 1
         except Exception as e:
-            logger.error(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Unexpected error syncing commands: {e}")
+            logger.error(f"[ERR] Unexpected error syncing commands: {e}")
             self.errors_caught += 1
 
-        # Bind the global error handler
+        # Bind global error handler
         self.tree.on_error = self.on_tree_error
 
-        # NOTE: Dashboard is started in main() before bot.start()
-        # so Render detects the port before Discord connects.
-    
     async def on_tree_error(self, interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
-        """Global error handler for application commands"""
+        """Global error handler for application commands."""
         self.errors_caught += 1
 
-        # Handle Missing Permissions
         if isinstance(error, discord.app_commands.MissingPermissions):
-            missing = [p.replace('_', ' ').replace('guild', 'server').title() for p in error.missing_permissions]
-            if len(missing) > 2:
-                fmt = f"{', '.join(missing[:-1])}, and {missing[-1]}"
-            else:
-                fmt = " and ".join(missing)
-
+            missing = [p.replace("_", " ").replace("guild", "server").title() for p in error.missing_permissions]
+            fmt = ", ".join(missing[:-1]) + f", and {missing[-1]}" if len(missing) > 2 else " and ".join(missing)
             embed = ModEmbed.error(
                 "Permission Denied",
-                f"You are missing the following permission(s) to run this command:\n**{fmt}**",
+                f"You are missing the following permission(s):\n**{fmt}**",
             )
             try:
                 if interaction.response.is_done():
@@ -1024,12 +872,11 @@ class ModBot(commands.Bot):
                 pass
             return
 
-        # Handle other errors (BotMissingPermissions, etc.)
         if isinstance(error, discord.app_commands.BotMissingPermissions):
-            missing = [p.replace('_', ' ').replace('guild', 'server').title() for p in error.missing_permissions]
+            missing = [p.replace("_", " ").replace("guild", "server").title() for p in error.missing_permissions]
             embed = ModEmbed.error(
                 "I Need Permissions",
-                f"I am missing the following permission(s) to do that:\n**{', '.join(missing)}**",
+                f"I am missing the following permission(s):\n**{', '.join(missing)}**",
             )
             try:
                 if interaction.response.is_done():
@@ -1040,105 +887,91 @@ class ModBot(commands.Bot):
                 pass
             return
 
-        # Generic fallback
-        logger.error(f"Ignoring exception in command '{interaction.command.name if interaction.command else 'Unknown'}': {error}", exc_info=error)
+        cmd_name = interaction.command.name if interaction.command else "Unknown"
+        logger.error(f"Slash command error '{cmd_name}': {error}", exc_info=error)
 
     async def _check_global_blacklist(self, interaction: discord.Interaction) -> bool:
-        """Global check for application commands - blocks blacklisted users"""
-        # Allow owners to bypass blacklist (just in case they tested it on themselves)
+        """Block blacklisted users from application commands."""
         if interaction.user.id in self.owner_ids:
             return True
 
         if interaction.user.id in self.blacklist_cache:
             try:
                 await interaction.response.send_message(
-                    f"{interaction.user.mention} ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â« **Blacklisted** - You are blacklisted from using this bot.",
-                    ephemeral=True
+                    f"{interaction.user.mention} **Blacklisted** — You are blacklisted from using this bot.",
+                    ephemeral=True,
                 )
             except (discord.errors.InteractionResponded, discord.errors.NotFound):
                 pass
-            # Return False to halt command execution
             return False
-        
+
         return True
 
     async def on_ready(self):
-        """Called when bot is ready and connected"""
+        """Called when bot is ready and connected."""
         if self._ready_once:
-            logger.info("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ Reconnected to Discord")
+            logger.info("[NET] Reconnected to Discord")
             return
-        
+
         self._ready_once = True
-        
-        # Banner
+
         logger.info("=" * 60)
-        logger.info(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¤ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ Bot Online: {self.user} (ID: {self.user.id})")
-        logger.info(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â  Guilds: {len(self.guilds)}")
-        logger.info(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¹Ã…â€œÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¥ Total Users: {sum((g.member_count or 0) for g in self.guilds):,}")
-        logger.info(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ Version: {self.version}")
-        logger.info(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Discord.py: {discord.__version__}")
+        logger.info(f"[BOT] Online: {self.user} (ID: {self.user.id})")
+        logger.info(f"[BOT] Guilds: {len(self.guilds)}")
+        logger.info(f"[BOT] Users:  {sum((g.member_count or 0) for g in self.guilds):,}")
+        logger.info(f"[BOT] Version: {self.version}")
+        logger.info(f"[BOT] discord.py: {discord.__version__}")
+        if IS_RENDER:
+            logger.info(f"[BOT] Render URL: {os.getenv('RENDER_EXTERNAL_URL', 'not set')}")
         logger.info("=" * 60)
-        
-        # Initialize database for all guilds
-        logger.info("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã‚ÂÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¾ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Initializing guild databases...")
+
+        # Initialize guilds in database
+        logger.info("[DB] Initializing guild databases...")
         success = 0
-        failed = 0
-        
+        fail_count = 0
+
         for guild in self.guilds:
             try:
                 await self.db.init_guild(guild.id)
                 success += 1
             except Exception as e:
-                logger.error(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Failed to init {guild.name}: {e}")
-                failed += 1
-        
-        logger.info(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ Initialized {success}/{len(self.guilds)} guilds")
-        if failed:
-            logger.warning(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â {failed} guilds failed initialization")
-        logger.info("=" * 60)
-        
+                logger.error(f"[ERR] Failed to init {guild.name}: {e}")
+                fail_count += 1
+
+        logger.info(f"[DB] Initialized {success}/{len(self.guilds)} guilds")
+        if fail_count:
+            logger.warning(f"[WARN] {fail_count} guilds failed initialization")
+
         # Set presence
         await self.update_presence()
 
-        # Ensure status emojis are provisioned in Developer Portal > Application Emojis.
+        # Sync status emojis to application
         try:
             synced_emojis = await sync_status_emojis_to_application(self)
             if synced_emojis:
-                logger.info(f"Synced {len(synced_emojis)} status emoji assets to application emojis.")
+                logger.info(f"[OK] Synced {len(synced_emojis)} status emoji assets to application")
             else:
-                logger.warning("Application emoji sync skipped/unavailable; falling back to guild emoji provisioning.")
+                logger.warning("[WARN] Application emoji sync skipped; falling back to guild emoji provisioning")
         except Exception as e:
-            logger.warning(f"Failed to sync application emojis: {e}")
-        
+            logger.warning(f"[WARN] Failed to sync application emojis: {e}")
+
         # Load blacklist cache
         await self._load_blacklist_cache()
-        
-        # Start LifeSimBot AFTER ModBot is fully ready (delayed to avoid rate limits)
-        async def _delayed_lifesim_start():
-            await asyncio.sleep(30)
-            try:
-                proc = _start_lifesim_process()
-                if proc:
-                    logger.info("LifeSimBot started (delayed, 30s after ModBot ready)")
-            except Exception as e:
-                logger.warning(f"LifeSimBot failed to start: {e}")
-        
-        self.loop.create_task(_delayed_lifesim_start())
-        
-        logger.info("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ Bot is fully operational!")
-    
+
+        logger.info("[START] Bot is fully operational!")
+
     async def _load_blacklist_cache(self):
-        """Load blacklist from database into cache"""
+        """Load blacklist from database into cache."""
         try:
             blacklist = await self.db.get_blacklist()
             self.blacklist_cache = {entry["user_id"] for entry in blacklist}
-            logger.info(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â« Loaded {len(self.blacklist_cache)} blacklisted users")
+            logger.info(f"[OK] Loaded {len(self.blacklist_cache)} blacklisted users")
         except Exception as e:
             logger.error(f"Failed to load blacklist cache: {e}")
             self.blacklist_cache = set()
-    
+
     async def update_presence(self):
-        """Update bot status"""
+        """Update bot rich presence."""
         try:
             await self.change_presence(
                 activity=discord.Activity(
@@ -1149,44 +982,47 @@ class ModBot(commands.Bot):
             )
         except Exception as e:
             logger.error(f"Failed to update presence: {e}")
-    
+
+    # ─── Guild Events ─────────────────────────────────────────────────────
+
     async def on_guild_join(self, guild: discord.Guild):
-        """Handle joining a new guild"""
+        """Handle joining a new guild."""
         try:
             await self.db.init_guild(guild.id)
-            logger.info(
-                f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ Joined guild: {guild.name} "
-                f"(ID: {guild.id}, Members: {guild.member_count})"
-            )
+            logger.info(f"[OK] Joined guild: {guild.name} (ID: {guild.id}, Members: {guild.member_count})")
             await self.update_presence()
         except Exception as e:
             logger.error(f"Error handling guild join for {guild.name}: {e}")
-    
+
     async def on_guild_remove(self, guild: discord.Guild):
-        """Handle leaving a guild"""
-        logger.info(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¹Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¹ Left guild: {guild.name} (ID: {guild.id})")
-        # Clear cached prefix
+        """Handle leaving a guild."""
+        logger.info(f"[BYE] Left guild: {guild.name} (ID: {guild.id})")
         await self.prefix_cache.invalidate(guild.id)
         await self.update_presence()
-    
+
+    # ─── Message Events ───────────────────────────────────────────────────
+
     async def on_message(self, message: discord.Message):
-        """Handle incoming messages"""
+        """Handle incoming messages."""
         if message.author.bot:
             return
 
         # Check blacklist for prefix commands
         if message.author.id in self.blacklist_cache and message.author.id not in self.owner_ids:
-            # Check if this looks like a command
             if message.guild:
                 prefix = await self.prefix_cache.get(message.guild.id)
                 if prefix is None:
-                    prefix = ","
+                    prefix = getattr(Config, "PREFIX", ",")
             else:
                 prefix = "!"
 
-            if message.content.startswith(prefix) or message.content.startswith(f"<@{self.user.id}>") or message.content.startswith(f"<@!{self.user.id}>"):
+            if (
+                message.content.startswith(prefix)
+                or message.content.startswith(f"<@{self.user.id}>")
+                or message.content.startswith(f"<@!{self.user.id}>")
+            ):
                 await message.channel.send(
-                    f"{message.author.mention} \u274c **Blacklisted** - You are blacklisted from using this bot."
+                    f"{message.author.mention} \u274c **Blacklisted** — You are blacklisted from using this bot."
                 )
                 return
 
@@ -1217,27 +1053,19 @@ class ModBot(commands.Bot):
 
         await self.invoke(ctx)
 
-    async def on_interaction(self, interaction: discord.Interaction):
-        """Handle interactions - check blacklist for slash commands"""
-        # Only check application commands
-        if interaction.type != discord.InteractionType.application_command:
-            return
-
-        pass
-
     async def on_command(self, ctx: commands.Context):
-        """Track command usage"""
+        """Track command usage."""
         self.commands_used += 1
         location = ctx.guild.name if ctx.guild else "DMs"
-        logger.info(f"\U0001f4ac {ctx.author} used '{ctx.command.name}' in {location}")
+        logger.info(f"[CMD] {ctx.author} used '{ctx.command.name}' in {location}")
         await self._send_prefix_loading(ctx)
 
     async def on_command_completion(self, ctx: commands.Context):
-        """Clear loading marker once a command completes successfully."""
+        """Clear loading marker once a command completes."""
         await self._clear_prefix_loading_for_ctx(ctx)
 
     async def on_command_error(self, ctx: commands.Context, error: Exception):
-        """Global command error handler"""
+        """Global command error handler."""
         await self._clear_prefix_loading_for_ctx(ctx)
         self.errors_caught += 1
 
@@ -1253,7 +1081,6 @@ class ModBot(commands.Bot):
                 except Exception:
                     pass
             if use_v2 and ctx.channel is not None:
-                # Explicitly build a LayoutView via the shared v2 converter.
                 send_kwargs: dict[str, Any] = {}
                 msg = getattr(ctx, "message", None)
                 if msg is not None:
@@ -1294,10 +1121,8 @@ class ModBot(commands.Bot):
         if isinstance(error, commands.MissingRequiredArgument):
             embed = ModEmbed.error(
                 "Missing argument",
-                (
-                    f"Missing required argument: `{error.param.name}`\n\n"
-                    f"Use `{ctx.prefix}help {ctx.command}` for more info."
-                ),
+                f"Missing required argument: `{error.param.name}`\n\n"
+                f"Use `{ctx.prefix}help {ctx.command}` for more info.",
             )
             return await _send_error_response(embed)
 
@@ -1313,17 +1138,13 @@ class ModBot(commands.Bot):
                         cancel_icon = getattr(Config, "EMOJI_ERROR", "\u274c")
                         try:
                             confirm_icon = await get_status_emoji_for_guild(
-                                ctx.guild,
-                                kind="success",
-                                configured_emoji=str(confirm_icon),
+                                ctx.guild, kind="success", configured_emoji=str(confirm_icon)
                             )
                         except Exception:
                             pass
                         try:
                             cancel_icon = await get_status_emoji_for_guild(
-                                ctx.guild,
-                                kind="error",
-                                configured_emoji=str(cancel_icon),
+                                ctx.guild, kind="error", configured_emoji=str(cancel_icon)
                             )
                         except Exception:
                             pass
@@ -1331,9 +1152,7 @@ class ModBot(commands.Bot):
                         warning_icon = getattr(Config, "EMOJI_WARNING", "\u26a0\ufe0f")
                         try:
                             warning_icon = await get_status_emoji_for_guild(
-                                ctx.guild,
-                                kind="warning",
-                                configured_emoji=str(warning_icon),
+                                ctx.guild, kind="warning", configured_emoji=str(warning_icon)
                             )
                         except Exception:
                             pass
@@ -1406,75 +1225,72 @@ class ModBot(commands.Bot):
         except Exception:
             pass
 
+    # ─── Snipe Events ─────────────────────────────────────────────────────
+
     async def on_message_delete(self, message: discord.Message):
-        """Cache deleted messages for snipe command (with TTL)"""
+        """Cache deleted messages for snipe command."""
         if message.author.bot or not message.guild:
             return
-        
         if not message.content and not message.attachments:
             return
-        
-        await self.snipe_cache.add(message.channel.id, {
-            "content": message.content,
-            "author": message.author,
-            "created_at": message.created_at,
-            "attachments": [
-                a.url for a in message.attachments if not a.is_spoiler()
-            ],
-        })
-    
-    async def on_message_edit(
-        self, before: discord.Message, after: discord.Message
-    ):
-        """Cache edited messages for editsnipe command (with TTL)"""
-        if (
-            before.author.bot
-            or not before.guild
-            or before.content == after.content
-        ):
+
+        await self.snipe_cache.add(
+            message.channel.id,
+            {
+                "content": message.content,
+                "author": message.author,
+                "created_at": message.created_at,
+                "attachments": [a.url for a in message.attachments if not a.is_spoiler()],
+            },
+        )
+
+    async def on_message_edit(self, before: discord.Message, after: discord.Message):
+        """Cache edited messages for editsnipe command."""
+        if before.author.bot or not before.guild or before.content == after.content:
             return
-        
         if not before.content and not after.content:
             return
-        
-        await self.edit_snipe_cache.add(before.channel.id, {
-            "before": before.content,
-            "after": after.content,
-            "author": before.author,
-            "edited_at": after.edited_at or datetime.now(timezone.utc),
-            "jump_url": after.jump_url,
-        })
-    
+
+        await self.edit_snipe_cache.add(
+            before.channel.id,
+            {
+                "before": before.content,
+                "after": after.content,
+                "author": before.author,
+                "edited_at": after.edited_at or datetime.now(timezone.utc),
+                "jump_url": after.jump_url,
+            },
+        )
+
+    # ─── Global Error & Cleanup ───────────────────────────────────────────
+
     async def on_error(self, event: str, *args, **kwargs):
-        """Global event error handler"""
+        """Global event error handler."""
         self.errors_caught += 1
         logger.error(f"Error in event '{event}'", exc_info=sys.exc_info())
-    
+
     async def _cache_cleanup_loop(self):
-        """Background task to clean up expired cache entries"""
+        """Background task to periodically log cache stats."""
         await self.wait_until_ready()
         while not self.is_closed():
             try:
-                await asyncio.sleep(300)  # Every 5 minutes
-                
-                # Cleanup would happen automatically via TTL,
-                # but we can log stats here
-                logger.debug("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â§ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¹ Cache cleanup cycle completed")
-                
+                await asyncio.sleep(300)
+                logger.debug("[CACHE] Cleanup cycle completed")
             except Exception as e:
                 logger.error(f"Error in cache cleanup: {e}")
-    
+
     async def close(self):
+        """Graceful shutdown."""
         # Shutdown dashboard
         if self._dashboard_runner:
             try:
                 await self._dashboard_runner.cleanup()
-                logger.info("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ Dashboard server stopped")
+                logger.info("[OK] Dashboard server stopped")
             except Exception:
                 pass
-        """Cleanup on shutdown"""
-        logger.info("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¹Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¹ Shutting down ModBot...")
-        
+
+        logger.info("[BYE] Shutting down ModBot...")
+
         # Cancel cache cleanup task
         if self._cache_cleanup_task:
             self._cache_cleanup_task.cancel()
@@ -1482,84 +1298,73 @@ class ModBot(commands.Bot):
                 await self._cache_cleanup_task
             except asyncio.CancelledError:
                 pass
-        
+
         # Log session statistics
         uptime = (datetime.now(timezone.utc) - self.start_time).total_seconds()
-        logger.info("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â  Session Stats:")
-        logger.info(f"  ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Uptime: {uptime:.0f}s ({uptime/3600:.1f}h)")
-        logger.info(f"  ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Commands Used: {self.commands_used}")
-        logger.info(f"  ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Messages Seen: {self.messages_seen}")
-        logger.info(f"  ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Errors Caught: {self.errors_caught}")
-        
+        logger.info("Session Stats:")
+        logger.info(f"  Uptime:        {uptime:.0f}s ({uptime / 3600:.1f}h)")
+        logger.info(f"  Commands Used: {self.commands_used}")
+        logger.info(f"  Messages Seen: {self.messages_seen}")
+        logger.info(f"  Errors Caught: {self.errors_caught}")
+
         # Clear caches
         try:
             await self.snipe_cache.clear()
             await self.edit_snipe_cache.clear()
             await self.prefix_cache.clear()
-            logger.info("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ Caches cleared")
+            logger.info("[OK] Caches cleared")
         except Exception as e:
             logger.error(f"Error clearing caches: {e}")
-        
-        # Close database connections
+
+        # Close database
         try:
             if hasattr(self.db, "close"):
                 await self.db.close()
-            logger.info("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ Database connections closed")
+            logger.info("[OK] Database connections closed")
         except Exception as e:
             logger.error(f"Error closing database: {e}")
-        
-        # Close bot
+
         await super().close()
-        logger.info("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¦ Bot shutdown complete")
+        logger.info("[OK] Bot shutdown complete")
 
 
 # ==================== MAIN ENTRY POINT ====================
 async def main() -> int:
-    """Main entry point with error handling"""
-    # Validate environment
+    """Main entry point with Render-optimized startup."""
     validate_environment()
 
-    # Prevent multiple running instances
+    # Single-instance lock (skipped on Render)
     try:
         _acquire_single_instance_lock()
     except RuntimeError as e:
         logger.critical(str(e))
         return 1
-    
-    # Get token
+
     token = _get_modbot_token()
     if not token:
         logger.critical("=" * 60)
-        logger.critical(
-            "ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ ModBot token not found. Set MODBOT_DISCORD_TOKEN "
-            "(or DISCORD_TOKEN fallback)."
-        )
-        logger.critical("=" * 60)
-        logger.critical("Please create a .env file with:")
-        logger.critical("MODBOT_DISCORD_TOKEN=your_modbot_token_here")
-        logger.critical("LIFESIM_DISCORD_TOKEN=your_lifesimbot_token_here")
+        logger.critical("[FATAL] ModBot token not found.")
+        logger.critical("  Set MODBOT_DISCORD_TOKEN (or DISCORD_TOKEN fallback).")
         logger.critical("=" * 60)
         return 1
-    
-    # Create bot instance
+
     bot = ModBot()
-    lifesim_proc: Optional[subprocess.Popen] = None  # Started later in on_ready
 
     try:
         async with bot:
             # Start web dashboard FIRST so Render detects the open port
-            # before the bot connects to Discord (which can take time)
+            # before the bot connects to Discord (which can take time).
             if _DASHBOARD_AVAILABLE:
                 try:
-                    from web.app import start_dashboard
                     bot._dashboard_runner = await start_dashboard(bot)
-                    logger.info("Dashboard started (pre-connect)")
+                    logger.info("[OK] Dashboard started (pre-connect)")
                 except Exception as e:
-                    logger.warning(f"Dashboard failed to start: {e}")
+                    logger.warning(f"[WARN] Dashboard failed to start: {e}")
 
-            logger.info("\U0001f4e1 Starting bot...")
+            logger.info("[NET] Connecting to Discord...")
+
             # Retry loop for Discord rate limits (429)
-            # Prevents Render restart loops which make rate limiting worse
+            # Prevents Render restart loops which make rate limiting worse.
             max_retries = 5
             for attempt in range(max_retries):
                 try:
@@ -1568,43 +1373,38 @@ async def main() -> int:
                 except discord.HTTPException as e:
                     if e.status == 429 and attempt < max_retries - 1:
                         wait_time = 30 * (attempt + 1)
-                        logger.warning(f"Rate limited by Discord (attempt {attempt + 1}/{max_retries}). Waiting {wait_time}s...")
+                        logger.warning(
+                            f"[WARN] Rate limited by Discord (attempt {attempt + 1}/{max_retries}). "
+                            f"Waiting {wait_time}s..."
+                        )
                         await asyncio.sleep(wait_time)
                     else:
                         raise
     except KeyboardInterrupt:
-        logger.info("\U0001f6d1 Received shutdown signal (Ctrl+C)")
+        logger.info("[BYE] Received shutdown signal (Ctrl+C)")
     except discord.LoginFailure:
         logger.critical("=" * 60)
-        logger.critical("\u274c Invalid Discord token!")
-        logger.critical("=" * 60)
-        logger.critical(
-            "Check your .env file and ensure MODBOT_DISCORD_TOKEN "
-            "(or DISCORD_TOKEN fallback) is correct."
-        )
-        logger.critical(
-            "Get your token from: https://discord.com/developers/applications"
-        )
+        logger.critical("[FATAL] Invalid Discord token!")
+        logger.critical("  Check your .env or Render env vars.")
+        logger.critical("  Get your token: https://discord.com/developers/applications")
         logger.critical("=" * 60)
         return 1
     except discord.PrivilegedIntentsRequired:
         logger.critical("=" * 60)
-        logger.critical("\u274c Missing Privileged Intents!")
-        logger.critical("=" * 60)
-        logger.critical("Enable these in the Discord Developer Portal:")
-        logger.critical("\u2022 Server Members Intent")
-        logger.critical("\u2022 Message Content Intent")
-        logger.critical("\u2022 Presence Intent")
+        logger.critical("[FATAL] Missing Privileged Intents!")
+        logger.critical("  Enable in the Discord Developer Portal:")
+        logger.critical("    - Server Members Intent")
+        logger.critical("    - Message Content Intent")
+        logger.critical("    - Presence Intent")
         logger.critical("=" * 60)
         return 1
     except Exception as e:
-        logger.critical(f"\u274c Fatal error during bot execution: {e}", exc_info=True)
+        logger.critical(f"[FATAL] Fatal error during bot execution: {e}", exc_info=True)
         return 1
     finally:
-        _stop_lifesim_process(lifesim_proc)
         if not bot.is_closed():
             await bot.close()
-    
+
     return 0
 
 
@@ -1618,4 +1418,3 @@ if __name__ == "__main__":
     except Exception as e:
         logger.critical(f"Critical startup error: {e}", exc_info=True)
         sys.exit(1)
-
