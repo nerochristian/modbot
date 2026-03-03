@@ -20596,3 +20596,1516 @@ Traceback (most recent call last):
   File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1538, in _create_direct_connection
     raise ClientConnectorDNSError(req.connection_key, exc) from exc
 aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host gateway-us-east1-b.discord.gg:443 ssl:default [getaddrinfo failed]
+2026-02-28 19:03:39,087 | WARNING | discord.client | PyNaCl is not installed, voice will NOT be supported
+2026-02-28 19:03:39,088 | INFO | LifeSimBot | [1mLifeSimBot[0m starting up
+2026-02-28 19:03:39,089 | INFO | LifeSimBot | [2mPython[0m 3.14.0 | [2mdiscord.py[0m 2.7.0a | [2mOS[0m Windows 11
+2026-02-28 19:03:39,090 | INFO | LifeSimBot | [2mDB[0m C:\Users\Dell\mod\LifeSimBot\life_sim.db | [2mLog[0m C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-02-28 19:03:39,090 | INFO | LifeSimBot | [2mDebug[0m False | [2mFeatures[0m 16 enabled
+2026-02-28 19:03:39,093 | INFO | LifeSimBot | Connecting to Discord...
+2026-02-28 19:03:39,093 | INFO | discord.client | logging in using static token
+2026-02-28 19:03:39,498 | INFO | LifeSimBot | Initializing...
+2026-02-28 19:03:39,498 | INFO | bot.database | Initializing Database Schema...
+2026-02-28 19:03:39,591 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-02-28 19:03:39,593 | INFO | LifeSimBot | [OK] Database initialized
+2026-02-28 19:03:39,794 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-02-28 19:03:39,795 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-02-28 19:03:39,943 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-02-28 19:03:40,134 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-02-28 19:03:40,135 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-02-28 19:03:40,145 | INFO | LifeSimBot.Core | Core cog initialized
+2026-02-28 19:03:40,145 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-02-28 19:03:40,152 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-02-28 19:03:40,152 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-02-28 19:03:40,158 | INFO | LifeSimBot.Help | Help cog initialized
+2026-02-28 19:03:40,158 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-02-28 19:03:40,164 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-02-28 19:03:40,172 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-02-28 19:03:40,176 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-02-28 19:03:40,191 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-02-28 19:03:40,202 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-02-28 19:03:40,208 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-02-28 19:03:40,213 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-02-28 19:03:40,222 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-02-28 19:03:40,233 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-02-28 19:03:40,242 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-02-28 19:03:40,248 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-02-28 19:03:40,256 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-02-28 19:03:40,256 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-02-28 19:03:40,261 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-02-28 19:03:40,263 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-02-28 19:03:40,271 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-02-28 19:03:40,276 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-02-28 19:03:40,281 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-02-28 19:03:40,285 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-02-28 19:03:40,291 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-02-28 19:03:40,293 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-02-28 19:03:40,293 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
+2026-02-28 19:03:40,596 | INFO | LifeSimBot | [OK] Synced 97 application commands
+2026-02-28 19:03:40,596 | INFO | LifeSimBot | Background tasks started
+2026-02-28 19:03:40,597 | INFO | LifeSimBot | [OK] Ready (startup 1.10s)
+2026-02-28 19:03:41,229 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 7747acbfc6c4e64d8518e8576ec06459).
+2026-02-28 19:03:43,271 | INFO | LifeSimBot | ====================================================
+2026-02-28 19:03:43,271 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-02-28 19:03:43,272 | INFO | LifeSimBot | Guilds: 1 | Users: 29 | Latency: 52ms
+2026-02-28 19:03:43,272 | INFO | LifeSimBot | ====================================================
+2026-02-28 19:03:43,296 | INFO | LifeSimBot | Database auto-backup completed
+2026-02-28 19:12:42,333 | WARNING | discord.client | PyNaCl is not installed, voice will NOT be supported
+2026-02-28 19:12:42,333 | INFO | LifeSimBot | [1mLifeSimBot[0m starting up
+2026-02-28 19:12:42,334 | INFO | LifeSimBot | [2mPython[0m 3.14.0 | [2mdiscord.py[0m 2.7.0a | [2mOS[0m Windows 11
+2026-02-28 19:12:42,334 | INFO | LifeSimBot | [2mDB[0m C:\Users\Dell\mod\LifeSimBot\life_sim.db | [2mLog[0m C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-02-28 19:12:42,335 | INFO | LifeSimBot | [2mDebug[0m False | [2mFeatures[0m 16 enabled
+2026-02-28 19:12:42,338 | INFO | LifeSimBot | Connecting to Discord...
+2026-02-28 19:12:42,338 | INFO | discord.client | logging in using static token
+2026-02-28 19:12:42,646 | INFO | LifeSimBot | Initializing...
+2026-02-28 19:12:42,646 | INFO | bot.database | Initializing Database Schema...
+2026-02-28 19:12:42,700 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-02-28 19:12:42,702 | INFO | LifeSimBot | [OK] Database initialized
+2026-02-28 19:12:42,708 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-02-28 19:12:42,709 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-02-28 19:12:42,712 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-02-28 19:12:42,715 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-02-28 19:12:42,715 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-02-28 19:12:42,722 | INFO | LifeSimBot.Core | Core cog initialized
+2026-02-28 19:12:42,722 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-02-28 19:12:42,727 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-02-28 19:12:42,727 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-02-28 19:12:42,731 | INFO | LifeSimBot.Help | Help cog initialized
+2026-02-28 19:12:42,731 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-02-28 19:12:42,735 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-02-28 19:12:42,740 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-02-28 19:12:42,746 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-02-28 19:12:42,750 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-02-28 19:12:42,755 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-02-28 19:12:42,760 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-02-28 19:12:42,764 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-02-28 19:12:42,770 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-02-28 19:12:42,778 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-02-28 19:12:42,785 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-02-28 19:12:42,790 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-02-28 19:12:42,795 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-02-28 19:12:42,796 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-02-28 19:12:42,800 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-02-28 19:12:42,803 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-02-28 19:12:42,808 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-02-28 19:12:42,812 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-02-28 19:12:42,816 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-02-28 19:12:42,819 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-02-28 19:12:42,824 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-02-28 19:12:42,827 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-02-28 19:12:42,827 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
+2026-02-28 19:12:43,100 | INFO | LifeSimBot | [OK] Synced 97 application commands
+2026-02-28 19:12:43,101 | INFO | LifeSimBot | Background tasks started
+2026-02-28 19:12:43,101 | INFO | LifeSimBot | [OK] Ready (startup 0.46s)
+2026-02-28 19:12:43,587 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: d7cad37839fa0e7c4540db6619aea615).
+2026-02-28 19:12:45,613 | INFO | LifeSimBot | ====================================================
+2026-02-28 19:12:45,614 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-02-28 19:12:45,614 | INFO | LifeSimBot | Guilds: 1 | Users: 29 | Latency: 68ms
+2026-02-28 19:12:45,614 | INFO | LifeSimBot | ====================================================
+2026-02-28 19:12:45,628 | INFO | LifeSimBot | Database auto-backup completed
+2026-02-28 19:35:49,919 | WARNING | discord.client | PyNaCl is not installed, voice will NOT be supported
+2026-02-28 19:35:49,921 | INFO | LifeSimBot | [1mLifeSimBot[0m starting up
+2026-02-28 19:35:49,921 | INFO | LifeSimBot | [2mPython[0m 3.14.0 | [2mdiscord.py[0m 2.7.0a | [2mOS[0m Windows 11
+2026-02-28 19:35:49,922 | INFO | LifeSimBot | [2mDB[0m C:\Users\Dell\mod\LifeSimBot\life_sim.db | [2mLog[0m C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-02-28 19:35:49,922 | INFO | LifeSimBot | [2mDebug[0m False | [2mFeatures[0m 16 enabled
+2026-02-28 19:35:49,924 | INFO | LifeSimBot | Connecting to Discord...
+2026-02-28 19:35:49,925 | INFO | discord.client | logging in using static token
+2026-02-28 19:35:50,497 | INFO | LifeSimBot | Initializing...
+2026-02-28 19:35:50,498 | INFO | bot.database | Initializing Database Schema...
+2026-02-28 19:35:50,573 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-02-28 19:35:50,577 | INFO | LifeSimBot | [OK] Database initialized
+2026-02-28 19:35:50,584 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-02-28 19:35:50,585 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-02-28 19:35:50,590 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-02-28 19:35:50,595 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-02-28 19:35:50,595 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-02-28 19:35:50,606 | INFO | LifeSimBot.Core | Core cog initialized
+2026-02-28 19:35:50,607 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-02-28 19:35:50,611 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-02-28 19:35:50,612 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-02-28 19:35:50,619 | INFO | LifeSimBot.Help | Help cog initialized
+2026-02-28 19:35:50,620 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-02-28 19:35:50,628 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-02-28 19:35:50,641 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-02-28 19:35:50,647 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-02-28 19:35:50,653 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-02-28 19:35:50,660 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-02-28 19:35:50,664 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-02-28 19:35:50,668 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-02-28 19:35:50,679 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-02-28 19:35:50,690 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-02-28 19:35:50,697 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-02-28 19:35:50,703 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-02-28 19:35:50,708 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-02-28 19:35:50,709 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-02-28 19:35:50,718 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-02-28 19:35:50,721 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-02-28 19:35:50,726 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-02-28 19:35:50,729 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-02-28 19:35:50,732 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-02-28 19:35:50,739 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-02-28 19:35:50,746 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-02-28 19:35:50,749 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-02-28 19:35:50,749 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
+2026-02-28 19:35:51,120 | INFO | LifeSimBot | [OK] Synced 97 application commands
+2026-02-28 19:35:51,121 | INFO | LifeSimBot | Background tasks started
+2026-02-28 19:35:51,121 | INFO | LifeSimBot | [OK] Ready (startup 0.62s)
+2026-02-28 19:35:51,448 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 5366500309e305cb3b869eb17c538efa).
+2026-02-28 19:35:53,483 | INFO | LifeSimBot | ====================================================
+2026-02-28 19:35:53,483 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-02-28 19:35:53,484 | INFO | LifeSimBot | Guilds: 1 | Users: 29 | Latency: 43ms
+2026-02-28 19:35:53,485 | INFO | LifeSimBot | ====================================================
+2026-02-28 19:35:53,508 | INFO | LifeSimBot | Database auto-backup completed
+2026-02-28 19:47:33,737 | WARNING | discord.client | PyNaCl is not installed, voice will NOT be supported
+2026-02-28 19:47:33,738 | INFO | LifeSimBot | [1mLifeSimBot[0m starting up
+2026-02-28 19:47:33,739 | INFO | LifeSimBot | [2mPython[0m 3.14.0 | [2mdiscord.py[0m 2.7.0a | [2mOS[0m Windows 11
+2026-02-28 19:47:33,739 | INFO | LifeSimBot | [2mDB[0m C:\Users\Dell\mod\LifeSimBot\life_sim.db | [2mLog[0m C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-02-28 19:47:33,739 | INFO | LifeSimBot | [2mDebug[0m False | [2mFeatures[0m 16 enabled
+2026-02-28 19:47:33,742 | INFO | LifeSimBot | Connecting to Discord...
+2026-02-28 19:47:33,742 | INFO | discord.client | logging in using static token
+2026-02-28 19:47:34,028 | INFO | LifeSimBot | Initializing...
+2026-02-28 19:47:34,028 | INFO | bot.database | Initializing Database Schema...
+2026-02-28 19:47:34,098 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-02-28 19:47:34,103 | INFO | LifeSimBot | [OK] Database initialized
+2026-02-28 19:47:34,107 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-02-28 19:47:34,108 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-02-28 19:47:34,110 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-02-28 19:47:34,113 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-02-28 19:47:34,115 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-02-28 19:47:34,121 | INFO | LifeSimBot.Core | Core cog initialized
+2026-02-28 19:47:34,122 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-02-28 19:47:34,126 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-02-28 19:47:34,126 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-02-28 19:47:34,131 | INFO | LifeSimBot.Help | Help cog initialized
+2026-02-28 19:47:34,131 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-02-28 19:47:34,136 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-02-28 19:47:34,141 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-02-28 19:47:34,146 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-02-28 19:47:34,151 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-02-28 19:47:34,156 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-02-28 19:47:34,160 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-02-28 19:47:34,165 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-02-28 19:47:34,170 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-02-28 19:47:34,177 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-02-28 19:47:34,185 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-02-28 19:47:34,190 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-02-28 19:47:34,197 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-02-28 19:47:34,198 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-02-28 19:47:34,206 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-02-28 19:47:34,208 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-02-28 19:47:34,215 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-02-28 19:47:34,218 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-02-28 19:47:34,222 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-02-28 19:47:34,225 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-02-28 19:47:34,233 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-02-28 19:47:34,236 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-02-28 19:47:34,237 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
+2026-02-28 19:47:34,595 | INFO | LifeSimBot | [OK] Synced 97 application commands
+2026-02-28 19:47:34,597 | INFO | LifeSimBot | Background tasks started
+2026-02-28 19:47:34,598 | INFO | LifeSimBot | [OK] Ready (startup 0.57s)
+2026-02-28 19:47:34,933 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 5b3f3aa9423e511c887ee0472c760288).
+2026-02-28 19:47:36,963 | INFO | LifeSimBot | ====================================================
+2026-02-28 19:47:36,963 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-02-28 19:47:36,964 | INFO | LifeSimBot | Guilds: 1 | Users: 29 | Latency: 41ms
+2026-02-28 19:47:36,964 | INFO | LifeSimBot | ====================================================
+2026-02-28 19:47:36,985 | INFO | LifeSimBot | Database auto-backup completed
+2026-02-28 19:50:12,917 | WARNING | discord.client | PyNaCl is not installed, voice will NOT be supported
+2026-02-28 19:50:12,918 | INFO | LifeSimBot | [1mLifeSimBot[0m starting up
+2026-02-28 19:50:12,919 | INFO | LifeSimBot | [2mPython[0m 3.14.0 | [2mdiscord.py[0m 2.7.0a | [2mOS[0m Windows 11
+2026-02-28 19:50:12,919 | INFO | LifeSimBot | [2mDB[0m C:\Users\Dell\mod\LifeSimBot\life_sim.db | [2mLog[0m C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-02-28 19:50:12,919 | INFO | LifeSimBot | [2mDebug[0m False | [2mFeatures[0m 16 enabled
+2026-02-28 19:50:12,921 | INFO | LifeSimBot | Connecting to Discord...
+2026-02-28 19:50:12,922 | INFO | discord.client | logging in using static token
+2026-02-28 19:50:13,466 | INFO | LifeSimBot | Initializing...
+2026-02-28 19:50:13,466 | INFO | bot.database | Initializing Database Schema...
+2026-02-28 19:50:13,536 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-02-28 19:50:13,539 | INFO | LifeSimBot | [OK] Database initialized
+2026-02-28 19:50:13,545 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-02-28 19:50:13,546 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-02-28 19:50:13,550 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-02-28 19:50:13,552 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-02-28 19:50:13,553 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-02-28 19:50:13,560 | INFO | LifeSimBot.Core | Core cog initialized
+2026-02-28 19:50:13,561 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-02-28 19:50:13,564 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-02-28 19:50:13,565 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-02-28 19:50:13,569 | INFO | LifeSimBot.Help | Help cog initialized
+2026-02-28 19:50:13,569 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-02-28 19:50:13,575 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-02-28 19:50:13,583 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-02-28 19:50:13,589 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-02-28 19:50:13,594 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-02-28 19:50:13,601 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-02-28 19:50:13,605 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-02-28 19:50:13,609 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-02-28 19:50:13,615 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-02-28 19:50:13,622 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-02-28 19:50:13,630 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-02-28 19:50:13,634 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-02-28 19:50:13,640 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-02-28 19:50:13,641 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-02-28 19:50:13,647 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-02-28 19:50:13,649 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-02-28 19:50:13,656 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-02-28 19:50:13,661 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-02-28 19:50:13,667 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-02-28 19:50:13,672 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-02-28 19:50:13,681 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-02-28 19:50:13,684 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-02-28 19:50:13,685 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
+2026-02-28 19:50:13,979 | INFO | LifeSimBot | [OK] Synced 97 application commands
+2026-02-28 19:50:13,979 | INFO | LifeSimBot | Background tasks started
+2026-02-28 19:50:13,980 | INFO | LifeSimBot | [OK] Ready (startup 0.51s)
+2026-02-28 19:50:14,385 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 27bf97e448dc1f803993f638f28c6d2a).
+2026-02-28 19:50:16,426 | INFO | LifeSimBot | ====================================================
+2026-02-28 19:50:16,427 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-02-28 19:50:16,428 | INFO | LifeSimBot | Guilds: 1 | Users: 29 | Latency: 48ms
+2026-02-28 19:50:16,428 | INFO | LifeSimBot | ====================================================
+2026-02-28 19:50:16,446 | INFO | LifeSimBot | Database auto-backup completed
+2026-02-28 20:00:22,311 | WARNING | discord.client | PyNaCl is not installed, voice will NOT be supported
+2026-02-28 20:00:22,312 | INFO | LifeSimBot | [1mLifeSimBot[0m starting up
+2026-02-28 20:00:22,312 | INFO | LifeSimBot | [2mPython[0m 3.14.0 | [2mdiscord.py[0m 2.7.0a | [2mOS[0m Windows 11
+2026-02-28 20:00:22,313 | INFO | LifeSimBot | [2mDB[0m C:\Users\Dell\mod\LifeSimBot\life_sim.db | [2mLog[0m C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-02-28 20:00:22,313 | INFO | LifeSimBot | [2mDebug[0m False | [2mFeatures[0m 16 enabled
+2026-02-28 20:00:22,315 | INFO | LifeSimBot | Connecting to Discord...
+2026-02-28 20:00:22,316 | INFO | discord.client | logging in using static token
+2026-02-28 20:00:22,681 | INFO | LifeSimBot | Initializing...
+2026-02-28 20:00:22,682 | INFO | bot.database | Initializing Database Schema...
+2026-02-28 20:00:22,763 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-02-28 20:00:22,765 | INFO | LifeSimBot | [OK] Database initialized
+2026-02-28 20:00:22,771 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-02-28 20:00:22,772 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-02-28 20:00:22,775 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-02-28 20:00:22,779 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-02-28 20:00:22,780 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-02-28 20:00:22,789 | INFO | LifeSimBot.Core | Core cog initialized
+2026-02-28 20:00:22,790 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-02-28 20:00:22,795 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-02-28 20:00:22,795 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-02-28 20:00:22,799 | INFO | LifeSimBot.Help | Help cog initialized
+2026-02-28 20:00:22,799 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-02-28 20:00:22,803 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-02-28 20:00:22,810 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-02-28 20:00:22,814 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-02-28 20:00:22,817 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-02-28 20:00:22,821 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-02-28 20:00:22,825 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-02-28 20:00:22,828 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-02-28 20:00:22,833 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-02-28 20:00:22,839 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-02-28 20:00:22,843 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-02-28 20:00:22,847 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-02-28 20:00:22,851 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-02-28 20:00:22,851 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-02-28 20:00:22,855 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-02-28 20:00:22,856 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-02-28 20:00:22,860 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-02-28 20:00:22,862 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-02-28 20:00:22,865 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-02-28 20:00:22,868 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-02-28 20:00:22,872 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-02-28 20:00:22,875 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-02-28 20:00:22,876 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
+2026-02-28 20:00:23,143 | INFO | LifeSimBot | [OK] Synced 97 application commands
+2026-02-28 20:00:23,143 | INFO | LifeSimBot | Background tasks started
+2026-02-28 20:00:23,144 | INFO | LifeSimBot | [OK] Ready (startup 0.46s)
+2026-02-28 20:00:23,457 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 335693cf88ef1897a99680db09307b48).
+2026-02-28 20:00:25,501 | INFO | LifeSimBot | ====================================================
+2026-02-28 20:00:25,501 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-02-28 20:00:25,502 | INFO | LifeSimBot | Guilds: 1 | Users: 29 | Latency: 40ms
+2026-02-28 20:00:25,502 | INFO | LifeSimBot | ====================================================
+2026-02-28 20:00:25,524 | INFO | LifeSimBot | Database auto-backup completed
+2026-02-28 20:09:45,796 | WARNING | discord.client | PyNaCl is not installed, voice will NOT be supported
+2026-02-28 20:09:45,804 | INFO | LifeSimBot | [1mLifeSimBot[0m starting up
+2026-02-28 20:09:45,809 | INFO | LifeSimBot | [2mPython[0m 3.14.0 | [2mdiscord.py[0m 2.7.0a | [2mOS[0m Windows 11
+2026-02-28 20:09:45,810 | INFO | LifeSimBot | [2mDB[0m C:\Users\Dell\mod\LifeSimBot\life_sim.db | [2mLog[0m C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-02-28 20:09:45,811 | INFO | LifeSimBot | [2mDebug[0m False | [2mFeatures[0m 16 enabled
+2026-02-28 20:09:45,814 | INFO | LifeSimBot | Connecting to Discord...
+2026-02-28 20:09:45,815 | INFO | discord.client | logging in using static token
+2026-02-28 20:09:46,144 | INFO | LifeSimBot | Initializing...
+2026-02-28 20:09:46,158 | INFO | bot.database | Initializing Database Schema...
+2026-02-28 20:09:46,480 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-02-28 20:09:46,486 | INFO | LifeSimBot | [OK] Database initialized
+2026-02-28 20:09:46,496 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-02-28 20:09:46,503 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-02-28 20:09:46,507 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-02-28 20:09:46,513 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-02-28 20:09:46,514 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-02-28 20:09:46,528 | INFO | LifeSimBot.Core | Core cog initialized
+2026-02-28 20:09:46,530 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-02-28 20:09:46,538 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-02-28 20:09:46,540 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-02-28 20:09:46,546 | INFO | LifeSimBot.Help | Help cog initialized
+2026-02-28 20:09:46,549 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-02-28 20:09:46,555 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-02-28 20:09:46,565 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-02-28 20:09:46,575 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-02-28 20:09:46,581 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-02-28 20:09:46,595 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-02-28 20:09:46,607 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-02-28 20:09:46,613 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-02-28 20:09:46,625 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-02-28 20:09:46,644 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-02-28 20:09:46,660 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-02-28 20:09:46,677 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-02-28 20:09:46,692 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-02-28 20:09:46,695 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-02-28 20:09:46,709 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-02-28 20:09:46,714 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-02-28 20:09:46,722 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-02-28 20:09:46,728 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-02-28 20:09:46,740 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-02-28 20:09:46,751 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-02-28 20:09:46,762 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-02-28 20:09:46,770 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-02-28 20:09:46,772 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
+2026-02-28 20:09:47,037 | INFO | LifeSimBot | [OK] Synced 97 application commands
+2026-02-28 20:09:47,039 | INFO | LifeSimBot | Background tasks started
+2026-02-28 20:09:47,040 | INFO | LifeSimBot | [OK] Ready (startup 0.90s)
+2026-02-28 20:09:47,833 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 8964860d8c6e2f17a7be09610895551b).
+2026-02-28 20:09:49,856 | INFO | LifeSimBot | ====================================================
+2026-02-28 20:09:49,856 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-02-28 20:09:49,856 | INFO | LifeSimBot | Guilds: 1 | Users: 29 | Latency: 59ms
+2026-02-28 20:09:49,857 | INFO | LifeSimBot | ====================================================
+2026-02-28 20:09:49,874 | INFO | LifeSimBot | Database auto-backup completed
+2026-02-28 20:39:21,695 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 20:39:21,697 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 20:39:21,699 | ERROR | discord.client | Attempting a reconnect in 0.38s
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1532, in _create_direct_connection
+    hosts = await self._resolve_host(host, port, traces=traces)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1148, in _resolve_host
+    return await asyncio.shield(resolved_host_task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1179, in _resolve_host_with_throttle
+    addrs = await self._resolver.resolve(host, port, family=self._family)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\resolver.py", line 40, in resolve
+    infos = await self._loop.getaddrinfo(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\base_events.py", line 936, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 983, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\client.py", line 724, in connect
+    self.ws = await asyncio.wait_for(coro, timeout=60.0)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\gateway.py", line 383, in from_client
+    socket = await client.http.ws_connect(str(url))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\http.py", line 566, in ws_connect
+    return await self.__session.ws_connect(url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 1076, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 779, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 734, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        req, traces=traces, timeout=real_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 642, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1209, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1538, in _create_direct_connection
+    raise ClientConnectorDNSError(req.connection_key, exc) from exc
+aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host gateway-us-east1-b.discord.gg:443 ssl:default [getaddrinfo failed]
+2026-02-28 20:39:22,498 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 20:39:22,499 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 20:39:22,883 | ERROR | discord.client | Attempting a reconnect in 1.47s
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1532, in _create_direct_connection
+    hosts = await self._resolve_host(host, port, traces=traces)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1148, in _resolve_host
+    return await asyncio.shield(resolved_host_task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1179, in _resolve_host_with_throttle
+    addrs = await self._resolver.resolve(host, port, family=self._family)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\resolver.py", line 40, in resolve
+    infos = await self._loop.getaddrinfo(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\base_events.py", line 936, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 983, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\client.py", line 724, in connect
+    self.ws = await asyncio.wait_for(coro, timeout=60.0)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\gateway.py", line 383, in from_client
+    socket = await client.http.ws_connect(str(url))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\http.py", line 566, in ws_connect
+    return await self.__session.ws_connect(url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 1076, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 779, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 734, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        req, traces=traces, timeout=real_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 642, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1209, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1538, in _create_direct_connection
+    raise ClientConnectorDNSError(req.connection_key, exc) from exc
+aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host gateway-us-east1-b.discord.gg:443 ssl:default [getaddrinfo failed]
+2026-02-28 20:39:24,372 | ERROR | discord.client | Attempting a reconnect in 0.74s
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1532, in _create_direct_connection
+    hosts = await self._resolve_host(host, port, traces=traces)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1148, in _resolve_host
+    return await asyncio.shield(resolved_host_task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1179, in _resolve_host_with_throttle
+    addrs = await self._resolver.resolve(host, port, family=self._family)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\resolver.py", line 40, in resolve
+    infos = await self._loop.getaddrinfo(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\base_events.py", line 936, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 983, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\client.py", line 724, in connect
+    self.ws = await asyncio.wait_for(coro, timeout=60.0)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\gateway.py", line 383, in from_client
+    socket = await client.http.ws_connect(str(url))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\http.py", line 566, in ws_connect
+    return await self.__session.ws_connect(url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 1076, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 779, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 734, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        req, traces=traces, timeout=real_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 642, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1209, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1538, in _create_direct_connection
+    raise ClientConnectorDNSError(req.connection_key, exc) from exc
+aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host gateway-us-east1-b.discord.gg:443 ssl:default [getaddrinfo failed]
+2026-02-28 20:39:25,134 | ERROR | discord.client | Attempting a reconnect in 11.35s
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1532, in _create_direct_connection
+    hosts = await self._resolve_host(host, port, traces=traces)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1148, in _resolve_host
+    return await asyncio.shield(resolved_host_task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1179, in _resolve_host_with_throttle
+    addrs = await self._resolver.resolve(host, port, family=self._family)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\resolver.py", line 40, in resolve
+    infos = await self._loop.getaddrinfo(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\base_events.py", line 936, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 983, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\client.py", line 724, in connect
+    self.ws = await asyncio.wait_for(coro, timeout=60.0)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\gateway.py", line 383, in from_client
+    socket = await client.http.ws_connect(str(url))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\http.py", line 566, in ws_connect
+    return await self.__session.ws_connect(url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 1076, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 779, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 734, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        req, traces=traces, timeout=real_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 642, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1209, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1538, in _create_direct_connection
+    raise ClientConnectorDNSError(req.connection_key, exc) from exc
+aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host gateway-us-east1-b.discord.gg:443 ssl:default [getaddrinfo failed]
+2026-02-28 22:29:31,230 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,232 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,233 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,235 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,236 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,236 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,237 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,238 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,238 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,240 | INFO | LifeSimBot | Database auto-backup completed
+2026-02-28 22:29:31,241 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,242 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,242 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,243 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,244 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,244 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,245 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,245 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,246 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,246 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,247 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,248 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,248 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:31,249 | INFO | LifeSimBot | Database auto-backup completed
+2026-02-28 22:29:31,546 | INFO | discord.gateway | Shard ID None session has been invalidated.
+2026-02-28 22:29:36,973 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 44f232ce60a17157a541dcb9b2dd0f53).
+2026-02-28 22:29:39,038 | INFO | LifeSimBot | ====================================================
+2026-02-28 22:29:39,039 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-02-28 22:29:39,041 | INFO | LifeSimBot | Guilds: 1 | Users: 28 | Latency: 5016ms
+2026-02-28 22:29:39,043 | INFO | LifeSimBot | ====================================================
+2026-02-28 22:29:39,048 | ERROR | discord.client | Attempting a reconnect in 1.98s
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1268, in _wrap_create_connection
+    sock = await aiohappyeyeballs.start_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohappyeyeballs\impl.py", line 122, in start_connection
+    raise first_exception
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohappyeyeballs\impl.py", line 73, in start_connection
+    sock = await _connect_sock(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohappyeyeballs\impl.py", line 208, in _connect_sock
+    await loop.sock_connect(sock, address)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\proactor_events.py", line 726, in sock_connect
+    return await self._proactor.connect(sock, address)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\windows_events.py", line 804, in _poll
+    value = callback(transferred, key, ov)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\windows_events.py", line 600, in finish_connect
+    ov.getresult()
+    ~~~~~~~~~~~~^^
+FileNotFoundError: [WinError 53] The network path was not found
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\client.py", line 724, in connect
+    self.ws = await asyncio.wait_for(coro, timeout=60.0)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\gateway.py", line 383, in from_client
+    socket = await client.http.ws_connect(str(url))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\http.py", line 566, in ws_connect
+    return await self.__session.ws_connect(url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 1076, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 779, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 734, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        req, traces=traces, timeout=real_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 642, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1209, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1581, in _create_direct_connection
+    raise last_exc
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1550, in _create_direct_connection
+    transp, proto = await self._wrap_create_connection(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1291, in _wrap_create_connection
+    raise client_error(req.connection_key, exc) from exc
+aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host gateway-us-east1-b.discord.gg:443 ssl:default [The network path was not found]
+2026-02-28 22:29:41,096 | ERROR | discord.client | Attempting a reconnect in 2.75s
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1268, in _wrap_create_connection
+    sock = await aiohappyeyeballs.start_connection(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohappyeyeballs\impl.py", line 122, in start_connection
+    raise first_exception
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohappyeyeballs\impl.py", line 73, in start_connection
+    sock = await _connect_sock(
+           ^^^^^^^^^^^^^^^^^^^^
+    ...<6 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohappyeyeballs\impl.py", line 208, in _connect_sock
+    await loop.sock_connect(sock, address)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\proactor_events.py", line 726, in sock_connect
+    return await self._proactor.connect(sock, address)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\windows_events.py", line 804, in _poll
+    value = callback(transferred, key, ov)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\windows_events.py", line 600, in finish_connect
+    ov.getresult()
+    ~~~~~~~~~~~~^^
+FileNotFoundError: [WinError 53] The network path was not found
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\client.py", line 724, in connect
+    self.ws = await asyncio.wait_for(coro, timeout=60.0)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\gateway.py", line 383, in from_client
+    socket = await client.http.ws_connect(str(url))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\http.py", line 566, in ws_connect
+    return await self.__session.ws_connect(url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 1076, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 779, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 734, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        req, traces=traces, timeout=real_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 642, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1209, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1581, in _create_direct_connection
+    raise last_exc
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1550, in _create_direct_connection
+    transp, proto = await self._wrap_create_connection(
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1291, in _wrap_create_connection
+    raise client_error(req.connection_key, exc) from exc
+aiohttp.client_exceptions.ClientConnectorError: Cannot connect to host gateway-us-east1-b.discord.gg:443 ssl:default [The network path was not found]
+2026-02-28 22:29:43,871 | ERROR | discord.client | Attempting a reconnect in 7.78s
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1532, in _create_direct_connection
+    hosts = await self._resolve_host(host, port, traces=traces)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1148, in _resolve_host
+    return await asyncio.shield(resolved_host_task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1179, in _resolve_host_with_throttle
+    addrs = await self._resolver.resolve(host, port, family=self._family)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\resolver.py", line 40, in resolve
+    infos = await self._loop.getaddrinfo(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\base_events.py", line 936, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 983, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\client.py", line 724, in connect
+    self.ws = await asyncio.wait_for(coro, timeout=60.0)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\gateway.py", line 383, in from_client
+    socket = await client.http.ws_connect(str(url))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\http.py", line 566, in ws_connect
+    return await self.__session.ws_connect(url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 1076, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 779, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 734, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        req, traces=traces, timeout=real_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 642, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1209, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1538, in _create_direct_connection
+    raise ClientConnectorDNSError(req.connection_key, exc) from exc
+aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host gateway-us-east1-b.discord.gg:443 ssl:default [getaddrinfo failed]
+2026-02-28 22:29:49,870 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-02-28 22:29:51,669 | ERROR | discord.client | Attempting a reconnect in 12.29s
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1532, in _create_direct_connection
+    hosts = await self._resolve_host(host, port, traces=traces)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1148, in _resolve_host
+    return await asyncio.shield(resolved_host_task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1179, in _resolve_host_with_throttle
+    addrs = await self._resolver.resolve(host, port, family=self._family)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\resolver.py", line 40, in resolve
+    infos = await self._loop.getaddrinfo(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\base_events.py", line 936, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 983, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\client.py", line 724, in connect
+    self.ws = await asyncio.wait_for(coro, timeout=60.0)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\gateway.py", line 383, in from_client
+    socket = await client.http.ws_connect(str(url))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\http.py", line 566, in ws_connect
+    return await self.__session.ws_connect(url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 1076, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 779, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 734, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        req, traces=traces, timeout=real_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 642, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1209, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1538, in _create_direct_connection
+    raise ClientConnectorDNSError(req.connection_key, exc) from exc
+aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host gateway-us-east1-b.discord.gg:443 ssl:default [getaddrinfo failed]
+2026-02-28 22:30:03,975 | ERROR | discord.client | Attempting a reconnect in 19.54s
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1532, in _create_direct_connection
+    hosts = await self._resolve_host(host, port, traces=traces)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1148, in _resolve_host
+    return await asyncio.shield(resolved_host_task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1179, in _resolve_host_with_throttle
+    addrs = await self._resolver.resolve(host, port, family=self._family)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\resolver.py", line 40, in resolve
+    infos = await self._loop.getaddrinfo(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\base_events.py", line 936, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 983, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\client.py", line 724, in connect
+    self.ws = await asyncio.wait_for(coro, timeout=60.0)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\gateway.py", line 383, in from_client
+    socket = await client.http.ws_connect(str(url))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\http.py", line 566, in ws_connect
+    return await self.__session.ws_connect(url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 1076, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 779, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 734, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        req, traces=traces, timeout=real_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 642, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1209, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1538, in _create_direct_connection
+    raise ClientConnectorDNSError(req.connection_key, exc) from exc
+aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host gateway-us-east1-b.discord.gg:443 ssl:default [getaddrinfo failed]
+2026-03-01 16:29:25,251 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,298 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,315 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:25,603 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,909 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,912 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,914 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,915 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,917 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,920 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,921 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,923 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,926 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,928 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,928 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,929 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,930 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,931 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,933 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,934 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,935 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,939 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,940 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,943 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,946 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:25,947 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,950 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,951 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,955 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,959 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,960 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,962 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,965 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:25,996 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,025 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:26,146 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,169 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,195 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:26,214 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,272 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,310 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,333 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,357 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:26,390 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,415 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,438 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,473 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:26,504 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,591 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,625 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:26,668 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,689 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,707 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,715 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:26,742 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,776 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,803 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:26,808 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:26,850 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:26,885 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:26,971 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:27,188 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:27,255 | INFO | discord.gateway | Shard ID None session has been invalidated.
+2026-03-01 16:29:27,267 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:27,288 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:27,313 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:27,330 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:27,340 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:27,437 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:27,476 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:27,499 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:27,530 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:27,562 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:27,612 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:27,619 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:27,673 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:27,681 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:27,697 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:27,718 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:27,738 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:27,788 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:27,957 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:27,963 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:27,979 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,018 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 16:29:28,049 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,069 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,071 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,073 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,081 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,089 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,127 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,151 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,182 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,198 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,221 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,254 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,296 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,359 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,381 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,396 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,402 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,420 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,434 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,443 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,445 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,446 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,454 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,459 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,486 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,504 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,512 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,516 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,522 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,531 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,542 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,547 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,550 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,558 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,563 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,574 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,580 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,595 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,647 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,695 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,721 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,766 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,795 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,862 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,881 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,895 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,925 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,948 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:28,988 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:29,040 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:29,088 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:29,225 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:29,378 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:29,455 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:29,685 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:29,791 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:29,929 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:30,051 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:30,146 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:30,256 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:30,292 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:30,343 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:30,448 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:30,475 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:30,592 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:30,617 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:30,667 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 16:29:30,678 | WARNING | discord.gateway | WebSocket in shard ID None is ratelimited, waiting 56.13 seconds
+2026-03-01 16:29:33,042 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 976923141174896b207484344a3ed069).
+2026-03-01 16:29:35,090 | INFO | LifeSimBot | ====================================================
+2026-03-01 16:29:35,092 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-03-01 16:29:35,093 | INFO | LifeSimBot | Guilds: 1 | Users: 28 | Latency: 5037ms
+2026-03-01 16:29:35,094 | INFO | LifeSimBot | ====================================================
+2026-03-01 16:30:26,822 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 17:11:33,368 | WARNING | discord.client | PyNaCl is not installed, voice will NOT be supported
+2026-03-01 17:11:33,369 | INFO | LifeSimBot | [1mLifeSimBot[0m starting up
+2026-03-01 17:11:33,369 | INFO | LifeSimBot | [2mPython[0m 3.14.0 | [2mdiscord.py[0m 2.7.0a | [2mOS[0m Windows 11
+2026-03-01 17:11:33,369 | INFO | LifeSimBot | [2mDB[0m C:\Users\Dell\mod\LifeSimBot\life_sim.db | [2mLog[0m C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-03-01 17:11:33,369 | INFO | LifeSimBot | [2mDebug[0m False | [2mFeatures[0m 16 enabled
+2026-03-01 17:11:33,371 | INFO | LifeSimBot | Connecting to Discord...
+2026-03-01 17:11:33,371 | INFO | discord.client | logging in using static token
+2026-03-01 17:11:33,767 | INFO | LifeSimBot | Initializing...
+2026-03-01 17:11:33,767 | INFO | bot.database | Initializing Database Schema...
+2026-03-01 17:11:33,803 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-03-01 17:11:33,804 | INFO | LifeSimBot | [OK] Database initialized
+2026-03-01 17:11:33,900 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-03-01 17:11:33,901 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-03-01 17:11:33,973 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-03-01 17:11:34,065 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-03-01 17:11:34,066 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-03-01 17:11:34,072 | INFO | LifeSimBot.Core | Core cog initialized
+2026-03-01 17:11:34,073 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-03-01 17:11:34,077 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-03-01 17:11:34,077 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-03-01 17:11:34,081 | INFO | LifeSimBot.Help | Help cog initialized
+2026-03-01 17:11:34,081 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-03-01 17:11:34,087 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-03-01 17:11:34,093 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-03-01 17:11:34,096 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-03-01 17:11:34,101 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-03-01 17:11:34,107 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-03-01 17:11:34,111 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-03-01 17:11:34,116 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-03-01 17:11:34,122 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-03-01 17:11:34,131 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-03-01 17:11:34,139 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-03-01 17:11:34,144 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-03-01 17:11:34,152 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-03-01 17:11:34,153 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-03-01 17:11:34,158 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-03-01 17:11:34,161 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-03-01 17:11:34,167 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-03-01 17:11:34,170 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-03-01 17:11:34,174 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-03-01 17:11:34,177 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-03-01 17:11:34,181 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-03-01 17:11:34,183 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-03-01 17:11:34,183 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
+2026-03-01 17:11:34,569 | INFO | LifeSimBot | [OK] Synced 97 application commands
+2026-03-01 17:11:34,569 | INFO | LifeSimBot | Background tasks started
+2026-03-01 17:11:34,570 | INFO | LifeSimBot | [OK] Ready (startup 0.80s)
+2026-03-01 17:11:34,889 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: f4301f542af05bd0271e65d1cbc2e243).
+2026-03-01 17:11:36,955 | INFO | LifeSimBot | ====================================================
+2026-03-01 17:11:36,955 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-03-01 17:11:36,955 | INFO | LifeSimBot | Guilds: 1 | Users: 28 | Latency: 41ms
+2026-03-01 17:11:36,955 | INFO | LifeSimBot | ====================================================
+2026-03-01 17:11:36,971 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 18:11:36,874 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 18:13:32,769 | INFO | discord.gateway | Shard ID None has successfully RESUMED session f4301f542af05bd0271e65d1cbc2e243.
+2026-03-01 18:58:12,562 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 18:58:12,687 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 18:58:12,754 | ERROR | discord.client | Attempting a reconnect in 1.68s
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1532, in _create_direct_connection
+    hosts = await self._resolve_host(host, port, traces=traces)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1148, in _resolve_host
+    return await asyncio.shield(resolved_host_task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1179, in _resolve_host_with_throttle
+    addrs = await self._resolver.resolve(host, port, family=self._family)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\resolver.py", line 40, in resolve
+    infos = await self._loop.getaddrinfo(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\base_events.py", line 936, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 983, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\client.py", line 724, in connect
+    self.ws = await asyncio.wait_for(coro, timeout=60.0)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\gateway.py", line 383, in from_client
+    socket = await client.http.ws_connect(str(url))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\http.py", line 566, in ws_connect
+    return await self.__session.ws_connect(url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 1076, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 779, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 734, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        req, traces=traces, timeout=real_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 642, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1209, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1538, in _create_direct_connection
+    raise ClientConnectorDNSError(req.connection_key, exc) from exc
+aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host gateway-us-east1-c.discord.gg:443 ssl:default [getaddrinfo failed]
+2026-03-01 18:58:13,687 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 18:58:13,692 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 18:58:15,377 | ERROR | discord.client | Attempting a reconnect in 1.06s
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1532, in _create_direct_connection
+    hosts = await self._resolve_host(host, port, traces=traces)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1148, in _resolve_host
+    return await asyncio.shield(resolved_host_task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1179, in _resolve_host_with_throttle
+    addrs = await self._resolver.resolve(host, port, family=self._family)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\resolver.py", line 40, in resolve
+    infos = await self._loop.getaddrinfo(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\base_events.py", line 936, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 983, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\client.py", line 724, in connect
+    self.ws = await asyncio.wait_for(coro, timeout=60.0)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\gateway.py", line 383, in from_client
+    socket = await client.http.ws_connect(str(url))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\http.py", line 566, in ws_connect
+    return await self.__session.ws_connect(url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 1076, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 779, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 734, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        req, traces=traces, timeout=real_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 642, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1209, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1538, in _create_direct_connection
+    raise ClientConnectorDNSError(req.connection_key, exc) from exc
+aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host gateway-us-east1-c.discord.gg:443 ssl:default [getaddrinfo failed]
+2026-03-01 18:58:16,465 | ERROR | discord.client | Attempting a reconnect in 7.92s
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1532, in _create_direct_connection
+    hosts = await self._resolve_host(host, port, traces=traces)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1148, in _resolve_host
+    return await asyncio.shield(resolved_host_task)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1179, in _resolve_host_with_throttle
+    addrs = await self._resolver.resolve(host, port, family=self._family)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\resolver.py", line 40, in resolve
+    infos = await self._loop.getaddrinfo(
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<5 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\base_events.py", line 936, in getaddrinfo
+    return await self.run_in_executor(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        None, getaddr_func, host, port, family, type, proto, flags)
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\concurrent\futures\thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\socket.py", line 983, in getaddrinfo
+    for res in _socket.getaddrinfo(host, port, family, type, proto, flags):
+               ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+socket.gaierror: [Errno 11001] getaddrinfo failed
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\client.py", line 724, in connect
+    self.ws = await asyncio.wait_for(coro, timeout=60.0)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\asyncio\tasks.py", line 488, in wait_for
+    return await fut
+           ^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\gateway.py", line 383, in from_client
+    socket = await client.http.ws_connect(str(url))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\discord\http.py", line 566, in ws_connect
+    return await self.__session.ws_connect(url, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 1076, in _ws_connect
+    resp = await self.request(
+           ^^^^^^^^^^^^^^^^^^^
+    ...<11 lines>...
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 779, in _request
+    resp = await handler(req)
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\client.py", line 734, in _connect_and_send_request
+    conn = await self._connector.connect(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        req, traces=traces, timeout=real_timeout
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 642, in connect
+    proto = await self._create_connection(req, traces, timeout)
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1209, in _create_connection
+    _, proto = await self._create_direct_connection(req, traces, timeout)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Dell\AppData\Local\Python\pythoncore-3.14-64\Lib\site-packages\aiohttp\connector.py", line 1538, in _create_direct_connection
+    raise ClientConnectorDNSError(req.connection_key, exc) from exc
+aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host gateway-us-east1-c.discord.gg:443 ssl:default [getaddrinfo failed]
+2026-03-01 20:32:44,523 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 20:32:44,590 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 20:32:44,592 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 20:32:44,635 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 20:32:44,677 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 20:32:44,785 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 20:32:44,829 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 20:32:44,916 | INFO | LifeSimBot | Database auto-backup completed
+2026-03-01 20:32:44,943 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 20:32:45,011 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 20:32:45,074 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 20:32:45,227 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 20:32:45,256 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 20:32:45,286 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 20:32:45,316 | ERROR | LifeSimBot | Error updating stats: Cannot write to closing transport
+2026-03-01 20:32:45,589 | INFO | discord.gateway | Shard ID None session has been invalidated.
+2026-03-01 20:32:51,142 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: b02c8d70f8d8e39d681e2f4845867188).
+2026-03-01 20:32:53,195 | INFO | LifeSimBot | ====================================================
+2026-03-01 20:32:53,195 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-03-01 20:32:53,195 | INFO | LifeSimBot | Guilds: 1 | Users: 28 | Latency: 5032ms
+2026-03-01 20:32:53,196 | INFO | LifeSimBot | ====================================================
+2026-03-01 20:38:22,560 | INFO | discord.gateway | Shard ID None session has been invalidated.
+2026-03-01 20:38:27,985 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 278ea5683b4ff64e8bc1cf94eee65a94).
+2026-03-01 20:38:30,005 | INFO | LifeSimBot | ====================================================
+2026-03-01 20:38:30,007 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-03-01 20:38:30,007 | INFO | LifeSimBot | Guilds: 1 | Users: 28 | Latency: 5008ms
+2026-03-01 20:38:30,008 | INFO | LifeSimBot | ====================================================

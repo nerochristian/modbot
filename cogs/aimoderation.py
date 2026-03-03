@@ -1543,6 +1543,32 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
 
     if deleted_count > 0 and logging_cog:
         try:
+            bot_count = sum(1 for m in deleted_messages if m.author.bot)
+            unique_authors = {m.author for m in deleted_messages if not m.author.bot}
+            preview_lines: list[str] = []
+            for msg in reversed(deleted_messages):
+                raw = (msg.content or "").strip()
+                if not raw:
+                    if msg.attachments:
+                        raw = f"[{len(msg.attachments)} attachment(s)]"
+                    elif msg.embeds:
+                        raw = "[embed]"
+                    else:
+                        continue
+                raw = " ".join(raw.split())
+                if len(raw) > 80:
+                    raw = raw[:77].rstrip() + "..."
+                author_name = getattr(msg.author, "display_name", None) or getattr(msg.author, "name", "unknown")
+                preview_lines.append(f"`{author_name}`: {raw}")
+                if len(preview_lines) >= 8:
+                    break
+            preview_text = "\n".join(preview_lines) if preview_lines else "*No text content available*"
+
+            transcript_bytes = generate_html_transcript(
+                ctx.guild, channel, [], purged_messages=deleted_messages
+            )
+            transcript_name = f"purge-{ctx.guild.id}-{int(_now().timestamp())}.html"
+
             log_channel = await logging_cog.get_log_channel(ctx.guild, "message")
             if log_channel:
                 log_embed = discord.Embed(
@@ -1551,20 +1577,35 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
                     color=discord.Color.red(),
                     timestamp=_now(),
                 )
-                bot_count = sum(1 for m in deleted_messages if m.author.bot)
-                unique_authors = {m.author for m in deleted_messages if not m.author.bot}
+                log_embed.add_field(name="Moderator", value=f"{ctx.actor.mention} (`{ctx.actor.id}`)", inline=False)
                 log_embed.add_field(name="Human Messages", value=str(deleted_count - bot_count), inline=True)
                 log_embed.add_field(name="Bot Messages", value=str(bot_count), inline=True)
                 log_embed.add_field(name="Unique Authors", value=str(len(unique_authors)), inline=True)
+                log_embed.add_field(name="Purged Message Preview", value=preview_text[:1024], inline=False)
 
-                transcript_bytes = generate_html_transcript(
-                    ctx.guild, channel, [], purged_messages=deleted_messages
-                )
-                transcript_name = f"purge-{ctx.guild.id}-{int(_now().timestamp())}.html"
                 view = EphemeralTranscriptView(
                     io.BytesIO(transcript_bytes.getvalue()), filename=transcript_name
                 )
                 await logging_cog.safe_send_log(log_channel, log_embed, view=view)
+
+            mod_log_channel = await logging_cog.get_log_channel(ctx.guild, "mod")
+            if mod_log_channel:
+                mod_embed = discord.Embed(
+                    title="Moderator Purge",
+                    description=f"{ctx.actor.mention} purged **{deleted_count}** message(s) in {channel.mention}.",
+                    color=discord.Color.red(),
+                    timestamp=_now(),
+                )
+                mod_embed.add_field(name="Moderator", value=f"{ctx.actor.mention} (`{ctx.actor.id}`)", inline=False)
+                mod_embed.add_field(name="Reason", value=reason, inline=False)
+                mod_embed.add_field(name="Human Messages", value=str(deleted_count - bot_count), inline=True)
+                mod_embed.add_field(name="Bot Messages", value=str(bot_count), inline=True)
+                mod_embed.add_field(name="Unique Authors", value=str(len(unique_authors)), inline=True)
+
+                mod_view = EphemeralTranscriptView(
+                    io.BytesIO(transcript_bytes.getvalue()), filename=transcript_name
+                )
+                await logging_cog.safe_send_log(mod_log_channel, mod_embed, view=mod_view)
         except Exception:
             logger.debug("Failed to post purge transcript", exc_info=True)
 

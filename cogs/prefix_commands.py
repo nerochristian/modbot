@@ -32,6 +32,13 @@ class PrefixCommands(commands.Cog):
                 pass
         await ctx.send(embed=embed)
 
+    @staticmethod
+    def _ctx_prefix(ctx: object, default: str = ",") -> str:
+        prefix = getattr(ctx, "prefix", None)
+        if isinstance(prefix, str) and prefix:
+            return prefix
+        return default
+
     def _role_edit_error(
         self,
         ctx: commands.Context,
@@ -334,7 +341,7 @@ class PrefixCommands(commands.Cog):
     @has_permissions_or_owner(manage_roles=True)
     async def role_cmd(
         self,
-        ctx,
+        ctx: commands.Context,
         member: Optional[discord.Member] = None,
         role: Optional[discord.Role] = None,
     ):
@@ -343,11 +350,12 @@ class PrefixCommands(commands.Cog):
             await self._toggle_role(ctx, member, role)
             return
 
+        prefix = self._ctx_prefix(ctx)
         usage = (
-            f"`{ctx.prefix}role add <member> <role>`\n"
-            f"`{ctx.prefix}role remove <member> <role>`\n"
-            f"`{ctx.prefix}role toggle <member> <role>`\n"
-            f"`{ctx.prefix}role <member> <role>` (toggle shortcut)"
+            f"`{prefix}role add <member> <role>`\n"
+            f"`{prefix}role remove <member> <role>`\n"
+            f"`{prefix}role toggle <member> <role>`\n"
+            f"`{prefix}role <member> <role>` (toggle shortcut)"
         )
         await self._send_role_embed(ctx, ModEmbed.info("Role Commands", usage))
 
@@ -355,13 +363,13 @@ class PrefixCommands(commands.Cog):
     @has_permissions_or_owner(manage_roles=True)
     async def role_add_cmd(
         self,
-        ctx,
+        ctx: commands.Context,
         member: discord.Member,
         role: Optional[discord.Role] = None,
     ):
         """Add a role to a user."""
         if role is None:
-            usage = f"Usage: `{ctx.prefix}role add <member> <role>`"
+            usage = f"Usage: `{self._ctx_prefix(ctx)}role add <member> <role>`"
             await self._send_role_embed(ctx, ModEmbed.error("Missing Role", usage))
             return
 
@@ -384,13 +392,13 @@ class PrefixCommands(commands.Cog):
     @has_permissions_or_owner(manage_roles=True)
     async def role_remove_cmd(
         self,
-        ctx,
+        ctx: commands.Context,
         member: discord.Member,
         role: Optional[discord.Role] = None,
     ):
         """Remove a role from a user."""
         if role is None:
-            usage = f"Usage: `{ctx.prefix}role remove <member> <role>`"
+            usage = f"Usage: `{self._ctx_prefix(ctx)}role remove <member> <role>`"
             await self._send_role_embed(ctx, ModEmbed.error("Missing Role", usage))
             return
 
@@ -413,13 +421,13 @@ class PrefixCommands(commands.Cog):
     @has_permissions_or_owner(manage_roles=True)
     async def role_toggle_cmd(
         self,
-        ctx,
+        ctx: commands.Context,
         member: discord.Member,
         role: Optional[discord.Role] = None,
     ):
         """Toggle a role on a user."""
         if role is None:
-            usage = f"Usage: `{ctx.prefix}role toggle <member> <role>`"
+            usage = f"Usage: `{self._ctx_prefix(ctx)}role toggle <member> <role>`"
             await self._send_role_embed(ctx, ModEmbed.error("Missing Role", usage))
             return
 

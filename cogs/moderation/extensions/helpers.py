@@ -45,6 +45,7 @@ class HelperCommands:
             "user quarantined",
             "quarantine lifted",
             "mass ban",
+            "moderator purge",
         )
         if any(marker in title for marker in mod_markers):
             return "mod"

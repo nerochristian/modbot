@@ -435,6 +435,42 @@ class ChatCommands:
 
         if count > 0 and logging_cog and isinstance(channel, discord.TextChannel):
             try:
+                authors = {m.author for m in deleted if not m.author.bot}
+                bot_count = sum(1 for m in deleted if m.author.bot)
+                preview_lines = []
+                for msg in reversed(deleted):
+                    raw = (msg.content or "").strip()
+                    if not raw:
+                        if msg.attachments:
+                            raw = f"[{len(msg.attachments)} attachment(s)]"
+                        elif msg.embeds:
+                            raw = "[embed]"
+                        else:
+                            continue
+                    raw = " ".join(raw.split())
+                    if len(raw) > 80:
+                        raw = raw[:77].rstrip() + "..."
+                    author_name = getattr(msg.author, "display_name", None) or getattr(msg.author, "name", "unknown")
+                    preview_lines.append(f"`{author_name}`: {raw}")
+                    if len(preview_lines) >= 8:
+                        break
+                preview_text = "\n".join(preview_lines) if preview_lines else "*No text content available*"
+
+                transcript_bytes = None
+                transcript_name = None
+                try:
+                    transcript_file = generate_html_transcript(
+                        source.guild,
+                        channel,
+                        [],
+                        purged_messages=deleted,
+                    )
+                    transcript_bytes = transcript_file.getvalue()
+                    transcript_name = f"purge-transcript-{source.guild.id}-{int(datetime.now(timezone.utc).timestamp())}.html"
+                except Exception:
+                    transcript_bytes = None
+                    transcript_name = None
+
                 message_log_channel = await logging_cog.get_log_channel(source.guild, "message")
                 if message_log_channel:
                     log_embed = discord.Embed(
@@ -444,21 +480,37 @@ class ChatCommands:
                         timestamp=datetime.now(timezone.utc),
                     )
 
-                    authors = {m.author for m in deleted if not m.author.bot}
-                    bot_count = sum(1 for m in deleted if m.author.bot)
+                    log_embed.add_field(name="Moderator", value=f"{author.mention} (`{author.id}`)", inline=False)
                     log_embed.add_field(name="Human Messages", value=str(count - bot_count), inline=True)
                     log_embed.add_field(name="Bot Messages", value=str(bot_count), inline=True)
                     log_embed.add_field(name="Unique Authors", value=str(len(authors)), inline=True)
+                    if user:
+                        log_embed.add_field(name="Filter", value=f"Only {user.mention}", inline=False)
+                    log_embed.add_field(name="Purged Message Preview", value=preview_text[:1024], inline=False)
 
-                    transcript_file = generate_html_transcript(
-                        source.guild,
-                        channel,
-                        [],
-                        purged_messages=deleted,
-                    )
-                    transcript_name = f"purge-transcript-{source.guild.id}-{int(datetime.now(timezone.utc).timestamp())}.html"
-                    view = EphemeralTranscriptView(io.BytesIO(transcript_file.getvalue()), filename=transcript_name)
+                    view = None
+                    if transcript_bytes and transcript_name:
+                        view = EphemeralTranscriptView(io.BytesIO(transcript_bytes), filename=transcript_name)
                     await logging_cog.safe_send_log(message_log_channel, log_embed, view=view)
+
+                # Purges are moderation actions, so also emit a dedicated mod-log card.
+                mod_log_embed = discord.Embed(
+                    title="Moderator Purge",
+                    description=f"{author.mention} purged **{count}** message(s) in {channel.mention}.",
+                    color=Colors.ERROR,
+                    timestamp=datetime.now(timezone.utc),
+                )
+                mod_log_embed.add_field(name="Moderator", value=f"{author.mention} (`{author.id}`)", inline=False)
+                mod_log_embed.add_field(name="Human Messages", value=str(count - bot_count), inline=True)
+                mod_log_embed.add_field(name="Bot Messages", value=str(bot_count), inline=True)
+                mod_log_embed.add_field(name="Unique Authors", value=str(len(authors)), inline=True)
+                if user:
+                    mod_log_embed.add_field(name="Filter", value=f"Only {user.mention}", inline=False)
+
+                mod_view = None
+                if transcript_bytes and transcript_name:
+                    mod_view = EphemeralTranscriptView(io.BytesIO(transcript_bytes), filename=transcript_name)
+                await self.log_action(source.guild, mod_log_embed, log_type="mod", view=mod_view)
             except Exception:
                 pass
         

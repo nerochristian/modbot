@@ -1,0 +1,46 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
+
+  --color-app-bg: #F9F8F6;
+  --color-sidebar-bg: #F2EFEA;
+  --color-card-bg: #FFFFFF;
+
+  --color-cream-50: #fdfdfc;
+  --color-cream-100: #f9f9f8;
+  --color-cream-200: #f4f4f2;
+  --color-cream-300: #e8e8e5;
+
+  --color-pastel-teal: #ccfbf1;
+  --color-pastel-coral: #ffe4e6;
+  --color-pastel-mustard: #fef08a;
+  --color-pastel-green: #dcfce7;
+  --color-pastel-red: #fee2e2;
+  --color-pastel-blue: #e0e7ff;
+  --color-pastel-purple: #f3e8ff;
+  --color-pastel-pink: #fce7f3;
+  --color-pastel-yellow: #fef3c7;
+
+  --color-accent-blue: #6366f1;
+  --color-accent-purple: #a855f7;
+  --color-accent-pink: #ec4899;
+  --color-accent-green: #22c55e;
+  --color-accent-yellow: #eab308;
+  --color-accent-red: #ef4444;
+
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+  --radius-3xl: 2rem;
+
+  --shadow-soft: 0 8px 30px rgba(0,0,0,0.04);
+  --shadow-soft-lg: 0 20px 60px -15px rgba(0,0,0,0.06);
+}
+
+body {
+  background-color: var(--color-app-bg);
+  color: #1e293b;
+  -webkit-font-smoothing: antialiased;
+}

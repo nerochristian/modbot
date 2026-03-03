@@ -637,10 +637,20 @@ class QuickBanModal(discord.ui.Modal, title="🔨 Quick Ban"):
 
 class QuickPurgeModal(discord.ui.Modal, title="🗑️ Quick Purge"):
     amount = discord.ui.TextInput(label="Number of Messages", placeholder="1-100", required=True, max_length=3)
+
+    def __init__(self, bot):
+        super().__init__()
+        self.bot = bot
     
     async def on_submit(self, interaction: discord.Interaction):
         try:
             num = min(100, max(1, int(self.amount.value)))
+
+            mod_cog = self.bot.get_cog("Moderation") if self.bot else None
+            if mod_cog and hasattr(mod_cog, "_purge_logic"):
+                await mod_cog._purge_logic(interaction, num)
+                return
+
             await interaction.response.defer(ephemeral=True)
             deleted = await interaction.channel.purge(limit=num)
             await interaction.followup.send(f"🗑️ Deleted **{len(deleted)}** messages!", ephemeral=True)
@@ -770,7 +780,7 @@ class ModPanelView(discord.ui.View):
     # ═══════════ ROW 1: CHANNEL TOOLS ═══════════
     @discord.ui.button(label="Purge", style=discord.ButtonStyle.primary, emoji="🗑️", row=1)
     async def quick_purge(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_modal(QuickPurgeModal())
+        await interaction.response.send_modal(QuickPurgeModal(self.bot))
 
     @discord.ui.button(label="Lock", style=discord.ButtonStyle.secondary, emoji="🔒", row=1)
     async def quick_lock(self, interaction: discord.Interaction, button: discord.ui.Button):

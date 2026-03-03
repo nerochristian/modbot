@@ -1,1 +1,1 @@
-# Web Dashboard Package
+# Web dashboard package

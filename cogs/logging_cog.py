@@ -143,6 +143,7 @@ class Logging(commands.Cog):
     def _cache_message_snapshot(self, message: discord.Message) -> None:
         if not message.guild:
             return
+        avatar_url = getattr(getattr(message.author, "display_avatar", None), "url", None)
         self._recent_message_snapshots[message.id] = {
             "stored_at": datetime.now(timezone.utc),
             "guild_id": message.guild.id,
@@ -150,6 +151,7 @@ class Logging(commands.Cog):
             "author_id": getattr(message.author, "id", None),
             "author_name": getattr(message.author, "name", ""),
             "author_display": getattr(message.author, "display_name", ""),
+            "author_avatar_url": str(avatar_url) if avatar_url else None,
             "content": message.content or "",
             "created_ts": int(message.created_at.timestamp()) if getattr(message, "created_at", None) else None,
             "attachments": [a.filename for a in (message.attachments or [])[:10]],
@@ -390,6 +392,39 @@ class Logging(commands.Cog):
             return None
         return None
 
+    async def _find_recent_message_delete_entry(
+        self,
+        guild: discord.Guild,
+        *,
+        channel_id: int,
+        author_id: Optional[int] = None,
+    ) -> Optional[discord.AuditLogEntry]:
+        now = datetime.now(timezone.utc)
+        try:
+            async for entry in guild.audit_logs(limit=8, action=discord.AuditLogAction.message_delete):
+                age = (now - entry.created_at).total_seconds()
+                if age > self._audit_search_window_seconds:
+                    continue
+
+                extra = getattr(entry, "extra", None)
+                entry_channel = getattr(extra, "channel", None)
+                entry_channel_id = getattr(entry_channel, "id", None) or getattr(extra, "channel_id", None)
+                if entry_channel_id is not None and entry_channel_id != channel_id:
+                    continue
+
+                if author_id is not None:
+                    target_id = getattr(getattr(entry, "target", None), "id", None)
+                    if target_id is not None and target_id != author_id:
+                        continue
+
+                return entry
+        except discord.Forbidden:
+            return None
+        except Exception as e:
+            logger.error(f"Failed to query message delete audit logs in {guild.name}: {e}")
+            return None
+        return None
+
     def _format_user_reference(self, user: Optional[discord.abc.User]) -> str:
         if user is None:
             return "*Unknown*"
@@ -398,6 +433,67 @@ class Logging(commands.Cog):
         if mention:
             return f"{primary} ({mention})"
         return primary
+
+    @staticmethod
+    def _is_emoji_audit_action(action: discord.AuditLogAction) -> bool:
+        return action in {
+            discord.AuditLogAction.emoji_create,
+            discord.AuditLogAction.emoji_update,
+            discord.AuditLogAction.emoji_delete,
+        }
+
+    def _emoji_audit_metadata(self, entry: discord.AuditLogEntry) -> tuple[Optional[int], Optional[str], Optional[bool]]:
+        target = getattr(entry, "target", None)
+        emoji_id = getattr(target, "id", None)
+        emoji_name = getattr(target, "name", None)
+        animated = getattr(target, "animated", None)
+
+        before = getattr(entry, "before", None)
+        after = getattr(entry, "after", None)
+        if not emoji_name:
+            emoji_name = getattr(after, "name", None) or getattr(before, "name", None)
+        if animated is None:
+            animated = getattr(after, "animated", None)
+            if animated is None:
+                animated = getattr(before, "animated", None)
+
+        if emoji_id is not None:
+            try:
+                emoji_id = int(emoji_id)
+            except (TypeError, ValueError):
+                emoji_id = None
+
+        if emoji_name is not None:
+            emoji_name = str(emoji_name).strip() or None
+
+        if animated is not None:
+            animated = bool(animated)
+
+        return emoji_id, emoji_name, animated
+
+    def _emoji_token(self, emoji_id: Optional[int], emoji_name: Optional[str], animated: Optional[bool]) -> Optional[str]:
+        if not emoji_id or not emoji_name:
+            return None
+        prefix = "a" if animated else ""
+        return f"<{prefix}:{emoji_name}:{emoji_id}>"
+
+    def _emoji_cdn_url(self, emoji_id: Optional[int], animated: Optional[bool]) -> Optional[str]:
+        if not emoji_id:
+            return None
+        ext = "gif" if animated else "png"
+        return f"https://cdn.discordapp.com/emojis/{emoji_id}.{ext}?size=128&quality=lossless"
+
+    def _audit_thumbnail_url(self, entry: discord.AuditLogEntry) -> Optional[str]:
+        action = getattr(entry, "action", None)
+        if action and self._is_emoji_audit_action(action):
+            emoji_id, _, animated = self._emoji_audit_metadata(entry)
+            return self._emoji_cdn_url(emoji_id, animated)
+
+        target = getattr(entry, "target", None)
+        avatar = getattr(getattr(target, "display_avatar", None), "url", None)
+        if avatar:
+            return avatar
+        return None
 
     def _format_channel_reference(self, channel: Optional[object], *, fallback_id: Optional[int] = None) -> str:
         if channel is None:
@@ -556,6 +652,16 @@ class Logging(commands.Cog):
     def _audit_target_lines(self, entry: discord.AuditLogEntry) -> list[str]:
         target = getattr(entry, "target", None)
         lines: list[str] = []
+
+        if self._is_emoji_audit_action(entry.action):
+            emoji_id, emoji_name, animated = self._emoji_audit_metadata(entry)
+            lines.append(f"**Name:** {emoji_name or '*Unknown*'}")
+            lines.append(f"**ID:** `{emoji_id}`" if emoji_id is not None else "**ID:** *Unknown*")
+            lines.append(f"**Animated:** {self._yn(animated)}")
+            emoji_token = self._emoji_token(emoji_id, emoji_name, animated)
+            if emoji_token:
+                lines.append(f"**Emoji:** {emoji_token}")
+            return lines
 
         if isinstance(target, discord.abc.GuildChannel):
             lines.append(f"**Name:** {self._format_channel_reference(target)}")
@@ -716,6 +822,7 @@ class Logging(commands.Cog):
             "user quarantined",
             "quarantine lifted",
             "mass ban",
+            "moderator purge",
         )
         if any(marker in title for marker in mod_markers):
             return "mod"
@@ -1017,6 +1124,14 @@ class Logging(commands.Cog):
         if not channel:
             return
 
+        delete_entry = await self._find_recent_message_delete_entry(
+            message.guild,
+            channel_id=message.channel.id,
+            author_id=getattr(message.author, "id", None),
+        )
+        deleter = getattr(delete_entry, "user", None) or message.author
+        delete_reason = getattr(delete_entry, "reason", None)
+
         message_link = (
             f"https://discord.com/channels/"
             f"{message.guild.id}/{message.channel.id}/{message.id}"
@@ -1027,6 +1142,10 @@ class Logging(commands.Cog):
             f"**Message author:** {self._format_user_reference(message.author)}",
             f"**Message created:** <t:{int(message.created_at.timestamp())}:R>",
         ]
+        if deleter is not None:
+            details_lines.append(f"**Deleted by:** {self._format_user_reference(deleter)}")
+        if delete_reason:
+            details_lines.append(f"**Reason:** {self._shorten(delete_reason, 250)}")
 
         content_value = (message.content or "").strip()
         if not content_value:
@@ -1037,6 +1156,8 @@ class Logging(commands.Cog):
             color=Colors.ERROR,
             details_lines=details_lines,
             message_text=content_value,
+            thumbnail_url=message.author.display_avatar.url,
+            footer_user=deleter,
         )
 
         if message.attachments:
@@ -1100,10 +1221,21 @@ class Logging(commands.Cog):
             author_display = snapshot.get("author_display") or snapshot.get("author_name") or "unknown"
             author_ref = f"<@{author_id}> (`@{author_display}`)" if author_id else f"`@{author_display}`"
             created_ts = snapshot.get("created_ts")
+            author_avatar_url = snapshot.get("author_avatar_url")
             content_text = str(snapshot.get("content", "") or "").strip()
             attachment_count = int(snapshot.get("attachment_count", 0) or 0)
             if not content_text:
                 content_text = "*No text content*" if attachment_count > 0 else "*No content*"
+
+            delete_entry = await self._find_recent_message_delete_entry(
+                guild,
+                channel_id=channel_id,
+                author_id=author_id if isinstance(author_id, int) else None,
+            )
+            deleter = getattr(delete_entry, "user", None)
+            if deleter is None and isinstance(author_id, int):
+                deleter = guild.get_member(author_id) or self.bot.get_user(author_id)
+            delete_reason = getattr(delete_entry, "reason", None)
 
             details_lines = [
                 f"**Source channel:** {self._format_channel_reference(source_channel, fallback_id=channel_id)}",
@@ -1111,11 +1243,17 @@ class Logging(commands.Cog):
                 f"**Message author:** {author_ref}",
                 f"**Message created:** <t:{created_ts}:R>" if created_ts else "**Message created:** *Unknown*",
             ]
+            if deleter is not None:
+                details_lines.append(f"**Deleted by:** {self._format_user_reference(deleter)}")
+            if delete_reason:
+                details_lines.append(f"**Reason:** {self._shorten(delete_reason, 250)}")
             embed = self._build_sapphire_log_embed(
                 title="Message deleted",
                 color=Colors.ERROR,
                 details_lines=details_lines,
                 message_text=content_text,
+                thumbnail_url=author_avatar_url,
+                footer_user=deleter,
             )
 
             attachments = [str(name) for name in (snapshot.get("attachments") or []) if str(name).strip()]
@@ -1217,8 +1355,27 @@ class Logging(commands.Cog):
         details_lines = [
             f"**Source channel:** {self._format_channel_reference(source_channel)}",
         ]
+        preview_lines: list[str] = []
+        for msg in reversed(messages):
+            raw = (msg.content or "").strip()
+            if not raw:
+                if msg.attachments:
+                    raw = f"[{len(msg.attachments)} attachment(s)]"
+                elif msg.embeds:
+                    raw = "[embed]"
+                else:
+                    continue
+            raw = " ".join(raw.split())
+            if len(raw) > 80:
+                raw = raw[:77].rstrip() + "..."
+            author_name = getattr(msg.author, "display_name", None) or getattr(msg.author, "name", "unknown")
+            preview_lines.append(f"`{author_name}`: {raw}")
+            if len(preview_lines) >= 8:
+                break
+        preview_text = "\n".join(preview_lines) if preview_lines else "*No text content available*"
 
         actor = None
+        action_reason = None
         now = datetime.now(timezone.utc)
         try:
             async for entry in guild.audit_logs(limit=6, action=discord.AuditLogAction.message_bulk_delete):
@@ -1229,29 +1386,69 @@ class Logging(commands.Cog):
                 if entry_channel and getattr(entry_channel, "id", None) != source_channel.id:
                     continue
                 actor = getattr(entry, "user", None)
+                action_reason = getattr(entry, "reason", None)
                 break
         except discord.Forbidden:
             actor = None
         except Exception as e:
             logger.error(f"Failed to query bulk delete audit logs in {guild.name}: {e}")
 
+        if actor:
+            details_lines.append(f"**Moderator:** {self._format_user_reference(actor)}")
+        if action_reason:
+            details_lines.append(f"**Reason:** {self._shorten(action_reason, 250)}")
+
         embed = self._build_sapphire_log_embed(
             title=f"{deleted_count} messages deleted",
             color=Colors.ERROR,
             details_lines=details_lines,
+            message_text=preview_text,
             footer_user=actor,
         )
 
-        transcript_file = generate_html_transcript(
-            guild,
-            messages[0].channel,
-            [],
-            purged_messages=messages,
-        )
-        transcript_name = f"purge-transcript-{guild.id}-{int(datetime.now(timezone.utc).timestamp())}.html"
-        view = EphemeralTranscriptView(io.BytesIO(transcript_file.getvalue()), filename=transcript_name)
+        transcript_bytes = None
+        transcript_name = None
+        try:
+            transcript_file = generate_html_transcript(
+                guild,
+                messages[0].channel,
+                [],
+                purged_messages=messages,
+            )
+            transcript_bytes = transcript_file.getvalue()
+            transcript_name = f"purge-transcript-{guild.id}-{int(datetime.now(timezone.utc).timestamp())}.html"
+        except Exception:
+            transcript_bytes = None
+            transcript_name = None
+
+        view = None
+        if transcript_bytes and transcript_name:
+            view = EphemeralTranscriptView(io.BytesIO(transcript_bytes), filename=transcript_name)
 
         await self.safe_send_log(channel, embed, view=view, mirror_to_audit=False)
+
+        mod_channel = await self.get_log_channel(guild, "mod", allow_audit_fallback=False)
+        if mod_channel:
+            mod_details = [
+                f"**Source channel:** {self._format_channel_reference(source_channel)}",
+                f"**Messages:** {deleted_count}",
+            ]
+            if actor:
+                mod_details.append(f"**Moderator:** {self._format_user_reference(actor)}")
+            if action_reason:
+                mod_details.append(f"**Reason:** {self._shorten(action_reason, 250)}")
+
+            mod_embed = self._build_sapphire_log_embed(
+                title="Moderator Purge",
+                color=Colors.ERROR,
+                details_lines=mod_details,
+                message_text=preview_text,
+                footer_user=actor,
+            )
+            mod_view = None
+            if transcript_bytes and transcript_name:
+                mod_view = EphemeralTranscriptView(io.BytesIO(transcript_bytes), filename=transcript_name)
+            await self.safe_send_log(mod_channel, mod_embed, view=mod_view, mirror_to_audit=False)
 
     # ==================== MEMBER LOGGING ====================
     
@@ -1350,40 +1547,39 @@ class Logging(commands.Cog):
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         """Log member updates (nickname, roles, etc.)"""
-        channel = await self.get_log_channel(before.guild, 'audit')
-        if not channel:
-            return
+        audit_channel = await self.get_log_channel(before.guild, 'audit')
 
         if before.nick != after.nick:
-            entry = await self._find_recent_audit_entry(
-                before.guild,
-                action=discord.AuditLogAction.member_update,
-                target_id=after.id,
-            )
-            moderator = getattr(entry, "user", None)
-            reason = getattr(entry, "reason", None)
-            details_lines = [
-                f"**User:** {self._format_user_reference(after)}",
-                f"**Before:** {before.nick or '*None*'}",
-                f"**After:** {after.nick or '*None*'}",
-            ]
-            if reason:
-                details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
+            if audit_channel:
+                entry = await self._find_recent_audit_entry(
+                    before.guild,
+                    action=discord.AuditLogAction.member_update,
+                    target_id=after.id,
+                )
+                moderator = getattr(entry, "user", None)
+                reason = getattr(entry, "reason", None)
+                details_lines = [
+                    f"**User:** {self._format_user_reference(after)}",
+                    f"**Before:** {before.nick or '*None*'}",
+                    f"**After:** {after.nick or '*None*'}",
+                ]
+                if reason:
+                    details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
 
-            embed = self._build_sapphire_log_embed(
-                title="Nickname changed",
-                color=Colors.INFO,
-                details_lines=details_lines,
-                thumbnail_url=after.display_avatar.url,
-                footer_user=moderator,
-            )
-            await self.safe_send_log(channel, embed)
+                embed = self._build_sapphire_log_embed(
+                    title="Nickname changed",
+                    color=Colors.INFO,
+                    details_lines=details_lines,
+                    thumbnail_url=after.display_avatar.url,
+                    footer_user=moderator,
+                )
+                await self.safe_send_log(audit_channel, embed)
 
         if before.roles != after.roles:
             added = [r for r in after.roles if r not in before.roles]
             removed = [r for r in before.roles if r not in after.roles]
 
-            if added or removed:
+            if (added or removed) and audit_channel:
                 added_text = "*None*"
                 if added:
                     added_text = ", ".join([r.mention for r in added[:10]])
@@ -1419,7 +1615,7 @@ class Logging(commands.Cog):
                     thumbnail_url=after.display_avatar.url,
                     footer_user=moderator,
                 )
-                await self.safe_send_log(channel, embed)
+                await self.safe_send_log(audit_channel, embed)
         
         # ===== TIMEOUT CHANGES =====
         # Timeouts are moderation actions → send to mod logs, not audit
@@ -1773,6 +1969,7 @@ class Logging(commands.Cog):
             title=self._audit_action_title(entry),
             color=self._audit_action_color(action),
             details_lines=details_lines or ["**Details:** *No additional fields*"],
+            thumbnail_url=self._audit_thumbnail_url(entry),
             footer_user=getattr(entry, "user", None),
         )
 

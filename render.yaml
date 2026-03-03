@@ -1,0 +1,30 @@
+# Render Blueprint — deploys bot + web dashboard as a single Web Service
+# https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: modbot
+    runtime: python
+    plan: starter
+    buildCommand: ./render-build.sh
+    startCommand: python bot.py
+    healthCheckPath: /health
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false
+      - key: DASHBOARD_REDIRECT_URI
+        sync: false  # Set to https://your-app.onrender.com/auth/callback
+      - key: SESSION_SECRET
+        generateValue: true  # Render generates a random persistent secret
+      - key: OWNER_IDS
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: PYTHON_VERSION
+        value: "3.12.3"
+      - key: NODE_VERSION
+        value: "20.11.1"

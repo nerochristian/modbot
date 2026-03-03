@@ -38,20 +38,58 @@ load_dotenv()
 _LOCK_HANDLE = None
 
 def _acquire_single_instance_lock() -> None:
-    """Prevent multiple bot instances on the same machine."""
+    """Prevent multiple bot instances on the same machine (cross-platform)."""
     global _LOCK_HANDLE
-    try:
-        import msvcrt  # Windows-only
-    except ImportError:
-        return
     lock_path = Path(".modbot.lock")
-    _LOCK_HANDLE = lock_path.open("a+")
-    try:
-        msvcrt.locking(_LOCK_HANDLE.fileno(), msvcrt.LK_NBLCK, 1)
-    except OSError:
-        raise RuntimeError("Another ModBot instance is already running.")
-    # Lock ownership is enforced by msvcrt.locking; pid text is best-effort
-    # metadata and should never crash startup if filesystem permissions are odd.
+
+    if sys.platform == "win32":
+        # Windows: use msvcrt file locking
+        try:
+            import msvcrt
+        except ImportError:
+            return
+        _LOCK_HANDLE = lock_path.open("a+")
+        try:
+            msvcrt.locking(_LOCK_HANDLE.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError:
+            raise RuntimeError("Another ModBot instance is already running.")
+
+        def _release_lock():
+            try:
+                msvcrt.locking(_LOCK_HANDLE.fileno(), msvcrt.LK_UNLCK, 1)
+            except Exception:
+                pass
+            try:
+                _LOCK_HANDLE.close()
+            except Exception:
+                pass
+
+        atexit.register(_release_lock)
+    else:
+        # Linux / macOS: use fcntl file locking
+        try:
+            import fcntl
+        except ImportError:
+            return
+        _LOCK_HANDLE = lock_path.open("a+")
+        try:
+            fcntl.flock(_LOCK_HANDLE.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise RuntimeError("Another ModBot instance is already running.")
+
+        def _release_lock():
+            try:
+                fcntl.flock(_LOCK_HANDLE.fileno(), fcntl.LOCK_UN)
+            except Exception:
+                pass
+            try:
+                _LOCK_HANDLE.close()
+            except Exception:
+                pass
+
+        atexit.register(_release_lock)
+
+    # Write PID (best-effort metadata)
     try:
         _LOCK_HANDLE.seek(0)
         _LOCK_HANDLE.truncate()
@@ -59,18 +97,6 @@ def _acquire_single_instance_lock() -> None:
         _LOCK_HANDLE.flush()
     except OSError:
         pass
-
-    def _release_lock():
-        try:
-            msvcrt.locking(_LOCK_HANDLE.fileno(), msvcrt.LK_UNLCK, 1)
-        except Exception:
-            pass
-        try:
-            _LOCK_HANDLE.close()
-        except Exception:
-            pass
-
-    atexit.register(_release_lock)
 
 # Initialize static-ffmpeg if installed (ensures ffmpeg binary is in PATH)
 try:
