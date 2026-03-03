@@ -25,11 +25,6 @@ logger = logging.getLogger("ModBot.Dashboard")
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "")
 
-if "RAILWAY_PUBLIC_DOMAIN" in os.environ:
-    REDIRECT_URI = f"https://{os.environ['RAILWAY_PUBLIC_DOMAIN']}/auth/callback"
-else:
-    REDIRECT_URI = os.getenv("DASHBOARD_REDIRECT_URI", "http://localhost:10547/auth/callback")
-
 # Render sets PORT; fall back to DASHBOARD_PORT, then 10547
 DASHBOARD_PORT = int(os.getenv("PORT", os.getenv("DASHBOARD_PORT", "10547")))
 
@@ -129,7 +124,10 @@ async def health_check(request: web.Request):
 
 async def auth_login(request: web.Request):
     """Redirect to Discord OAuth2."""
-    redirect = REDIRECT_URI
+    scheme = request.headers.get("X-Forwarded-Proto", "http")
+    host = request.headers.get("Host", request.host)
+    redirect = f"{scheme}://{host}/auth/callback"
+    
     oauth_url = (
         f"{DISCORD_OAUTH_URL}?client_id={CLIENT_ID}"
         f"&redirect_uri={aiohttp.helpers.quote(redirect, safe='')}"
@@ -153,18 +151,26 @@ async def auth_callback(request: web.Request):
         raise web.HTTPFound(f"{base_url}/?error=no_code")
 
     # Exchange code for tokens
+    scheme = request.headers.get("X-Forwarded-Proto", "http")
+    host = request.headers.get("Host", request.host)
+    redirect = f"{scheme}://{host}/auth/callback"
+    
     async with aiohttp.ClientSession() as http:
         token_resp = await http.post(DISCORD_TOKEN_URL, data={
             "client_id": CLIENT_ID,
             "client_secret": CLIENT_SECRET,
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": REDIRECT_URI,
+            "redirect_uri": redirect,
         }, headers={"Content-Type": "application/x-www-form-urlencoded"})
 
         if token_resp.status != 200:
-            logger.error(f"Token exchange failed: {await token_resp.text()}")
-            raise web.HTTPFound(f"{base_url}/?error=token_exchange_failed")
+            err_text = await token_resp.text()
+            logger.error(f"Token exchange failed: {err_text}")
+            return web.Response(
+                text=f"Discord OAuth2 Token Exchange Failed (Status {token_resp.status}):\n\n{err_text}\n\nClient ID: {CLIENT_ID}\nRedirect URI Used: {redirect}\nDid you forget to set DISCORD_CLIENT_SECRET in Railway?", 
+                content_type="text/plain"
+            )
 
         tokens = await token_resp.json()
         access_token = tokens["access_token"]
