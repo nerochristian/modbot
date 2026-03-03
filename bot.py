@@ -535,6 +535,36 @@ class ModBot(commands.Bot):
             return name
         return None
 
+    def _root_command_name_from_interaction(self, interaction: discord.Interaction) -> Optional[str]:
+        command_name = self._root_command_name(getattr(interaction, "command", None))
+        if command_name:
+            return command_name
+
+        data = getattr(interaction, "data", None)
+        if isinstance(data, dict):
+            raw_name = data.get("name")
+            if isinstance(raw_name, str) and raw_name:
+                return raw_name
+        return None
+
+    def _module_id_for_interaction(
+        self,
+        interaction: discord.Interaction,
+        command_name: Optional[str],
+    ) -> Optional[str]:
+        module_id = self._module_id_for_command_object(getattr(interaction, "command", None))
+        if module_id:
+            return module_id
+        if not command_name:
+            return None
+        try:
+            tree_command = self.tree.get_command(command_name)
+        except Exception:
+            tree_command = None
+        if tree_command is None:
+            return None
+        return self._module_id_for_command_object(tree_command)
+
     def _module_is_enabled_in_settings(self, settings: Dict[str, Any], module_id: Optional[str]) -> bool:
         if not module_id:
             return True
@@ -1057,9 +1087,9 @@ class ModBot(commands.Bot):
                 pass
             return False
 
-        if interaction.guild is not None and interaction.command is not None:
-            module_id = self._module_id_for_command_object(interaction.command)
-            command_name = self._root_command_name(interaction.command)
+        if interaction.guild is not None:
+            command_name = self._root_command_name_from_interaction(interaction)
+            module_id = self._module_id_for_interaction(interaction, command_name)
             allowed, reason = await self._evaluate_command_access(
                 interaction.guild.id,
                 module_id=module_id,
