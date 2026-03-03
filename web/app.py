@@ -24,7 +24,11 @@ logger = logging.getLogger("ModBot.Dashboard")
 
 CLIENT_ID = os.getenv("DISCORD_CLIENT_ID", "")
 CLIENT_SECRET = os.getenv("DISCORD_CLIENT_SECRET", "")
-REDIRECT_URI = os.getenv("DASHBOARD_REDIRECT_URI", "http://localhost:10547/auth/callback")
+
+if "RAILWAY_PUBLIC_DOMAIN" in os.environ:
+    REDIRECT_URI = f"https://{os.environ['RAILWAY_PUBLIC_DOMAIN']}/auth/callback"
+else:
+    REDIRECT_URI = os.getenv("DASHBOARD_REDIRECT_URI", "http://localhost:10547/auth/callback")
 
 # Render sets PORT; fall back to DASHBOARD_PORT, then 10547
 DASHBOARD_PORT = int(os.getenv("PORT", os.getenv("DASHBOARD_PORT", "10547")))
