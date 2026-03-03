@@ -1,11 +1,7 @@
 import { Bot, Shield, Zap, ScrollText, ArrowRight, ChevronRight, Star, Users, BarChart3 } from 'lucide-react';
 import { AUTH_BASE } from '@/lib/api';
 
-const CLIENT_ID = import.meta.env.VITE_DISCORD_CLIENT_ID || '1445812489840361656';
-// OAuth callback goes to the API server (WispByte), not the frontend (Render)
-const CALLBACK_URL = AUTH_BASE ? `${AUTH_BASE}/auth/callback` : `${window.location.origin}/auth/callback`;
-const REDIRECT_URI = encodeURIComponent(CALLBACK_URL);
-const OAUTH_URL = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=code&scope=identify+guilds`;
+const OAUTH_URL = AUTH_BASE ? `${AUTH_BASE}/auth/login` : '/auth/login';
 
 const features = [
     {

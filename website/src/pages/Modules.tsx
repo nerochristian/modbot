@@ -59,7 +59,24 @@ export function Modules() {
     const [settingsModal, setSettingsModal] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
 
-    const modules = capabilities?.modules || [];
+    const modules = useMemo(() => {
+        if (capabilities?.modules?.length) {
+            return capabilities.modules;
+        }
+        if (!config) {
+            return [];
+        }
+        return Object.keys(config.modules).map((id) => ({
+            id,
+            name: id,
+            description: `${id} module`,
+            iconHint: 'Package',
+            category: 'General',
+            premiumTier: 'free' as const,
+            supportsOverrides: true,
+            settingsSchema: [],
+        }));
+    }, [capabilities?.modules, config]);
 
     const filteredModules = useMemo(() => {
         if (!search) return modules;
@@ -86,7 +103,7 @@ export function Modules() {
         setSaving(false);
     };
 
-    if (!capabilities || !config) return <PageSkeleton />;
+    if (!config) return <PageSkeleton />;
 
     const channelOptions = channels.filter(c => c.type === 0).map(c => ({ label: `#${c.name}`, value: c.id }));
     const roleOptions = roles.filter(r => !r.managed).map(r => ({ label: r.name, value: r.id, color: r.color }));

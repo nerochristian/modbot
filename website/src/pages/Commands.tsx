@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Switch } from '@/components/ui/Switch';
@@ -59,10 +59,42 @@ export function Commands() {
   const [activeCategory, setActiveCategory] = useState('all');
   const [settingsModal, setSettingsModal] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [showSyncBanner, setShowSyncBanner] = useState(true);
+  const [showSyncBanner, setShowSyncBanner] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
-  const commands = capabilities?.commands || [];
+  const commands = useMemo(() => {
+    if (capabilities?.commands?.length) {
+      return capabilities.commands;
+    }
+    if (!config) {
+      return [];
+    }
+    return Object.entries(config.commands).map(([name, commandConfig]) => ({
+      name,
+      group: 'General',
+      description: '',
+      type: 'both' as const,
+      supportsOverrides: true,
+      defaultRequiredPermission: commandConfig.requiredPermission || 'send_messages',
+      premiumTier: 'free' as const,
+      settingsSchema: [],
+    }));
+  }, [capabilities?.commands, config]);
+
+  useEffect(() => {
+    if (!activeGuildId) {
+      setShowSyncBanner(false);
+      return;
+    }
+    realApiClient
+      .getSyncStatus(activeGuildId)
+      .then((status) => {
+        setShowSyncBanner(Boolean(status.syncRequired));
+      })
+      .catch(() => {
+        setShowSyncBanner(false);
+      });
+  }, [activeGuildId]);
 
   // Group commands by category
   const categories = useMemo(() => {
@@ -141,7 +173,7 @@ export function Commands() {
     }
   };
 
-  if (!capabilities || !config) return <PageSkeleton />;
+  if (!config) return <PageSkeleton />;
 
   const channelOptions = channels.filter(c => c.type === 0).map(c => ({ label: `#${c.name}`, value: c.id }));
   const roleOptions = roles.filter(r => !r.managed).map(r => ({ label: r.name, value: r.id, color: r.color }));

@@ -6,10 +6,10 @@ import { NavLink } from 'react-router-dom';
 import { cn } from '@/lib/utils';
 
 export function Overview() {
-  const { guilds, activeGuildId, capabilities, config, loading } = useAppStore();
+  const { guilds, activeGuildId, config, loading } = useAppStore();
   const activeServer = guilds.find(s => s.id === activeGuildId);
 
-  if (loading || !capabilities || !config) return <PageSkeleton />;
+  if (loading || !config) return <PageSkeleton />;
 
   const enabledCommands = Object.values(config.commands).filter(c => c.enabled).length;
   const totalCommands = Object.keys(config.commands).length;

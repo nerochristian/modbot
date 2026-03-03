@@ -37,10 +37,23 @@ export class VersionConflictError extends ApiHttpError {
 }
 
 // Base URL for API calls — served from same domain in production
-export const API_BASE = '/api';
+function normalizeBaseUrl(value: string | undefined): string {
+    if (!value) return '';
+    return value.trim().replace(/\/+$/, '');
+}
+
+const configuredApiOrigin = normalizeBaseUrl(
+    import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL
+);
+
+export const API_BASE = configuredApiOrigin
+    ? (configuredApiOrigin.endsWith('/api') ? configuredApiOrigin : `${configuredApiOrigin}/api`)
+    : '/api';
 
 // Base URL for auth routes
-export const AUTH_BASE = '';
+export const AUTH_BASE = normalizeBaseUrl(
+    import.meta.env.VITE_AUTH_BASE_URL || import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL
+);
 
 function isObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -107,9 +120,14 @@ async function apiFetchWithFallback<T>(
 }
 
 function normalizeCaseAction(value: unknown): ModerationCase['action'] {
-    return value === 'warn' || value === 'timeout' || value === 'kick' || value === 'ban' || value === 'unban' || value === 'quarantine'
-        ? value
-        : 'note';
+    const action = typeof value === 'string' ? value.trim().toLowerCase() : '';
+    if (action === 'warn' || action === 'warning') return 'warn';
+    if (action === 'timeout' || action === 'mute' || action === 'muted') return 'timeout';
+    if (action === 'kick' || action === 'kicked') return 'kick';
+    if (action === 'ban' || action === 'banned' || action === 'softban' || action === 'tempban') return 'ban';
+    if (action === 'unban' || action === 'unbanned') return 'unban';
+    if (action === 'quarantine' || action === 'quarantined') return 'quarantine';
+    return 'note';
 }
 
 function normalizeCaseRecord(value: unknown): ModerationCase {

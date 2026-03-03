@@ -47,16 +47,16 @@ body {
 }
 
 .dark {
-  --color-app-bg: #020617;
-  --color-sidebar-bg: #0f172a;
-  --color-card-bg: #0f172a;
+  --color-app-bg: #060c1a;
+  --color-sidebar-bg: #0e162b;
+  --color-card-bg: #131d33;
 
-  --color-cream-50: #0f172a;
-  --color-cream-100: #1e293b;
-  --color-cream-200: #334155;
-  --color-cream-300: #475569;
+  --color-cream-50: #121b30;
+  --color-cream-100: #17233d;
+  --color-cream-200: #223152;
+  --color-cream-300: #2e3f67;
 
-  /* Invert slate colors for text readability */
+  /* Inverted slate scale for dark surfaces */
   --color-slate-900: #f8fafc;
   --color-slate-800: #f1f5f9;
   --color-slate-700: #e2e8f0;
@@ -65,17 +65,183 @@ body {
   --color-slate-400: #64748b;
   --color-slate-300: #475569;
   --color-slate-200: #334155;
-  --color-slate-100: #1e293b;
-  --color-slate-50: #0f172a;
+  --color-slate-100: #1f2b45;
+  --color-slate-50: #121b30;
 
-  /* Adjust accent backgrounds slightly for dark mode contrast */
-  --color-indigo-50: #1e1b4b;
-  --color-emerald-50: #064e3b;
-  --color-amber-50: #451a03;
-  --color-purple-50: #3b0764;
-  --color-red-50: #450a0a;
+  /* Invert gray scale so text-gray-* stays readable in dark mode */
+  --color-gray-950: #f8fafc;
+  --color-gray-900: #f1f5f9;
+  --color-gray-800: #e2e8f0;
+  --color-gray-700: #cbd5e1;
+  --color-gray-600: #94a3b8;
+  --color-gray-500: #64748b;
+  --color-gray-400: #475569;
+  --color-gray-300: #334155;
+  --color-gray-200: #273348;
+  --color-gray-100: #1c2740;
+  --color-gray-50: #141e33;
 
-  /* Shadows for dark mode */
-  --shadow-soft: 0 8px 30px rgba(0,0,0,0.4);
-  --shadow-soft-lg: 0 20px 60px -15px rgba(0,0,0,0.6);
+  /* Dark-friendly tinted backgrounds used by badges/alerts */
+  --color-indigo-50: #172349;
+  --color-indigo-100: #1f2f5f;
+  --color-indigo-200: #2a3f78;
+  --color-emerald-50: #062f28;
+  --color-emerald-100: #0b3b32;
+  --color-amber-50: #3b2008;
+  --color-amber-100: #52300e;
+  --color-amber-200: #6d4516;
+  --color-purple-50: #2f134f;
+  --color-purple-100: #3d1a63;
+  --color-red-50: #3a1216;
+  --color-red-100: #4b181e;
+  --color-red-200: #63232d;
+
+  --shadow-soft: 0 8px 30px rgba(0,0,0,0.42);
+  --shadow-soft-lg: 0 20px 60px -15px rgba(0,0,0,0.65);
+}
+
+/* Replace hardcoded white surfaces with dark cards when dark mode is active. */
+.dark .bg-white {
+  background-color: var(--color-card-bg);
+}
+
+.dark .hover\:bg-white:hover {
+  background-color: var(--color-cream-100);
+}
+
+.dark .bg-white\/50 {
+  background-color: rgba(19, 29, 51, 0.5);
+}
+
+.dark .hover\:bg-white\/50:hover {
+  background-color: rgba(23, 35, 61, 0.7);
+}
+
+.dark .bg-white\/60 {
+  background-color: rgba(19, 29, 51, 0.6);
+}
+
+.dark .border-white {
+  border-color: var(--color-cream-300);
+}
+
+html.theme-transitioning,
+html.theme-transitioning body {
+  transition: background-color 460ms cubic-bezier(0.22, 1, 0.36, 1), color 360ms ease;
+}
+
+html.theme-transitioning *,
+html.theme-transitioning *::before,
+html.theme-transitioning *::after {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow, opacity;
+  transition-duration: 460ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.theme-toggle-btn {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.theme-toggle-btn::after {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(99, 102, 241, 0.35) 0%, rgba(99, 102, 241, 0) 70%);
+  opacity: 0;
+  transform: scale(0.45);
+  pointer-events: none;
+}
+
+.theme-toggle-btn--animating {
+  animation: theme-toggle-pop 520ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.theme-toggle-btn--animating::after {
+  animation: theme-toggle-ripple 520ms cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.theme-toggle-icon {
+  transition: transform 420ms cubic-bezier(0.2, 0.9, 0.2, 1), opacity 260ms ease;
+}
+
+@keyframes theme-toggle-pop {
+  0% {
+    transform: scale(1) rotate(0deg);
+  }
+  40% {
+    transform: scale(1.12) rotate(-8deg);
+  }
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+}
+
+@keyframes theme-toggle-ripple {
+  0% {
+    opacity: 0.9;
+    transform: scale(0.4);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.3);
+  }
+}
+
+@supports (view-transition-name: theme-root) {
+  :root {
+    view-transition-name: theme-root;
+  }
+
+  ::view-transition-old(theme-root),
+  ::view-transition-new(theme-root) {
+    animation-duration: 460ms;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  ::view-transition-old(theme-root) {
+    animation-name: theme-crossfade-out;
+  }
+
+  ::view-transition-new(theme-root) {
+    animation-name: theme-crossfade-in;
+  }
+}
+
+@keyframes theme-crossfade-out {
+  from {
+    opacity: 1;
+    filter: brightness(1);
+  }
+  to {
+    opacity: 0;
+    filter: brightness(0.9);
+  }
+}
+
+@keyframes theme-crossfade-in {
+  from {
+    opacity: 0;
+    filter: brightness(1.08);
+  }
+  to {
+    opacity: 1;
+    filter: brightness(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-transitioning,
+  html.theme-transitioning body,
+  html.theme-transitioning *,
+  html.theme-transitioning *::before,
+  html.theme-transitioning *::after,
+  .theme-toggle-icon,
+  .theme-toggle-btn--animating,
+  .theme-toggle-btn--animating::after {
+    animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
 }

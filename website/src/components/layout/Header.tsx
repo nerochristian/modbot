@@ -1,6 +1,6 @@
 import { useAppStore } from '@/store/useAppStore';
 import { ChevronDown, Bell, Search, LogOut, AlertTriangle, Moon, Sun } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { realApiClient } from '@/lib/api';
 
@@ -9,8 +9,18 @@ export function Header() {
   const [isServerMenuOpen, setIsServerMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [themeButtonAnimating, setThemeButtonAnimating] = useState(false);
+  const themeAnimationTimerRef = useRef<number | null>(null);
 
   const activeServer = guilds.find((s) => s.id === activeGuildId);
+
+  useEffect(() => {
+    return () => {
+      if (themeAnimationTimerRef.current !== null) {
+        window.clearTimeout(themeAnimationTimerRef.current);
+      }
+    };
+  }, []);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -21,6 +31,18 @@ export function Header() {
     } finally {
       window.location.href = '/';
     }
+  };
+
+  const handleThemeToggle = () => {
+    if (themeAnimationTimerRef.current !== null) {
+      window.clearTimeout(themeAnimationTimerRef.current);
+    }
+    setThemeButtonAnimating(true);
+    toggleTheme();
+    themeAnimationTimerRef.current = window.setTimeout(() => {
+      setThemeButtonAnimating(false);
+      themeAnimationTimerRef.current = null;
+    }, 520);
   };
 
   return (
@@ -97,11 +119,31 @@ export function Header() {
 
           {/* Theme Toggle */}
           <button
-            onClick={toggleTheme}
-            className="p-2 text-slate-500 hover:bg-app-bg rounded-xl transition-colors"
-            title="Toggle Dark Mode"
+            onClick={handleThemeToggle}
+            className={cn(
+              'theme-toggle-btn p-2 text-slate-500 hover:bg-app-bg rounded-xl transition-colors',
+              themeButtonAnimating && 'theme-toggle-btn--animating'
+            )}
+            title="Toggle Theme"
           >
-            {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            <span className="relative block h-5 w-5">
+              <Sun
+                className={cn(
+                  'theme-toggle-icon absolute inset-0 h-5 w-5',
+                  theme === 'dark'
+                    ? 'opacity-100 rotate-0 scale-100 text-amber-300'
+                    : 'opacity-0 -rotate-90 scale-50 text-amber-300'
+                )}
+              />
+              <Moon
+                className={cn(
+                  'theme-toggle-icon absolute inset-0 h-5 w-5',
+                  theme === 'dark'
+                    ? 'opacity-0 rotate-90 scale-50 text-slate-400'
+                    : 'opacity-100 rotate-0 scale-100 text-slate-500'
+                )}
+              />
+            </span>
           </button>
 
           {/* User Profile */}

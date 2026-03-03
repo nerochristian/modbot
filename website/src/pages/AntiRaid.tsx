@@ -6,6 +6,29 @@ import { Button } from '@/components/ui/Button';
 import { Badge, SaveBar, PageSkeleton } from '@/components/ui/Shared';
 import { ShieldAlert, Lock, UserPlus, ShieldCheck, AlertOctagon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { ModuleConfig } from '@/types';
+
+function defaultAntiRaidConfig(): ModuleConfig {
+  return {
+    enabled: false,
+    settings: {
+      joinThreshold: 10,
+      timeWindow: 10,
+      lockdownEnabled: false,
+      kickNewAccounts: false,
+      accountAgeHours: 24,
+    },
+    overrides: {
+      allowedChannels: [],
+      ignoredChannels: [],
+      allowedRoles: [],
+      ignoredRoles: [],
+      allowedUsers: [],
+      ignoredUsers: [],
+    },
+    loggingRouteOverride: null,
+  };
+}
 
 export function AntiRaid() {
   const { config, updateConfigLocal, saveConfig, discardChanges, configDirty, error } = useAppStore();
@@ -19,11 +42,10 @@ export function AntiRaid() {
 
   if (!config) return <PageSkeleton />;
 
-  const raidConfig = config.modules.antiraid;
+  const raidConfig = config.modules.antiraid || defaultAntiRaidConfig();
   const raidSettings = raidConfig?.settings || {};
 
   const toggleRaid = () => {
-    if (!raidConfig) return;
     updateConfigLocal({
       modules: {
         ...config.modules,
@@ -33,7 +55,6 @@ export function AntiRaid() {
   };
 
   const updateSetting = (key: string, value: unknown) => {
-    if (!raidConfig) return;
     updateConfigLocal({
       modules: {
         ...config.modules,

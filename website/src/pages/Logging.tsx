@@ -3,7 +3,7 @@ import { useAppStore } from '@/store/useAppStore';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Switch } from '@/components/ui/Switch';
 import { Button } from '@/components/ui/Button';
-import { Badge, Select, SaveBar, PageSkeleton, SearchInput, Tabs } from '@/components/ui/Shared';
+import { Badge, Select, SaveBar, PageSkeleton, SearchInput, Tabs, EmptyState } from '@/components/ui/Shared';
 import { ScrollText, Settings, Download, Hash } from 'lucide-react';
 import type { EventTypeCapability, LoggingRouteConfig } from '@/types';
 import { cn } from '@/lib/utils';
@@ -29,7 +29,31 @@ export function Logging() {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const eventTypes = capabilities?.eventTypes || [];
+  const eventTypes = useMemo(() => {
+    if (capabilities?.eventTypes?.length) {
+      return capabilities.eventTypes;
+    }
+    if (!config) {
+      return [];
+    }
+    return Object.keys(config.logging).map((eventTypeId) => {
+      const normalized = eventTypeId.toLowerCase();
+      let category: EventTypeCapability['category'] = 'moderation';
+      if (normalized.includes('automod')) category = 'automod';
+      if (normalized.includes('server') || normalized.includes('guild')) category = 'server';
+      if (normalized.includes('message')) category = 'messages';
+      if (normalized.includes('member') || normalized.includes('join') || normalized.includes('leave')) category = 'members';
+      if (normalized.includes('voice')) category = 'voice';
+
+      return {
+        id: eventTypeId,
+        name: eventTypeId.replace(/[_-]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
+        category,
+        description: `Log events for ${eventTypeId.replace(/[_-]+/g, ' ')}`,
+        severity: 'info' as const,
+      };
+    });
+  }, [capabilities?.eventTypes, config]);
   const channelOptions = channels.filter(c => c.type === 0).map(c => ({ label: `#${c.name}`, value: c.id }));
 
   const categories = useMemo(() => {
@@ -97,7 +121,7 @@ export function Logging() {
     setSaving(false);
   };
 
-  if (!capabilities || !config) return <PageSkeleton />;
+  if (!config) return <PageSkeleton />;
 
   // Group by category for display
   const groupedByCategory = useMemo(() => {
@@ -129,7 +153,13 @@ export function Logging() {
       </div>
 
       <div className="space-y-6">
-        {Array.from(groupedByCategory).map(([category, events]) => (
+        {filtered.length === 0 ? (
+          <EmptyState
+            icon={<ScrollText className="w-8 h-8" />}
+            title="No events available"
+            description="No logging events are available for this server yet."
+          />
+        ) : Array.from(groupedByCategory).map(([category, events]) => (
           <Card key={category}>
             <CardHeader>
               <div className="flex items-center gap-3">

@@ -22,6 +22,12 @@ import { realApiClient } from '@/lib/api';
 
 // Use real API client — backend serves /api/* routes
 const api: ApiClient = realApiClient;
+const THEME_TRANSITION_DURATION_MS = 520;
+let themeTransitionCleanupTimer: number | null = null;
+
+type ViewTransitionCapableDocument = Document & {
+  startViewTransition?: (update: () => void | Promise<void>) => { finished: Promise<void> };
+};
 
 interface AppState {
   // Auth
@@ -161,7 +167,34 @@ function normalizeEventTypeCapability(value: unknown, index: number): EventTypeC
 function normalizeCapabilities(raw: unknown): BotCapabilities {
   const source = isObject(raw) ? raw : {};
   const modules = Array.isArray(source.modules) ? source.modules.map(normalizeModuleCapability) : [];
-  const commands = Array.isArray(source.commands) ? source.commands.map(normalizeCommandCapability) : [];
+  const rawCommands = Array.isArray(source.commands) ? source.commands.map(normalizeCommandCapability) : [];
+  const commandsByName = new Map<string, CommandCapability>();
+  for (const command of rawCommands) {
+    const existing = commandsByName.get(command.name);
+    if (!existing) {
+      commandsByName.set(command.name, command);
+      continue;
+    }
+    const mergedType = existing.type === command.type ? existing.type : 'both';
+    const mergedPremiumTier = existing.premiumTier === 'enterprise' || command.premiumTier === 'enterprise'
+      ? 'enterprise'
+      : (existing.premiumTier === 'premium' || command.premiumTier === 'premium' ? 'premium' : 'free');
+    commandsByName.set(command.name, {
+      ...existing,
+      type: mergedType,
+      description: existing.description || command.description,
+      group: existing.group || command.group,
+      supportsOverrides: existing.supportsOverrides || command.supportsOverrides,
+      settingsSchema: existing.settingsSchema.length >= command.settingsSchema.length
+        ? existing.settingsSchema
+        : command.settingsSchema,
+      defaultRequiredPermission: existing.defaultRequiredPermission !== 'send_messages'
+        ? existing.defaultRequiredPermission
+        : command.defaultRequiredPermission,
+      premiumTier: mergedPremiumTier,
+    });
+  }
+  const commands = Array.from(commandsByName.values()).sort((a, b) => a.name.localeCompare(b.name));
   const eventTypes = Array.isArray(source.eventTypes) ? source.eventTypes.map(normalizeEventTypeCapability) : [];
   return {
     version: typeof source.version === 'string'
@@ -514,12 +547,39 @@ export const useAppStore = create<AppState>((set, get) => ({
     const next = current === 'light' ? 'dark' : 'light';
     localStorage.setItem('theme', next);
 
-    if (next === 'dark') {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+    const root = document.documentElement;
+    const applyTheme = () => {
+      if (next === 'dark') {
+        root.classList.add('dark');
+      } else {
+        root.classList.remove('dark');
+      }
+      set({ theme: next });
+    };
+
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduceMotion) {
+      applyTheme();
+      return;
     }
 
-    set({ theme: next });
+    root.classList.add('theme-transitioning');
+    if (themeTransitionCleanupTimer !== null) {
+      window.clearTimeout(themeTransitionCleanupTimer);
+    }
+
+    const vtDocument = document as ViewTransitionCapableDocument;
+    if (typeof vtDocument.startViewTransition === 'function') {
+      vtDocument.startViewTransition(() => {
+        applyTheme();
+      });
+    } else {
+      applyTheme();
+    }
+
+    themeTransitionCleanupTimer = window.setTimeout(() => {
+      root.classList.remove('theme-transitioning');
+      themeTransitionCleanupTimer = null;
+    }, THEME_TRANSITION_DURATION_MS);
   },
 }));

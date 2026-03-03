@@ -415,6 +415,28 @@ class ModBot(commands.Bot):
     - Web dashboard integration
     """
 
+    _MODULE_ID_ALIASES: Dict[str, str] = {
+        "aimoderation": "aimod",
+        "ai_moderation": "aimod",
+        "ai_mod": "aimod",
+        "automodv3": "automod",
+        "auto_mod": "automod",
+        "auto_moderation": "automod",
+        "forummoderation": "forum_moderation",
+    }
+
+    _MODULE_ENABLED_KEYS: Dict[str, tuple[str, bool]] = {
+        "aimod": ("aimod_enabled", True),
+        "automod": ("automod_enabled", True),
+        "antiraid": ("antiraid_enabled", False),
+        "logging": ("logging_enabled", True),
+        "tickets": ("tickets_enabled", False),
+        "verification": ("verification_enabled", True),
+        "modmail": ("modmail_enabled", True),
+        "whitelist": ("whitelist_enabled", False),
+        "forum_moderation": ("forum_moderation_enabled", True),
+    }
+
     def __init__(self):
         intents = discord.Intents.all()
         super().__init__(
@@ -466,6 +488,135 @@ class ModBot(commands.Bot):
         except ValueError:
             logger.warning("[WARN] Invalid OWNER_IDS in .env, using default")
             return {1269772767516033025}
+
+    @classmethod
+    def _normalize_module_id(cls, module_id: object) -> str:
+        raw = str(module_id or "").strip().lower().replace("-", "_").replace(" ", "_")
+        return cls._MODULE_ID_ALIASES.get(raw, raw)
+
+    @staticmethod
+    def _coerce_bool(value: object, default: bool = False) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return default
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in {"1", "true", "yes", "on", "enabled"}:
+                return True
+            if lowered in {"0", "false", "no", "off", "disabled"}:
+                return False
+        return default
+
+    def _module_id_for_command_object(self, command_obj: object) -> Optional[str]:
+        binding = getattr(command_obj, "cog", None)
+        if binding is None:
+            binding = getattr(command_obj, "binding", None)
+        if binding is None:
+            return None
+        module_name = getattr(binding, "qualified_name", None)
+        if not module_name:
+            module_name = getattr(binding.__class__, "__name__", None)
+        if not module_name:
+            return None
+        return self._normalize_module_id(module_name)
+
+    @staticmethod
+    def _root_command_name(command_obj: object) -> Optional[str]:
+        root_parent = getattr(command_obj, "root_parent", None)
+        if root_parent is not None:
+            parent_name = getattr(root_parent, "name", None)
+            if isinstance(parent_name, str) and parent_name:
+                return parent_name
+        name = getattr(command_obj, "name", None)
+        if isinstance(name, str) and name:
+            return name
+        return None
+
+    def _module_is_enabled_in_settings(self, settings: Dict[str, Any], module_id: Optional[str]) -> bool:
+        if not module_id:
+            return True
+        normalized = self._normalize_module_id(module_id)
+        modules_blob = settings.get("modules", {})
+        if isinstance(modules_blob, dict):
+            for key, cfg in modules_blob.items():
+                if self._normalize_module_id(key) != normalized:
+                    continue
+                if isinstance(cfg, dict) and "enabled" in cfg:
+                    return self._coerce_bool(cfg.get("enabled"), True)
+        enabled_key = self._MODULE_ENABLED_KEYS.get(normalized)
+        if enabled_key:
+            key, default = enabled_key
+            return self._coerce_bool(settings.get(key), default)
+        return True
+
+    def _command_is_enabled_in_settings(
+        self,
+        settings: Dict[str, Any],
+        command_name: Optional[str],
+        *,
+        is_slash: bool,
+    ) -> bool:
+        if not command_name:
+            return True
+
+        commands_blob = settings.get("commands", {})
+        if not isinstance(commands_blob, dict):
+            return True
+
+        cfg = commands_blob.get(command_name)
+        if not isinstance(cfg, dict):
+            command_name_lower = command_name.lower()
+            for key, value in commands_blob.items():
+                if str(key).lower() == command_name_lower and isinstance(value, dict):
+                    cfg = value
+                    break
+        if not isinstance(cfg, dict):
+            return True
+
+        if "enabled" in cfg and not self._coerce_bool(cfg.get("enabled"), True):
+            return False
+
+        visibility = cfg.get("visibility", {})
+        if isinstance(visibility, dict):
+            if is_slash:
+                if "slashEnabled" in visibility and not self._coerce_bool(visibility.get("slashEnabled"), True):
+                    return False
+                if "slash_enabled" in visibility and not self._coerce_bool(visibility.get("slash_enabled"), True):
+                    return False
+            else:
+                if "prefixEnabled" in visibility and not self._coerce_bool(visibility.get("prefixEnabled"), True):
+                    return False
+                if "prefix_enabled" in visibility and not self._coerce_bool(visibility.get("prefix_enabled"), True):
+                    return False
+
+        return True
+
+    async def _evaluate_command_access(
+        self,
+        guild_id: int,
+        *,
+        module_id: Optional[str],
+        command_name: Optional[str],
+        is_slash: bool,
+    ) -> tuple[bool, Optional[str]]:
+        try:
+            settings = await self.db.get_settings(guild_id)
+        except Exception as exc:
+            logger.debug("Failed to resolve guild settings for command gating: %s", exc, exc_info=True)
+            return True, None
+
+        if not self._module_is_enabled_in_settings(settings, module_id):
+            label = (module_id or "this feature").replace("_", " ")
+            return False, f"`{label}` is disabled for this server."
+
+        if not self._command_is_enabled_in_settings(settings, command_name, is_slash=is_slash):
+            label = command_name or "This command"
+            return False, f"`{label}` is disabled for this server."
+
+        return True, None
 
     async def get_prefix(self, message: discord.Message):
         """Dynamic prefix handler with database-backed caching."""
@@ -906,6 +1057,25 @@ class ModBot(commands.Bot):
                 pass
             return False
 
+        if interaction.guild is not None and interaction.command is not None:
+            module_id = self._module_id_for_command_object(interaction.command)
+            command_name = self._root_command_name(interaction.command)
+            allowed, reason = await self._evaluate_command_access(
+                interaction.guild.id,
+                module_id=module_id,
+                command_name=command_name,
+                is_slash=True,
+            )
+            if not allowed:
+                try:
+                    if interaction.response.is_done():
+                        await interaction.followup.send(reason or "This feature is disabled for this server.", ephemeral=True)
+                    else:
+                        await interaction.response.send_message(reason or "This feature is disabled for this server.", ephemeral=True)
+                except Exception:
+                    pass
+                return False
+
         return True
 
     async def on_ready(self):
@@ -1013,7 +1183,14 @@ class ModBot(commands.Bot):
             if message.guild:
                 prefix = await self.prefix_cache.get(message.guild.id)
                 if prefix is None:
-                    prefix = getattr(Config, "PREFIX", ",")
+                    try:
+                        guild_settings = await self.db.get_settings(message.guild.id)
+                        prefix = guild_settings.get("prefix") if isinstance(guild_settings, dict) else None
+                        if not prefix:
+                            prefix = getattr(Config, "PREFIX", ",")
+                        await self.prefix_cache.set(message.guild.id, prefix)
+                    except Exception:
+                        prefix = getattr(Config, "PREFIX", ",")
             else:
                 prefix = "!"
 
@@ -1051,6 +1228,25 @@ class ModBot(commands.Bot):
                     if loading_reaction is not None:
                         await self._try_remove_loading_reaction(message, loading_reaction)
             return
+
+        if message.guild is not None and ctx.command is not None and message.author.id not in self.owner_ids:
+            module_id = self._module_id_for_command_object(ctx.command)
+            command_name = self._root_command_name(ctx.command)
+            allowed, reason = await self._evaluate_command_access(
+                message.guild.id,
+                module_id=module_id,
+                command_name=command_name,
+                is_slash=False,
+            )
+            if not allowed:
+                try:
+                    await message.reply(reason or "This command is disabled for this server.", mention_author=False)
+                except Exception:
+                    try:
+                        await message.channel.send(reason or "This command is disabled for this server.")
+                    except Exception:
+                        pass
+                return
 
         await self.invoke(ctx)
 

@@ -6,6 +6,31 @@ import { Button } from '@/components/ui/Button';
 import { Badge, SaveBar, SearchInput, PageSkeleton, EmptyState } from '@/components/ui/Shared';
 import { Zap, Plus, Settings2, ShieldAlert, AlertTriangle, Filter, Clock } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { ModuleConfig } from '@/types';
+
+function defaultAutomodConfig(): ModuleConfig {
+  return {
+    enabled: false,
+    settings: {
+      antiSpam: true,
+      antiLink: true,
+      antiInvite: true,
+      spamThreshold: 5,
+      mentionLimit: 5,
+      capsThreshold: 70,
+      action: 'warn',
+    },
+    overrides: {
+      allowedChannels: [],
+      ignoredChannels: [],
+      allowedRoles: [],
+      ignoredRoles: [],
+      allowedUsers: [],
+      ignoredUsers: [],
+    },
+    loggingRouteOverride: null,
+  };
+}
 
 export function Automod() {
   const { config, capabilities, updateConfigLocal, saveConfig, discardChanges, configDirty, error } = useAppStore();
@@ -19,11 +44,10 @@ export function Automod() {
 
   if (!capabilities || !config) return <PageSkeleton />;
 
-  const automodConfig = config.modules.automod;
+  const automodConfig = config.modules.automod || defaultAutomodConfig();
   const automodSettings = automodConfig?.settings || {};
 
   const toggleAutomod = () => {
-    if (!automodConfig) return;
     updateConfigLocal({
       modules: {
         ...config.modules,
@@ -33,7 +57,6 @@ export function Automod() {
   };
 
   const updateSetting = (key: string, value: unknown) => {
-    if (!automodConfig) return;
     updateConfigLocal({
       modules: {
         ...config.modules,
