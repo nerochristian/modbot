@@ -22109,3 +22109,56 @@ aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host gatewa
 2026-03-01 20:38:30,007 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
 2026-03-01 20:38:30,007 | INFO | LifeSimBot | Guilds: 1 | Users: 28 | Latency: 5008ms
 2026-03-01 20:38:30,008 | INFO | LifeSimBot | ====================================================
+2026-03-02 19:39:29,207 | WARNING | discord.client | PyNaCl is not installed, voice will NOT be supported
+2026-03-02 19:39:29,208 | INFO | LifeSimBot | [1mLifeSimBot[0m starting up
+2026-03-02 19:39:29,208 | INFO | LifeSimBot | [2mPython[0m 3.14.0 | [2mdiscord.py[0m 2.7.0a | [2mOS[0m Windows 11
+2026-03-02 19:39:29,208 | INFO | LifeSimBot | [2mDB[0m C:\Users\Dell\mod\LifeSimBot\life_sim.db | [2mLog[0m C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-03-02 19:39:29,208 | INFO | LifeSimBot | [2mDebug[0m False | [2mFeatures[0m 16 enabled
+2026-03-02 19:39:29,210 | INFO | LifeSimBot | Connecting to Discord...
+2026-03-02 19:39:29,210 | INFO | discord.client | logging in using static token
+2026-03-02 19:39:29,736 | INFO | LifeSimBot | Initializing...
+2026-03-02 19:39:29,737 | INFO | bot.database | Initializing Database Schema...
+2026-03-02 19:39:29,773 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-03-02 19:39:29,774 | INFO | LifeSimBot | [OK] Database initialized
+2026-03-02 19:39:29,777 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-03-02 19:39:29,777 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-03-02 19:39:29,780 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-03-02 19:39:29,781 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-03-02 19:39:29,782 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-03-02 19:39:29,787 | INFO | LifeSimBot.Core | Core cog initialized
+2026-03-02 19:39:29,787 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-03-02 19:39:29,790 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-03-02 19:39:29,790 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-03-02 19:39:29,793 | INFO | LifeSimBot.Help | Help cog initialized
+2026-03-02 19:39:29,793 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-03-02 19:39:29,797 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-03-02 19:39:29,803 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-03-02 19:39:29,806 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-03-02 19:39:29,811 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-03-02 19:39:29,816 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-03-02 19:39:29,820 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-03-02 19:39:29,824 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-03-02 19:39:29,829 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-03-02 19:39:29,836 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-03-02 19:39:29,842 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-03-02 19:39:29,847 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-03-02 19:39:29,852 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-03-02 19:39:29,853 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-03-02 19:39:29,857 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-03-02 19:39:29,859 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-03-02 19:39:29,863 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-03-02 19:39:29,866 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-03-02 19:39:29,870 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-03-02 19:39:29,872 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-03-02 19:39:29,875 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-03-02 19:39:29,877 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-03-02 19:39:29,877 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
+2026-03-02 19:39:30,118 | INFO | LifeSimBot | [OK] Synced 97 application commands
+2026-03-02 19:39:30,118 | INFO | LifeSimBot | Background tasks started
+2026-03-02 19:39:30,118 | INFO | LifeSimBot | [OK] Ready (startup 0.38s)
+2026-03-02 19:39:30,550 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 619c1a4f041c55b85f3f6b8741b935e5).
+2026-03-02 19:39:32,577 | INFO | LifeSimBot | ====================================================
+2026-03-02 19:39:32,577 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-03-02 19:39:32,577 | INFO | LifeSimBot | Guilds: 1 | Users: 28 | Latency: 49ms
+2026-03-02 19:39:32,577 | INFO | LifeSimBot | ====================================================
+2026-03-02 19:39:32,592 | INFO | LifeSimBot | Database auto-backup completed

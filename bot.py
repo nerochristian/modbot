@@ -1113,6 +1113,18 @@ class ModBot(commands.Bot):
         # Load blacklist cache
         await self._load_blacklist_cache()
         
+        # Start LifeSimBot AFTER ModBot is fully ready (delayed to avoid rate limits)
+        async def _delayed_lifesim_start():
+            await asyncio.sleep(30)
+            try:
+                proc = _start_lifesim_process()
+                if proc:
+                    logger.info("LifeSimBot started (delayed, 30s after ModBot ready)")
+            except Exception as e:
+                logger.warning(f"LifeSimBot failed to start: {e}")
+        
+        self.loop.create_task(_delayed_lifesim_start())
+        
         logger.info("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ Bot is fully operational!")
     
     async def _load_blacklist_cache(self):
@@ -1531,7 +1543,7 @@ async def main() -> int:
     
     # Create bot instance
     bot = ModBot()
-    lifesim_proc: Optional[subprocess.Popen] = _start_lifesim_process()
+    lifesim_proc: Optional[subprocess.Popen] = None  # Started later in on_ready
 
     try:
         async with bot:
@@ -1546,7 +1558,20 @@ async def main() -> int:
                     logger.warning(f"Dashboard failed to start: {e}")
 
             logger.info("\U0001f4e1 Starting bot...")
-            await bot.start(token)
+            # Retry loop for Discord rate limits (429)
+            # Prevents Render restart loops which make rate limiting worse
+            max_retries = 5
+            for attempt in range(max_retries):
+                try:
+                    await bot.start(token)
+                    break
+                except discord.HTTPException as e:
+                    if e.status == 429 and attempt < max_retries - 1:
+                        wait_time = 30 * (attempt + 1)
+                        logger.warning(f"Rate limited by Discord (attempt {attempt + 1}/{max_retries}). Waiting {wait_time}s...")
+                        await asyncio.sleep(wait_time)
+                    else:
+                        raise
     except KeyboardInterrupt:
         logger.info("\U0001f6d1 Received shutdown signal (Ctrl+C)")
     except discord.LoginFailure:
