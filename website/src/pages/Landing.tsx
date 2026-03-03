@@ -1,6 +1,8 @@
 import { Bot, Shield, Zap, ScrollText, ArrowRight, ChevronRight, Star, Users, BarChart3 } from 'lucide-react';
 
-const OAUTH_URL = '/auth/login';
+const CLIENT_ID = '1445812489840361656';
+const REDIRECT_URI = encodeURIComponent(window.location.origin + '/auth/callback');
+const OAUTH_URL = `https://discord.com/api/oauth2/authorize?client_id=${CLIENT_ID}&redirect_uri=${REDIRECT_URI}&response_type=code&scope=identify+guilds`;
 
 const features = [
     {

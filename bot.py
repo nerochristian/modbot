@@ -996,12 +996,8 @@ class ModBot(commands.Bot):
         # Bind the global error handler
         self.tree.on_error = self.on_tree_error
 
-        # Start web dashboard
-        if _DASHBOARD_AVAILABLE:
-            try:
-                self._dashboard_runner = await start_dashboard(self)
-            except Exception as e:
-                logger.warning(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¯ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â Dashboard failed to start: {e}")
+        # NOTE: Dashboard is started in main() before bot.start()
+        # so Render detects the port before Discord connects.
     
     async def on_tree_error(self, interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
         """Global error handler for application commands"""
@@ -1539,13 +1535,23 @@ async def main() -> int:
 
     try:
         async with bot:
-            logger.info("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¡ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ Starting bot...")
+            # Start web dashboard FIRST so Render detects the open port
+            # before the bot connects to Discord (which can take time)
+            if _DASHBOARD_AVAILABLE:
+                try:
+                    from web.app import start_dashboard
+                    bot._dashboard_runner = await start_dashboard(bot)
+                    logger.info("Dashboard started (pre-connect)")
+                except Exception as e:
+                    logger.warning(f"Dashboard failed to start: {e}")
+
+            logger.info("\U0001f4e1 Starting bot...")
             await bot.start(token)
     except KeyboardInterrupt:
-        logger.info("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â°ÃƒÆ’Ã¢â‚¬Â¦Ãƒâ€šÃ‚Â¸ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¹Ã…â€œÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â¹ Received shutdown signal (Ctrl+C)")
+        logger.info("\U0001f6d1 Received shutdown signal (Ctrl+C)")
     except discord.LoginFailure:
         logger.critical("=" * 60)
-        logger.critical("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Invalid Discord token!")
+        logger.critical("\u274c Invalid Discord token!")
         logger.critical("=" * 60)
         logger.critical(
             "Check your .env file and ensure MODBOT_DISCORD_TOKEN "
@@ -1558,16 +1564,16 @@ async def main() -> int:
         return 1
     except discord.PrivilegedIntentsRequired:
         logger.critical("=" * 60)
-        logger.critical("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Missing Privileged Intents!")
+        logger.critical("\u274c Missing Privileged Intents!")
         logger.critical("=" * 60)
         logger.critical("Enable these in the Discord Developer Portal:")
-        logger.critical("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Server Members Intent")
-        logger.critical("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Message Content Intent")
-        logger.critical("ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ Presence Intent")
+        logger.critical("\u2022 Server Members Intent")
+        logger.critical("\u2022 Message Content Intent")
+        logger.critical("\u2022 Presence Intent")
         logger.critical("=" * 60)
         return 1
     except Exception as e:
-        logger.critical(f"ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚ÂÃƒÆ’Ã¢â‚¬Â¦ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢ Fatal error during bot execution: {e}", exc_info=True)
+        logger.critical(f"\u274c Fatal error during bot execution: {e}", exc_info=True)
         return 1
     finally:
         _stop_lifesim_process(lifesim_proc)
