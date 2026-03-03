@@ -1,0 +1,22 @@
+[providers]
+python = true
+node = true
+
+[phases.setup]
+nixPkgs = ["python311", "nodejs_20"]
+
+[phases.install]
+cmds = [
+    "python -m venv /opt/venv",
+    ". /opt/venv/bin/activate",
+    "pip install -r requirements.txt",
+    "npm --prefix website ci"
+]
+
+[phases.build]
+cmds = [
+    "npm run --prefix website build"
+]
+
+[start]
+cmd = ". /opt/venv/bin/activate && python bot.py"

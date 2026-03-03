@@ -35,6 +35,7 @@ load_dotenv()
 
 # ==================== ENVIRONMENT HELPERS ====================
 IS_RENDER = os.getenv("RENDER", "").lower() in ("true", "1", "yes")
+IS_RAILWAY = os.getenv("RAILWAY_ENVIRONMENT") is not None
 
 
 def _env_enabled(var_name: str, default: bool = False) -> bool:
@@ -69,9 +70,9 @@ _LOCK_HANDLE = None
 
 def _acquire_single_instance_lock() -> None:
     """Prevent multiple bot instances on the same machine.
-    Skipped on Render (container isolation handles this).
+    Skipped on Render and Railway (container isolation handles this).
     """
-    if IS_RENDER:
+    if IS_RENDER or IS_RAILWAY:
         return
 
     global _LOCK_HANDLE

@@ -34,14 +34,8 @@ SESSION_SECRET = os.getenv("SESSION_SECRET", secrets.token_hex(32))
 # Detect Render environment (Render always sets RENDER=true)
 IS_RENDER = os.getenv("RENDER", "").lower() in ("true", "1", "yes")
 
-# Frontend URL — where the Vite SPA is served from (Render static site, or localhost)
-FRONTEND_URL = os.getenv(
-    "FRONTEND_URL",
-    os.getenv("RENDER_EXTERNAL_URL", "http://localhost:3000"),
-)
-
-# Cross-origin mode: API and frontend on different domains
-IS_CROSS_ORIGIN = bool(os.getenv("FRONTEND_URL"))
+# Internal URL where the Vite SPA is served from in production
+FRONTEND_URL = os.getenv("RAILWAY_STATIC_URL", "http://localhost:3000")
 
 DISCORD_API = "https://discord.com/api/v10"
 DISCORD_OAUTH_URL = "https://discord.com/api/oauth2/authorize"
@@ -145,8 +139,8 @@ async def auth_callback(request: web.Request):
     code = request.query.get("code")
     error = request.query.get("error")
 
-    # After auth, redirect to the FRONTEND (Render static site or localhost)
-    base_url = FRONTEND_URL.rstrip("/")
+    # After auth, redirect to the SAME DOMAIN (Railway app)
+    base_url = ""
 
     if error:
         raise web.HTTPFound(f"{base_url}/?error={error}")
@@ -199,16 +193,13 @@ async def auth_callback(request: web.Request):
         "expires_at": time.time() + expires_in,
     }
 
-    # Set cookie and redirect to dashboard on the frontend
+    # Set cookie and redirect to dashboard
     signed = _sign_session(session_id)
     response = web.HTTPFound(f"{base_url}/dashboard")
-    # Cross-origin cookies need SameSite=None + Secure
-    samesite = "None" if IS_CROSS_ORIGIN else "Lax"
-    secure = IS_CROSS_ORIGIN or IS_RENDER
     response.set_cookie(
         "modbot_session", signed, max_age=expires_in,
-        httponly=True, samesite=samesite, path="/",
-        secure=secure,
+        httponly=True, samesite="Lax", path="/",
+        secure=IS_RENDER or bool(os.getenv("RAILWAY_ENVIRONMENT")),
     )
     raise response
 
@@ -657,11 +648,6 @@ async def api_guild_stats(request: web.Request):
 
 # Build allowed origins list
 _ALLOWED_ORIGINS = set()
-
-# Always allow the configured frontend URL
-if FRONTEND_URL:
-    _ALLOWED_ORIGINS.add(FRONTEND_URL.rstrip("/"))
-
 if IS_RENDER:
     _render_url = os.getenv("RENDER_EXTERNAL_URL", "")
     if _render_url:

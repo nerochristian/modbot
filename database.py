@@ -17,7 +17,9 @@ except ImportError:
     AUTOMOD_SETTINGS = {}
 
 logger = logging.getLogger("ModBot.Database")
-DATABASE_PATH = "modbot.db"
+import os
+IS_RAILWAY = os.getenv("RAILWAY_ENVIRONMENT") is not None
+DATABASE_PATH = "/app/data/modbot.db" if IS_RAILWAY else "modbot.db"
 
 
 class Database:
