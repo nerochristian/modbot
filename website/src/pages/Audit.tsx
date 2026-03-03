@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Badge, SearchInput, PageSkeleton, EmptyState } from '@/components/ui/Shared';
 import { Card, CardContent } from '@/components/ui/Card';
 import { useAppStore } from '@/store/useAppStore';
-import { mockApiClient } from '@/lib/mock-data';
+import { realApiClient } from '@/lib/api';
 import type { AuditLogEntry } from '@/types';
 import { History, Settings, ToggleLeft, RefreshCw, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -30,10 +30,15 @@ export function Audit() {
     useEffect(() => {
         if (!activeGuildId) return;
         setLoading(true);
-        mockApiClient.getAuditLog(activeGuildId).then(res => {
-            setEntries(res.data);
-            setLoading(false);
-        });
+        realApiClient.getAuditLog(activeGuildId)
+            .then(res => {
+                setEntries(res.data);
+                setLoading(false);
+            })
+            .catch(() => {
+                setEntries([]);
+                setLoading(false);
+            });
     }, [activeGuildId]);
 
     if (loading) return <PageSkeleton />;
@@ -61,7 +66,8 @@ export function Audit() {
                         const Icon = ACTION_ICONS[entry.action] || FileText;
                         const label = ACTION_LABELS[entry.action] || entry.action;
                         const timeAgo = getTimeAgo(entry.timestamp);
-                        const changeKeys = Object.keys(entry.changes);
+                        const changes = entry.changes || {};
+                        const changeKeys = Object.keys(changes);
 
                         return (
                             <Card key={entry.id} className="transition-all hover:shadow-[0_12px_40px_rgb(0,0,0,0.06)]">
@@ -84,11 +90,11 @@ export function Audit() {
                                                         <div key={key} className="flex items-center gap-2 text-xs">
                                                             <span className="font-mono text-slate-500">{key}:</span>
                                                             <span className="px-1.5 py-0.5 bg-red-50 text-red-600 rounded font-mono line-through">
-                                                                {JSON.stringify(entry.changes[key].from)}
+                                                                {JSON.stringify(changes[key].from)}
                                                             </span>
                                                             <span className="text-slate-400">→</span>
                                                             <span className="px-1.5 py-0.5 bg-emerald-50 text-emerald-600 rounded font-mono">
-                                                                {JSON.stringify(entry.changes[key].to)}
+                                                                {JSON.stringify(changes[key].to)}
                                                             </span>
                                                         </div>
                                                     ))}

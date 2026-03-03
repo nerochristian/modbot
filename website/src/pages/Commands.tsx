@@ -6,8 +6,8 @@ import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { Badge, Select, MultiSelect, Tabs, SaveBar, SearchInput, PageSkeleton, EmptyState } from '@/components/ui/Shared';
 import { Command, Settings2, HelpCircle, RefreshCw, AlertTriangle, Zap, ChevronDown } from 'lucide-react';
-import type { CommandConfig, CommandCapability, DiscordChannel, DiscordRole } from '@/types';
-import { MOCK_CHANNELS, MOCK_ROLES } from '@/lib/mock-data';
+import type { CommandConfig, CommandCapability } from '@/types';
+import { realApiClient } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
 const PERMISSION_OPTIONS = [
@@ -21,8 +21,40 @@ const PERMISSION_OPTIONS = [
   { label: 'Administrator', value: 'administrator' },
 ];
 
+function createDefaultCommandConfig(defaultRequiredPermission = 'send_messages'): CommandConfig {
+  return {
+    enabled: true,
+    requiredPermission: defaultRequiredPermission,
+    overrides: {
+      allowedChannels: [],
+      ignoredChannels: [],
+      allowedRoles: [],
+      ignoredRoles: [],
+      allowedUsers: [],
+      ignoredUsers: [],
+    },
+    cooldown: {
+      perUser: 0,
+      perGuild: 0,
+    },
+    rateLimit: {
+      maxPerMinuteChannel: 30,
+      maxPerMinuteGuild: 300,
+    },
+    logging: {
+      logUsage: true,
+      routeOverride: null,
+    },
+    visibility: {
+      hideFromHelp: false,
+      slashEnabled: true,
+      prefixEnabled: true,
+    },
+  };
+}
+
 export function Commands() {
-  const { capabilities, config, configVersion, updateConfigLocal, saveConfig, discardChanges, configDirty, error } = useAppStore();
+  const { capabilities, config, activeGuildId, channels, roles, updateConfigLocal, saveConfig, discardChanges, configDirty, error, setError } = useAppStore();
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('all');
   const [settingsModal, setSettingsModal] = useState<string | null>(null);
@@ -36,9 +68,10 @@ export function Commands() {
   const categories = useMemo(() => {
     const groups = new Map<string, CommandCapability[]>();
     for (const cmd of commands) {
-      const list = groups.get(cmd.group) || [];
+      const group = cmd.group || 'General';
+      const list = groups.get(group) || [];
       list.push(cmd);
-      groups.set(cmd.group, list);
+      groups.set(group, list);
     }
     return groups;
   }, [commands]);
@@ -54,7 +87,7 @@ export function Commands() {
   const filteredCommands = useMemo(() => {
     let list = commands;
     if (activeCategory !== 'all') {
-      list = list.filter(c => c.group === activeCategory);
+      list = list.filter(c => (c.group || 'General') === activeCategory);
     }
     if (search) {
       const q = search.toLowerCase();
@@ -95,17 +128,23 @@ export function Commands() {
   };
 
   const handleSync = async () => {
+    if (!activeGuildId) return;
     setSyncing(true);
-    // Simulate sync
-    await new Promise(r => setTimeout(r, 2000));
-    setSyncing(false);
-    setShowSyncBanner(false);
+    try {
+      await realApiClient.syncCommands(activeGuildId);
+      setShowSyncBanner(false);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to sync commands');
+    } finally {
+      setSyncing(false);
+    }
   };
 
   if (!capabilities || !config) return <PageSkeleton />;
 
-  const channelOptions = MOCK_CHANNELS.filter(c => c.type === 0).map(c => ({ label: `#${c.name}`, value: c.id }));
-  const roleOptions = MOCK_ROLES.filter(r => !r.managed).map(r => ({ label: r.name, value: r.id, color: r.color }));
+  const channelOptions = channels.filter(c => c.type === 0).map(c => ({ label: `#${c.name}`, value: c.id }));
+  const roleOptions = roles.filter(r => !r.managed).map(r => ({ label: r.name, value: r.id, color: r.color }));
 
   return (
     <div className="space-y-6">
@@ -161,8 +200,7 @@ export function Commands() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filteredCommands.map(cmd => {
-            const cmdConfig = config.commands[cmd.name];
-            if (!cmdConfig) return null;
+            const cmdConfig = config.commands[cmd.name] || createDefaultCommandConfig(cmd.defaultRequiredPermission);
 
             return (
               <Card key={cmd.name} className={cn('group transition-all duration-200 hover:shadow-[0_12px_40px_rgb(0,0,0,0.06)]', !cmdConfig.enabled && 'opacity-60')}>
@@ -214,22 +252,26 @@ export function Commands() {
       )}
 
       {/* Command Settings Modal */}
-      {settingsModal && (
-        <CommandSettingsModal
-          commandName={settingsModal}
-          command={commands.find(c => c.name === settingsModal)!}
-          config={config.commands[settingsModal]}
-          channels={channelOptions}
-          roles={roleOptions}
-          onClose={() => setSettingsModal(null)}
-          onSave={(updated) => {
-            updateConfigLocal({
-              commands: { ...config.commands, [settingsModal]: updated },
-            });
-            setSettingsModal(null);
-          }}
-        />
-      )}
+      {settingsModal && (() => {
+        const selectedCommand = commands.find(c => c.name === settingsModal);
+        if (!selectedCommand) return null;
+        return (
+          <CommandSettingsModal
+            commandName={settingsModal}
+            command={selectedCommand}
+            config={config.commands[settingsModal] || createDefaultCommandConfig(selectedCommand.defaultRequiredPermission)}
+            channels={channelOptions}
+            roles={roleOptions}
+            onClose={() => setSettingsModal(null)}
+            onSave={(updated) => {
+              updateConfigLocal({
+                commands: { ...config.commands, [settingsModal]: updated },
+              });
+              setSettingsModal(null);
+            }}
+          />
+        );
+      })()}
 
       {/* Save Bar */}
       <SaveBar

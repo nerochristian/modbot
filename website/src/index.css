@@ -41,6 +41,41 @@
 
 body {
   background-color: var(--color-app-bg);
-  color: #1e293b;
+  color: var(--color-slate-800, #1e293b);
   -webkit-font-smoothing: antialiased;
+  transition: background-color 0.2s, color 0.2s;
+}
+
+.dark {
+  --color-app-bg: #020617;
+  --color-sidebar-bg: #0f172a;
+  --color-card-bg: #0f172a;
+
+  --color-cream-50: #0f172a;
+  --color-cream-100: #1e293b;
+  --color-cream-200: #334155;
+  --color-cream-300: #475569;
+
+  /* Invert slate colors for text readability */
+  --color-slate-900: #f8fafc;
+  --color-slate-800: #f1f5f9;
+  --color-slate-700: #e2e8f0;
+  --color-slate-600: #cbd5e1;
+  --color-slate-500: #94a3b8;
+  --color-slate-400: #64748b;
+  --color-slate-300: #475569;
+  --color-slate-200: #334155;
+  --color-slate-100: #1e293b;
+  --color-slate-50: #0f172a;
+
+  /* Adjust accent backgrounds slightly for dark mode contrast */
+  --color-indigo-50: #1e1b4b;
+  --color-emerald-50: #064e3b;
+  --color-amber-50: #451a03;
+  --color-purple-50: #3b0764;
+  --color-red-50: #450a0a;
+
+  /* Shadows for dark mode */
+  --shadow-soft: 0 8px 30px rgba(0,0,0,0.4);
+  --shadow-soft-lg: 0 20px 60px -15px rgba(0,0,0,0.6);
 }

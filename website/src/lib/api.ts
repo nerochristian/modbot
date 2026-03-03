@@ -42,6 +42,10 @@ export const API_BASE = '/api';
 // Base URL for auth routes
 export const AUTH_BASE = '';
 
+function isObject(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 async function apiFetch<T>(
     path: string,
     options: RequestInit & { version?: number } = {}
@@ -81,6 +85,104 @@ async function apiFetch<T>(
         data,
         version: versionHeader ? parseInt(versionHeader, 10) : undefined,
     };
+}
+
+async function apiFetchWithFallback<T>(
+    paths: string[],
+    options: RequestInit & { version?: number } = {}
+): Promise<ApiResponse<T>> {
+    let lastError: unknown = null;
+    for (const path of paths) {
+        try {
+            return await apiFetch<T>(path, options);
+        } catch (err) {
+            if (err instanceof ApiHttpError && err.status === 404) {
+                lastError = err;
+                continue;
+            }
+            throw err;
+        }
+    }
+    throw lastError || new Error(`No API path available for: ${paths.join(', ')}`);
+}
+
+function normalizeCaseAction(value: unknown): ModerationCase['action'] {
+    return value === 'warn' || value === 'timeout' || value === 'kick' || value === 'ban' || value === 'unban' || value === 'quarantine'
+        ? value
+        : 'note';
+}
+
+function normalizeCaseRecord(value: unknown): ModerationCase {
+    const source = isObject(value) ? value : {};
+    const targetUser = isObject(source.targetUser) ? source.targetUser : {};
+    const moderator = isObject(source.moderator) ? source.moderator : {};
+    return {
+        id: typeof source.id === 'number' ? source.id : 0,
+        guildId: typeof source.guildId === 'string' ? source.guildId : '',
+        userId: typeof source.userId === 'string'
+            ? source.userId
+            : (typeof targetUser.id === 'string' ? targetUser.id : ''),
+        userName: typeof source.userName === 'string'
+            ? source.userName
+            : (typeof targetUser.username === 'string' ? targetUser.username : 'Unknown User'),
+        userAvatar: typeof source.userAvatar === 'string' ? source.userAvatar : null,
+        moderatorId: typeof source.moderatorId === 'string'
+            ? source.moderatorId
+            : (typeof moderator.id === 'string' ? moderator.id : ''),
+        moderatorName: typeof source.moderatorName === 'string'
+            ? source.moderatorName
+            : (typeof moderator.username === 'string' ? moderator.username : 'Unknown Moderator'),
+        action: normalizeCaseAction(source.action),
+        reason: typeof source.reason === 'string' ? source.reason : 'No reason provided',
+        duration: typeof source.duration === 'string' ? source.duration : null,
+        createdAt: typeof source.createdAt === 'string' ? source.createdAt : new Date(0).toISOString(),
+        active: typeof source.active === 'boolean' ? source.active : true,
+    };
+}
+
+function normalizeCasesPage(value: unknown): PaginatedResponse<ModerationCase> {
+    const source = isObject(value) ? value : {};
+    const itemsRaw = Array.isArray(source.data)
+        ? source.data
+        : (Array.isArray(source.items) ? source.items : []);
+    const data = itemsRaw.map(normalizeCaseRecord);
+    const cursor = typeof source.cursor === 'string'
+        ? source.cursor
+        : (typeof source.nextCursor === 'string' ? source.nextCursor : null);
+    const hasMore = typeof source.hasMore === 'boolean' ? source.hasMore : false;
+    const total = typeof source.total === 'number' ? source.total : data.length;
+    return { data, cursor, hasMore, total };
+}
+
+function normalizeAuditEntry(value: unknown): AuditLogEntry {
+    const source = isObject(value) ? value : {};
+    const id = typeof source.id === 'string' || typeof source.id === 'number'
+        ? String(source.id)
+        : `audit_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+    return {
+        id,
+        guildId: typeof source.guildId === 'string' ? source.guildId : '',
+        userId: typeof source.userId === 'string' ? source.userId : '',
+        userName: typeof source.userName === 'string' ? source.userName : 'Unknown User',
+        action: typeof source.action === 'string' ? source.action : 'config_update',
+        target: typeof source.target === 'string' ? source.target : 'config',
+        changes: isObject(source.changes) ? source.changes as AuditLogEntry['changes'] : {},
+        timestamp: typeof source.timestamp === 'string' ? source.timestamp : new Date(0).toISOString(),
+    };
+}
+
+function normalizeAuditPage(value: unknown): PaginatedResponse<AuditLogEntry> {
+    const source = isObject(value) ? value : {};
+    const itemsRaw = Array.isArray(source.data)
+        ? source.data
+        : (Array.isArray(source.items) ? source.items : []);
+    const data = itemsRaw.map(normalizeAuditEntry);
+    const cursor = typeof source.cursor === 'string'
+        ? source.cursor
+        : (typeof source.nextCursor === 'string' ? source.nextCursor : null);
+    const hasMore = typeof source.hasMore === 'boolean' ? source.hasMore : false;
+    const total = typeof source.total === 'number' ? source.total : data.length;
+    return { data, cursor, hasMore, total };
 }
 
 // ─── API Client Interface ───────────────────────────────────────────────────
@@ -151,16 +253,32 @@ export const realApiClient: ApiClient = {
         return data;
     },
     async getChannels(guildId) {
-        const { data } = await apiFetch<DiscordChannel[]>(`/guilds/${guildId}/discord/channels`);
+        const { data } = await apiFetchWithFallback<DiscordChannel[]>([
+            `/guilds/${guildId}/discord/channels`,
+            `/guilds/${guildId}/channels`,
+        ]);
         return data;
     },
     async getRoles(guildId) {
-        const { data } = await apiFetch<DiscordRole[]>(`/guilds/${guildId}/discord/roles`);
+        const { data } = await apiFetchWithFallback<DiscordRole[]>([
+            `/guilds/${guildId}/discord/roles`,
+            `/guilds/${guildId}/roles`,
+        ]);
         return data;
     },
     async searchUsers(guildId, query) {
-        const { data } = await apiFetch<DiscordUser[]>(`/guilds/${guildId}/discord/users/search?q=${encodeURIComponent(query)}`);
-        return data;
+        try {
+            const { data } = await apiFetchWithFallback<DiscordUser[]>([
+                `/guilds/${guildId}/discord/users/search?q=${encodeURIComponent(query)}`,
+                `/guilds/${guildId}/users/search?q=${encodeURIComponent(query)}`,
+            ]);
+            return data;
+        } catch (err) {
+            if (err instanceof ApiHttpError && err.status === 404) {
+                return [];
+            }
+            throw err;
+        }
     },
     async getCapabilities() {
         const { data } = await apiFetch<BotCapabilities>('/bot/capabilities');
@@ -242,16 +360,23 @@ export const realApiClient: ApiClient = {
     },
     async getCases(guildId, cursor) {
         const params = cursor ? `?cursor=${cursor}` : '';
-        const { data } = await apiFetch<PaginatedResponse<ModerationCase>>(`/guilds/${guildId}/cases${params}`);
-        return data;
+        const { data } = await apiFetch(`/guilds/${guildId}/cases${params}`);
+        return normalizeCasesPage(data);
     },
     async getCase(guildId, caseId) {
-        const { data } = await apiFetch<ModerationCase>(`/guilds/${guildId}/cases/${caseId}`);
-        return data;
+        const { data } = await apiFetch(`/guilds/${guildId}/cases/${caseId}`);
+        return normalizeCaseRecord(data);
     },
     async getAuditLog(guildId, cursor) {
         const params = cursor ? `?cursor=${cursor}` : '';
-        const { data } = await apiFetch<PaginatedResponse<AuditLogEntry>>(`/guilds/${guildId}/audit${params}`);
-        return data;
+        try {
+            const { data } = await apiFetch(`/guilds/${guildId}/audit${params}`);
+            return normalizeAuditPage(data);
+        } catch (err) {
+            if (err instanceof ApiHttpError && err.status === 404) {
+                return { data: [], cursor: null, hasMore: false, total: 0 };
+            }
+            throw err;
+        }
     },
 };

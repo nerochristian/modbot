@@ -8,10 +8,15 @@ export function Analytics() {
 
   if (loading || !config || !capabilities) return <PageSkeleton />;
 
-  const enabledCommands = Object.values(config.commands).filter(c => c.enabled).length;
-  const disabledCommands = Object.values(config.commands).filter(c => !c.enabled).length;
-  const enabledModules = Object.values(config.modules).filter(m => m.enabled).length;
-  const activeEvents = Object.values(config.logging).filter(l => l.enabled).length;
+  const commands = config.commands || {};
+  const modules = config.modules || {};
+  const logging = config.logging || {};
+  const roleMappings = config.permissions?.roleMappings || [];
+
+  const enabledCommands = Object.values(commands).filter(c => c?.enabled).length;
+  const disabledCommands = Object.values(commands).filter(c => !c?.enabled).length;
+  const enabledModules = Object.values(modules).filter(m => m?.enabled).length;
+  const activeEvents = Object.values(logging).filter(l => l?.enabled).length;
 
   // Mock analytics data
   const weekData = [
@@ -36,9 +41,9 @@ export function Analytics() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: 'Total Commands', value: enabledCommands + disabledCommands, sub: `${enabledCommands} enabled`, icon: BarChart3, color: 'text-indigo-600 bg-indigo-50' },
-          { label: 'Active Modules', value: enabledModules, sub: `of ${Object.keys(config.modules).length} total`, icon: Shield, color: 'text-emerald-600 bg-emerald-50' },
-          { label: 'Logged Events', value: activeEvents, sub: `of ${Object.keys(config.logging).length} types`, icon: TrendingUp, color: 'text-amber-600 bg-amber-50' },
-          { label: 'Role Mappings', value: config.permissions.roleMappings.length, sub: 'configured', icon: Users, color: 'text-purple-600 bg-purple-50' },
+          { label: 'Active Modules', value: enabledModules, sub: `of ${Object.keys(modules).length} total`, icon: Shield, color: 'text-emerald-600 bg-emerald-50' },
+          { label: 'Logged Events', value: activeEvents, sub: `of ${Object.keys(logging).length} types`, icon: TrendingUp, color: 'text-amber-600 bg-amber-50' },
+          { label: 'Role Mappings', value: roleMappings.length, sub: 'configured', icon: Users, color: 'text-purple-600 bg-purple-50' },
         ].map(stat => (
           <Card key={stat.label}>
             <CardContent className="p-5">

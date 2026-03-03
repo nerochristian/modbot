@@ -7,7 +7,6 @@ import { Modal } from '@/components/ui/Modal';
 import { Shield, Users, UserCheck, Plus, X, Settings2, Crown, Lock } from 'lucide-react';
 import type { DashboardRole, DashboardCapability, DashboardPermissionMapping, DashboardUserOverride } from '@/types';
 import { DASHBOARD_ROLE_CAPABILITIES } from '@/types';
-import { MOCK_ROLES } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
 
 const ROLE_HIERARCHY: DashboardRole[] = ['owner', 'admin', 'moderator', 'viewer'];
@@ -46,11 +45,11 @@ const CAPABILITY_LABELS: Record<DashboardCapability, string> = {
 };
 
 export function Permissions() {
-    const { config, updateConfigLocal, saveConfig, discardChanges, configDirty, error } = useAppStore();
+    const { config, roles, updateConfigLocal, saveConfig, discardChanges, configDirty, error } = useAppStore();
     const [saving, setSaving] = useState(false);
     const [addMappingModal, setAddMappingModal] = useState(false);
 
-    const discordRoles = MOCK_ROLES.filter(r => !r.managed);
+    const discordRoles = roles.filter(r => !r.managed);
     const roleOptions = discordRoles.map(r => ({ label: r.name, value: r.id, color: r.color }));
 
     const handleSave = async () => {
@@ -61,20 +60,22 @@ export function Permissions() {
 
     const removeMapping = (roleId: string) => {
         if (!config) return;
+        const permissions = config.permissions || { roleMappings: [], userOverrides: [] };
         updateConfigLocal({
             permissions: {
-                ...config.permissions,
-                roleMappings: config.permissions.roleMappings.filter(m => m.roleId !== roleId),
+                ...permissions,
+                roleMappings: (permissions.roleMappings || []).filter(m => m.roleId !== roleId),
             },
         });
     };
 
     const updateMapping = (roleId: string, dashboardRole: DashboardRole) => {
         if (!config) return;
+        const permissions = config.permissions || { roleMappings: [], userOverrides: [] };
         updateConfigLocal({
             permissions: {
-                ...config.permissions,
-                roleMappings: config.permissions.roleMappings.map(m =>
+                ...permissions,
+                roleMappings: (permissions.roleMappings || []).map(m =>
                     m.roleId === roleId ? { ...m, dashboardRole, capabilities: DASHBOARD_ROLE_CAPABILITIES[dashboardRole] } : m
                 ),
             },
@@ -83,13 +84,14 @@ export function Permissions() {
 
     const addMapping = (roleId: string, dashboardRole: DashboardRole) => {
         if (!config) return;
-        const existing = config.permissions.roleMappings.find(m => m.roleId === roleId);
+        const permissions = config.permissions || { roleMappings: [], userOverrides: [] };
+        const existing = (permissions.roleMappings || []).find(m => m.roleId === roleId);
         if (existing) return;
         updateConfigLocal({
             permissions: {
-                ...config.permissions,
+                ...permissions,
                 roleMappings: [
-                    ...config.permissions.roleMappings,
+                    ...(permissions.roleMappings || []),
                     { roleId, dashboardRole, capabilities: DASHBOARD_ROLE_CAPABILITIES[dashboardRole] },
                 ],
             },
@@ -99,7 +101,9 @@ export function Permissions() {
 
     if (!config) return <PageSkeleton />;
 
-    const mappedRoleIds = config.permissions.roleMappings.map(m => m.roleId);
+    const permissions = config.permissions || { roleMappings: [], userOverrides: [] };
+    const roleMappings = permissions.roleMappings || [];
+    const mappedRoleIds = roleMappings.map(m => m.roleId);
     const unmappedRoles = discordRoles.filter(r => !mappedRoleIds.includes(r.id));
 
     return (
@@ -167,11 +171,11 @@ export function Permissions() {
                     </div>
                 </CardHeader>
                 <CardContent>
-                    {config.permissions.roleMappings.length === 0 ? (
+                    {roleMappings.length === 0 ? (
                         <EmptyState icon={<Users className="w-8 h-8" />} title="No mappings" description="Add a role mapping to grant dashboard access." />
                     ) : (
                         <div className="space-y-3">
-                            {config.permissions.roleMappings.map(mapping => {
+                            {roleMappings.map(mapping => {
                                 const discordRole = discordRoles.find(r => r.id === mapping.roleId);
                                 return (
                                     <div key={mapping.roleId} className="flex items-center gap-4 p-4 bg-cream-50 rounded-2xl border border-cream-200">

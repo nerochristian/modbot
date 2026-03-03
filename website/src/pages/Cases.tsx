@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Modal } from '@/components/ui/Modal';
 import { useAppStore } from '@/store/useAppStore';
-import { mockApiClient } from '@/lib/mock-data';
+import { realApiClient } from '@/lib/api';
 import type { ModerationCase, CaseAction } from '@/types';
 import { Gavel, AlertTriangle, UserX, Clock, Ban, ShieldCheck, FileText, ExternalLink } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -30,10 +30,15 @@ export function Cases() {
     useEffect(() => {
         if (!activeGuildId) return;
         setLoading(true);
-        mockApiClient.getCases(activeGuildId).then(res => {
-            setCases(res.data);
-            setLoading(false);
-        });
+        realApiClient.getCases(activeGuildId)
+            .then(res => {
+                setCases(res.data);
+                setLoading(false);
+            })
+            .catch(() => {
+                setCases([]);
+                setLoading(false);
+            });
     }, [activeGuildId]);
 
     if (loading) return <PageSkeleton />;

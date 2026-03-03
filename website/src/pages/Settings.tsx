@@ -4,12 +4,13 @@ import { Button } from '@/components/ui/Button';
 import { Badge, SaveBar, PageSkeleton } from '@/components/ui/Shared';
 import { ConfirmDialog } from '@/components/ui/Modal';
 import { useAppStore } from '@/store/useAppStore';
+import { realApiClient } from '@/lib/api';
 import { Settings as SettingsIcon, Key, Database, RefreshCw, AlertTriangle, Download, Upload, Clock, Shield } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 
 export function Settings() {
-  const { config, updateConfigLocal, saveConfig, discardChanges, configDirty, error } = useAppStore();
+  const { config, activeGuildId, updateConfigLocal, saveConfig, discardChanges, configDirty, error, setError } = useAppStore();
   const [saving, setSaving] = useState(false);
   const [resetDialog, setResetDialog] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -107,7 +108,18 @@ export function Settings() {
                 size="sm"
                 className="gap-2"
                 disabled={syncing}
-                onClick={async () => { setSyncing(true); await new Promise(r => setTimeout(r, 2000)); setSyncing(false); }}
+                onClick={async () => {
+                  if (!activeGuildId) return;
+                  setSyncing(true);
+                  try {
+                    await realApiClient.syncCommands(activeGuildId);
+                    setError(null);
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : 'Failed to sync commands');
+                  } finally {
+                    setSyncing(false);
+                  }
+                }}
               >
                 <RefreshCw className={cn('w-4 h-4', syncing && 'animate-spin')} />
                 {syncing ? 'Syncing...' : 'Sync'}

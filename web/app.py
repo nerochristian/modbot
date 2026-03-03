@@ -46,6 +46,9 @@ _sessions: Dict[str, Dict[str, Any]] = {}
 # Bot reference (set by start_dashboard)
 _bot = None
 
+# Lightweight in-memory sync status per guild
+_sync_status: Dict[str, Dict[str, Any]] = {}
+
 
 # ─── Session Helpers ──────────────────────────────────────────────────────────
 
@@ -340,18 +343,18 @@ async def api_guild_config(request: web.Request):
 
     settings = await _bot.db.get_settings(int(guild_id))
     
-    # Build a full config response
+    # Build a full config response, extracting modules/commands/logging from the settings blob
     guild = _bot.get_guild(int(guild_id))
     config = {
         "guildId": guild_id,
-        "version": 1,
+        "version": settings.get("_version", 1),
         "prefix": settings.get("prefix", ","),
-        "settings": settings,
-        "commands": {},
-        "modules": {},
-        "logging": {},
+        "settings": settings.get("general", {}),
+        "commands": settings.get("commands", {}),
+        "modules": settings.get("modules", {}),
+        "logging": settings.get("logging", {}),
         "permissions": {
-            "dashboardRoleMappings": settings.get("dashboard_role_mappings", []),
+            "dashboardRoleMappings": settings.get("dashboardRoleMappings", []),
         },
     }
 
@@ -369,24 +372,72 @@ async def api_guild_config_update(request: web.Request):
                                           content_type="application/json")
 
     body = await request.json()
-    settings = body.get("settings", {})
+    previous = await _bot.db.get_settings(int(guild_id))
+    permissions_payload = body.get("permissions", {}) if isinstance(body.get("permissions", {}), dict) else {}
+    role_mappings = permissions_payload.get("dashboardRoleMappings")
+    if role_mappings is None:
+        role_mappings = permissions_payload.get("roleMappings", [])
     
-    await _bot.db.update_settings(int(guild_id), settings)
+    # Merge the API payload back into a single settings dictionary for the DB
+    updated_settings = {
+        "_version": body.get("version", 1) + 1,
+        "prefix": body.get("prefix", ","),
+        "general": body.get("settings", {}),
+        "commands": body.get("commands", {}),
+        "modules": body.get("modules", {}),
+        "logging": body.get("logging", {}),
+        "dashboardRoleMappings": role_mappings if isinstance(role_mappings, list) else [],
+    }
+    
+    await _bot.db.update_settings(int(guild_id), updated_settings)
     
     # Return updated config
-    updated = await _bot.db.get_settings(int(guild_id))
+    saved = await _bot.db.get_settings(int(guild_id))
     config = {
         "guildId": guild_id,
-        "version": 2,
-        "prefix": updated.get("prefix", ","),
-        "settings": updated,
-        "commands": {},
-        "modules": {},
-        "logging": {},
+        "version": saved.get("_version", 1),
+        "prefix": saved.get("prefix", ","),
+        "settings": saved.get("general", {}),
+        "commands": saved.get("commands", {}),
+        "modules": saved.get("modules", {}),
+        "logging": saved.get("logging", {}),
         "permissions": {
-            "dashboardRoleMappings": updated.get("dashboard_role_mappings", []),
+            "dashboardRoleMappings": saved.get("dashboardRoleMappings", []),
         },
     }
+
+    changes: Dict[str, Any] = {}
+    old_prefix = previous.get("prefix", ",")
+    new_prefix = saved.get("prefix", ",")
+    if old_prefix != new_prefix:
+        changes["prefix"] = {"from": old_prefix, "to": new_prefix}
+
+    old_modules = previous.get("modules", {}) if isinstance(previous.get("modules", {}), dict) else {}
+    new_modules = saved.get("modules", {}) if isinstance(saved.get("modules", {}), dict) else {}
+    old_modules_enabled = sum(1 for item in old_modules.values() if isinstance(item, dict) and item.get("enabled"))
+    new_modules_enabled = sum(1 for item in new_modules.values() if isinstance(item, dict) and item.get("enabled"))
+    if old_modules_enabled != new_modules_enabled:
+        changes["modulesEnabled"] = {"from": old_modules_enabled, "to": new_modules_enabled}
+
+    old_commands = previous.get("commands", {}) if isinstance(previous.get("commands", {}), dict) else {}
+    new_commands = saved.get("commands", {}) if isinstance(saved.get("commands", {}), dict) else {}
+    old_commands_enabled = sum(1 for item in old_commands.values() if isinstance(item, dict) and item.get("enabled"))
+    new_commands_enabled = sum(1 for item in new_commands.values() if isinstance(item, dict) and item.get("enabled"))
+    if old_commands_enabled != new_commands_enabled:
+        changes["commandsEnabled"] = {"from": old_commands_enabled, "to": new_commands_enabled}
+
+    old_mappings = previous.get("dashboardRoleMappings", [])
+    new_mappings = saved.get("dashboardRoleMappings", [])
+    if isinstance(old_mappings, list) and isinstance(new_mappings, list) and len(old_mappings) != len(new_mappings):
+        changes["roleMappings"] = {"from": len(old_mappings), "to": len(new_mappings)}
+
+    await _append_dashboard_audit(
+        guild_id,
+        session,
+        action="config_update",
+        target="guild_config",
+        changes=changes or {"version": {"from": previous.get("_version", 1), "to": saved.get("_version", 1)}},
+    )
 
     return web.json_response(config)
 
@@ -478,6 +529,135 @@ async def api_guild_case(request: web.Request):
     })
 
 
+async def api_guild_audit(request: web.Request):
+    """Get dashboard audit entries for a guild."""
+    session = _require_auth(request)
+    guild_id = request.match_info["guild_id"]
+    _require_guild_access(session, guild_id)
+
+    if not _bot:
+        raise web.HTTPServiceUnavailable(text=json.dumps({"code": 503, "message": "Bot not ready"}),
+                                          content_type="application/json")
+
+    await _ensure_dashboard_audit_table()
+
+    try:
+        async with _bot.db.get_connection() as db:
+            cursor = await db.execute(
+                """
+                SELECT id, guild_id, user_id, user_name, action, target, changes, created_at
+                FROM dashboard_audit
+                WHERE guild_id = ?
+                ORDER BY id DESC
+                LIMIT 200
+                """,
+                (int(guild_id),),
+            )
+            rows = await cursor.fetchall()
+    except Exception as exc:
+        logger.error(f"Failed to fetch dashboard audit entries: {exc}")
+        rows = []
+
+    entries = []
+    for row in rows:
+        try:
+            parsed_changes = json.loads(row[6]) if row[6] else {}
+            if not isinstance(parsed_changes, dict):
+                parsed_changes = {}
+        except Exception:
+            parsed_changes = {}
+        entries.append({
+            "id": str(row[0]),
+            "guildId": str(row[1]),
+            "userId": str(row[2] or ""),
+            "userName": row[3] or "Unknown User",
+            "action": row[4] or "config_update",
+            "target": row[5] or "config",
+            "changes": parsed_changes,
+            "timestamp": row[7],
+        })
+
+    return web.json_response({
+        "items": entries,
+        "nextCursor": None,
+        "hasMore": False,
+    })
+
+
+async def api_guild_commands_sync(request: web.Request):
+    """Sync slash commands for a guild immediately."""
+    session = _require_auth(request)
+    guild_id = request.match_info["guild_id"]
+    _require_guild_access(session, guild_id)
+
+    if not _bot:
+        raise web.HTTPServiceUnavailable(text=json.dumps({"code": 503, "message": "Bot not ready"}),
+                                          content_type="application/json")
+
+    guild = _bot.get_guild(int(guild_id))
+    if not guild:
+        raise web.HTTPNotFound(text=json.dumps({"code": 404, "message": "Guild not found"}),
+                                content_type="application/json")
+
+    _sync_status[guild_id] = {
+        "status": "syncing",
+        "lastSyncedAt": None,
+        "error": None,
+        "progress": 20,
+        "syncRequired": True,
+    }
+
+    try:
+        synced = await _bot.tree.sync(guild=guild)
+        synced_count = len(synced)
+        now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        _sync_status[guild_id] = {
+            "status": "complete",
+            "lastSyncedAt": now_iso,
+            "error": None,
+            "progress": 100,
+            "syncRequired": False,
+        }
+        await _append_dashboard_audit(
+            guild_id,
+            session,
+            action="sync_commands",
+            target="slash_commands",
+            changes={"syncedCount": {"from": None, "to": synced_count}},
+        )
+        return web.json_response({"ok": True, "synced": synced_count})
+    except Exception as exc:
+        msg = str(exc) or "Failed to sync slash commands"
+        _sync_status[guild_id] = {
+            "status": "error",
+            "lastSyncedAt": None,
+            "error": msg,
+            "progress": 0,
+            "syncRequired": True,
+        }
+        logger.error(f"Command sync failed for guild {guild_id}: {exc}")
+        raise web.HTTPInternalServerError(
+            text=json.dumps({"code": 500, "message": msg}),
+            content_type="application/json",
+        )
+
+
+async def api_guild_commands_sync_status(request: web.Request):
+    """Return the latest command sync status for a guild."""
+    session = _require_auth(request)
+    guild_id = request.match_info["guild_id"]
+    _require_guild_access(session, guild_id)
+
+    status = _sync_status.get(guild_id) or {
+        "status": "idle",
+        "lastSyncedAt": None,
+        "error": None,
+        "progress": 0,
+        "syncRequired": False,
+    }
+    return web.json_response(status)
+
+
 def _resolve_user_name(user_id: int) -> str:
     """Try to get a username from the bot's user cache."""
     if not _bot:
@@ -486,6 +666,58 @@ def _resolve_user_name(user_id: int) -> str:
     if user:
         return user.display_name or user.name
     return f"User#{user_id}"
+
+
+async def _ensure_dashboard_audit_table() -> None:
+    """Create dashboard audit table if it does not exist."""
+    if not _bot:
+        return
+    async with _bot.db.get_connection() as db:
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS dashboard_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                guild_id INTEGER NOT NULL,
+                user_id TEXT,
+                user_name TEXT,
+                action TEXT NOT NULL,
+                target TEXT NOT NULL,
+                changes TEXT DEFAULT '{}',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        await db.commit()
+
+
+async def _append_dashboard_audit(
+    guild_id: str,
+    session: Dict[str, Any],
+    *,
+    action: str,
+    target: str,
+    changes: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Persist a dashboard action for the /api/guilds/{guild_id}/audit endpoint."""
+    if not _bot:
+        return
+    try:
+        await _ensure_dashboard_audit_table()
+        user = session.get("user", {})
+        user_id = str(user.get("id", ""))
+        user_name = user.get("username") or user.get("global_name") or "Unknown User"
+        payload = json.dumps(changes or {}, ensure_ascii=False)
+        async with _bot.db.get_connection() as db:
+            await db.execute(
+                """
+                INSERT INTO dashboard_audit (guild_id, user_id, user_name, action, target, changes)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (int(guild_id), user_id, user_name, action, target, payload),
+            )
+            await db.commit()
+    except Exception as exc:
+        logger.error(f"Failed to write dashboard audit entry: {exc}")
 
 
 async def api_bot_capabilities(request: web.Request):
@@ -747,8 +979,11 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/api/guilds/{guild_id}/roles", api_guild_roles)
     app.router.add_get("/api/guilds/{guild_id}/config", api_guild_config)
     app.router.add_put("/api/guilds/{guild_id}/config", api_guild_config_update)
+    app.router.add_post("/api/guilds/{guild_id}/commands/sync", api_guild_commands_sync)
+    app.router.add_get("/api/guilds/{guild_id}/commands/sync/status", api_guild_commands_sync_status)
     app.router.add_get("/api/guilds/{guild_id}/cases", api_guild_cases)
     app.router.add_get("/api/guilds/{guild_id}/cases/{case_id}", api_guild_case)
+    app.router.add_get("/api/guilds/{guild_id}/audit", api_guild_audit)
     app.router.add_get("/api/guilds/{guild_id}/warnings", api_guild_warnings)
     app.router.add_get("/api/guilds/{guild_id}/stats", api_guild_stats)
 

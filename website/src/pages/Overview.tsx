@@ -34,7 +34,7 @@ export function Overview() {
           icon={Command}
           color="text-indigo-500"
           bg="bg-indigo-50"
-          link="/commands"
+          link="/dashboard/commands"
         />
         <QuickStatCard
           title="Modules"
@@ -43,7 +43,7 @@ export function Overview() {
           icon={Package}
           color="text-emerald-500"
           bg="bg-emerald-50"
-          link="/modules"
+          link="/dashboard/modules"
         />
         <QuickStatCard
           title="Logged Events"
@@ -52,7 +52,7 @@ export function Overview() {
           icon={Zap}
           color="text-amber-500"
           bg="bg-amber-50"
-          link="/logging"
+          link="/dashboard/logging"
         />
         <QuickStatCard
           title="Members"

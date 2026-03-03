@@ -6,7 +6,6 @@ import { Button } from '@/components/ui/Button';
 import { Badge, Select, SaveBar, PageSkeleton, SearchInput, Tabs } from '@/components/ui/Shared';
 import { ScrollText, Settings, Download, Hash } from 'lucide-react';
 import type { EventTypeCapability, LoggingRouteConfig } from '@/types';
-import { MOCK_CHANNELS } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -25,13 +24,13 @@ const SEVERITY_BADGE: Record<string, 'info' | 'warning' | 'danger'> = {
 };
 
 export function Logging() {
-  const { capabilities, config, updateConfigLocal, saveConfig, discardChanges, configDirty, error } = useAppStore();
+  const { capabilities, config, channels, updateConfigLocal, saveConfig, discardChanges, configDirty, error } = useAppStore();
   const [activeCategory, setActiveCategory] = useState('all');
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
 
   const eventTypes = capabilities?.eventTypes || [];
-  const channelOptions = MOCK_CHANNELS.filter(c => c.type === 0).map(c => ({ label: `#${c.name}`, value: c.id }));
+  const channelOptions = channels.filter(c => c.type === 0).map(c => ({ label: `#${c.name}`, value: c.id }));
 
   const categories = useMemo(() => {
     const cats = new Set(eventTypes.map(e => e.category));

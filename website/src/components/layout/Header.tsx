@@ -1,14 +1,27 @@
 import { useAppStore } from '@/store/useAppStore';
-import { ChevronDown, Bell, Search, LogOut, AlertTriangle } from 'lucide-react';
+import { ChevronDown, Bell, Search, LogOut, AlertTriangle, Moon, Sun } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import { realApiClient } from '@/lib/api';
 
 export function Header() {
-  const { user, guilds, activeGuildId, setActiveGuild, error, setError } = useAppStore();
+  const { user, guilds, activeGuildId, setActiveGuild, error, setError, theme, toggleTheme } = useAppStore();
   const [isServerMenuOpen, setIsServerMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   const activeServer = guilds.find((s) => s.id === activeGuildId);
+
+  const handleLogout = async () => {
+    setLoggingOut(true);
+    try {
+      await realApiClient.logout();
+    } catch {
+      // ignore and continue to clear local UI session
+    } finally {
+      window.location.href = '/';
+    }
+  };
 
   return (
     <>
@@ -82,6 +95,15 @@ export function Header() {
             <Bell className="w-5 h-5" />
           </button>
 
+          {/* Theme Toggle */}
+          <button
+            onClick={toggleTheme}
+            className="p-2 text-slate-500 hover:bg-app-bg rounded-xl transition-colors"
+            title="Toggle Dark Mode"
+          >
+            {theme === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          </button>
+
           {/* User Profile */}
           <div className="relative">
             <button
@@ -99,10 +121,12 @@ export function Header() {
                 <div className="fixed inset-0 z-40" onClick={() => setIsUserMenuOpen(false)} />
                 <div className="absolute top-full right-0 mt-2 w-48 bg-card-bg rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.1)] border border-cream-300 py-2 z-50">
                   <button
+                    onClick={handleLogout}
+                    disabled={loggingOut}
                     className="w-full flex items-center gap-2 px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors text-left font-medium"
                   >
                     <LogOut className="w-4 h-4" />
-                    Logout
+                    {loggingOut ? 'Logging out...' : 'Logout'}
                   </button>
                 </div>
               </>

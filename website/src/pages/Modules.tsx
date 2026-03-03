@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import type { Key } from 'react';
 import { useAppStore } from '@/store/useAppStore';
 import { Card, CardContent } from '@/components/ui/Card';
 import { Switch } from '@/components/ui/Switch';
@@ -10,7 +11,6 @@ import {
     Settings2, ChevronRight, Package,
 } from 'lucide-react';
 import type { ModuleCapability, ModuleConfig, SettingsFieldSchema } from '@/types';
-import { MOCK_CHANNELS, MOCK_ROLES } from '@/lib/mock-data';
 import { cn } from '@/lib/utils';
 
 const ICON_MAP: Record<string, typeof Zap> = {
@@ -21,8 +21,40 @@ function getIcon(hint: string) {
     return ICON_MAP[hint] || Package;
 }
 
+function defaultOverrideEntry() {
+    return {
+        allowedChannels: [] as string[],
+        ignoredChannels: [] as string[],
+        allowedRoles: [] as string[],
+        ignoredRoles: [] as string[],
+        allowedUsers: [] as string[],
+        ignoredUsers: [] as string[],
+    };
+}
+
+function createDefaultModuleConfig(module: ModuleCapability): ModuleConfig {
+    const settings: Record<string, unknown> = {};
+    for (const field of module.settingsSchema) {
+        if (field.defaultValue === null || field.defaultValue === undefined) {
+            settings[field.key] = field.defaultValue;
+            continue;
+        }
+        try {
+            settings[field.key] = JSON.parse(JSON.stringify(field.defaultValue));
+        } catch {
+            settings[field.key] = field.defaultValue;
+        }
+    }
+    return {
+        enabled: true,
+        settings,
+        overrides: defaultOverrideEntry(),
+        loggingRouteOverride: null,
+    };
+}
+
 export function Modules() {
-    const { capabilities, config, updateConfigLocal, saveConfig, discardChanges, configDirty, error } = useAppStore();
+    const { capabilities, config, channels, roles, updateConfigLocal, saveConfig, discardChanges, configDirty, error } = useAppStore();
     const [search, setSearch] = useState('');
     const [settingsModal, setSettingsModal] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
@@ -37,8 +69,9 @@ export function Modules() {
 
     const toggleModule = (id: string) => {
         if (!config) return;
-        const current = config.modules[id];
-        if (!current) return;
+        const moduleMeta = modules.find(mod => mod.id === id);
+        if (!moduleMeta) return;
+        const current = config.modules[id] || createDefaultModuleConfig(moduleMeta);
         updateConfigLocal({
             modules: {
                 ...config.modules,
@@ -55,8 +88,8 @@ export function Modules() {
 
     if (!capabilities || !config) return <PageSkeleton />;
 
-    const channelOptions = MOCK_CHANNELS.filter(c => c.type === 0).map(c => ({ label: `#${c.name}`, value: c.id }));
-    const roleOptions = MOCK_ROLES.filter(r => !r.managed).map(r => ({ label: r.name, value: r.id, color: r.color }));
+    const channelOptions = channels.filter(c => c.type === 0).map(c => ({ label: `#${c.name}`, value: c.id }));
+    const roleOptions = roles.filter(r => !r.managed).map(r => ({ label: r.name, value: r.id, color: r.color }));
 
     return (
         <div className="space-y-6">
@@ -74,7 +107,7 @@ export function Modules() {
             ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {filteredModules.map(mod => {
-                        const modConfig = config.modules[mod.id];
+                        const modConfig = config.modules[mod.id] || createDefaultModuleConfig(mod);
                         const IconComponent = getIcon(mod.iconHint);
 
                         return (
@@ -119,21 +152,25 @@ export function Modules() {
                 </div>
             )}
 
-            {settingsModal && (
-                <ModuleSettingsModal
-                    module={modules.find(m => m.id === settingsModal)!}
-                    config={config.modules[settingsModal]}
-                    channels={channelOptions}
-                    roles={roleOptions}
-                    onClose={() => setSettingsModal(null)}
-                    onSave={(updated) => {
-                        updateConfigLocal({
-                            modules: { ...config.modules, [settingsModal]: updated },
-                        });
-                        setSettingsModal(null);
-                    }}
-                />
-            )}
+            {settingsModal && (() => {
+                const selectedModule = modules.find(m => m.id === settingsModal);
+                if (!selectedModule) return null;
+                return (
+                    <ModuleSettingsModal
+                        module={selectedModule}
+                        config={config.modules[settingsModal] || createDefaultModuleConfig(selectedModule)}
+                        channels={channelOptions}
+                        roles={roleOptions}
+                        onClose={() => setSettingsModal(null)}
+                        onSave={(updated) => {
+                            updateConfigLocal({
+                                modules: { ...config.modules, [settingsModal]: updated },
+                            });
+                            setSettingsModal(null);
+                        }}
+                    />
+                );
+            })()}
 
             <SaveBar dirty={configDirty} saving={saving} onSave={handleSave} onDiscard={discardChanges} error={error} />
         </div>
@@ -306,6 +343,7 @@ function StringListField({ field, value, onChange }: { field: SettingsFieldSchem
 // ─── Schema Field Renderer ──────────────────────────────────────────────────
 
 interface SchemaFieldProps {
+    key?: Key;
     field: SettingsFieldSchema;
     value: unknown;
     onChange: (value: unknown) => void;
