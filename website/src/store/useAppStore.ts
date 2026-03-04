@@ -54,6 +54,7 @@ interface AppState {
 
   // Actions
   initialize: () => Promise<void>;
+  refreshGuilds: () => Promise<void>;
   setActiveGuild: (id: string) => void;
   fetchGuildResources: (guildId: string) => Promise<void>;
   fetchConfig: (guildId: string) => Promise<void>;
@@ -65,6 +66,15 @@ interface AppState {
 }
 
 let originalConfig: GuildConfig | null = null;
+
+function sortGuilds(guilds: AuthUser['guilds']) {
+  return [...guilds].sort((a, b) => {
+    if (a.botInstalled !== b.botInstalled) {
+      return a.botInstalled ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name);
+  });
+}
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -381,7 +391,7 @@ function normalizeLoggingConfigEntry(eventTypeId: string, value: unknown): Loggi
   const format = source.format === 'compact' ? 'compact' : 'detailed';
   return {
     eventTypeId,
-    enabled: typeof source.enabled === 'boolean' ? source.enabled : false,
+    enabled: typeof source.enabled === 'boolean' ? source.enabled : true,
     channelId: typeof source.channelId === 'string' ? source.channelId : null,
     format,
   };
@@ -529,12 +539,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         throw err;
       }
 
-      const guilds = [...user.guilds].sort((a, b) => {
-        if (a.botInstalled !== b.botInstalled) {
-          return a.botInstalled ? -1 : 1;
-        }
-        return a.name.localeCompare(b.name);
-      });
+      const guilds = sortGuilds(user.guilds);
       const initialGuild = guilds.find((guild) => guild.botInstalled) || guilds[0] || null;
 
       let capabilities: BotCapabilities | null = null;
@@ -552,11 +557,45 @@ export const useAppStore = create<AppState>((set, get) => ({
         loading: false,
       });
 
-      if (initialGuild) {
+      if (initialGuild?.botInstalled) {
         await get().fetchConfig(initialGuild.id);
       }
     } catch (err) {
       set({ loading: false, error: err instanceof Error ? err.message : 'Failed to initialize' });
+    }
+  },
+
+  refreshGuilds: async () => {
+    const { user, activeGuildId, guilds: previousGuilds } = get();
+    if (!user) {
+      return;
+    }
+
+    try {
+      const refreshedGuilds = sortGuilds(await api.getGuilds());
+      const hasActiveGuild = Boolean(activeGuildId && refreshedGuilds.some((guild) => guild.id === activeGuildId));
+      const nextActiveGuildId = hasActiveGuild
+        ? activeGuildId
+        : (refreshedGuilds.find((guild) => guild.botInstalled)?.id || refreshedGuilds[0]?.id || null);
+
+      const previousActiveGuild = previousGuilds.find((guild) => guild.id === nextActiveGuildId);
+      const refreshedActiveGuild = refreshedGuilds.find((guild) => guild.id === nextActiveGuildId);
+      const botJustInstalled = Boolean(
+        nextActiveGuildId
+        && refreshedActiveGuild?.botInstalled
+        && !previousActiveGuild?.botInstalled
+      );
+
+      set({
+        guilds: refreshedGuilds,
+        activeGuildId: nextActiveGuildId,
+      });
+
+      if (nextActiveGuildId && refreshedActiveGuild?.botInstalled && (botJustInstalled || get().config?.guildId !== nextActiveGuildId)) {
+        await get().fetchConfig(nextActiveGuildId);
+      }
+    } catch {
+      // Silent failure: this runs on focus/menu-open and should not spam error banners.
     }
   },
 
@@ -565,7 +604,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
     set({ activeGuildId: id, config: null, configDirty: false, channels: [], roles: [] });
-    get().fetchConfig(id);
+    const selectedGuild = get().guilds.find((guild) => guild.id === id);
+    if (selectedGuild?.botInstalled) {
+      get().fetchConfig(id);
+    }
   },
 
   fetchGuildResources: async (guildId: string) => {
@@ -585,7 +627,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const { data, version } = await api.getConfig(guildId);
       const normalized = normalizeConfig(data, guildId, get().capabilities);
       originalConfig = clone(normalized);
-      set({ config: normalized, configVersion: version || normalized.version, configDirty: false });
+      set({ config: normalized, configVersion: version || normalized.version, configDirty: false, error: null });
       await get().fetchGuildResources(guildId);
     } catch (err) {
       set({ error: err instanceof Error ? err.message : 'Failed to fetch config' });

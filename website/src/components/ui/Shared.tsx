@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { X, Search, ChevronDown } from 'lucide-react';
+import { X, Search, ChevronDown, Check } from 'lucide-react';
 
 // ─── Badge ──────────────────────────────────────────────────────────────────
 
@@ -43,20 +43,79 @@ interface SelectProps {
 }
 
 export function Select({ value, onChange, options, placeholder, className, disabled }: SelectProps) {
+    const [open, setOpen] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const selected = options.find((opt) => opt.value === value);
+    const hasValue = value !== '';
+
+    useEffect(() => {
+        if (!open) return;
+        function handleClick(e: MouseEvent) {
+            if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+                setOpen(false);
+            }
+        }
+        document.addEventListener('mousedown', handleClick);
+        return () => document.removeEventListener('mousedown', handleClick);
+    }, [open]);
+
+    const selectValue = (nextValue: string) => {
+        onChange(nextValue);
+        setOpen(false);
+    };
+
     return (
-        <div className={cn('relative', className)}>
-            <select
-                value={value}
-                onChange={(e) => onChange(e.target.value)}
+        <div ref={containerRef} className={cn('relative', className)}>
+            <button
+                type="button"
                 disabled={disabled}
-                className="w-full appearance-none bg-cream-50 border border-cream-300 rounded-xl px-4 py-2.5 pr-10 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                onClick={() => setOpen((prev) => !prev)}
+                className="w-full min-h-[42px] bg-cream-50 border border-cream-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all disabled:opacity-50 disabled:cursor-not-allowed text-left flex items-center justify-between gap-2"
             >
-                {placeholder && <option value="">{placeholder}</option>}
-                {options.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                <span className={cn('truncate', hasValue || selected ? 'text-slate-700' : 'text-slate-400')}>
+                    {selected?.label || (hasValue ? value : (placeholder || 'Select...'))}
+                </span>
+                <ChevronDown className={cn('w-4 h-4 text-slate-400 shrink-0 transition-transform', open && 'rotate-180')} />
+            </button>
+
+            {open && !disabled && (
+                <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white rounded-2xl border border-cream-200 shadow-[0_20px_60px_-15px_rgba(0,0,0,0.08)] overflow-hidden">
+                    <div className="max-h-64 overflow-y-auto p-1">
+                        {placeholder && (
+                            <button
+                                type="button"
+                                onClick={() => selectValue('')}
+                                className={cn(
+                                    'w-full flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm transition-colors text-left',
+                                    value === '' ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-cream-50'
+                                )}
+                            >
+                                <span className="truncate">{placeholder}</span>
+                                {value === '' && <Check className="w-4 h-4 shrink-0" />}
+                            </button>
+                        )}
+
+                        {options.length === 0 ? (
+                            <div className="px-3 py-4 text-center text-sm text-slate-400">No options</div>
+                        ) : (
+                            options.map((opt) => (
+                                <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={() => selectValue(opt.value)}
+                                    className={cn(
+                                        'w-full flex items-center justify-between gap-3 px-3 py-2 rounded-xl text-sm transition-colors text-left',
+                                        value === opt.value ? 'bg-indigo-50 text-indigo-700' : 'text-slate-700 hover:bg-cream-50'
+                                    )}
+                                >
+                                    <span className="truncate">{opt.label}</span>
+                                    {value === opt.value && <Check className="w-4 h-4 shrink-0" />}
+                                </button>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

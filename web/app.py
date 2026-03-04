@@ -121,6 +121,15 @@ _LOG_CATEGORY_TO_SETTING_KEY: Dict[str, str] = {
     "voice": "voice_log_channel",
 }
 
+_LOG_CATEGORY_TO_MODULE_SETTING_KEY: Dict[str, str] = {
+    "moderation": "modChannel",
+    "automod": "automodChannel",
+    "messages": "messageChannel",
+    "members": "auditChannel",
+    "server": "auditChannel",
+    "voice": "voiceChannel",
+}
+
 _LOG_SETTING_ALIASES: Dict[str, tuple[str, ...]] = {
     "mod_log_channel": ("mod_log_channel", "log_channel_mod"),
     "audit_log_channel": ("audit_log_channel", "log_channel_audit"),
@@ -789,6 +798,32 @@ def _build_dashboard_logging(settings: Dict[str, Any]) -> Dict[str, Any]:
     if not isinstance(stored, dict):
         stored = {}
 
+    modules = _canonicalize_modules_blob(settings.get("modules", {}))
+    logging_module = modules.get("logging", {})
+    module_logging_settings = {}
+    if isinstance(logging_module, dict):
+        raw_settings = logging_module.get("settings", {})
+        if isinstance(raw_settings, dict):
+            module_logging_settings = raw_settings
+
+    def resolve_channel_for_category(category: str) -> Optional[str]:
+        setting_key = _LOG_CATEGORY_TO_SETTING_KEY.get(category)
+        if setting_key:
+            via_flat = _get_log_setting(settings, setting_key)
+            if via_flat:
+                return via_flat
+        module_key = _LOG_CATEGORY_TO_MODULE_SETTING_KEY.get(category)
+        if module_key:
+            via_module = _coerce_channel_like(module_logging_settings.get(module_key))
+            if via_module:
+                return via_module
+        return None
+
+    any_configured_category_channel = any(
+        resolve_channel_for_category(category)
+        for category in _LOG_CATEGORY_TO_SETTING_KEY.keys()
+    )
+
     logging_blob: Dict[str, Any] = {}
     known_event_ids = {event["id"] for event in _LOG_EVENT_TYPES}
 
@@ -801,10 +836,9 @@ def _build_dashboard_logging(settings: Dict[str, Any]) -> Dict[str, Any]:
 
         channel_id = _coerce_channel_like(current.get("channelId"))
         if not channel_id:
-            setting_key = _LOG_CATEGORY_TO_SETTING_KEY.get(category)
-            if setting_key:
-                channel_id = _get_log_setting(settings, setting_key)
-        enabled = _coerce_bool(current.get("enabled"), bool(channel_id))
+            channel_id = resolve_channel_for_category(category)
+        enabled_default = bool(channel_id) or _coerce_bool(settings.get("logging_enabled"), True)
+        enabled = _coerce_bool(current.get("enabled"), enabled_default)
         fmt = "compact" if str(current.get("format", "detailed")).lower() == "compact" else "detailed"
         logging_blob[event_id] = {
             "eventTypeId": event_id,
@@ -817,7 +851,8 @@ def _build_dashboard_logging(settings: Dict[str, Any]) -> Dict[str, Any]:
         if event_id in known_event_ids or not isinstance(value, dict):
             continue
         channel_id = _coerce_channel_like(value.get("channelId"))
-        enabled = _coerce_bool(value.get("enabled"), bool(channel_id))
+        enabled_default = bool(channel_id) or _coerce_bool(settings.get("logging_enabled"), True)
+        enabled = _coerce_bool(value.get("enabled"), enabled_default)
         fmt = "compact" if str(value.get("format", "detailed")).lower() == "compact" else "detailed"
         logging_blob[event_id] = {
             "eventTypeId": str(event_id),
@@ -825,6 +860,15 @@ def _build_dashboard_logging(settings: Dict[str, Any]) -> Dict[str, Any]:
             "channelId": channel_id,
             "format": fmt,
         }
+
+    # Backward-compatibility recovery: if channels exist but all events ended up disabled
+    # from legacy defaults, surface them as enabled in dashboard UI.
+    if logging_blob and any_configured_category_channel and not any(
+        _coerce_bool(entry.get("enabled"), False) for entry in logging_blob.values() if isinstance(entry, dict)
+    ):
+        for entry in logging_blob.values():
+            if isinstance(entry, dict):
+                entry["enabled"] = True
 
     return logging_blob
 
@@ -957,10 +1001,14 @@ def _build_dashboard_modules(settings: Dict[str, Any]) -> Dict[str, Any]:
         "reportChannel": _get_log_setting(settings, "report_log_channel") or "",
         "ticketChannel": _get_log_setting(settings, "ticket_log_channel") or "",
     }
+    logging_enabled = _module_enabled_from_settings("logging", settings, logging_base) or any(
+        bool(logging_settings.get(key))
+        for key in ("modChannel", "auditChannel", "messageChannel", "voiceChannel", "automodChannel", "reportChannel", "ticketChannel")
+    )
     _set_module(
         modules,
         "logging",
-        enabled=_module_enabled_from_settings("logging", settings, logging_base),
+        enabled=logging_enabled,
         settings_blob=logging_settings,
         base=logging_base,
     )

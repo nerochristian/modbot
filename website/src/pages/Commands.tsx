@@ -10,6 +10,7 @@ import { resolveCommandProfile, STAFF_LEVEL_OPTIONS, CHANNEL_MODE_OPTIONS, RESPO
 import { useAppStore } from '@/store/useAppStore';
 import type { CommandCapability, CommandConfig } from '@/types';
 import { cn } from '@/lib/utils';
+import { toChannelOptions } from '@/lib/channels';
 
 const PERMISSION_OPTIONS = [
   { label: 'Send Messages', value: 'send_messages' },
@@ -486,9 +487,7 @@ export function Commands() {
 
   if (!config) return <PageSkeleton />;
 
-  const channelOptions = channels
-    .filter((c) => c.type !== 4)
-    .map((c) => ({ label: `#${c.name}`, value: c.id }));
+  const channelOptions = toChannelOptions(channels);
   const roleOptions = roles
     .filter((r) => !r.managed)
     .map((r) => ({ label: r.name, value: r.id, color: r.color }));

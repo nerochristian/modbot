@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import type { ModuleCapability, ModuleConfig, SettingsFieldSchema } from '@/types';
 import { cn } from '@/lib/utils';
+import { toChannelOptions } from '@/lib/channels';
 
 const ICON_MAP: Record<string, typeof Zap> = {
     Zap, Shield, ScrollText, ShieldAlert, Ticket, UserCheck, Package,
@@ -105,7 +106,7 @@ export function Modules() {
 
     if (!config) return <PageSkeleton />;
 
-    const channelOptions = channels.filter(c => c.type === 0).map(c => ({ label: `#${c.name}`, value: c.id }));
+    const channelOptions = toChannelOptions(channels);
     const roleOptions = roles.filter(r => !r.managed).map(r => ({ label: r.name, value: r.id, color: r.color }));
 
     return (

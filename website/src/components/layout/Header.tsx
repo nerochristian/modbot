@@ -9,7 +9,7 @@ const FALLBACK_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
 const GENERIC_INVITE_URL = getBotInviteUrl();
 
 export function Header() {
-  const { user, guilds, activeGuildId, setActiveGuild, error, setError, theme, toggleTheme } = useAppStore();
+  const { user, guilds, activeGuildId, setActiveGuild, refreshGuilds, error, setError, theme, toggleTheme } = useAppStore();
   const [isServerMenuOpen, setIsServerMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -26,6 +26,13 @@ export function Header() {
       }
     };
   }, []);
+
+  useEffect(() => {
+    if (!isServerMenuOpen) {
+      return;
+    }
+    void refreshGuilds();
+  }, [isServerMenuOpen, refreshGuilds]);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -81,7 +88,7 @@ export function Header() {
             {isServerMenuOpen && (
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setIsServerMenuOpen(false)} />
-                <div className="absolute top-full left-0 mt-2 w-72 bg-card-bg rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.1)] border border-cream-300 py-2 z-50">
+                <div className="absolute top-full left-0 mt-2 w-80 max-w-[calc(100vw-1rem)] bg-card-bg rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.1)] border border-cream-300 py-2 z-50">
                   <div className="px-3 pb-2 mb-1 border-b border-cream-200">
                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Your Servers</p>
                     {installableGuildCount > 0 && (
@@ -95,6 +102,8 @@ export function Header() {
                       <p className="text-sm text-slate-600">No manageable Discord servers found.</p>
                       <a
                         href={GENERIC_INVITE_URL}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors"
                       >
                         <Plus className="w-4 h-4" />
@@ -102,11 +111,12 @@ export function Header() {
                       </a>
                     </div>
                   ) : (
-                    guilds.map((server) => (
+                    <div className="max-h-72 overflow-y-auto">
+                    {guilds.map((server) => (
                       <div key={server.id} className="px-2">
                         <div
                           className={cn(
-                            'flex items-center gap-2 rounded-xl p-1',
+                            'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2 rounded-xl p-1',
                             activeGuildId === server.id && 'bg-indigo-50'
                           )}
                         >
@@ -115,7 +125,7 @@ export function Header() {
                               setActiveGuild(server.id);
                               setIsServerMenuOpen(false);
                             }}
-                            className="flex-1 flex items-center gap-3 px-2 py-1.5 hover:bg-app-bg rounded-lg transition-colors text-left"
+                            className="min-w-0 flex-1 flex items-center gap-3 px-2 py-1.5 hover:bg-app-bg rounded-lg transition-colors text-left"
                           >
                             <img src={server.icon || FALLBACK_AVATAR} alt={server.name} className="w-8 h-8 rounded-full" />
                             <div className="flex-1 min-w-0">
@@ -129,8 +139,10 @@ export function Header() {
                           {!server.botInstalled && (
                             <a
                               href={getBotInviteUrl(server.id)}
+                              target="_blank"
+                              rel="noopener noreferrer"
                               onClick={() => setIsServerMenuOpen(false)}
-                              className="shrink-0 inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[#5865F2] text-white text-[11px] font-semibold hover:bg-[#4752C4] transition-colors"
+                              className="shrink-0 whitespace-nowrap inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-[#5865F2] text-white text-[10px] font-semibold hover:bg-[#4752C4] transition-colors"
                             >
                               <Plus className="w-3.5 h-3.5" />
                               Add Bot
@@ -138,11 +150,14 @@ export function Header() {
                           )}
                         </div>
                       </div>
-                    ))
+                    ))}
+                    </div>
                   )}
                   <div className="px-3 pt-2 mt-1 border-t border-cream-200">
                     <a
                       href={GENERIC_INVITE_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       onClick={() => setIsServerMenuOpen(false)}
                       className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-semibold"
                     >

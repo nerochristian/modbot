@@ -7,6 +7,7 @@ import { Badge, Select, SaveBar, PageSkeleton, SearchInput, Tabs, EmptyState } f
 import { ScrollText, Settings, Download, Hash } from 'lucide-react';
 import type { EventTypeCapability, LoggingRouteConfig } from '@/types';
 import { cn } from '@/lib/utils';
+import { toChannelOptions } from '@/lib/channels';
 
 const CATEGORY_LABELS: Record<string, string> = {
   moderation: 'Moderation',
@@ -54,7 +55,7 @@ export function Logging() {
       };
     });
   }, [capabilities?.eventTypes, config]);
-  const channelOptions = channels.filter(c => c.type === 0).map(c => ({ label: `#${c.name}`, value: c.id }));
+  const channelOptions = toChannelOptions(channels);
 
   const categories = useMemo(() => {
     const cats = new Set(eventTypes.map(e => e.category));

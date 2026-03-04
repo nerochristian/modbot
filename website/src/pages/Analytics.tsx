@@ -1,10 +1,11 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/Card';
 import { Badge, PageSkeleton, EmptyState } from '@/components/ui/Shared';
 import { useAppStore } from '@/store/useAppStore';
 import { realApiClient } from '@/lib/api';
 import type { CaseAction, ModerationCase } from '@/types';
 import { BarChart3, TrendingUp, Users, Shield, Clock } from 'lucide-react';
+import { formatCount } from '@/lib/utils';
 
 interface GuildStats {
   memberCount: number;
@@ -16,6 +17,17 @@ interface GuildStats {
   cogCount: number;
   botOnline: boolean;
 }
+
+const EMPTY_GUILD_STATS: GuildStats = {
+  memberCount: 0,
+  channelCount: 0,
+  roleCount: 0,
+  caseCount: 0,
+  warningCount: 0,
+  commandCount: 0,
+  cogCount: 0,
+  botOnline: false,
+};
 
 const ACTION_LABELS: Record<CaseAction, string> = {
   warn: 'Warnings',
@@ -36,6 +48,33 @@ const ACTION_COLORS: Record<CaseAction, string> = {
   note: 'bg-slate-400',
   quarantine: 'bg-purple-500',
 };
+
+function normalizeNumber(value: unknown): number {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return Math.max(0, Math.floor(value));
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed)) {
+      return Math.max(0, Math.floor(parsed));
+    }
+  }
+  return 0;
+}
+
+function normalizeGuildStats(value: unknown): GuildStats {
+  const source = (typeof value === 'object' && value !== null ? value : {}) as Record<string, unknown>;
+  return {
+    memberCount: normalizeNumber(source.memberCount),
+    channelCount: normalizeNumber(source.channelCount),
+    roleCount: normalizeNumber(source.roleCount),
+    caseCount: normalizeNumber(source.caseCount),
+    warningCount: normalizeNumber(source.warningCount),
+    commandCount: normalizeNumber(source.commandCount),
+    cogCount: normalizeNumber(source.cogCount),
+    botOnline: Boolean(source.botOnline),
+  };
+}
 
 export function Analytics() {
   const { config, activeGuildId, loading } = useAppStore();
@@ -59,8 +98,8 @@ export function Analytics() {
         .catch(() => null),
     ])
       .then(([caseData, guildStats]) => {
-        setCases(caseData);
-        setStats(guildStats);
+        setCases(Array.isArray(caseData) ? caseData : []);
+        setStats(guildStats ? normalizeGuildStats(guildStats) : EMPTY_GUILD_STATS);
       })
       .finally(() => {
         setAnalyticsLoading(false);
@@ -120,7 +159,9 @@ export function Analytics() {
     };
 
     for (const entry of cases) {
-      counts[entry.action] += 1;
+      if (Object.hasOwn(counts, entry.action)) {
+        counts[entry.action] += 1;
+      }
     }
 
     const total = cases.length || 1;
@@ -159,7 +200,7 @@ export function Analytics() {
                 </div>
                 <span className="text-xs font-medium text-slate-400 uppercase">{stat.label}</span>
               </div>
-              <h3 className="text-2xl font-display font-bold text-slate-800">{stat.value}</h3>
+              <h3 className="text-2xl font-display font-bold text-slate-800">{formatCount(stat.value)}</h3>
               <p className="text-xs text-slate-500 mt-0.5 font-medium">{stat.sub}</p>
             </CardContent>
           </Card>
@@ -176,7 +217,7 @@ export function Analytics() {
             <div className="flex items-end gap-3 h-48">
               {weekData.map((d) => (
                 <div key={d.day} className="flex-1 flex flex-col items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-700">{d.actions}</span>
+                  <span className="text-xs font-semibold text-slate-700">{formatCount(d.actions)}</span>
                   <div
                     className="w-full bg-gradient-to-t from-indigo-500 to-indigo-400 rounded-t-xl transition-all duration-500 min-h-[4px]"
                     style={{ height: `${(d.actions / maxActions) * 100}%` }}
@@ -207,7 +248,7 @@ export function Analytics() {
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-sm font-medium text-slate-700">{action.label}</span>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-500">{action.count}</span>
+                        <span className="text-xs text-slate-500">{formatCount(action.count)}</span>
                         <Badge variant="default">{action.pct}%</Badge>
                       </div>
                     </div>
@@ -235,15 +276,15 @@ export function Analytics() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <div className="p-3 rounded-xl bg-cream-50 border border-cream-200">
                 <p className="text-xs text-slate-500">Members</p>
-                <p className="text-lg font-semibold text-slate-800">{stats.memberCount}</p>
+                <p className="text-lg font-semibold text-slate-800">{formatCount(stats.memberCount)}</p>
               </div>
               <div className="p-3 rounded-xl bg-cream-50 border border-cream-200">
                 <p className="text-xs text-slate-500">Channels</p>
-                <p className="text-lg font-semibold text-slate-800">{stats.channelCount}</p>
+                <p className="text-lg font-semibold text-slate-800">{formatCount(stats.channelCount)}</p>
               </div>
               <div className="p-3 rounded-xl bg-cream-50 border border-cream-200">
                 <p className="text-xs text-slate-500">Cases</p>
-                <p className="text-lg font-semibold text-slate-800">{stats.caseCount}</p>
+                <p className="text-lg font-semibold text-slate-800">{formatCount(stats.caseCount)}</p>
               </div>
               <div className="p-3 rounded-xl bg-cream-50 border border-cream-200">
                 <p className="text-xs text-slate-500">Bot</p>
