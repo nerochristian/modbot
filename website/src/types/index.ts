@@ -188,24 +188,47 @@ export interface OverrideEntry {
 export interface CommandConfig {
     enabled: boolean;
     requiredPermission: string;
+    minimumStaffLevel?: 'everyone' | 'staff' | 'mod' | 'admin' | 'supervisor' | 'owner';
+    enforceRoleHierarchy?: boolean;
+    requireReason?: boolean;
+    requireConfirmation?: boolean;
+    channelMode?: 'enabled_everywhere' | 'only_allowed' | 'disabled_in_ignored';
+    disableInThreads?: boolean;
+    disableInForumPosts?: boolean;
+    disableInDMs?: boolean;
     overrides: OverrideEntry;
     cooldown: {
+        global?: number; // seconds
         perUser: number;  // seconds
         perGuild: number; // seconds
+        perChannel?: number; // seconds
     };
     rateLimit: {
+        maxPerMinute?: number;
+        maxPerHour?: number;
+        concurrentLimit?: number;
         maxPerMinuteChannel: number;
         maxPerMinuteGuild: number;
     };
+    cooldownBypassRoles?: string[];
+    cooldownBypassUsers?: string[];
     logging: {
         logUsage: boolean;
         routeOverride: string | null; // channel ID override
+        recordToAuditLog?: boolean;
     };
     visibility: {
         hideFromHelp: boolean;
         slashEnabled: boolean;
         prefixEnabled: boolean;
+        hideFromAutocomplete?: boolean;
+        defaultResponseVisibility?: 'auto' | 'ephemeral' | 'public';
     };
+    disableDuringMaintenanceMode?: boolean;
+    disableDuringRaidMode?: boolean;
+    syncWithDiscordSlashPermissions?: boolean;
+    defaultMemberPermissions?: string;
+    extras?: Record<string, unknown>;
 }
 
 export interface ModuleConfig {

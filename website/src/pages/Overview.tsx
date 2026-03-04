@@ -3,7 +3,7 @@ import { Badge, PageSkeleton } from '@/components/ui/Shared';
 import { ShieldAlert, Users, MessageSquare, Activity, ShieldCheck, AlertTriangle, Command, Package, Zap, ArrowRight } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { NavLink } from 'react-router-dom';
-import { cn } from '@/lib/utils';
+import { cn, formatCount } from '@/lib/utils';
 
 export function Overview() {
   const { guilds, activeGuildId, config, loading } = useAppStore();
@@ -56,7 +56,7 @@ export function Overview() {
         />
         <QuickStatCard
           title="Members"
-          value={activeServer?.memberCount.toLocaleString() || '0'}
+          value={formatCount(activeServer?.memberCount)}
           subtitle="total"
           icon={Users}
           color="text-purple-500"

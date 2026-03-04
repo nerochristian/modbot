@@ -1,8 +1,12 @@
 import { useAppStore } from '@/store/useAppStore';
-import { ChevronDown, Bell, Search, LogOut, AlertTriangle, Moon, Sun } from 'lucide-react';
+import { ChevronDown, Bell, Search, LogOut, AlertTriangle, Moon, Sun, Plus, ExternalLink } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { cn } from '@/lib/utils';
+import { cn, formatCount } from '@/lib/utils';
 import { realApiClient } from '@/lib/api';
+import { getBotInviteUrl } from '@/lib/discord';
+
+const FALLBACK_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
+const GENERIC_INVITE_URL = getBotInviteUrl();
 
 export function Header() {
   const { user, guilds, activeGuildId, setActiveGuild, error, setError, theme, toggleTheme } = useAppStore();
@@ -13,6 +17,7 @@ export function Header() {
   const themeAnimationTimerRef = useRef<number | null>(null);
 
   const activeServer = guilds.find((s) => s.id === activeGuildId);
+  const installableGuildCount = guilds.filter((guild) => !guild.botInstalled).length;
 
   useEffect(() => {
     return () => {
@@ -57,8 +62,15 @@ export function Header() {
             >
               {activeServer ? (
                 <>
-                  <img src={activeServer.icon || 'https://cdn.discordapp.com/embed/avatars/0.png'} alt={activeServer.name} className="w-6 h-6 rounded-full" />
-                  <span className="font-semibold text-sm text-slate-800">{activeServer.name}</span>
+                  <img src={activeServer.icon || FALLBACK_AVATAR} alt={activeServer.name} className="w-6 h-6 rounded-full" />
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-sm text-slate-800">{activeServer.name}</span>
+                    {!activeServer.botInstalled && (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 font-semibold uppercase tracking-wide">
+                        Not added
+                      </span>
+                    )}
+                  </div>
                 </>
               ) : (
                 <span className="font-semibold text-slate-500">Select Server</span>
@@ -72,29 +84,72 @@ export function Header() {
                 <div className="absolute top-full left-0 mt-2 w-72 bg-card-bg rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.1)] border border-cream-300 py-2 z-50">
                   <div className="px-3 pb-2 mb-1 border-b border-cream-200">
                     <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Your Servers</p>
+                    {installableGuildCount > 0 && (
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        {installableGuildCount} server{installableGuildCount === 1 ? '' : 's'} still need Modbot.
+                      </p>
+                    )}
                   </div>
-                  {guilds.map((server) => (
-                    <button
-                      key={server.id}
-                      onClick={() => {
-                        setActiveGuild(server.id);
-                        setIsServerMenuOpen(false);
-                      }}
-                      className={cn(
-                        'w-full flex items-center gap-3 px-4 py-2.5 hover:bg-app-bg transition-colors text-left',
-                        activeGuildId === server.id && 'bg-indigo-50'
-                      )}
-                    >
-                      <img src={server.icon || 'https://cdn.discordapp.com/embed/avatars/0.png'} alt={server.name} className="w-8 h-8 rounded-full" />
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-medium text-slate-800 truncate">{server.name}</div>
-                        <div className="text-xs text-slate-500">{server.memberCount.toLocaleString()} members</div>
+                  {guilds.length === 0 ? (
+                    <div className="px-4 py-4 space-y-3">
+                      <p className="text-sm text-slate-600">No manageable Discord servers found.</p>
+                      <a
+                        href={GENERIC_INVITE_URL}
+                        className="w-full inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add Modbot to a Server
+                      </a>
+                    </div>
+                  ) : (
+                    guilds.map((server) => (
+                      <div key={server.id} className="px-2">
+                        <div
+                          className={cn(
+                            'flex items-center gap-2 rounded-xl p-1',
+                            activeGuildId === server.id && 'bg-indigo-50'
+                          )}
+                        >
+                          <button
+                            onClick={() => {
+                              setActiveGuild(server.id);
+                              setIsServerMenuOpen(false);
+                            }}
+                            className="flex-1 flex items-center gap-3 px-2 py-1.5 hover:bg-app-bg rounded-lg transition-colors text-left"
+                          >
+                            <img src={server.icon || FALLBACK_AVATAR} alt={server.name} className="w-8 h-8 rounded-full" />
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-medium text-slate-800 truncate">{server.name}</div>
+                              <div className="text-xs text-slate-500">{formatCount(server.memberCount)} members</div>
+                            </div>
+                            {activeGuildId === server.id && (
+                              <div className="w-2 h-2 rounded-full bg-indigo-600" />
+                            )}
+                          </button>
+                          {!server.botInstalled && (
+                            <a
+                              href={getBotInviteUrl(server.id)}
+                              onClick={() => setIsServerMenuOpen(false)}
+                              className="shrink-0 inline-flex items-center gap-1 px-2 py-1.5 rounded-lg bg-[#5865F2] text-white text-[11px] font-semibold hover:bg-[#4752C4] transition-colors"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              Add Bot
+                            </a>
+                          )}
+                        </div>
                       </div>
-                      {activeGuildId === server.id && (
-                        <div className="w-2 h-2 rounded-full bg-indigo-600" />
-                      )}
-                    </button>
-                  ))}
+                    ))
+                  )}
+                  <div className="px-3 pt-2 mt-1 border-t border-cream-200">
+                    <a
+                      href={GENERIC_INVITE_URL}
+                      onClick={() => setIsServerMenuOpen(false)}
+                      className="inline-flex items-center gap-1.5 text-xs text-indigo-600 hover:text-indigo-700 font-semibold"
+                    >
+                      Open full invite link
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  </div>
                 </div>
               </>
             )}
@@ -155,7 +210,7 @@ export function Header() {
               <div className="text-right hidden sm:block">
                 <div className="text-sm font-semibold text-slate-900">{user?.username}</div>
               </div>
-              <img src={user?.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png'} alt={user?.username} className="w-8 h-8 rounded-full border-2 border-white shadow-sm" />
+              <img src={user?.avatar || FALLBACK_AVATAR} alt={user?.username} className="w-8 h-8 rounded-full border-2 border-white shadow-sm" />
             </button>
 
             {isUserMenuOpen && (

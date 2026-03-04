@@ -18,8 +18,31 @@ except ImportError:
 
 logger = logging.getLogger("ModBot.Database")
 import os
-IS_RAILWAY = os.getenv("RAILWAY_ENVIRONMENT") is not None
-DATABASE_PATH = "/app/data/modbot.db" if IS_RAILWAY else "modbot.db"
+
+def _resolve_database_path() -> str:
+    """Resolve SQLite path with env override and Railway volume fallback."""
+    explicit_path = (
+        os.getenv("DATABASE_PATH")
+        or os.getenv("DB_PATH")
+        or os.getenv("SQLITE_PATH")
+    )
+    if explicit_path and explicit_path.strip():
+        return explicit_path.strip()
+
+    database_url = (os.getenv("DATABASE_URL") or "").strip()
+    if database_url.startswith("sqlite:///"):
+        return database_url.replace("sqlite:///", "", 1)
+    if database_url and not database_url.startswith("sqlite:///"):
+        logger.warning("DATABASE_URL is set but not sqlite; this bot currently uses SQLite only.")
+
+    # Railway persistent volume mount path.
+    if os.path.isdir("/app/data"):
+        return "/app/data/modbot.db"
+
+    return "modbot.db"
+
+
+DATABASE_PATH = _resolve_database_path()
 
 
 class Database:
@@ -41,6 +64,7 @@ class Database:
                 os.makedirs(db_dir, exist_ok=True)
             except Exception as e:
                 logger.error(f"Failed to create database directory {db_dir}: {e}")
+        logger.info(f"Database path: {self.db_path}")
                 
         self._lock = asyncio.Lock()
         self._initialized = False

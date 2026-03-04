@@ -637,7 +637,18 @@ def _get_guild_member_count(guild_id: str) -> int:
     if not _bot:
         return 0
     guild = _bot.get_guild(int(guild_id))
-    return guild.member_count if guild else 0
+    if not guild:
+        return 0
+
+    member_count = getattr(guild, "member_count", None)
+    if isinstance(member_count, int) and member_count >= 0:
+        return member_count
+
+    # Fallback for guilds where Discord did not provide member_count.
+    try:
+        return len(getattr(guild, "members", []) or [])
+    except Exception:
+        return 0
 
 
 async def api_guild_channels(request: web.Request):

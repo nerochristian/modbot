@@ -239,24 +239,47 @@ function defaultCommandConfig(commandCap?: CommandCapability): CommandConfig {
   return {
     enabled: true,
     requiredPermission: commandCap?.defaultRequiredPermission || 'send_messages',
+    minimumStaffLevel: 'everyone',
+    enforceRoleHierarchy: false,
+    requireReason: false,
+    requireConfirmation: false,
+    channelMode: 'enabled_everywhere',
+    disableInThreads: false,
+    disableInForumPosts: false,
+    disableInDMs: false,
     overrides: defaultOverrideEntry(),
     cooldown: {
+      global: 0,
       perUser: 0,
       perGuild: 0,
+      perChannel: 0,
     },
     rateLimit: {
+      maxPerMinute: 0,
+      maxPerHour: 0,
+      concurrentLimit: 1,
       maxPerMinuteChannel: 30,
       maxPerMinuteGuild: 300,
     },
+    cooldownBypassRoles: [],
+    cooldownBypassUsers: [],
     logging: {
       logUsage: true,
       routeOverride: null,
+      recordToAuditLog: true,
     },
     visibility: {
       hideFromHelp: false,
       slashEnabled: true,
       prefixEnabled: true,
+      hideFromAutocomplete: false,
+      defaultResponseVisibility: 'auto',
     },
+    disableDuringMaintenanceMode: false,
+    disableDuringRaidMode: false,
+    syncWithDiscordSlashPermissions: false,
+    defaultMemberPermissions: '',
+    extras: {},
   };
 }
 
@@ -267,16 +290,43 @@ function normalizeCommandConfig(value: unknown, commandCap?: CommandCapability):
   const rateLimit = isObject(source.rateLimit) ? source.rateLimit : {};
   const logging = isObject(source.logging) ? source.logging : {};
   const visibility = isObject(source.visibility) ? source.visibility : {};
+  const staffLevel = source.minimumStaffLevel;
+  const channelMode = source.channelMode;
+  const responseVisibility = visibility.defaultResponseVisibility;
+  const extras = isObject(source.extras) ? source.extras : {};
 
   return {
     enabled: typeof source.enabled === 'boolean' ? source.enabled : fallback.enabled,
     requiredPermission: typeof source.requiredPermission === 'string' ? source.requiredPermission : fallback.requiredPermission,
+    minimumStaffLevel: staffLevel === 'everyone' || staffLevel === 'staff' || staffLevel === 'mod' || staffLevel === 'admin' || staffLevel === 'supervisor' || staffLevel === 'owner'
+      ? staffLevel
+      : fallback.minimumStaffLevel,
+    enforceRoleHierarchy: typeof source.enforceRoleHierarchy === 'boolean' ? source.enforceRoleHierarchy : fallback.enforceRoleHierarchy,
+    requireReason: typeof source.requireReason === 'boolean' ? source.requireReason : fallback.requireReason,
+    requireConfirmation: typeof source.requireConfirmation === 'boolean' ? source.requireConfirmation : fallback.requireConfirmation,
+    channelMode: channelMode === 'enabled_everywhere' || channelMode === 'only_allowed' || channelMode === 'disabled_in_ignored'
+      ? channelMode
+      : fallback.channelMode,
+    disableInThreads: typeof source.disableInThreads === 'boolean' ? source.disableInThreads : fallback.disableInThreads,
+    disableInForumPosts: typeof source.disableInForumPosts === 'boolean' ? source.disableInForumPosts : fallback.disableInForumPosts,
+    disableInDMs: typeof source.disableInDMs === 'boolean' ? source.disableInDMs : fallback.disableInDMs,
     overrides: normalizeOverrideEntry(source.overrides),
     cooldown: {
+      global: typeof cooldown.global === 'number' ? cooldown.global : fallback.cooldown.global,
       perUser: typeof cooldown.perUser === 'number' ? cooldown.perUser : fallback.cooldown.perUser,
       perGuild: typeof cooldown.perGuild === 'number' ? cooldown.perGuild : fallback.cooldown.perGuild,
+      perChannel: typeof cooldown.perChannel === 'number' ? cooldown.perChannel : fallback.cooldown.perChannel,
     },
     rateLimit: {
+      maxPerMinute: typeof rateLimit.maxPerMinute === 'number'
+        ? rateLimit.maxPerMinute
+        : fallback.rateLimit.maxPerMinute,
+      maxPerHour: typeof rateLimit.maxPerHour === 'number'
+        ? rateLimit.maxPerHour
+        : fallback.rateLimit.maxPerHour,
+      concurrentLimit: typeof rateLimit.concurrentLimit === 'number'
+        ? rateLimit.concurrentLimit
+        : fallback.rateLimit.concurrentLimit,
       maxPerMinuteChannel: typeof rateLimit.maxPerMinuteChannel === 'number'
         ? rateLimit.maxPerMinuteChannel
         : fallback.rateLimit.maxPerMinuteChannel,
@@ -284,9 +334,14 @@ function normalizeCommandConfig(value: unknown, commandCap?: CommandCapability):
         ? rateLimit.maxPerMinuteGuild
         : fallback.rateLimit.maxPerMinuteGuild,
     },
+    cooldownBypassRoles: normalizeTextArray(source.cooldownBypassRoles),
+    cooldownBypassUsers: normalizeTextArray(source.cooldownBypassUsers),
     logging: {
       logUsage: typeof logging.logUsage === 'boolean' ? logging.logUsage : fallback.logging.logUsage,
       routeOverride: typeof logging.routeOverride === 'string' ? logging.routeOverride : null,
+      recordToAuditLog: typeof logging.recordToAuditLog === 'boolean'
+        ? logging.recordToAuditLog
+        : fallback.logging.recordToAuditLog,
     },
     visibility: {
       hideFromHelp: typeof visibility.hideFromHelp === 'boolean'
@@ -298,7 +353,26 @@ function normalizeCommandConfig(value: unknown, commandCap?: CommandCapability):
       prefixEnabled: typeof visibility.prefixEnabled === 'boolean'
         ? visibility.prefixEnabled
         : fallback.visibility.prefixEnabled,
+      hideFromAutocomplete: typeof visibility.hideFromAutocomplete === 'boolean'
+        ? visibility.hideFromAutocomplete
+        : fallback.visibility.hideFromAutocomplete,
+      defaultResponseVisibility: responseVisibility === 'auto' || responseVisibility === 'ephemeral' || responseVisibility === 'public'
+        ? responseVisibility
+        : fallback.visibility.defaultResponseVisibility,
     },
+    disableDuringMaintenanceMode: typeof source.disableDuringMaintenanceMode === 'boolean'
+      ? source.disableDuringMaintenanceMode
+      : fallback.disableDuringMaintenanceMode,
+    disableDuringRaidMode: typeof source.disableDuringRaidMode === 'boolean'
+      ? source.disableDuringRaidMode
+      : fallback.disableDuringRaidMode,
+    syncWithDiscordSlashPermissions: typeof source.syncWithDiscordSlashPermissions === 'boolean'
+      ? source.syncWithDiscordSlashPermissions
+      : fallback.syncWithDiscordSlashPermissions,
+    defaultMemberPermissions: typeof source.defaultMemberPermissions === 'string'
+      ? source.defaultMemberPermissions
+      : fallback.defaultMemberPermissions,
+    extras,
   };
 }
 
@@ -455,7 +529,13 @@ export const useAppStore = create<AppState>((set, get) => ({
         throw err;
       }
 
-      const guilds = user.guilds.filter(g => g.botInstalled);
+      const guilds = [...user.guilds].sort((a, b) => {
+        if (a.botInstalled !== b.botInstalled) {
+          return a.botInstalled ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      });
+      const initialGuild = guilds.find((guild) => guild.botInstalled) || guilds[0] || null;
 
       let capabilities: BotCapabilities | null = null;
       try {
@@ -468,12 +548,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         user,
         guilds,
         capabilities,
-        activeGuildId: guilds[0]?.id || null,
+        activeGuildId: initialGuild?.id || null,
         loading: false,
       });
 
-      if (guilds[0]) {
-        await get().fetchConfig(guilds[0].id);
+      if (initialGuild) {
+        await get().fetchConfig(initialGuild.id);
       }
     } catch (err) {
       set({ loading: false, error: err instanceof Error ? err.message : 'Failed to initialize' });
@@ -481,6 +561,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   setActiveGuild: (id: string) => {
+    if (!id || get().activeGuildId === id) {
+      return;
+    }
     set({ activeGuildId: id, config: null, configDirty: false, channels: [], roles: [] });
     get().fetchConfig(id);
   },

@@ -59,6 +59,35 @@ function isObject(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function normalizeGuildSummary(value: unknown): GuildSummary {
+    const source = isObject(value) ? value : {};
+
+    const memberCount = typeof source.memberCount === 'number' && Number.isFinite(source.memberCount)
+        ? Math.max(0, Math.floor(source.memberCount))
+        : 0;
+
+    return {
+        id: typeof source.id === 'string' ? source.id : '',
+        name: typeof source.name === 'string' && source.name ? source.name : 'Unknown Server',
+        icon: typeof source.icon === 'string' ? source.icon : null,
+        owner: Boolean(source.owner),
+        memberCount,
+        botInstalled: source.botInstalled === undefined ? false : Boolean(source.botInstalled),
+    };
+}
+
+function normalizeAuthUser(value: unknown): AuthUser {
+    const source = isObject(value) ? value : {};
+    const rawGuilds = Array.isArray(source.guilds) ? source.guilds : [];
+
+    return {
+        id: typeof source.id === 'string' ? source.id : '',
+        username: typeof source.username === 'string' && source.username ? source.username : 'Unknown User',
+        avatar: typeof source.avatar === 'string' ? source.avatar : '',
+        guilds: rawGuilds.map(normalizeGuildSummary),
+    };
+}
+
 async function apiFetch<T>(
     path: string,
     options: RequestInit & { version?: number } = {}
@@ -257,18 +286,18 @@ export interface ApiClient {
 export const realApiClient: ApiClient = {
     async getMe() {
         const { data } = await apiFetch<AuthUser>('/me');
-        return data;
+        return normalizeAuthUser(data);
     },
     async logout() {
         await apiFetch('/auth/logout', { method: 'POST' });
     },
     async getGuilds() {
         const { data } = await apiFetch<GuildSummary[]>('/guilds');
-        return data;
+        return Array.isArray(data) ? data.map(normalizeGuildSummary) : [];
     },
     async getGuildSummary(guildId) {
         const { data } = await apiFetch<GuildSummary>(`/guilds/${guildId}/summary`);
-        return data;
+        return normalizeGuildSummary(data);
     },
     async getChannels(guildId) {
         const { data } = await apiFetchWithFallback<DiscordChannel[]>([
