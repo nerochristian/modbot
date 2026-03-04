@@ -142,6 +142,12 @@ async function apiFetchWithFallback<T>(
                 lastError = err;
                 continue;
             }
+            // Some deployments route unknown API paths to SPA HTML (200 + text/html),
+            // which makes JSON parsing throw SyntaxError. Treat that as a fallback miss.
+            if (err instanceof SyntaxError) {
+                lastError = err;
+                continue;
+            }
             throw err;
         }
     }
@@ -301,23 +307,23 @@ export const realApiClient: ApiClient = {
     },
     async getChannels(guildId) {
         const { data } = await apiFetchWithFallback<DiscordChannel[]>([
-            `/guilds/${guildId}/discord/channels`,
             `/guilds/${guildId}/channels`,
+            `/guilds/${guildId}/discord/channels`,
         ]);
         return data;
     },
     async getRoles(guildId) {
         const { data } = await apiFetchWithFallback<DiscordRole[]>([
-            `/guilds/${guildId}/discord/roles`,
             `/guilds/${guildId}/roles`,
+            `/guilds/${guildId}/discord/roles`,
         ]);
         return data;
     },
     async searchUsers(guildId, query) {
         try {
             const { data } = await apiFetchWithFallback<DiscordUser[]>([
-                `/guilds/${guildId}/discord/users/search?q=${encodeURIComponent(query)}`,
                 `/guilds/${guildId}/users/search?q=${encodeURIComponent(query)}`,
+                `/guilds/${guildId}/discord/users/search?q=${encodeURIComponent(query)}`,
             ]);
             return data;
         } catch (err) {

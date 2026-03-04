@@ -14,6 +14,7 @@ import secrets
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlencode
 
 import aiohttp
 from aiohttp import web
@@ -473,12 +474,28 @@ async def health_check(request: web.Request):
 async def auth_login(request: web.Request):
     """Redirect to Discord OAuth2."""
     redirect = f"{_dashboard_base_url(request)}/auth/callback"
-    
-    oauth_url = (
-        f"{DISCORD_OAUTH_URL}?client_id={CLIENT_ID}"
-        f"&redirect_uri={aiohttp.helpers.quote(redirect, safe='')}"
-        f"&response_type=code&scope=identify+guilds"
-    )
+
+    # /auth/invite adds bot scopes so Discord returns through our callback and
+    # then back into the dashboard instead of leaving users on a Discord page.
+    include_bot_scopes = request.path.endswith("/auth/invite") or _coerce_bool(request.query.get("bot"), False)
+    scopes = ["identify", "guilds"]
+    if include_bot_scopes:
+        scopes.extend(["bot", "applications.commands"])
+
+    params: Dict[str, str] = {
+        "client_id": CLIENT_ID,
+        "redirect_uri": redirect,
+        "response_type": "code",
+        "scope": " ".join(scopes),
+    }
+
+    if include_bot_scopes:
+        guild_id = str(request.query.get("guild_id", "")).strip()
+        if guild_id.isdigit():
+            params["guild_id"] = guild_id
+            params["disable_guild_select"] = "true"
+
+    oauth_url = f"{DISCORD_OAUTH_URL}?{urlencode(params)}"
     raise web.HTTPFound(oauth_url)
 
 
@@ -2087,6 +2104,7 @@ def create_app(bot=None) -> web.Application:
 
     # Auth routes
     app.router.add_get("/auth/login", auth_login)
+    app.router.add_get("/auth/invite", auth_login)
     app.router.add_get("/auth/callback", auth_callback)
     app.router.add_post("/api/auth/logout", auth_logout)
 

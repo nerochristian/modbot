@@ -106,19 +106,6 @@ export function Analytics() {
       });
   }, [activeGuildId]);
 
-  if (loading || !config) return <PageSkeleton />;
-  if (analyticsLoading && !stats && cases.length === 0) return <PageSkeleton />;
-
-  const commands = config.commands || {};
-  const modules = config.modules || {};
-  const logging = config.logging || {};
-  const roleMappings = config.permissions?.roleMappings || [];
-
-  const enabledCommands = Object.values(commands).filter((c) => c?.enabled).length;
-  const disabledCommands = Object.values(commands).filter((c) => !c?.enabled).length;
-  const enabledModules = Object.values(modules).filter((m) => m?.enabled).length;
-  const activeEvents = Object.values(logging).filter((l) => l?.enabled).length;
-
   const weekData = useMemo(() => {
     const now = new Date();
     const rows: { day: string; key: string; actions: number }[] = [];
@@ -177,6 +164,19 @@ export function Analytics() {
         color: ACTION_COLORS[action],
       }));
   }, [cases]);
+
+  if (loading || !config) return <PageSkeleton />;
+  if (analyticsLoading && !stats && cases.length === 0) return <PageSkeleton />;
+
+  const commands = config.commands || {};
+  const modules = config.modules || {};
+  const logging = config.logging || {};
+  const roleMappings = config.permissions?.roleMappings || [];
+
+  const enabledCommands = Object.values(commands).filter((c) => c?.enabled).length;
+  const disabledCommands = Object.values(commands).filter((c) => !c?.enabled).length;
+  const enabledModules = Object.values(modules).filter((m) => m?.enabled).length;
+  const activeEvents = Object.values(logging).filter((l) => l?.enabled).length;
 
   return (
     <div className="space-y-8">
