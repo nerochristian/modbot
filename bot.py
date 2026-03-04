@@ -15,9 +15,11 @@ import asyncio
 import shlex
 import signal
 import inspect
+import time
+from collections import defaultdict, deque
 from difflib import SequenceMatcher
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any, get_args, get_origin
+from typing import Optional, Dict, Any, Iterable, get_args, get_origin
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -404,6 +406,14 @@ class TargetResolvePromptView(discord.ui.View):
                 continue
 
 
+class CommandConfigCheckFailure(commands.CheckFailure):
+    """Raised when dashboard command settings deny execution."""
+
+    def __init__(self, message: str):
+        super().__init__(message)
+        self.message = message
+
+
 # ==================== BOT CLASS ====================
 class ModBot(commands.Bot):
     """
@@ -464,6 +474,8 @@ class ModBot(commands.Bot):
         self.errors_caught: int = 0
         self.loading_emoji: str = getattr(Config, "EMOJI_LOADING", "\u23f3")
         self._prefix_loading_messages: dict[int, tuple[discord.Message, object]] = {}
+        self._command_cooldowns: dict[tuple[str, str, str, str], float] = {}
+        self._command_rate_windows: dict[tuple[str, str, str, str, int], deque[float]] = defaultdict(deque)
 
         # Internal flags
         self._ready_once: bool = False
@@ -472,6 +484,7 @@ class ModBot(commands.Bot):
 
         # Global blacklist cache (set of user IDs)
         self.blacklist_cache: set[int] = set()
+        self.before_invoke(self._enforce_prefix_command_config)
 
     @staticmethod
     def _load_owner_ids() -> set[int]:
@@ -624,6 +637,645 @@ class ModBot(commands.Bot):
 
         return True
 
+    def _command_config_from_settings(
+        self,
+        settings: Dict[str, Any],
+        command_name: Optional[str],
+    ) -> Dict[str, Any]:
+        defaults: Dict[str, Any] = {
+            "enabled": True,
+            "requiredPermission": "send_messages",
+            "minimumStaffLevel": "everyone",
+            "enforceRoleHierarchy": False,
+            "requireReason": False,
+            "requireConfirmation": False,
+            "channelMode": "enabled_everywhere",
+            "disableInThreads": False,
+            "disableInForumPosts": False,
+            "disableInDMs": False,
+            "overrides": {
+                "allowedChannels": [],
+                "ignoredChannels": [],
+                "allowedRoles": [],
+                "ignoredRoles": [],
+                "allowedUsers": [],
+                "ignoredUsers": [],
+            },
+            "cooldown": {
+                "global": 0,
+                "perUser": 0,
+                "perGuild": 0,
+                "perChannel": 0,
+            },
+            "rateLimit": {
+                "maxPerMinute": 0,
+                "maxPerHour": 0,
+                "concurrentLimit": 1,
+                "maxPerMinuteChannel": 30,
+                "maxPerMinuteGuild": 300,
+            },
+            "cooldownBypassRoles": [],
+            "cooldownBypassUsers": [],
+            "visibility": {
+                "slashEnabled": True,
+                "prefixEnabled": True,
+            },
+            "disableDuringMaintenanceMode": False,
+            "disableDuringRaidMode": False,
+        }
+
+        if not command_name:
+            return defaults
+
+        commands_blob = settings.get("commands", {})
+        if not isinstance(commands_blob, dict):
+            return defaults
+
+        cfg = commands_blob.get(command_name)
+        if not isinstance(cfg, dict):
+            lowered = command_name.lower()
+            for key, value in commands_blob.items():
+                if str(key).lower() == lowered and isinstance(value, dict):
+                    cfg = value
+                    break
+
+        if not isinstance(cfg, dict):
+            return defaults
+
+        merged = dict(defaults)
+        merged.update(cfg)
+
+        overrides_raw = cfg.get("overrides", {})
+        merged_overrides = dict(defaults["overrides"])
+        if isinstance(overrides_raw, dict):
+            merged_overrides.update(overrides_raw)
+        merged["overrides"] = merged_overrides
+
+        cooldown_raw = cfg.get("cooldown", {})
+        merged_cooldown = dict(defaults["cooldown"])
+        if isinstance(cooldown_raw, dict):
+            merged_cooldown.update(cooldown_raw)
+        merged["cooldown"] = merged_cooldown
+
+        rate_limit_raw = cfg.get("rateLimit", {})
+        merged_rate_limit = dict(defaults["rateLimit"])
+        if isinstance(rate_limit_raw, dict):
+            merged_rate_limit.update(rate_limit_raw)
+        merged["rateLimit"] = merged_rate_limit
+
+        visibility_raw = cfg.get("visibility", {})
+        merged_visibility = dict(defaults["visibility"])
+        if isinstance(visibility_raw, dict):
+            merged_visibility.update(visibility_raw)
+        merged["visibility"] = merged_visibility
+
+        return merged
+
+    @staticmethod
+    def _normalize_id_set(values: object) -> set[str]:
+        if not isinstance(values, (list, tuple, set)):
+            return set()
+        output: set[str] = set()
+        for item in values:
+            text = str(item).strip()
+            if text:
+                output.add(text)
+        return output
+
+    @staticmethod
+    def _to_nonnegative_int(value: object, default: int = 0) -> int:
+        try:
+            parsed = int(value)
+        except Exception:
+            return max(0, default)
+        return max(0, parsed)
+
+    def _member_has_any_config_role(self, member: discord.Member, role_ids: set[str]) -> bool:
+        if not role_ids:
+            return False
+        return any(str(role.id) in role_ids for role in member.roles)
+
+    def _member_has_required_permission(
+        self,
+        member: discord.Member,
+        channel: Optional[object],
+        permission_name: object,
+    ) -> bool:
+        required = str(permission_name or "").strip().lower().replace("-", "_").replace(" ", "_")
+        if not required or required in {"none", "custom_bot_permission"}:
+            return True
+
+        aliases = {
+            "manage_server": "manage_guild",
+            "use_slash_commands": "use_application_commands",
+        }
+        required = aliases.get(required, required)
+
+        permissions_source = member.guild_permissions
+        if channel is not None and hasattr(channel, "permissions_for"):
+            try:
+                permissions_source = channel.permissions_for(member)
+            except Exception:
+                permissions_source = member.guild_permissions
+
+        flag = getattr(permissions_source, required, None)
+        if flag is None:
+            # Unknown permission token - do not hard deny.
+            return True
+        return bool(flag)
+
+    def _member_staff_rank(self, member: discord.Member, settings: Dict[str, Any]) -> int:
+        if member.id in self.owner_ids or is_bot_owner_id(member.id):
+            return 5
+        if member.id == member.guild.owner_id:
+            return 5
+
+        role_ids = {str(role.id) for role in member.roles}
+
+        def has_role(key: str) -> bool:
+            value = settings.get(key)
+            if value is None:
+                return False
+            return str(value) in role_ids
+
+        def has_any_roles(key: str) -> bool:
+            return any(role_id in role_ids for role_id in self._normalize_id_set(settings.get(key)))
+
+        # Dashboard/legacy hierarchy mapping.
+        if has_role("manager_role"):
+            return 5
+        if has_role("supervisor_role"):
+            return 4
+        if (
+            member.guild_permissions.administrator
+            or has_role("admin_role")
+            or has_any_roles("admin_roles")
+        ):
+            return 3
+        if (
+            has_role("senior_mod_role")
+            or has_role("mod_role")
+            or has_role("trial_mod_role")
+            or has_any_roles("mod_roles")
+            or member.guild_permissions.ban_members
+            or member.guild_permissions.kick_members
+            or member.guild_permissions.manage_messages
+            or member.guild_permissions.moderate_members
+        ):
+            return 2
+        if has_role("staff_role"):
+            return 1
+        return 0
+
+    def _minimum_staff_level_satisfied(
+        self,
+        member: discord.Member,
+        settings: Dict[str, Any],
+        minimum_level: object,
+    ) -> bool:
+        required = str(minimum_level or "everyone").strip().lower()
+        rank_by_level = {
+            "everyone": 0,
+            "staff": 1,
+            "mod": 2,
+            "admin": 3,
+            "supervisor": 4,
+            "owner": 5,
+        }
+        required_rank = rank_by_level.get(required, 0)
+        actual_rank = self._member_staff_rank(member, settings)
+        return actual_rank >= required_rank
+
+    @staticmethod
+    def _reason_is_meaningful(value: Optional[object]) -> bool:
+        if value is None:
+            return False
+        text = str(value).strip()
+        if not text:
+            return False
+        normalized = text.lower()
+        disallowed = {
+            "no reason",
+            "no reason provided",
+            "none",
+            "n/a",
+            "na",
+            "-",
+            "default",
+        }
+        return normalized not in disallowed
+
+    @staticmethod
+    def _is_maintenance_mode_active(settings: Dict[str, Any]) -> bool:
+        keys = (
+            "maintenance_mode",
+            "maintenanceMode",
+            "maintenance_enabled",
+            "maintenanceEnabled",
+            "bot_maintenance",
+            "botMaintenance",
+        )
+        return any(ModBot._coerce_bool(settings.get(key), False) for key in keys)
+
+    @staticmethod
+    def _is_raid_mode_active(settings: Dict[str, Any]) -> bool:
+        return ModBot._coerce_bool(settings.get("raid_mode"), False) or ModBot._coerce_bool(settings.get("raidMode"), False)
+
+    @staticmethod
+    def _collect_target_entities(
+        value: object,
+        members: Dict[int, discord.Member],
+        roles: Dict[int, discord.Role],
+    ) -> None:
+        if value is None:
+            return
+        if isinstance(value, discord.Member):
+            members[value.id] = value
+            return
+        if isinstance(value, discord.Role):
+            roles[value.id] = value
+            return
+        if isinstance(value, dict):
+            for nested in value.values():
+                ModBot._collect_target_entities(nested, members, roles)
+            return
+        if isinstance(value, (list, tuple, set)):
+            for nested in value:
+                ModBot._collect_target_entities(nested, members, roles)
+
+    def _extract_prefix_command_payload(
+        self,
+        ctx: commands.Context,
+    ) -> tuple[Optional[object], Optional[bool], bool, list[discord.Member], list[discord.Role]]:
+        command = getattr(ctx, "command", None)
+        if command is None:
+            return None, None, False, [], []
+
+        param_names = list(getattr(command, "clean_params", {}).keys())
+        positional_values: list[Any] = []
+        for value in list(getattr(ctx, "args", ())):
+            if value is ctx:
+                continue
+            cog = getattr(ctx, "cog", None)
+            if cog is not None and value is cog:
+                continue
+            positional_values.append(value)
+
+        resolved_args: Dict[str, Any] = {}
+        for index, name in enumerate(param_names):
+            if name in ctx.kwargs:
+                resolved_args[name] = ctx.kwargs[name]
+                continue
+            if index < len(positional_values):
+                resolved_args[name] = positional_values[index]
+
+        reason_value = resolved_args.get("reason")
+        has_confirmation_option = any(name in {"confirm", "confirmation"} for name in param_names)
+        confirmation_value = resolved_args.get("confirm")
+        if confirmation_value is None:
+            confirmation_value = resolved_args.get("confirmation")
+
+        if has_confirmation_option and confirmation_value is None:
+            content = str(getattr(getattr(ctx, "message", None), "content", "") or "").lower()
+            confirmation_value = "--confirm" in content.split()
+
+        target_members: Dict[int, discord.Member] = {}
+        target_roles: Dict[int, discord.Role] = {}
+        for value in resolved_args.values():
+            self._collect_target_entities(value, target_members, target_roles)
+
+        return reason_value, (
+            bool(confirmation_value) if isinstance(confirmation_value, bool)
+            else (str(confirmation_value).strip().lower() in {"1", "true", "yes", "y", "confirm"} if confirmation_value is not None else None)
+        ), has_confirmation_option, list(target_members.values()), list(target_roles.values())
+
+    def _extract_interaction_command_payload(
+        self,
+        interaction: discord.Interaction,
+    ) -> tuple[Optional[object], Optional[bool], bool, list[discord.Member], list[discord.Role]]:
+        option_values: Dict[str, Any] = {}
+        target_members: Dict[int, discord.Member] = {}
+        target_roles: Dict[int, discord.Role] = {}
+        guild = interaction.guild
+
+        def walk(options: object) -> None:
+            if not isinstance(options, list):
+                return
+            for option in options:
+                if not isinstance(option, dict):
+                    continue
+                option_type = self._to_nonnegative_int(option.get("type"), 0)
+                name = str(option.get("name") or "").strip()
+                if option_type in {1, 2}:
+                    walk(option.get("options"))
+                    continue
+                value = option.get("value")
+                if name:
+                    option_values[name] = value
+
+                if guild is None:
+                    continue
+                if option_type == 6:  # user/member
+                    member_id = self._to_nonnegative_int(value, 0)
+                    member = guild.get_member(member_id) if member_id else None
+                    if member is not None:
+                        target_members[member.id] = member
+                elif option_type == 8:  # role
+                    role_id = self._to_nonnegative_int(value, 0)
+                    role = guild.get_role(role_id) if role_id else None
+                    if role is not None:
+                        target_roles[role.id] = role
+                elif option_type == 9:  # mentionable
+                    mention_id = self._to_nonnegative_int(value, 0)
+                    if not mention_id:
+                        continue
+                    member = guild.get_member(mention_id)
+                    if member is not None:
+                        target_members[member.id] = member
+                        continue
+                    role = guild.get_role(mention_id)
+                    if role is not None:
+                        target_roles[role.id] = role
+
+        data = getattr(interaction, "data", None)
+        if isinstance(data, dict):
+            walk(data.get("options"))
+
+        reason_value = option_values.get("reason")
+        has_confirmation_option = "confirm" in option_values or "confirmation" in option_values
+        raw_confirmation = option_values.get("confirm", option_values.get("confirmation"))
+        if isinstance(raw_confirmation, bool):
+            confirmation_value: Optional[bool] = raw_confirmation
+        elif raw_confirmation is None:
+            confirmation_value = None
+        else:
+            confirmation_value = str(raw_confirmation).strip().lower() in {"1", "true", "yes", "y", "confirm"}
+
+        return reason_value, confirmation_value, has_confirmation_option, list(target_members.values()), list(target_roles.values())
+
+    def _evaluate_and_consume_limits(
+        self,
+        *,
+        command_name: str,
+        command_cfg: Dict[str, Any],
+        guild_id: int,
+        actor: discord.Member,
+        channel: Optional[object],
+        bypass: bool,
+        consume: bool,
+    ) -> tuple[bool, Optional[str]]:
+        if bypass or not consume:
+            return True, None
+
+        now = time.monotonic()
+        command_key = command_name.lower()
+        guild_key = str(guild_id)
+        actor_key = str(actor.id)
+        channel_id = str(getattr(channel, "id", "")) if channel is not None else ""
+
+        cooldown_cfg = command_cfg.get("cooldown", {})
+        if not isinstance(cooldown_cfg, dict):
+            cooldown_cfg = {}
+
+        cooldown_global = self._to_nonnegative_int(
+            cooldown_cfg.get("global", cooldown_cfg.get("perGuild", 0)),
+            0,
+        )
+        cooldown_user = self._to_nonnegative_int(cooldown_cfg.get("perUser", 0), 0)
+        cooldown_channel = self._to_nonnegative_int(cooldown_cfg.get("perChannel", 0), 0)
+
+        cooldown_entries: list[tuple[str, str, int]] = []
+        if cooldown_global > 0:
+            cooldown_entries.append(("guild", guild_key, cooldown_global))
+        if cooldown_user > 0:
+            cooldown_entries.append(("user", actor_key, cooldown_user))
+        if cooldown_channel > 0 and channel_id:
+            cooldown_entries.append(("channel", channel_id, cooldown_channel))
+
+        retry_after = 0.0
+        for scope, scope_id, seconds in cooldown_entries:
+            key = (command_key, guild_key, scope, scope_id)
+            expires_at = self._command_cooldowns.get(key, 0.0)
+            if expires_at > now:
+                retry_after = max(retry_after, expires_at - now)
+
+        if retry_after > 0:
+            return False, f"Cooldown active for `{command_name}`. Try again in {retry_after:.1f}s."
+
+        rate_cfg = command_cfg.get("rateLimit", {})
+        if not isinstance(rate_cfg, dict):
+            rate_cfg = {}
+
+        per_minute = self._to_nonnegative_int(rate_cfg.get("maxPerMinute", 0), 0)
+        per_hour = self._to_nonnegative_int(rate_cfg.get("maxPerHour", 0), 0)
+
+        touched_rate_windows: list[deque[float]] = []
+
+        def check_rate(limit: int, window_seconds: int, scope_name: str, scope_id: str) -> tuple[bool, Optional[float]]:
+            if limit <= 0:
+                return True, None
+            bucket_key = (command_key, guild_key, scope_name, scope_id, window_seconds)
+            bucket = self._command_rate_windows[bucket_key]
+            while bucket and (now - bucket[0]) >= window_seconds:
+                bucket.popleft()
+            if len(bucket) >= limit:
+                retry = window_seconds - (now - bucket[0])
+                return False, max(0.1, retry)
+            touched_rate_windows.append(bucket)
+            return True, None
+
+        ok, retry = check_rate(per_minute, 60, "user", actor_key)
+        if not ok:
+            return False, f"Rate limit reached for `{command_name}`. Try again in {retry:.1f}s."
+
+        ok, retry = check_rate(per_hour, 3600, "user", actor_key)
+        if not ok:
+            return False, f"Hourly rate limit reached for `{command_name}`. Try again in {retry:.1f}s."
+
+        for scope, scope_id, seconds in cooldown_entries:
+            key = (command_key, guild_key, scope, scope_id)
+            self._command_cooldowns[key] = now + float(seconds)
+
+        for bucket in touched_rate_windows:
+            bucket.append(now)
+
+        return True, None
+
+    def _evaluate_runtime_command_config(
+        self,
+        *,
+        settings: Dict[str, Any],
+        command_name: str,
+        command_cfg: Dict[str, Any],
+        actor: discord.Member,
+        channel: Optional[object],
+        reason_value: Optional[object],
+        confirmation_value: Optional[bool],
+        has_confirmation_option: bool,
+        target_members: Iterable[discord.Member],
+        target_roles: Iterable[discord.Role],
+        consume_limits: bool,
+    ) -> tuple[bool, Optional[str]]:
+        if not isinstance(command_cfg, dict):
+            return True, None
+
+        channel_id = str(getattr(channel, "id", "")) if channel is not None else ""
+        actor_id = str(actor.id)
+        actor_role_ids = {str(role.id) for role in actor.roles}
+
+        global_bypass_users = self._normalize_id_set(settings.get("globalBypassUsers"))
+        global_bypass_roles = self._normalize_id_set(settings.get("globalBypassRoles"))
+        has_global_bypass = actor_id in global_bypass_users or bool(actor_role_ids & global_bypass_roles)
+
+        if self._coerce_bool(command_cfg.get("disableDuringMaintenanceMode"), False) and self._is_maintenance_mode_active(settings):
+            if not has_global_bypass:
+                return False, f"`{command_name}` is disabled during maintenance mode."
+
+        if self._coerce_bool(command_cfg.get("disableDuringRaidMode"), False) and self._is_raid_mode_active(settings):
+            if not has_global_bypass:
+                return False, f"`{command_name}` is disabled while raid mode is active."
+
+        if self._coerce_bool(command_cfg.get("disableInThreads"), False) and isinstance(channel, discord.Thread):
+            if not has_global_bypass:
+                return False, f"`{command_name}` cannot be used in threads."
+
+        if self._coerce_bool(command_cfg.get("disableInForumPosts"), False) and isinstance(channel, discord.Thread):
+            parent = getattr(channel, "parent", None)
+            if isinstance(parent, discord.ForumChannel) and not has_global_bypass:
+                return False, f"`{command_name}` cannot be used in forum posts."
+
+        overrides = command_cfg.get("overrides", {})
+        if not isinstance(overrides, dict):
+            overrides = {}
+
+        allowed_users = self._normalize_id_set(overrides.get("allowedUsers"))
+        ignored_users = self._normalize_id_set(overrides.get("ignoredUsers"))
+        allowed_roles = self._normalize_id_set(overrides.get("allowedRoles"))
+        ignored_roles = self._normalize_id_set(overrides.get("ignoredRoles"))
+        allowed_channels = self._normalize_id_set(overrides.get("allowedChannels"))
+        ignored_channels = self._normalize_id_set(overrides.get("ignoredChannels"))
+
+        allowed_user_override = actor_id in allowed_users
+
+        if not has_global_bypass and not allowed_user_override:
+            if actor_id in ignored_users:
+                return False, f"You are blocked from using `{command_name}`."
+            if actor_role_ids & ignored_roles:
+                return False, f"Your role is blocked from using `{command_name}`."
+            if allowed_roles and not (actor_role_ids & allowed_roles):
+                return False, f"Your role is not allowed to use `{command_name}`."
+
+            if channel_id:
+                channel_mode = str(command_cfg.get("channelMode", "enabled_everywhere")).strip().lower()
+                if channel_mode == "only_allowed":
+                    if channel_id not in allowed_channels:
+                        return False, f"`{command_name}` is only allowed in configured channels."
+                elif channel_mode == "disabled_in_ignored":
+                    if channel_id in ignored_channels:
+                        return False, f"`{command_name}` is disabled in this channel."
+                else:
+                    if channel_id in ignored_channels:
+                        return False, f"`{command_name}` is disabled in this channel."
+                    if allowed_channels and channel_id not in allowed_channels:
+                        return False, f"`{command_name}` is not allowed in this channel."
+
+        if not has_global_bypass:
+            required_permission = command_cfg.get("requiredPermission")
+            if not self._member_has_required_permission(actor, channel, required_permission):
+                missing = str(required_permission or "required permission").replace("_", " ")
+                return False, f"You need `{missing}` to use `{command_name}`."
+
+            minimum_staff_level = command_cfg.get("minimumStaffLevel", "everyone")
+            if not self._minimum_staff_level_satisfied(actor, settings, minimum_staff_level):
+                return False, f"`{command_name}` requires at least `{minimum_staff_level}` staff level."
+
+        if self._coerce_bool(command_cfg.get("enforceRoleHierarchy"), False) and not has_global_bypass:
+            guild = actor.guild
+            actor_is_owner = actor.id == guild.owner_id or actor.id in self.owner_ids or is_bot_owner_id(actor.id)
+            bot_member = guild.me
+            if bot_member is None and self.user is not None:
+                bot_member = guild.get_member(self.user.id)
+
+            for member in target_members:
+                if member.id == actor.id:
+                    continue
+                if member.id == guild.owner_id:
+                    return False, "You cannot target the server owner."
+                if not actor_is_owner and member.top_role >= actor.top_role:
+                    return False, f"You cannot target `{member.display_name}` due to role hierarchy."
+                if bot_member is not None and member.top_role >= bot_member.top_role:
+                    return False, f"I cannot target `{member.display_name}` due to role hierarchy."
+
+            for role in target_roles:
+                if not actor_is_owner and role >= actor.top_role:
+                    return False, f"You cannot target role `{role.name}` due to role hierarchy."
+                if bot_member is not None and role >= bot_member.top_role:
+                    return False, f"I cannot target role `{role.name}` due to role hierarchy."
+
+        if self._coerce_bool(command_cfg.get("requireReason"), False) and not has_global_bypass:
+            if not self._reason_is_meaningful(reason_value):
+                return False, f"`{command_name}` requires a meaningful reason."
+
+        if self._coerce_bool(command_cfg.get("requireConfirmation"), False) and not has_global_bypass:
+            if has_confirmation_option and confirmation_value is not True:
+                return False, f"`{command_name}` requires confirmation."
+
+        cooldown_bypass_users = self._normalize_id_set(command_cfg.get("cooldownBypassUsers"))
+        cooldown_bypass_roles = self._normalize_id_set(command_cfg.get("cooldownBypassRoles"))
+        has_cooldown_bypass = has_global_bypass or actor_id in cooldown_bypass_users or bool(actor_role_ids & cooldown_bypass_roles)
+
+        return self._evaluate_and_consume_limits(
+            command_name=command_name,
+            command_cfg=command_cfg,
+            guild_id=actor.guild.id,
+            actor=actor,
+            channel=channel,
+            bypass=has_cooldown_bypass,
+            consume=consume_limits,
+        )
+
+    async def _enforce_prefix_command_config(self, ctx: commands.Context) -> None:
+        if ctx.guild is None or ctx.command is None:
+            return
+        if ctx.author.id in self.owner_ids:
+            return
+        if not isinstance(ctx.author, discord.Member):
+            return
+
+        command_name = self._root_command_name(ctx.command)
+        module_id = self._module_id_for_command_object(ctx.command)
+        allowed, reason, settings = await self._evaluate_command_access(
+            ctx.guild.id,
+            module_id=module_id,
+            command_name=command_name,
+            is_slash=False,
+        )
+        if not allowed:
+            raise CommandConfigCheckFailure(reason or "This command is disabled for this server.")
+        if not isinstance(settings, dict):
+            return
+
+        command_cfg = self._command_config_from_settings(settings, command_name)
+        if not isinstance(command_cfg, dict):
+            return
+
+        reason_value, confirmation_value, has_confirmation_option, target_members, target_roles = self._extract_prefix_command_payload(ctx)
+        ok, denial_reason = self._evaluate_runtime_command_config(
+            settings=settings,
+            command_name=command_name or "command",
+            command_cfg=command_cfg,
+            actor=ctx.author,
+            channel=ctx.channel,
+            reason_value=reason_value,
+            confirmation_value=confirmation_value,
+            has_confirmation_option=has_confirmation_option,
+            target_members=target_members,
+            target_roles=target_roles,
+            consume_limits=True,
+        )
+        if not ok:
+            raise CommandConfigCheckFailure(denial_reason or "This command is blocked by server configuration.")
+
     async def _evaluate_command_access(
         self,
         guild_id: int,
@@ -631,22 +1283,22 @@ class ModBot(commands.Bot):
         module_id: Optional[str],
         command_name: Optional[str],
         is_slash: bool,
-    ) -> tuple[bool, Optional[str]]:
+    ) -> tuple[bool, Optional[str], Optional[Dict[str, Any]]]:
         try:
             settings = await self.db.get_settings(guild_id)
         except Exception as exc:
             logger.debug("Failed to resolve guild settings for command gating: %s", exc, exc_info=True)
-            return True, None
+            return True, None, None
 
         if not self._module_is_enabled_in_settings(settings, module_id):
             label = (module_id or "this feature").replace("_", " ")
-            return False, f"`{label}` is disabled for this server."
+            return False, f"`{label}` is disabled for this server.", settings
 
         if not self._command_is_enabled_in_settings(settings, command_name, is_slash=is_slash):
             label = command_name or "This command"
-            return False, f"`{label}` is disabled for this server."
+            return False, f"`{label}` is disabled for this server.", settings
 
-        return True, None
+        return True, None, settings
 
     async def get_prefix(self, message: discord.Message):
         """Dynamic prefix handler with database-backed caching."""
@@ -1090,7 +1742,7 @@ class ModBot(commands.Bot):
         if interaction.guild is not None:
             command_name = self._root_command_name_from_interaction(interaction)
             module_id = self._module_id_for_interaction(interaction, command_name)
-            allowed, reason = await self._evaluate_command_access(
+            allowed, reason, settings = await self._evaluate_command_access(
                 interaction.guild.id,
                 module_id=module_id,
                 command_name=command_name,
@@ -1105,6 +1757,33 @@ class ModBot(commands.Bot):
                 except Exception:
                     pass
                 return False
+
+            if isinstance(interaction.user, discord.Member) and isinstance(settings, dict):
+                command_cfg = self._command_config_from_settings(settings, command_name)
+                if isinstance(command_cfg, dict):
+                    reason_value, confirmation_value, has_confirmation_option, target_members, target_roles = self._extract_interaction_command_payload(interaction)
+                    ok, denial_reason = self._evaluate_runtime_command_config(
+                        settings=settings,
+                        command_name=command_name or "command",
+                        command_cfg=command_cfg,
+                        actor=interaction.user,
+                        channel=interaction.channel,
+                        reason_value=reason_value,
+                        confirmation_value=confirmation_value,
+                        has_confirmation_option=has_confirmation_option,
+                        target_members=target_members,
+                        target_roles=target_roles,
+                        consume_limits=True,
+                    )
+                    if not ok:
+                        try:
+                            if interaction.response.is_done():
+                                await interaction.followup.send(denial_reason or "This command is blocked by server configuration.", ephemeral=True)
+                            else:
+                                await interaction.response.send_message(denial_reason or "This command is blocked by server configuration.", ephemeral=True)
+                        except Exception:
+                            pass
+                        return False
 
         return True
 
@@ -1262,7 +1941,7 @@ class ModBot(commands.Bot):
         if message.guild is not None and ctx.command is not None and message.author.id not in self.owner_ids:
             module_id = self._module_id_for_command_object(ctx.command)
             command_name = self._root_command_name(ctx.command)
-            allowed, reason = await self._evaluate_command_access(
+            allowed, reason, _ = await self._evaluate_command_access(
                 message.guild.id,
                 module_id=module_id,
                 command_name=command_name,
@@ -1430,6 +2109,10 @@ class ModBot(commands.Bot):
                 "Invalid input",
                 f"{error}\n\nUse `{ctx.prefix}help {ctx.command}` for usage info.",
             )
+            return await _send_error_response(embed)
+
+        if isinstance(error, CommandConfigCheckFailure):
+            embed = ModEmbed.error("Command blocked", error.message or "This command is blocked by server configuration.")
             return await _send_error_response(embed)
 
         if isinstance(error, commands.CheckFailure):

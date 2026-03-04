@@ -548,7 +548,7 @@ export function Commands() {
                         <Command className="w-4 h-4" />
                       </div>
                       <div>
-                        <h3 className="font-display font-semibold text-slate-800">/{cmd.name}</h3>
+                        <h3 className="font-display font-semibold text-slate-800">{cmd.name}</h3>
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <Badge variant={cmd.premiumTier === 'premium' ? 'premium' : 'default'}>
                             {cmd.premiumTier === 'premium' ? 'Premium' : cmd.group}
@@ -625,6 +625,9 @@ function CommandSettingsModal({ commandName, command, config, channels, roles, o
   const [local, setLocal] = useState<CommandConfig>(clone(config));
   const [activeTab, setActiveTab] = useState<CommandTabId>('permissions');
   const profile = useMemo(() => resolveCommandProfile(commandName), [commandName]);
+  const showRoleHierarchyToggle = Boolean(command.configHints?.supportsRoleHierarchy) || Boolean(profile.defaults.enforceRoleHierarchy) || Boolean(local.enforceRoleHierarchy);
+  const showRequireReasonToggle = Boolean(command.configHints?.supportsReason) || Boolean(profile.defaults.requireReason) || Boolean(local.requireReason);
+  const showRequireConfirmationToggle = Boolean(command.configHints?.supportsConfirmation) || Boolean(profile.defaults.requireConfirmation) || Boolean(local.requireConfirmation);
 
   const updateOverride = (key: keyof CommandConfig['overrides'], value: string[]) => {
     setLocal((prev) => ({ ...prev, overrides: { ...prev.overrides, [key]: value } }));
@@ -633,20 +636,6 @@ function CommandSettingsModal({ commandName, command, config, channels, roles, o
   const updateExtra = (key: string, value: unknown) => {
     setLocal((prev) => ({ ...prev, extras: { ...(prev.extras || {}), [key]: value } }));
   };
-
-  const tabFields = useMemo(() => {
-    const grouped = new Map<CommandTabId, CommandExtraField[]>();
-    grouped.set('permissions', []);
-    grouped.set('channels', []);
-    grouped.set('cooldowns', []);
-    grouped.set('advanced', []);
-    for (const field of profile.extraFields) {
-      const list = grouped.get(field.tab) || [];
-      list.push(field);
-      grouped.set(field.tab, list);
-    }
-    return grouped;
-  }, [profile.extraFields]);
 
   const tabs = [
     { id: 'permissions', label: 'Permissions' },
@@ -659,7 +648,7 @@ function CommandSettingsModal({ commandName, command, config, channels, roles, o
     <Modal
       open={true}
       onClose={onClose}
-      title={`/${commandName} Settings`}
+      title={`${commandName} Settings`}
       description={command.description}
       size="lg"
       footer={
@@ -709,40 +698,37 @@ function CommandSettingsModal({ commandName, command, config, channels, roles, o
             onChange={(v) => updateOverride('ignoredUsers', v)}
             placeholder="Add user ID"
           />
-          <div className="space-y-3">
-            <div className="flex items-center justify-between p-4 bg-cream-50 rounded-2xl border border-cream-200">
-              <div>
-                <h4 className="font-semibold text-sm text-slate-800">Enforce Role Hierarchy</h4>
-                <p className="text-xs text-slate-500 mt-0.5">Relevant for target-user commands.</p>
-              </div>
-              <Switch checked={Boolean(local.enforceRoleHierarchy)} onCheckedChange={(v) => setLocal((prev) => ({ ...prev, enforceRoleHierarchy: v }))} />
+          {(showRoleHierarchyToggle || showRequireReasonToggle || showRequireConfirmationToggle) && (
+            <div className="space-y-3">
+              {showRoleHierarchyToggle && (
+                <div className="flex items-center justify-between p-4 bg-cream-50 rounded-2xl border border-cream-200">
+                  <div>
+                    <h4 className="font-semibold text-sm text-slate-800">Enforce Role Hierarchy</h4>
+                    <p className="text-xs text-slate-500 mt-0.5">Relevant for target-user commands.</p>
+                  </div>
+                  <Switch checked={Boolean(local.enforceRoleHierarchy)} onCheckedChange={(v) => setLocal((prev) => ({ ...prev, enforceRoleHierarchy: v }))} />
+                </div>
+              )}
+              {showRequireReasonToggle && (
+                <div className="flex items-center justify-between p-4 bg-cream-50 rounded-2xl border border-cream-200">
+                  <div>
+                    <h4 className="font-semibold text-sm text-slate-800">Require Reason</h4>
+                    <p className="text-xs text-slate-500 mt-0.5">Require a non-empty reason when the command supports it.</p>
+                  </div>
+                  <Switch checked={Boolean(local.requireReason)} onCheckedChange={(v) => setLocal((prev) => ({ ...prev, requireReason: v }))} />
+                </div>
+              )}
+              {showRequireConfirmationToggle && (
+                <div className="flex items-center justify-between p-4 bg-cream-50 rounded-2xl border border-cream-200">
+                  <div>
+                    <h4 className="font-semibold text-sm text-slate-800">Require Confirmation</h4>
+                    <p className="text-xs text-slate-500 mt-0.5">Require an explicit confirmation option when supported.</p>
+                  </div>
+                  <Switch checked={Boolean(local.requireConfirmation)} onCheckedChange={(v) => setLocal((prev) => ({ ...prev, requireConfirmation: v }))} />
+                </div>
+              )}
             </div>
-            <div className="flex items-center justify-between p-4 bg-cream-50 rounded-2xl border border-cream-200">
-              <div>
-                <h4 className="font-semibold text-sm text-slate-800">Require Reason</h4>
-                <p className="text-xs text-slate-500 mt-0.5">Relevant for moderation commands.</p>
-              </div>
-              <Switch checked={Boolean(local.requireReason)} onCheckedChange={(v) => setLocal((prev) => ({ ...prev, requireReason: v }))} />
-            </div>
-            <div className="flex items-center justify-between p-4 bg-cream-50 rounded-2xl border border-cream-200">
-              <div>
-                <h4 className="font-semibold text-sm text-slate-800">Require Confirmation</h4>
-                <p className="text-xs text-slate-500 mt-0.5">Recommended for destructive actions.</p>
-              </div>
-              <Switch checked={Boolean(local.requireConfirmation)} onCheckedChange={(v) => setLocal((prev) => ({ ...prev, requireConfirmation: v }))} />
-            </div>
-          </div>
-
-          {(tabFields.get('permissions') || []).map((field) => (
-            <ExtraField
-              key={`permissions_${field.key}`}
-              field={field}
-              value={(local.extras || {})[field.key] ?? field.defaultValue}
-              onChange={(v) => updateExtra(field.key, v)}
-              channels={channels}
-              roles={roles}
-            />
-          ))}
+          )}
         </div>
       )}
 
@@ -778,17 +764,6 @@ function CommandSettingsModal({ commandName, command, config, channels, roles, o
               <Switch checked={Boolean(local.disableInDMs)} onCheckedChange={(v) => setLocal((prev) => ({ ...prev, disableInDMs: v }))} />
             </div>
           </div>
-
-          {(tabFields.get('channels') || []).map((field) => (
-            <ExtraField
-              key={`channels_${field.key}`}
-              field={field}
-              value={(local.extras || {})[field.key] ?? field.defaultValue}
-              onChange={(v) => updateExtra(field.key, v)}
-              channels={channels}
-              roles={roles}
-            />
-          ))}
         </div>
       )}
       {activeTab === 'cooldowns' && (
@@ -855,17 +830,6 @@ function CommandSettingsModal({ commandName, command, config, channels, roles, o
                 className="w-full bg-cream-50 border border-cream-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
               />
             </div>
-            <div>
-              <label className="text-sm font-medium text-slate-700 mb-2 block">Concurrent Execution Limit</label>
-              <input
-                type="number"
-                value={local.rateLimit.concurrentLimit || 1}
-                onChange={(e) => setLocal((prev) => ({ ...prev, rateLimit: { ...prev.rateLimit, concurrentLimit: Number(e.target.value) } }))}
-                min={1}
-                max={1000}
-                className="w-full bg-cream-50 border border-cream-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
-              />
-            </div>
           </div>
           <div>
             <label className="text-sm font-medium text-slate-700 mb-2 block">Cooldown Bypass Roles</label>
@@ -882,17 +846,6 @@ function CommandSettingsModal({ commandName, command, config, channels, roles, o
             onChange={(v) => setLocal((prev) => ({ ...prev, cooldownBypassUsers: v }))}
             placeholder="Add user ID"
           />
-
-          {(tabFields.get('cooldowns') || []).map((field) => (
-            <ExtraField
-              key={`cooldowns_${field.key}`}
-              field={field}
-              value={(local.extras || {})[field.key] ?? field.defaultValue}
-              onChange={(v) => updateExtra(field.key, v)}
-              channels={channels}
-              roles={roles}
-            />
-          ))}
         </div>
       )}
 
@@ -907,45 +860,17 @@ function CommandSettingsModal({ commandName, command, config, channels, roles, o
           </div>
           <div className="flex items-center justify-between p-4 bg-cream-50 rounded-2xl border border-cream-200">
             <div>
-              <h4 className="font-semibold text-sm text-slate-800">Visible In Help</h4>
-              <p className="text-xs text-slate-500 mt-0.5">Show command in help listings.</p>
+              <h4 className="font-semibold text-sm text-slate-800">Slash Enabled</h4>
+              <p className="text-xs text-slate-500 mt-0.5">Allow this command for slash usage.</p>
             </div>
-            <Switch checked={!local.visibility.hideFromHelp} onCheckedChange={(v) => setLocal((prev) => ({ ...prev, visibility: { ...prev.visibility, hideFromHelp: !v } }))} />
+            <Switch checked={Boolean(local.visibility.slashEnabled)} onCheckedChange={(v) => setLocal((prev) => ({ ...prev, visibility: { ...prev.visibility, slashEnabled: v } }))} />
           </div>
           <div className="flex items-center justify-between p-4 bg-cream-50 rounded-2xl border border-cream-200">
             <div>
-              <h4 className="font-semibold text-sm text-slate-800">Hide From Autocomplete</h4>
-              <p className="text-xs text-slate-500 mt-0.5">Keep command out of slash autocomplete.</p>
+              <h4 className="font-semibold text-sm text-slate-800">Prefix Enabled</h4>
+              <p className="text-xs text-slate-500 mt-0.5">Allow this command for prefix usage.</p>
             </div>
-            <Switch checked={Boolean(local.visibility.hideFromAutocomplete)} onCheckedChange={(v) => setLocal((prev) => ({ ...prev, visibility: { ...prev.visibility, hideFromAutocomplete: v } }))} />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-700 mb-2 block">Default Response Visibility</label>
-            <Select
-              value={local.visibility.defaultResponseVisibility || 'auto'}
-              onChange={(v) => setLocal((prev) => ({ ...prev, visibility: { ...prev.visibility, defaultResponseVisibility: v as 'auto' | 'ephemeral' | 'public' } }))}
-              options={RESPONSE_VISIBILITY_OPTIONS}
-            />
-          </div>
-          <div className="flex items-center justify-between p-4 bg-cream-50 rounded-2xl border border-cream-200">
-            <div>
-              <h4 className="font-semibold text-sm text-slate-800">Log Usage</h4>
-              <p className="text-xs text-slate-500 mt-0.5">Record command usage in logs.</p>
-            </div>
-            <Switch checked={local.logging.logUsage} onCheckedChange={(v) => setLocal((prev) => ({ ...prev, logging: { ...prev.logging, logUsage: v } }))} />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-700 mb-2 block">Log Channel Override</label>
-            <Select
-              value={local.logging.routeOverride || ''}
-              onChange={(v) => setLocal((prev) => ({ ...prev, logging: { ...prev.logging, routeOverride: v || null } }))}
-              options={channels}
-              placeholder="Use default log channel"
-            />
-          </div>
-          <div className="flex items-center justify-between p-4 bg-cream-50 rounded-2xl border border-cream-200">
-            <h4 className="font-semibold text-sm text-slate-800">Record To Audit Log</h4>
-            <Switch checked={Boolean(local.logging.recordToAuditLog)} onCheckedChange={(v) => setLocal((prev) => ({ ...prev, logging: { ...prev.logging, recordToAuditLog: v } }))} />
+            <Switch checked={Boolean(local.visibility.prefixEnabled)} onCheckedChange={(v) => setLocal((prev) => ({ ...prev, visibility: { ...prev.visibility, prefixEnabled: v } }))} />
           </div>
           <div className="flex items-center justify-between p-4 bg-cream-50 rounded-2xl border border-cream-200">
             <h4 className="font-semibold text-sm text-slate-800">Disable During Maintenance Mode</h4>
@@ -955,36 +880,6 @@ function CommandSettingsModal({ commandName, command, config, channels, roles, o
             <h4 className="font-semibold text-sm text-slate-800">Disable During Raid Mode</h4>
             <Switch checked={Boolean(local.disableDuringRaidMode)} onCheckedChange={(v) => setLocal((prev) => ({ ...prev, disableDuringRaidMode: v }))} />
           </div>
-          <div className="flex items-center justify-between p-4 bg-cream-50 rounded-2xl border border-cream-200">
-            <h4 className="font-semibold text-sm text-slate-800">Sync With Discord Slash Permissions</h4>
-            <Switch checked={Boolean(local.syncWithDiscordSlashPermissions)} onCheckedChange={(v) => setLocal((prev) => ({ ...prev, syncWithDiscordSlashPermissions: v }))} />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-700 mb-2 block">Default Member Permissions (bitfield preset)</label>
-            <Select
-              value={local.defaultMemberPermissions || ''}
-              onChange={(v) => setLocal((prev) => ({ ...prev, defaultMemberPermissions: v }))}
-              options={DEFAULT_MEMBER_PERMISSION_PRESETS}
-            />
-            <input
-              type="text"
-              value={local.defaultMemberPermissions || ''}
-              onChange={(e) => setLocal((prev) => ({ ...prev, defaultMemberPermissions: e.target.value }))}
-              placeholder="Custom bitfield value"
-              className="w-full mt-2 bg-cream-50 border border-cream-300 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 outline-none transition-all"
-            />
-          </div>
-
-          {(tabFields.get('advanced') || []).map((field) => (
-            <ExtraField
-              key={`advanced_${field.key}`}
-              field={field}
-              value={(local.extras || {})[field.key] ?? field.defaultValue}
-              onChange={(v) => updateExtra(field.key, v)}
-              channels={channels}
-              roles={roles}
-            />
-          ))}
         </div>
       )}
     </Modal>

@@ -7,17 +7,20 @@ Render-compatible: reads PORT env var, adds /health endpoint, secure cookies.
 
 import hashlib
 import hmac
+import inspect
 import json
 import logging
 import os
 import secrets
 import time
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, get_args, get_origin
 from urllib.parse import urlencode
 
 import aiohttp
+import discord
 from aiohttp import web
+from discord import app_commands
 
 logger = logging.getLogger("ModBot.Dashboard")
 
@@ -771,6 +774,121 @@ def _default_override_entry() -> Dict[str, Any]:
     }
 
 
+def _default_command_config(default_permission: str = "send_messages") -> Dict[str, Any]:
+    return {
+        "enabled": True,
+        "requiredPermission": default_permission,
+        "minimumStaffLevel": "everyone",
+        "enforceRoleHierarchy": False,
+        "requireReason": False,
+        "requireConfirmation": False,
+        "channelMode": "enabled_everywhere",
+        "disableInThreads": False,
+        "disableInForumPosts": False,
+        "disableInDMs": False,
+        "overrides": _default_override_entry(),
+        "cooldown": {
+            "global": 0,
+            "perUser": 0,
+            "perGuild": 0,
+            "perChannel": 0,
+        },
+        "rateLimit": {
+            "maxPerMinute": 0,
+            "maxPerHour": 0,
+            "concurrentLimit": 1,
+            "maxPerMinuteChannel": 30,
+            "maxPerMinuteGuild": 300,
+        },
+        "cooldownBypassRoles": [],
+        "cooldownBypassUsers": [],
+        "logging": {
+            "logUsage": True,
+            "routeOverride": None,
+            "recordToAuditLog": True,
+        },
+        "visibility": {
+            "hideFromHelp": False,
+            "slashEnabled": True,
+            "prefixEnabled": True,
+            "hideFromAutocomplete": False,
+            "defaultResponseVisibility": "auto",
+        },
+        "disableDuringMaintenanceMode": False,
+        "disableDuringRaidMode": False,
+        "syncWithDiscordSlashPermissions": False,
+        "defaultMemberPermissions": "",
+        "extras": {},
+    }
+
+
+def _all_runtime_command_names() -> set[str]:
+    names: set[str] = set()
+    if not _bot:
+        return names
+
+    for cmd in _bot.tree.get_commands():
+        name = str(getattr(cmd, "name", "") or "").strip()
+        if name:
+            names.add(name)
+
+    for cmd in _bot.commands:
+        if getattr(cmd, "hidden", False):
+            continue
+        name = str(getattr(cmd, "name", "") or "").strip()
+        if name:
+            names.add(name)
+
+    return names
+
+
+def _normalize_single_command_config(command_name: str, value: Any) -> Dict[str, Any]:
+    category = _guess_command_category(command_name)
+    default_permission = "manage_guild" if category == "Admin" else ("moderate_members" if category == "Moderation" else "send_messages")
+    defaults = _default_command_config(default_permission)
+    if not isinstance(value, dict):
+        return defaults
+
+    merged = {**defaults, **value}
+
+    overrides = value.get("overrides", {})
+    merged["overrides"] = {**defaults["overrides"], **(overrides if isinstance(overrides, dict) else {})}
+
+    cooldown = value.get("cooldown", {})
+    merged["cooldown"] = {**defaults["cooldown"], **(cooldown if isinstance(cooldown, dict) else {})}
+
+    rate_limit = value.get("rateLimit", {})
+    merged["rateLimit"] = {**defaults["rateLimit"], **(rate_limit if isinstance(rate_limit, dict) else {})}
+
+    logging_blob = value.get("logging", {})
+    merged["logging"] = {**defaults["logging"], **(logging_blob if isinstance(logging_blob, dict) else {})}
+
+    visibility = value.get("visibility", {})
+    merged["visibility"] = {**defaults["visibility"], **(visibility if isinstance(visibility, dict) else {})}
+
+    extras = value.get("extras", {})
+    merged["extras"] = extras if isinstance(extras, dict) else {}
+
+    return merged
+
+
+def _normalize_command_configs_blob(raw_commands: Any) -> Dict[str, Any]:
+    source = raw_commands if isinstance(raw_commands, dict) else {}
+    normalized: Dict[str, Any] = {}
+
+    for key, value in source.items():
+        name = str(key or "").strip()
+        if not name:
+            continue
+        normalized[name] = _normalize_single_command_config(name, value)
+
+    for command_name in _all_runtime_command_names():
+        if command_name not in normalized:
+            normalized[command_name] = _normalize_single_command_config(command_name, {})
+
+    return normalized
+
+
 def _module_enabled_from_settings(module_id: str, settings: Dict[str, Any], base: Dict[str, Any]) -> bool:
     flat = _MODULE_ENABLED_KEYS.get(module_id)
     if flat:
@@ -1347,6 +1465,7 @@ async def api_guild_config(request: web.Request):
     # Build a full config response, extracting dashboard blobs and bridging key flat settings.
     modules = _build_dashboard_modules(settings)
     logging_blob = _build_dashboard_logging(settings)
+    commands_blob = _normalize_command_configs_blob(settings.get("commands", {}))
     config = {
         "guildId": guild_id,
         "version": settings.get("_version", 1),
@@ -1355,7 +1474,7 @@ async def api_guild_config(request: web.Request):
         "defaultCooldown": settings.get("defaultCooldown", 0),
         "timezone": settings.get("timezone", "UTC"),
         "settings": settings.get("general", {}),
-        "commands": settings.get("commands", {}),
+        "commands": commands_blob,
         "modules": modules,
         "logging": logging_blob,
         "permissions": {
@@ -1397,7 +1516,7 @@ async def api_guild_config_update(request: web.Request):
     if isinstance(body.get("settings"), dict):
         updated_settings["general"] = body.get("settings", {})
     if isinstance(body.get("commands"), dict):
-        updated_settings["commands"] = body.get("commands", {})
+        updated_settings["commands"] = _normalize_command_configs_blob(body.get("commands", {}))
     if isinstance(body.get("modules"), dict):
         canonical_modules = _canonicalize_modules_blob(body.get("modules", {}))
         updated_settings["modules"] = canonical_modules
@@ -1417,6 +1536,8 @@ async def api_guild_config_update(request: web.Request):
         updated_settings["defaultCooldown"] = _to_int(body.get("defaultCooldown"), _to_int(previous.get("defaultCooldown", 0), 0))
     if isinstance(body.get("timezone"), str):
         updated_settings["timezone"] = body.get("timezone", "UTC")
+
+    updated_settings["commands"] = _normalize_command_configs_blob(updated_settings.get("commands", {}))
     
     await _bot.db.update_settings(int(guild_id), updated_settings)
     
@@ -1424,6 +1545,7 @@ async def api_guild_config_update(request: web.Request):
     saved = await _bot.db.get_settings(int(guild_id))
     saved_modules = _build_dashboard_modules(saved)
     saved_logging = _build_dashboard_logging(saved)
+    saved_commands = _normalize_command_configs_blob(saved.get("commands", {}))
     config = {
         "guildId": guild_id,
         "version": saved.get("_version", 1),
@@ -1432,7 +1554,7 @@ async def api_guild_config_update(request: web.Request):
         "defaultCooldown": saved.get("defaultCooldown", 0),
         "timezone": saved.get("timezone", "UTC"),
         "settings": saved.get("general", {}),
-        "commands": saved.get("commands", {}),
+        "commands": saved_commands,
         "modules": saved_modules,
         "logging": saved_logging,
         "permissions": {
@@ -1815,6 +1937,91 @@ async def _append_dashboard_audit(
         logger.error(f"Failed to write dashboard audit entry: {exc}")
 
 
+def _empty_command_config_hints() -> Dict[str, bool]:
+    return {
+        "supportsReason": False,
+        "supportsConfirmation": False,
+        "supportsRoleHierarchy": False,
+    }
+
+
+def _merge_command_config_hints(base: Dict[str, bool], incoming: Dict[str, bool]) -> Dict[str, bool]:
+    merged = _empty_command_config_hints()
+    for key in merged:
+        merged[key] = bool(base.get(key, False) or incoming.get(key, False))
+    return merged
+
+
+def _merge_command_capability_type(current: str, incoming: str) -> str:
+    if current == incoming:
+        return current
+    return "both"
+
+
+def _annotation_is_target_like(annotation: Any) -> bool:
+    if annotation in (discord.Member, discord.User, discord.Role):
+        return True
+    origin = get_origin(annotation)
+    if origin is None:
+        return False
+    return any(_annotation_is_target_like(arg) for arg in get_args(annotation))
+
+
+def _infer_prefix_command_hints(command_obj: Any) -> Dict[str, bool]:
+    hints = _empty_command_config_hints()
+    params = list(getattr(command_obj, "clean_params", {}).items())
+
+    for param_name, parameter in params:
+        lowered = str(param_name).strip().lower()
+        if lowered == "reason":
+            hints["supportsReason"] = True
+        if lowered in {"confirm", "confirmation"}:
+            hints["supportsConfirmation"] = True
+
+        annotation = getattr(parameter, "annotation", inspect._empty)
+        if annotation is not inspect._empty and _annotation_is_target_like(annotation):
+            hints["supportsRoleHierarchy"] = True
+
+    if not hints["supportsRoleHierarchy"]:
+        fallback_target_names = {"target", "user", "member", "role", "victim"}
+        if any(str(name).strip().lower() in fallback_target_names for name, _ in params):
+            hints["supportsRoleHierarchy"] = True
+
+    return hints
+
+
+def _infer_slash_command_hints(command_obj: Any) -> Dict[str, bool]:
+    hints = _empty_command_config_hints()
+
+    if isinstance(command_obj, app_commands.Group):
+        for child in getattr(command_obj, "commands", []) or []:
+            hints = _merge_command_config_hints(hints, _infer_slash_command_hints(child))
+        return hints
+
+    parameters = getattr(command_obj, "parameters", []) or []
+    for parameter in parameters:
+        name = str(getattr(parameter, "name", "") or "").strip().lower()
+        if name == "reason":
+            hints["supportsReason"] = True
+        if name in {"confirm", "confirmation"}:
+            hints["supportsConfirmation"] = True
+
+        option_type = getattr(parameter, "type", None)
+        if option_type in {
+            discord.AppCommandOptionType.user,
+            discord.AppCommandOptionType.role,
+            discord.AppCommandOptionType.mentionable,
+        }:
+            hints["supportsRoleHierarchy"] = True
+            continue
+
+        annotation = getattr(parameter, "annotation", None)
+        if _annotation_is_target_like(annotation):
+            hints["supportsRoleHierarchy"] = True
+
+    return hints
+
+
 async def api_bot_capabilities(request: web.Request):
     """Return bot capabilities with real module schemas and event types."""
     _require_auth(request)
@@ -1822,40 +2029,72 @@ async def api_bot_capabilities(request: web.Request):
     if not _bot:
         raise web.HTTPServiceUnavailable()
 
-    commands_list: List[Dict[str, Any]] = []
+    commands_by_name: Dict[str, Dict[str, Any]] = {}
+
+    def upsert_command_entry(
+        *,
+        name: str,
+        description: str,
+        command_type: str,
+        group: str,
+        default_required_permission: str,
+        config_hints: Dict[str, bool],
+    ) -> None:
+        existing = commands_by_name.get(name)
+        if existing is None:
+            commands_by_name[name] = {
+                "name": name,
+                "description": description,
+                "type": command_type,
+                "group": group,
+                "category": group,
+                "defaultEnabled": True,
+                "supportsOverrides": True,
+                "defaultRequiredPermission": default_required_permission,
+                "premiumTier": "free",
+                "settingsSchema": [],
+                "configHints": config_hints,
+            }
+            return
+
+        existing["type"] = _merge_command_capability_type(str(existing.get("type", "both")), command_type)
+        if not str(existing.get("description", "")).strip() and description:
+            existing["description"] = description
+        if str(existing.get("group", "General")).strip().lower() == "general" and group:
+            existing["group"] = group
+            existing["category"] = group
+        existing_hints = existing.get("configHints", _empty_command_config_hints())
+        if not isinstance(existing_hints, dict):
+            existing_hints = _empty_command_config_hints()
+        existing["configHints"] = _merge_command_config_hints(existing_hints, config_hints)
+
     for cmd in _bot.tree.get_commands():
         category = _guess_command_category(cmd.name)
         default_permission = "manage_guild" if category == "Admin" else ("moderate_members" if category == "Moderation" else "send_messages")
-        commands_list.append({
-            "name": cmd.name,
-            "description": getattr(cmd, "description", "") or "",
-            "type": "slash",
-            "group": category,
-            "category": category,
-            "defaultEnabled": True,
-            "supportsOverrides": True,
-            "defaultRequiredPermission": default_permission,
-            "premiumTier": "free",
-            "settingsSchema": [],
-        })
+        upsert_command_entry(
+            name=cmd.name,
+            description=(getattr(cmd, "description", "") or "").strip(),
+            command_type="slash",
+            group=category,
+            default_required_permission=default_permission,
+            config_hints=_infer_slash_command_hints(cmd),
+        )
 
     for cmd in _bot.commands:
         if cmd.hidden:
             continue
         category = _guess_command_category(cmd.name)
         default_permission = "manage_guild" if category == "Admin" else ("moderate_members" if category == "Moderation" else "send_messages")
-        commands_list.append({
-            "name": cmd.name,
-            "description": cmd.help or cmd.brief or "",
-            "type": "prefix",
-            "group": cmd.cog_name or "General",
-            "category": cmd.cog_name or "General",
-            "defaultEnabled": True,
-            "supportsOverrides": True,
-            "defaultRequiredPermission": default_permission,
-            "premiumTier": "free",
-            "settingsSchema": [],
-        })
+        upsert_command_entry(
+            name=cmd.name,
+            description=((cmd.help or cmd.brief or "") or "").strip(),
+            command_type="prefix",
+            group=cmd.cog_name or "General",
+            default_required_permission=default_permission,
+            config_hints=_infer_prefix_command_hints(cmd),
+        )
+
+    commands_list: List[Dict[str, Any]] = sorted(commands_by_name.values(), key=lambda item: str(item.get("name", "")).lower())
 
     modules_list: List[Dict[str, Any]] = []
     seen_module_ids: set[str] = set()

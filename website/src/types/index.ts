@@ -164,6 +164,11 @@ export interface CommandCapability {
     defaultRequiredPermission: string;
     premiumTier: 'free' | 'premium' | 'enterprise';
     settingsSchema: SettingsFieldSchema[];
+    configHints?: {
+        supportsReason?: boolean;
+        supportsConfirmation?: boolean;
+        supportsRoleHierarchy?: boolean;
+    };
 }
 
 export interface EventTypeCapability {

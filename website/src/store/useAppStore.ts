@@ -142,6 +142,7 @@ function normalizeCommandCapability(value: unknown, index: number): CommandCapab
   const name = typeof source.name === 'string' && source.name ? source.name : `command_${index}`;
   const type = source.type === 'slash' || source.type === 'prefix' || source.type === 'both' ? source.type : 'both';
   const premiumTier = source.premiumTier === 'premium' || source.premiumTier === 'enterprise' ? source.premiumTier : 'free';
+  const hints = isObject(source.configHints) ? source.configHints : {};
   return {
     name,
     group: typeof source.group === 'string'
@@ -155,6 +156,11 @@ function normalizeCommandCapability(value: unknown, index: number): CommandCapab
       : 'send_messages',
     premiumTier,
     settingsSchema: Array.isArray(source.settingsSchema) ? source.settingsSchema as CommandCapability['settingsSchema'] : [],
+    configHints: {
+      supportsReason: Boolean(hints.supportsReason),
+      supportsConfirmation: Boolean(hints.supportsConfirmation),
+      supportsRoleHierarchy: Boolean(hints.supportsRoleHierarchy),
+    },
   };
 }
 
