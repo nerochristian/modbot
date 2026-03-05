@@ -15,6 +15,7 @@ import type {
     ApiResponse,
     PaginatedResponse,
     ApiError,
+    PanicModeResponse,
 } from '@/types';
 
 // ─── Error Classes ──────────────────────────────────────────────────────────
@@ -274,6 +275,7 @@ export interface ApiClient {
     // Modules
     getModules(guildId: string): Promise<Record<string, ModuleConfig>>;
     updateModule(guildId: string, moduleId: string, config: ModuleConfig, version: number): Promise<ApiResponse<GuildConfig>>;
+    setPanicMode(guildId: string, enabled: boolean): Promise<PanicModeResponse>;
 
     // Logging
     getLogging(guildId: string): Promise<Record<string, LoggingRouteConfig>>;
@@ -399,6 +401,13 @@ export const realApiClient: ApiClient = {
             body: JSON.stringify(config),
             version,
         });
+    },
+    async setPanicMode(guildId, enabled) {
+        const { data } = await apiFetch<PanicModeResponse>(`/guilds/${guildId}/antiraid/panic`, {
+            method: 'POST',
+            body: JSON.stringify({ enabled }),
+        });
+        return data;
     },
     async getLogging(guildId) {
         const { data } = await apiFetch<Record<string, LoggingRouteConfig>>(`/guilds/${guildId}/logging`);

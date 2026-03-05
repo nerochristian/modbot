@@ -24,10 +24,11 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 try:
-    from groq import Groq
-    GROQ_AVAILABLE = True
+    from google import genai
+    from google.genai import types as genai_types
+    GEMINI_AVAILABLE = True
 except ImportError:
-    GROQ_AVAILABLE = False
+    GEMINI_AVAILABLE = False
 
 from utils.embeds import ModEmbed
 from utils.logging import send_log_embed
@@ -417,13 +418,13 @@ class NewAccountFilter:
 
 
 class AIFilter:
-    """AI content moderation via Groq (optional)."""
+    """AI content moderation via Gemini (optional)."""
     PRIORITY = 70
 
     def __init__(self):
-        api_key = os.getenv("GROQ_API_KEY")
-        self.client = Groq(api_key=api_key) if api_key and GROQ_AVAILABLE else None
-        self.model = "llama-3.3-70b-versatile"
+        api_key = os.getenv("GEMINI_API_KEY")
+        self.client = genai.Client(api_key=api_key) if api_key and GEMINI_AVAILABLE else None
+        self.model = "gemini-2.5-flash"
         self._cache: Dict[str, FilterResult] = {}
 
     async def check(self, message: discord.Message, settings: dict, ctx: dict) -> FilterResult:
@@ -475,8 +476,17 @@ Be context-aware and lenient with ambiguous cases.
 Respond ONLY with valid JSON:
 {{"violation": true/false, "category": "toxicity|threats|nsfw|spam|scam|other", "severity": 1-10, "confidence": 0.0-1.0, "reason": "concise explanation"}}"""
 
-            comp = self.client.chat.completions.create(model=self.model, messages=[{"role": "user", "content": prompt}], temperature=0.2, max_tokens=200)
-            resp = comp.choices[0].message.content
+            config = genai_types.GenerateContentConfig(
+                temperature=0.2,
+                max_output_tokens=200,
+                response_mime_type="application/json"
+            )
+            comp = self.client.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                config=config,
+            )
+            resp = comp.text
             if "```json" in resp:
                 resp = resp.split("```json")[1].split("```")[0]
             elif "```" in resp:

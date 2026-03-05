@@ -1,23 +1,105 @@
 import { useAppStore } from '@/store/useAppStore';
 import { ChevronDown, Bell, Search, LogOut, AlertTriangle, Moon, Sun, Plus, ExternalLink } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { cn, formatCount } from '@/lib/utils';
 import { realApiClient } from '@/lib/api';
 import { getBotInviteUrl } from '@/lib/discord';
+import { useNavigate } from 'react-router-dom';
+import type { AuditLogEntry } from '@/types';
 
 const FALLBACK_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
 const GENERIC_INVITE_URL = getBotInviteUrl();
+const NOTIFICATION_LAST_SEEN_PREFIX = 'modbot_notifications_last_seen_';
+
+interface HeaderNotification {
+  id: string;
+  title: string;
+  detail: string;
+  timestamp: string;
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  config_update: 'Configuration updated',
+  command_toggle: 'Command toggled',
+  module_toggle: 'Module toggled',
+  sync_commands: 'Commands synced',
+  panic_mode_toggle: 'Panic mode toggled',
+};
+
+function formatTimeAgo(isoString: string): string {
+  const timestamp = new Date(isoString).getTime();
+  if (Number.isNaN(timestamp)) return 'unknown';
+  const diff = Date.now() - timestamp;
+  const minutes = Math.floor(diff / 60000);
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+function toHeaderNotification(entry: AuditLogEntry): HeaderNotification {
+  const title = ACTION_LABELS[entry.action] || entry.action.replace(/_/g, ' ');
+  return {
+    id: entry.id,
+    title,
+    detail: `${entry.userName} - ${entry.target}`,
+    timestamp: entry.timestamp,
+  };
+}
 
 export function Header() {
+  const navigate = useNavigate();
   const { user, guilds, activeGuildId, setActiveGuild, refreshGuilds, error, setError, theme, toggleTheme } = useAppStore();
   const [isServerMenuOpen, setIsServerMenuOpen] = useState(false);
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [themeButtonAnimating, setThemeButtonAnimating] = useState(false);
+  const [notifications, setNotifications] = useState<HeaderNotification[]>([]);
+  const [notificationsLoading, setNotificationsLoading] = useState(false);
+  const [unreadCount, setUnreadCount] = useState(0);
   const themeAnimationTimerRef = useRef<number | null>(null);
 
   const activeServer = guilds.find((s) => s.id === activeGuildId);
   const installableGuildCount = guilds.filter((guild) => !guild.botInstalled).length;
+
+  const loadNotifications = useCallback(async (markRead: boolean) => {
+    if (!activeGuildId) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+
+    setNotificationsLoading(true);
+    try {
+      const result = await realApiClient.getAuditLog(activeGuildId);
+      const items = result.data.slice(0, 12).map(toHeaderNotification);
+      setNotifications(items);
+
+      const key = `${NOTIFICATION_LAST_SEEN_PREFIX}${activeGuildId}`;
+      const nowIso = new Date().toISOString();
+      const lastSeenRaw = localStorage.getItem(key);
+      const lastSeen = lastSeenRaw ? Date.parse(lastSeenRaw) : 0;
+      const unread = items.filter((item) => {
+        const ts = Date.parse(item.timestamp);
+        return Number.isFinite(ts) && ts > lastSeen;
+      }).length;
+
+      if (markRead) {
+        localStorage.setItem(key, nowIso);
+        setUnreadCount(0);
+      } else {
+        setUnreadCount(unread);
+      }
+    } catch {
+      setNotifications([]);
+      setUnreadCount(0);
+    } finally {
+      setNotificationsLoading(false);
+    }
+  }, [activeGuildId]);
 
   useEffect(() => {
     return () => {
@@ -33,6 +115,18 @@ export function Header() {
     }
     void refreshGuilds();
   }, [isServerMenuOpen, refreshGuilds]);
+
+  useEffect(() => {
+    setIsNotificationsOpen(false);
+    void loadNotifications(false);
+  }, [activeGuildId, loadNotifications]);
+
+  useEffect(() => {
+    if (!isNotificationsOpen) {
+      return;
+    }
+    void loadNotifications(true);
+  }, [isNotificationsOpen, activeGuildId, loadNotifications]);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -183,9 +277,64 @@ export function Header() {
           </div>
 
           {/* Notifications */}
-          <button className="relative p-2 text-slate-500 hover:bg-app-bg rounded-xl transition-colors">
-            <Bell className="w-5 h-5" />
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setIsNotificationsOpen((prev) => !prev)}
+              className="relative p-2 text-slate-500 hover:bg-app-bg rounded-xl transition-colors"
+              title="Notifications"
+            >
+              <Bell className="w-5 h-5" />
+              {unreadCount > 0 && (
+                <span className="absolute -top-1 -right-1 min-w-[1.1rem] h-[1.1rem] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold flex items-center justify-center">
+                  {unreadCount > 9 ? '9+' : unreadCount}
+                </span>
+              )}
+            </button>
+
+            {isNotificationsOpen && (
+              <>
+                <div className="fixed inset-0 z-40" onClick={() => setIsNotificationsOpen(false)} />
+                <div className="absolute top-full right-0 mt-2 w-80 max-w-[calc(100vw-1rem)] bg-card-bg rounded-2xl shadow-[0_20px_60px_-15px_rgba(0,0,0,0.1)] border border-cream-300 py-2 z-50">
+                  <div className="px-3 pb-2 mb-1 border-b border-cream-200">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Notifications</p>
+                  </div>
+                  {notificationsLoading ? (
+                    <div className="px-4 py-6 text-sm text-slate-500">Loading notifications...</div>
+                  ) : notifications.length === 0 ? (
+                    <div className="px-4 py-6 text-sm text-slate-500">No recent notifications.</div>
+                  ) : (
+                    <div className="max-h-72 overflow-y-auto">
+                      {notifications.map((item) => (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            setIsNotificationsOpen(false);
+                            navigate('/dashboard/audit');
+                          }}
+                          className="w-full text-left px-3 py-2.5 hover:bg-app-bg transition-colors"
+                        >
+                          <p className="text-sm font-semibold text-slate-800 truncate">{item.title}</p>
+                          <p className="text-xs text-slate-500 truncate">{item.detail}</p>
+                          <p className="text-[11px] text-slate-400 mt-1">{formatTimeAgo(item.timestamp)}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="px-3 pt-2 mt-1 border-t border-cream-200">
+                    <button
+                      onClick={() => {
+                        setIsNotificationsOpen(false);
+                        navigate('/dashboard/audit');
+                      }}
+                      className="text-xs text-indigo-600 hover:text-indigo-700 font-semibold"
+                    >
+                      View all activity
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
 
           {/* Theme Toggle */}
           <button

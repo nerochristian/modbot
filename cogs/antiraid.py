@@ -1,5 +1,5 @@
 """
-AntiRaid - Advanced raid protection with Groq AI pattern detection
+AntiRaid - Advanced raid protection with Gemini AI pattern detection
 
 Features:
 - Automatic raid detection based on join velocity
@@ -23,7 +23,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-from groq import Groq  # pip install groq
+from google import genai
+from google.genai import types as genai_types
 
 from utils.embeds import ModEmbed
 from utils.logging import send_log_embed
@@ -37,7 +38,7 @@ from config import Config
 
 class AIRaidAnalyzer:
     """
-    Uses Groq to detect sophisticated raid patterns by analyzing:
+    Uses Gemini to detect sophisticated raid patterns by analyzing:
     - Username similarity and bot-like patterns
     - Account ages (new accounts are suspicious)
     - Avatar/banner presence (default avatars in bulk)
@@ -45,10 +46,10 @@ class AIRaidAnalyzer:
     """
 
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("GROQ_API_KEY")
-        self.client: Optional[Groq] = None
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
+        self.client: Optional[genai.Client] = None
         if self.api_key:
-            self.client = Groq(api_key=self.api_key)
+            self.client = genai.Client(api_key=self.api_key)
 
         self.analysis_cache: Dict[str, tuple[dict, datetime]] = {}
         self.rate_limit_tracker: Dict[str, List[datetime]] = defaultdict(list)
@@ -56,7 +57,7 @@ class AIRaidAnalyzer:
         # config
         self.cache_ttl_seconds = 180  # 3 min cache for raid analysis
         self.max_requests_per_minute = 20  # conservative for raid checks
-        self.model = "llama-3.1-8b-instant"  # fast model for real-time
+        self.model = "gemini-2.5-flash"  # fast model for real-time
 
     def _hash_members(self, members: List[discord.Member]) -> str:
         """Create cache key from member data"""
@@ -185,17 +186,21 @@ Guidelines:
 """
 
         def _call():
-            return self.client.chat.completions.create(
-                model=self.model,
+            config = genai_types.GenerateContentConfig(
                 temperature=0.15,
-                max_tokens=250,
-                messages=[{"role": "user", "content": prompt}],
+                max_output_tokens=250,
+                response_mime_type="application/json"
+            )
+            return self.client.models.generate_content(
+                model=self.model,
+                contents=prompt,
+                config=config,
             )
 
         try:
             completion = await asyncio.to_thread(_call)
             self._record_request()
-            raw = completion.choices[0].message.content.strip()
+            raw = completion.text.strip()
 
             # parse json
             start = raw.find("{")
@@ -234,7 +239,7 @@ Guidelines:
             return result
 
         except Exception as e:
-            print(f"[Groq AntiRaid] Error analyzing raid: {e}")
+            print(f"[Gemini AntiRaid] Error analyzing raid: {e}")
             return {
                 "is_raid": False,
                 "confidence": 0,
@@ -732,7 +737,7 @@ class AntiRaid(commands.Cog):
         embed = ModEmbed.success(
             "AI Detection Updated",
             (
-                f"Groq AI detection is **{ai_status}**.\n"
+                f"Gemini AI detection is **{ai_status}**.\n"
                 f"Min confidence: **{conf}%**\n"
                 f"Override AI action: **{'Yes' if override else 'No'}**"
             ),

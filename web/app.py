@@ -22,6 +22,14 @@ import discord
 from aiohttp import web
 from discord import app_commands
 
+try:
+    from google import genai
+    from google.genai import types as genai_types
+    from google.genai.errors import APIError
+    GEMINI_AVAILABLE = True
+except ImportError:
+    GEMINI_AVAILABLE = False
+
 logger = logging.getLogger("ModBot.Dashboard")
 
 # ─── Configuration ────────────────────────────────────────────────────────────
@@ -1486,7 +1494,7 @@ async def api_guild_config(request: web.Request):
         "globalBypassUsers": settings.get("globalBypassUsers", []),
     }
 
-    return web.json_response(config)
+    return web.json_response(config, headers={"ETag": str(config["version"])})
 
 
 async def api_guild_config_update(request: web.Request):
@@ -1619,7 +1627,114 @@ async def api_guild_config_update(request: web.Request):
         changes=changes or {"version": {"from": previous.get("_version", 1), "to": saved.get("_version", 1)}},
     )
 
-    return web.json_response(config)
+    return web.json_response(config, headers={"ETag": str(config["version"])})
+
+
+async def api_guild_antiraid_panic(request: web.Request):
+    """Enable/disable panic mode and immediately lock or unlock text channels."""
+    session = _require_auth(request)
+    guild_id = request.match_info["guild_id"]
+    _require_guild_access(session, guild_id)
+
+    if not _bot:
+        raise web.HTTPServiceUnavailable(
+            text=json.dumps({"code": 503, "message": "Bot not ready"}),
+            content_type="application/json",
+        )
+
+    guild = _bot.get_guild(int(guild_id))
+    if not guild:
+        raise web.HTTPNotFound(
+            text=json.dumps({"code": 404, "message": "Guild not found"}),
+            content_type="application/json",
+        )
+
+    payload: Dict[str, Any] = {}
+    if request.can_read_body:
+        try:
+            parsed = await request.json()
+            if isinstance(parsed, dict):
+                payload = parsed
+        except Exception:
+            payload = {}
+    enabled = _coerce_bool(payload.get("enabled"), True)
+
+    previous_settings = await _bot.db.get_settings(int(guild_id))
+    previous_mode = _coerce_bool(previous_settings.get("raid_mode"), False)
+    changed_count = 0
+    actor = session.get("user", {}) if isinstance(session.get("user", {}), dict) else {}
+    actor_name = str(
+        actor.get("username")
+        or actor.get("global_name")
+        or actor.get("id")
+        or "dashboard"
+    )
+
+    antiraid_cog = _bot.get_cog("AntiRaid")
+    if antiraid_cog and hasattr(antiraid_cog, "set_manual_raid_mode"):
+        try:
+            changed_count = int(
+                await antiraid_cog.set_manual_raid_mode(
+                    guild,
+                    enabled=enabled,
+                    actor_text=actor_name,
+                    reason_prefix="[DASHBOARD PANIC]",
+                )
+            )
+        except Exception as exc:
+            logger.error("Panic mode toggle failed via AntiRaid cog for guild %s: %s", guild_id, exc)
+            raise web.HTTPInternalServerError(
+                text=json.dumps({"code": 500, "message": "Failed to toggle panic mode"}),
+                content_type="application/json",
+            )
+    else:
+        updated_settings = dict(previous_settings)
+        updated_settings["raid_mode"] = enabled
+        if enabled:
+            updated_settings["antiraid_enabled"] = True
+        await _bot.db.update_settings(int(guild_id), updated_settings)
+
+        send_messages_value = False if enabled else None
+        reason_state = "enabled" if enabled else "disabled"
+        reason = f"[DASHBOARD PANIC] {reason_state} by {actor_name}"
+
+        for channel in guild.text_channels:
+            try:
+                await channel.set_permissions(
+                    guild.default_role,
+                    send_messages=send_messages_value,
+                    reason=reason,
+                )
+                changed_count += 1
+            except Exception:
+                pass
+
+        if antiraid_cog and hasattr(antiraid_cog, "raid_cooldown"):
+            try:
+                if enabled:
+                    antiraid_cog.raid_cooldown.add(guild.id)
+                else:
+                    antiraid_cog.raid_cooldown.discard(guild.id)
+            except Exception:
+                pass
+
+    await _append_dashboard_audit(
+        guild_id,
+        session,
+        action="panic_mode_toggle",
+        target="antiraid",
+        changes={
+            "raidMode": {"from": previous_mode, "to": enabled},
+            "channelsAffected": {"from": None, "to": changed_count},
+        },
+    )
+
+    return web.json_response({
+        "ok": True,
+        "enabled": enabled,
+        "channelsAffected": changed_count,
+        "updatedAt": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+    })
 
 
 async def api_guild_cases(request: web.Request):
@@ -2251,6 +2366,91 @@ async def api_guild_stats(request: web.Request):
     })
 
 
+async def api_guild_ai_chat(request: web.Request):
+    """Handle chat completion requests from the dashboard AI assistant."""
+    session = _require_auth(request)
+    guild_id = request.match_info["guild_id"]
+    _require_guild_access(session, guild_id)
+
+    if not _bot:
+        raise web.HTTPServiceUnavailable(text=json.dumps({"code": 503, "message": "Bot not ready"}), content_type="application/json")
+
+    if not GEMINI_AVAILABLE:
+        raise web.HTTPServiceUnavailable(text=json.dumps({"code": 503, "message": "google-genai SDK not available"}), content_type="application/json")
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise web.HTTPServiceUnavailable(text=json.dumps({"code": 503, "message": "Gemini API key not configured"}), content_type="application/json")
+
+    try:
+        body = await request.json()
+    except Exception:
+        raise web.HTTPBadRequest(text=json.dumps({"code": 400, "message": "Invalid JSON"}), content_type="application/json")
+
+    messages = body.get("messages", [])
+    if not isinstance(messages, list) or not messages:
+        raise web.HTTPBadRequest(text=json.dumps({"code": 400, "message": "Missing 'messages' array"}), content_type="application/json")
+
+    # Get dashboard context values safely
+    settings = await _bot.db.get_settings(int(guild_id))
+    modules = _build_dashboard_modules(settings)
+    guild = _bot.get_guild(int(guild_id))
+    
+    context_data = {
+        "guild": {
+            "name": guild.name if guild else "Unknown",
+            "memberCount": guild.member_count if guild else 0,
+        },
+        "botSettings": {
+            "commands": _normalize_command_configs_blob(settings.get("commands", {})),
+            "modules": modules,
+             "loggingEnabled": _coerce_bool(settings.get("logging_enabled"), True),
+             "prefix": settings.get("prefix", ",")
+        }
+    }
+
+    system_prompt = f"""You are the ModBot AI Assistant, helping server administrators manage their Discord server via a web dashboard.
+You can view and modify server settings, moderation logs, edit configs, and toggle modules.
+
+CURRENT CONTEXT:
+Guild Name: {context_data['guild']['name']}
+Member Count: {context_data['guild']['memberCount']}
+Current Config Prefix: '{context_data['botSettings']['prefix']}'
+
+When the user asks you to modify a setting or toggle a module, explain what you will do or guide them to the correct setting. You do not have direct function-calling capability in this demo version to update the database, so your primary role is advice, reading current context, and confirming values.
+
+Here is the current state of modules: {json.dumps(context_data['botSettings']['modules'])}
+"""
+
+    genai_client = genai.Client(api_key=api_key)
+    
+    formatted_messages = []
+    for msg in messages:
+        role = "user" if msg.get("role") == "user" else "model"
+        formatted_messages.append({"role": role, "parts": [{"text": str(msg.get("content", ""))}]})
+    
+    try:
+        completion = await aiohttp.to_thread(
+            genai_client.models.generate_content,
+            model="gemini-2.5-flash",
+            contents=formatted_messages,
+            config=genai_types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                temperature=0.4,
+            )
+        )
+        
+        reply = completion.text
+        return web.json_response({
+            "message": {"role": "assistant", "content": reply}
+        })
+    except APIError as e:
+        logger.error(f"Gemini API error during dashboard chat: {e}")
+        raise web.HTTPInternalServerError(text=json.dumps({"code": 500, "message": f"AI service error: {str(e)}"}), content_type="application/json")
+    except Exception as e:
+        logger.error(f"Error during dashboard chat: {e}")
+        raise web.HTTPInternalServerError(text=json.dumps({"code": 500, "message": "Failed to process chat"}), content_type="application/json")
+
 # ─── CORS Middleware ──────────────────────────────────────────────────────────
 
 def _parse_origin_csv(value: str) -> List[str]:
@@ -2297,6 +2497,7 @@ async def cors_middleware(request: web.Request, handler):
         response.headers["Access-Control-Allow-Credentials"] = "true"
         response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, If-Match"
+        response.headers["Access-Control-Expose-Headers"] = "ETag"
 
     return response
 
@@ -2356,6 +2557,7 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/api/guilds/{guild_id}/roles", api_guild_roles)
     app.router.add_get("/api/guilds/{guild_id}/config", api_guild_config)
     app.router.add_put("/api/guilds/{guild_id}/config", api_guild_config_update)
+    app.router.add_post("/api/guilds/{guild_id}/antiraid/panic", api_guild_antiraid_panic)
     app.router.add_post("/api/guilds/{guild_id}/commands/sync", api_guild_commands_sync)
     app.router.add_get("/api/guilds/{guild_id}/commands/sync/status", api_guild_commands_sync_status)
     app.router.add_get("/api/guilds/{guild_id}/cases", api_guild_cases)
@@ -2363,6 +2565,7 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/api/guilds/{guild_id}/audit", api_guild_audit)
     app.router.add_get("/api/guilds/{guild_id}/warnings", api_guild_warnings)
     app.router.add_get("/api/guilds/{guild_id}/stats", api_guild_stats)
+    app.router.add_post("/api/guilds/{guild_id}/ai/chat", api_guild_ai_chat)
 
     # Static files (production)
     _setup_static(app)

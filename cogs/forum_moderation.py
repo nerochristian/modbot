@@ -11,7 +11,7 @@ import os
 from datetime import datetime, timezone
 import asyncio
 
-from groq import Groq
+# Removed Groq import
 from utils.embeds import ModEmbed
 from utils.checks import is_mod, is_admin, is_bot_owner_id
 from utils.logging import send_log_embed
@@ -176,23 +176,6 @@ class ForumActionButtons(discord.ui.View):
 
 class ForumModeration(commands.Cog):
     """AI-powered forum moderation system"""
-    
-    def __init__(self, bot):
-        self.bot = bot
-        # Forum channel ID for anime recommendations
-        self.anime_forum_id = 1455898752094175332
-        
-        # Initialize Groq client
-        api_key = os.getenv("GROQ_API_KEY")
-        if api_key:
-            self.groq_client = Groq(api_key=api_key)
-        else:
-            self.groq_client = None
-            
-        # Blacklisted post IDs (posts that failed moderation)
-        self.blacklisted_posts: set[int] = set()
-    
-    @commands.Cog.listener()
     async def on_thread_create(self, thread: discord.Thread):
         """Auto-moderate new forum posts in the anime forum"""
         print(f"[ForumMod] Thread created: {thread.name} (ID: {thread.id}, Parent: {thread.parent_id})")

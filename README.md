@@ -82,6 +82,13 @@ GROQ_API_KEY=your_groq_api_key_here
 GROQ_MODEL=llama-3.3-70b-versatile
 OWNER_IDS=123456789,987654321
 PREFIX=!
+
+# Optional (recommended for persistent data on ephemeral hosts)
+SUPABASE_URL=https://your-project-id.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
+SUPABASE_STORAGE_BUCKET=modbot-data
+SUPABASE_STORAGE_DB_PATH=modbot/modbot.db
+SUPABASE_SYNC_INTERVAL_SECONDS=15
 ```
 
 4. **Enable Discord Intents**

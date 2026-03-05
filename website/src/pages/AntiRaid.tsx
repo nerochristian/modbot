@@ -3,9 +3,10 @@ import { useAppStore } from '@/store/useAppStore';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Switch } from '@/components/ui/Switch';
 import { Button } from '@/components/ui/Button';
-import { Badge, SaveBar, PageSkeleton } from '@/components/ui/Shared';
-import { ShieldAlert, Lock, UserPlus, ShieldCheck, AlertOctagon } from 'lucide-react';
+import { SaveBar, PageSkeleton } from '@/components/ui/Shared';
+import { ShieldAlert, Lock, UserPlus, AlertOctagon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { realApiClient } from '@/lib/api';
 import type { ModuleConfig } from '@/types';
 
 function defaultAntiRaidConfig(): ModuleConfig {
@@ -31,8 +32,19 @@ function defaultAntiRaidConfig(): ModuleConfig {
 }
 
 export function AntiRaid() {
-  const { config, updateConfigLocal, saveConfig, discardChanges, configDirty, error } = useAppStore();
+  const {
+    activeGuildId,
+    config,
+    updateConfigLocal,
+    saveConfig,
+    discardChanges,
+    configDirty,
+    error,
+    setError,
+    fetchConfig,
+  } = useAppStore();
   const [saving, setSaving] = useState(false);
+  const [panicLoading, setPanicLoading] = useState(false);
 
   const handleSave = async () => {
     setSaving(true);
@@ -44,6 +56,7 @@ export function AntiRaid() {
 
   const raidConfig = config.modules.antiraid || defaultAntiRaidConfig();
   const raidSettings = raidConfig?.settings || {};
+  const raidModeEnabled = Boolean(raidSettings.raidMode);
 
   const toggleRaid = () => {
     updateConfigLocal({
@@ -63,6 +76,22 @@ export function AntiRaid() {
     });
   };
 
+  const togglePanicMode = async () => {
+    if (!activeGuildId || panicLoading) {
+      return;
+    }
+    const nextMode = !raidModeEnabled;
+    setPanicLoading(true);
+    try {
+      await realApiClient.setPanicMode(activeGuildId, nextMode);
+      await fetchConfig(activeGuildId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to toggle panic mode');
+    } finally {
+      setPanicLoading(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between">
@@ -70,9 +99,16 @@ export function AntiRaid() {
           <h1 className="text-3xl font-display font-bold text-slate-800 tracking-tight">Anti-Raid</h1>
           <p className="text-slate-500 mt-1">Protect your server from coordinated attacks and bot raids.</p>
         </div>
-        <Button variant="danger" className="gap-2 shadow-sm">
+        <Button
+          variant="danger"
+          className="gap-2 shadow-sm"
+          onClick={togglePanicMode}
+          disabled={!activeGuildId || panicLoading}
+        >
           <AlertOctagon className="w-5 h-5" />
-          Panic Mode
+          {panicLoading
+            ? (raidModeEnabled ? 'Disabling...' : 'Enabling...')
+            : (raidModeEnabled ? 'Disable Panic Mode' : 'Panic Mode')}
         </Button>
       </div>
 

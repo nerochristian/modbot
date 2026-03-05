@@ -54,7 +54,7 @@ def _get_modbot_token() -> Optional[str]:
 
 def validate_environment() -> None:
     """Validate required environment variables."""
-    optional_warnings = ["GROQ_API_KEY", "OWNER_IDS"]
+    optional_warnings = ["GEMINI_API_KEY", "OWNER_IDS"]
     log = logging.getLogger("ModBot")
 
     if not _get_modbot_token():
@@ -1957,14 +1957,17 @@ class ModBot(commands.Bot):
                         pass
                 return
 
-        await self.invoke(ctx)
+        await self._send_prefix_loading(ctx)
+        try:
+            await self.invoke(ctx)
+        finally:
+            await self._clear_prefix_loading_for_ctx(ctx)
 
     async def on_command(self, ctx: commands.Context):
         """Track command usage."""
         self.commands_used += 1
         location = ctx.guild.name if ctx.guild else "DMs"
         logger.info(f"[CMD] {ctx.author} used '{ctx.command.name}' in {location}")
-        await self._send_prefix_loading(ctx)
 
     async def on_command_completion(self, ctx: commands.Context):
         """Clear loading marker once a command completes."""
@@ -2226,17 +2229,15 @@ class ModBot(commands.Bot):
         except Exception as e:
             logger.error(f"Error clearing caches: {e}")
 
-        # Close database
+        # Close database — flushes WAL and performs final Supabase sync
         try:
-            if hasattr(self.db, "close"):
-                await self.db.close()
+            await self.db.close()
             logger.info("[OK] Database connections closed")
         except Exception as e:
             logger.error(f"Error closing database: {e}")
 
         await super().close()
         logger.info("[OK] Bot shutdown complete")
-
 
 # ==================== MAIN ENTRY POINT ====================
 async def main() -> int:

@@ -342,6 +342,13 @@ export interface SyncStatus {
     syncRequired: boolean;
 }
 
+export interface PanicModeResponse {
+    ok: boolean;
+    enabled: boolean;
+    channelsAffected: number;
+    updatedAt: string;
+}
+
 // ─── Resolution Context ─────────────────────────────────────────────────────
 
 export interface ResolutionContext {

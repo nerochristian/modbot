@@ -7,17 +7,118 @@ Version: 3.3.0
 import asyncio
 import json
 import logging
+import os
+import shutil
+import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
+
 import aiosqlite
+import aiohttp
 try:
     from cogs.automod_config import AUTOMOD_SETTINGS
 except ImportError:
     AUTOMOD_SETTINGS = {}
 
 logger = logging.getLogger("ModBot.Database")
-import os
+
+
+class SupabaseStorageMirror:
+    """Mirror SQLite snapshots to Supabase Storage."""
+
+    def __init__(self) -> None:
+        self.url = (os.getenv("SUPABASE_URL") or "").strip().rstrip("/")
+        self.key = (
+            os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+            or os.getenv("SUPABASE_KEY")
+            or os.getenv("SUPABASE_ANON_KEY")
+            or ""
+        ).strip()
+        self.bucket = (os.getenv("SUPABASE_STORAGE_BUCKET") or "modbot-data").strip()
+        self.object_path = (os.getenv("SUPABASE_STORAGE_DB_PATH") or "modbot/modbot.db").strip()
+        self.enabled = bool(self.url and self.key and self.bucket and self.object_path)
+
+    def _headers(self) -> Dict[str, str]:
+        return {
+            "apikey": self.key,
+            "Authorization": f"Bearer {self.key}",
+        }
+
+    async def _ensure_bucket(self, session: aiohttp.ClientSession) -> bool:
+        if not self.enabled:
+            return False
+
+        check_url = f"{self.url}/storage/v1/bucket/{self.bucket}"
+        async with session.get(check_url, headers=self._headers()) as resp:
+            if resp.status == 200:
+                return True
+            if resp.status != 404:
+                body = await resp.text()
+                logger.error("Supabase bucket check failed (%s): %s", resp.status, body[:500])
+                return False
+
+        create_url = f"{self.url}/storage/v1/bucket"
+        payload = {"id": self.bucket, "name": self.bucket, "public": False}
+        async with session.post(create_url, headers={**self._headers(), "Content-Type": "application/json"}, json=payload) as resp:
+            if resp.status in {200, 201, 409}:
+                return True
+            body = await resp.text()
+            logger.error("Supabase bucket create failed (%s): %s", resp.status, body[:500])
+            return False
+
+    async def download(self, destination_path: str) -> bool:
+        if not self.enabled:
+            return False
+
+        timeout = aiohttp.ClientTimeout(total=60)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            if not await self._ensure_bucket(session):
+                return False
+
+            url = f"{self.url}/storage/v1/object/{self.bucket}/{self.object_path}"
+            async with session.get(url, headers=self._headers()) as resp:
+                if resp.status == 404:
+                    return False
+                if resp.status != 200:
+                    body = await resp.text()
+                    logger.error("Supabase DB download failed (%s): %s", resp.status, body[:500])
+                    return False
+                payload = await resp.read()
+
+        os.makedirs(os.path.dirname(destination_path) or ".", exist_ok=True)
+        with open(destination_path, "wb") as handle:
+            handle.write(payload)
+        return True
+
+    async def upload(self, source_path: str) -> bool:
+        if not self.enabled:
+            return False
+
+        if not os.path.exists(source_path):
+            return False
+
+        timeout = aiohttp.ClientTimeout(total=120)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            if not await self._ensure_bucket(session):
+                return False
+
+            url = f"{self.url}/storage/v1/object/{self.bucket}/{self.object_path}"
+            headers = {
+                **self._headers(),
+                "Content-Type": "application/octet-stream",
+                "x-upsert": "true",
+            }
+
+            with open(source_path, "rb") as handle:
+                data = handle.read()
+
+            async with session.post(url, headers=headers, data=data) as resp:
+                if resp.status in {200, 201}:
+                    return True
+                body = await resp.text()
+                logger.error("Supabase DB upload failed (%s): %s", resp.status, body[:500])
+                return False
 
 def _resolve_database_path() -> str:
     """Resolve SQLite path with env override and Railway volume fallback."""
@@ -33,7 +134,7 @@ def _resolve_database_path() -> str:
     if database_url.startswith("sqlite:///"):
         return database_url.replace("sqlite:///", "", 1)
     if database_url and not database_url.startswith("sqlite:///"):
-        logger.warning("DATABASE_URL is set but not sqlite; this bot currently uses SQLite only.")
+        logger.warning("DATABASE_URL is not sqlite. This bot runs on SQLite locally; use Supabase mirror env vars for persistent backups.")
 
     # Railway persistent volume mount path.
     if os.path.isdir("/app/data"):
@@ -69,6 +170,19 @@ class Database:
         self._lock = asyncio.Lock()
         self._initialized = False
         self._pool: Optional[aiosqlite.Connection] = None
+        self._supabase_mirror = SupabaseStorageMirror()
+        self._supabase_sync_interval_seconds = max(5, int(os.getenv("SUPABASE_SYNC_INTERVAL_SECONDS", "15")))
+        self._supabase_last_token: Optional[tuple[tuple[str, int, int], ...]] = None
+        self._supabase_sync_task: Optional[asyncio.Task] = None
+
+        if self._supabase_mirror.enabled:
+            logger.info(
+                "Supabase mirror enabled: bucket=%s, object=%s",
+                self._supabase_mirror.bucket,
+                self._supabase_mirror.object_path,
+            )
+        else:
+            logger.info("Supabase mirror disabled (SUPABASE_URL/KEY not set).")
 
     @property
     def pool(self) -> "Database":
@@ -85,12 +199,18 @@ class Database:
     async def init_pool(self) -> None:
         """Initialize database connection pool"""
         if self._pool is None:
+            await self._restore_sqlite_from_supabase()
             self._pool = await aiosqlite.connect(self.db_path)
             # Enable WAL mode for better concurrency
             await self._pool.execute("PRAGMA journal_mode=WAL")
             await self._pool.execute("PRAGMA synchronous=NORMAL")
             # Enable foreign keys
             await self._pool.execute("PRAGMA foreign_keys=ON")
+            await self._pool.commit()
+
+            # Ensure we can always restore from a recent remote snapshot.
+            await self._sync_sqlite_to_supabase(force=True)
+            self._start_supabase_sync_loop()
             logger.info("✅ Database connection pool initialized")
     
     @asynccontextmanager
@@ -106,6 +226,131 @@ class Database:
                 yield conn
             finally:
                 await conn.close()
+
+    def _sqlite_change_token(self) -> tuple[tuple[str, int, int], ...]:
+        """Fingerprint DB + WAL sidecars to skip redundant uploads."""
+        parts: list[tuple[str, int, int]] = []
+        for suffix in ("", "-wal", "-shm"):
+            path = f"{self.db_path}{suffix}"
+            if not os.path.exists(path):
+                continue
+            try:
+                stat = os.stat(path)
+                parts.append((suffix or ".db", int(stat.st_mtime_ns), int(stat.st_size)))
+            except OSError:
+                continue
+        return tuple(parts)
+
+    async def _restore_sqlite_from_supabase(self) -> None:
+        """Restore the SQLite file from Supabase before opening connections."""
+        if not self._supabase_mirror.enabled:
+            return
+
+        tmp_file = tempfile.NamedTemporaryFile(prefix="modbot_supabase_restore_", suffix=".db", delete=False)
+        tmp_path = tmp_file.name
+        tmp_file.close()
+        try:
+            restored = await self._supabase_mirror.download(tmp_path)
+            if not restored:
+                return
+
+            # Clear stale sidecars before replacing the main DB file.
+            for sidecar_suffix in ("-wal", "-shm"):
+                sidecar = f"{self.db_path}{sidecar_suffix}"
+                if os.path.exists(sidecar):
+                    try:
+                        os.remove(sidecar)
+                    except OSError:
+                        pass
+
+            os.makedirs(os.path.dirname(self.db_path) or ".", exist_ok=True)
+            os.replace(tmp_path, self.db_path)
+            self._supabase_last_token = self._sqlite_change_token()
+            logger.info("Restored SQLite database from Supabase mirror.")
+        except Exception as exc:
+            logger.error("Failed to restore SQLite database from Supabase: %s", exc)
+        finally:
+            if os.path.exists(tmp_path):
+                try:
+                    os.remove(tmp_path)
+                except OSError:
+                    pass
+
+    async def _create_sqlite_snapshot(self, snapshot_path: str) -> bool:
+        """Create a consistent snapshot of the live SQLite database."""
+        if os.path.exists(snapshot_path):
+            try:
+                os.remove(snapshot_path)
+            except OSError:
+                return False
+
+        # If pool is unavailable, fallback to file copy.
+        if self._pool is None:
+            if not os.path.exists(self.db_path):
+                return False
+            shutil.copy2(self.db_path, snapshot_path)
+            return True
+
+        try:
+            async with self._lock:
+                # Flush WAL then vacuum into a standalone file.
+                await self._pool.execute("PRAGMA wal_checkpoint(FULL)")
+                escaped_path = snapshot_path.replace("'", "''")
+                await self._pool.execute(f"VACUUM INTO '{escaped_path}'")
+                await self._pool.commit()
+            return os.path.exists(snapshot_path)
+        except Exception as exc:
+            logger.error("Failed to create SQLite snapshot for Supabase sync: %s", exc)
+            return False
+
+    async def _sync_sqlite_to_supabase(self, *, force: bool = False) -> None:
+        """Upload current SQLite state to Supabase Storage."""
+        if not self._supabase_mirror.enabled:
+            return
+
+        current_token = self._sqlite_change_token()
+        if not current_token:
+            return
+        if not force and self._supabase_last_token == current_token:
+            return
+
+        tmp_file = tempfile.NamedTemporaryFile(prefix="modbot_supabase_snapshot_", suffix=".db", delete=False)
+        snapshot_path = tmp_file.name
+        tmp_file.close()
+        try:
+            created = await self._create_sqlite_snapshot(snapshot_path)
+            if not created:
+                return
+            uploaded = await self._supabase_mirror.upload(snapshot_path)
+            if uploaded:
+                self._supabase_last_token = self._sqlite_change_token()
+                logger.debug("Synced SQLite snapshot to Supabase.")
+        except Exception as exc:
+            logger.error("Supabase sync failed: %s", exc)
+        finally:
+            if os.path.exists(snapshot_path):
+                try:
+                    os.remove(snapshot_path)
+                except OSError:
+                    pass
+
+    async def _supabase_sync_loop(self) -> None:
+        """Periodic background sync so abrupt restarts don't lose recent writes."""
+        try:
+            while self._pool is not None:
+                await asyncio.sleep(self._supabase_sync_interval_seconds)
+                await self._sync_sqlite_to_supabase(force=False)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.error("Supabase sync loop crashed: %s", exc)
+
+    def _start_supabase_sync_loop(self) -> None:
+        if not self._supabase_mirror.enabled:
+            return
+        if self._supabase_sync_task and not self._supabase_sync_task.done():
+            return
+        self._supabase_sync_task = asyncio.create_task(self._supabase_sync_loop())
     
     @asynccontextmanager
     async def transaction(self):
@@ -467,6 +712,35 @@ class Database:
                         user_id INTEGER PRIMARY KEY,
                         memory_text TEXT,
                         last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
+                # ===== QUARANTINES =====
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS quarantines (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        guild_id INTEGER,
+                        user_id INTEGER,
+                        moderator_id INTEGER,
+                        reason TEXT,
+                        roles_backup TEXT DEFAULT '[]',
+                        expires_at TIMESTAMP,
+                        active BOOLEAN DEFAULT 1,
+                        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
+                # ===== DASHBOARD AUDIT =====
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS dashboard_audit (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        guild_id INTEGER NOT NULL,
+                        user_id TEXT,
+                        user_name TEXT,
+                        action TEXT NOT NULL,
+                        target TEXT NOT NULL,
+                        changes TEXT DEFAULT '{}',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
                 
@@ -1890,6 +2164,22 @@ class Database:
     
     async def close(self):
         """Close database connections"""
+        if self._supabase_sync_task is not None:
+            self._supabase_sync_task.cancel()
+            try:
+                await self._supabase_sync_task
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                pass
+            self._supabase_sync_task = None
+
+        # Final forced sync before closing the DB connection.
+        try:
+            await self._sync_sqlite_to_supabase(force=True)
+        except Exception as exc:
+            logger.error("Final Supabase sync failed during close: %s", exc)
+
         if self._pool is not None:
             await self._pool.close()
             self._pool = None
@@ -2117,3 +2407,39 @@ class Database:
                 )
                 await db.commit()
                 return cursor.rowcount
+
+    # ==================== LIFECYCLE ====================
+
+    async def close(self) -> None:
+        """Flush WAL, do a final Supabase sync, and close the connection."""
+        # Cancel the background sync loop first.
+        if self._supabase_sync_task and not self._supabase_sync_task.done():
+            self._supabase_sync_task.cancel()
+            try:
+                await self._supabase_sync_task
+            except asyncio.CancelledError:
+                pass
+            self._supabase_sync_task = None
+
+        if self._pool is not None:
+            try:
+                # Flush WAL completely so the main .db file is up-to-date.
+                await self._pool.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                await self._pool.commit()
+            except Exception as exc:
+                logger.error("WAL checkpoint on close failed: %s", exc)
+
+            # Final Supabase upload so remote always has latest data.
+            try:
+                await self._sync_sqlite_to_supabase(force=True)
+            except Exception as exc:
+                logger.error("Final Supabase sync on close failed: %s", exc)
+
+            try:
+                await self._pool.close()
+            except Exception as exc:
+                logger.error("Database connection close failed: %s", exc)
+            finally:
+                self._pool = None
+
+        logger.info("Database closed.")
