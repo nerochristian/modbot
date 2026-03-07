@@ -28,112 +28,75 @@ class Moderation(
     MiscCommands
 ):
     """Moderation command suite with role hierarchy and permission checks"""
-    
-    # Top-level moderation command group - class level for auto-registration
-    # Named 'moderation' (not 'mod') to avoid collision with standalone commands from mixins
-    mod_slash = app_commands.Group(name="moderation", description="🛡️ Moderation commands")
-    
+
     emoji_slash = app_commands.Group(name="emoji", description="Emoji request commands")
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self._hierarchy_cache = {}
-        
-        # Set up subgroups with parent reference
-        self._setup_subgroups()
+        self._global_slash_shortcuts = []
+        self._registered_global_shortcuts = set()
 
-    def _setup_subgroups(self):
-        """Setup subgroups and add commands to them"""
+        self._setup_slash_commands()
+
+    def _setup_slash_commands(self):
+        """Register moderation slash commands directly at the application root."""
         # Helper to create Command from method
         def cmd(name: str, desc: str, callback):
             command = app_commands.Command(name=name, description=desc, callback=callback)
             return command
 
-        # Chat Subgroup - /moderation chat <command>
-        chat_group = app_commands.Group(name="chat", description="?? Chat moderation", parent=self.mod_slash)
-        chat_group.add_command(cmd("lock", "Lock a channel", self.lock_slash))
-        chat_group.add_command(cmd("unlock", "Unlock a channel", self.unlock_slash))
-        chat_group.add_command(cmd("slowmode", "Set channel slowmode", self.slowmode_slash))
-        chat_group.add_command(cmd("glock", "Allow only specific role to talk", self.glock_slash))
-        chat_group.add_command(cmd("gunlock", "Remove glock restriction", self.gunlock_slash))
-        chat_group.add_command(cmd("lockdown", "Lock all channels", self.lockdown_slash))
-        chat_group.add_command(cmd("unlockdown", "Unlock all channels", self.unlockdown_slash))
-        chat_group.add_command(cmd("nuke", "Clone and delete channel", self.nuke_slash))
-        chat_group.add_command(cmd("purge", "Bulk delete messages", self.purge_slash))
-        chat_group.add_command(cmd("purgebots", "Delete bot messages", self.purgebots_slash))
-        chat_group.add_command(cmd("purgecontains", "Delete messages containing text", self.purgecontains_slash))
-        chat_group.add_command(cmd("purgeembeds", "Delete messages with embeds", self.purgeembeds_slash))
-        chat_group.add_command(cmd("purgeimages", "Delete messages with images", self.purgeimages_slash))
-        chat_group.add_command(cmd("purgelinks", "Delete messages with links", self.purgelinks_slash))
-
-        # Whitelist Subgroup
-        whitelist_group = WhitelistGroup(self)
-        self.mod_slash.add_command(whitelist_group)
-
-        # Member Management Subgroup - /moderation member <command>
-        member_group = app_commands.Group(name="member", description="?? User management", parent=self.mod_slash)
-        member_group.add_command(cmd("kick", "Kick a user", self.kick_slash))
-        member_group.add_command(cmd("ban", "Ban a user", self.ban_slash))
-        member_group.add_command(cmd("unban", "Unban a user", self.unban_slash))
-        member_group.add_command(cmd("softban", "Softban a user", self.softban_slash))
-        member_group.add_command(cmd("tempban", "Temporarily ban a user", self.tempban_slash))
-        member_group.add_command(cmd("mute", "Mute/timeout a user", self.mute_slash))
-        member_group.add_command(cmd("unmute", "Unmute a user", self.unmute_slash))
-        member_group.add_command(cmd("timeout", "Timeout a user", self.timeout_slash))
-        member_group.add_command(cmd("untimeout", "Remove timeout", self.untimeout_slash))
-        member_group.add_command(cmd("rename", "Change nickname", self.rename_slash))
-        member_group.add_command(cmd("setnick", "Set nickname", self.setnick_slash))
-        member_group.add_command(cmd("quarantine", "Quarantine a user", self.quarantine_slash))
-        member_group.add_command(cmd("unquarantine", "Unquarantine a user", self.unquarantine_slash))
-
-        # Bulk Operations Subgroup - /moderation bulk <command>
-        bulk_group = app_commands.Group(name="bulk", description="?? Bulk operations", parent=self.mod_slash)
-        bulk_group.add_command(cmd("massban", "Ban multiple users", self.massban_slash))
-        bulk_group.add_command(cmd("banlist", "View banned users", self.banlist_slash))
-        bulk_group.add_command(cmd("roleall", "Give role to everyone", self.roleall_slash))
-        bulk_group.add_command(cmd("removeall", "Remove role from everyone", self.removeall_slash))
-        bulk_group.add_command(cmd("inrole", "List users with role", self.inrole_slash))
-        bulk_group.add_command(cmd("nicknameall", "Set nickname for all", self.nicknameall_slash))
-        bulk_group.add_command(cmd("resetnicks", "Reset all nicknames", self.resetnicks_slash))
-
-        # Warnings Subgroup - /moderation warn <command>
-        warn_group = app_commands.Group(name="warns", description="?? Warning system", parent=self.mod_slash)
-        warn_group.add_command(cmd("add", "Warn a user", self.warn_slash))
-        warn_group.add_command(cmd("list", "View warnings", self.warnings_slash))
-        warn_group.add_command(cmd("delete", "Delete a warning", self.delwarn_slash))
-        warn_group.add_command(cmd("clear", "Clear all warnings", self.clearwarnings_slash))
-
-        # Cases Subgroup - /moderation case <command>
-        case_group = app_commands.Group(name="cases", description="?? Case management", parent=self.mod_slash)
-        case_group.add_command(cmd("view", "View a case", self.case_slash))
-        case_group.add_command(cmd("edit", "Edit case reason", self.editcase_slash))
-        case_group.add_command(cmd("history", "View user history", self.history_slash))
-        case_group.add_command(cmd("modlogs", "View mod logs", self.modlogs_slash))
-        case_group.add_command(cmd("note", "Add a note", self.note_slash))
-        case_group.add_command(cmd("notes", "View notes", self.notes_slash))
-        case_group.add_command(cmd("modstats", "View mod statistics", self.modstats_slash))
-
-        # Top-level shortcuts under /moderation
-        self.mod_slash.add_command(cmd("kick", "Kick a user", self.kick_slash))
-        self.mod_slash.add_command(cmd("ban", "Ban a user", self.ban_slash))
-        self.mod_slash.add_command(cmd("unban", "Unban a user", self.unban_slash))
-        self.mod_slash.add_command(cmd("tempban", "Temporarily ban a user", self.tempban_slash))
-        self.mod_slash.add_command(cmd("mute", "Mute/timeout a user", self.mute_slash))
-        self.mod_slash.add_command(cmd("unmute", "Unmute a user", self.unmute_slash))
-        self.mod_slash.add_command(cmd("timeout", "Timeout a user", self.timeout_slash))
-        self.mod_slash.add_command(cmd("warn", "Warn a user", self.warn_slash))
-        self.mod_slash.add_command(cmd("warnings", "View warnings", self.warnings_slash))
-        self.mod_slash.add_command(cmd("delwarn", "Delete a warning", self.delwarn_slash))
-        self.mod_slash.add_command(cmd("clearwarnings", "Clear all warnings", self.clearwarnings_slash))
-        self.mod_slash.add_command(cmd("case", "View a case", self.case_slash))
-        self.mod_slash.add_command(cmd("history", "View user history", self.history_slash))
-        self.mod_slash.add_command(cmd("note", "Add a note", self.note_slash))
-        self.mod_slash.add_command(cmd("notes", "View notes", self.notes_slash))
-
-        # Misc commands directly on /moderation
-        self.mod_slash.add_command(cmd("testwelcome", "Preview welcome card", self.testwelcome))
-        self.mod_slash.add_command(cmd("welcomeall", "Welcome all members", self.welcomeall))
-        self.mod_slash.add_command(cmd("ownerinfo", "View owner info", self.ownerinfo))
+        slash_shortcuts = [
+            ("lock", "Lock a channel", self.lock_slash),
+            ("unlock", "Unlock a channel", self.unlock_slash),
+            ("slowmode", "Set channel slowmode", self.slowmode_slash),
+            ("glock", "Allow only specific role to talk", self.glock_slash),
+            ("gunlock", "Remove glock restriction", self.gunlock_slash),
+            ("lockdown", "Lock all channels", self.lockdown_slash),
+            ("unlockdown", "Unlock all channels", self.unlockdown_slash),
+            ("nuke", "Clone and delete channel", self.nuke_slash),
+            ("purge", "Bulk delete messages", self.purge_slash),
+            ("purgebots", "Delete bot messages", self.purgebots_slash),
+            ("purgecontains", "Delete messages containing text", self.purgecontains_slash),
+            ("purgeembeds", "Delete messages with embeds", self.purgeembeds_slash),
+            ("purgeimages", "Delete messages with images", self.purgeimages_slash),
+            ("purgelinks", "Delete messages with links", self.purgelinks_slash),
+            ("kick", "Kick a user", self.kick_slash),
+            ("ban", "Ban a user", self.ban_slash),
+            ("unban", "Unban a user", self.unban_slash),
+            ("softban", "Softban a user", self.softban_slash),
+            ("tempban", "Temporarily ban a user", self.tempban_slash),
+            ("mute", "Mute/timeout a user", self.mute_slash),
+            ("unmute", "Unmute a user", self.unmute_slash),
+            ("timeout", "Timeout a user", self.timeout_slash),
+            ("untimeout", "Remove timeout", self.untimeout_slash),
+            ("rename", "Change nickname", self.rename_slash),
+            ("setnick", "Set nickname", self.setnick_slash),
+            ("quarantine", "Quarantine a user", self.quarantine_slash),
+            ("unquarantine", "Unquarantine a user", self.unquarantine_slash),
+            ("massban", "Ban multiple users", self.massban_slash),
+            ("banlist", "View banned users", self.banlist_slash),
+            ("roleall", "Give role to everyone", self.roleall_slash),
+            ("removeall", "Remove role from everyone", self.removeall_slash),
+            ("inrole", "List users with role", self.inrole_slash),
+            ("nicknameall", "Set nickname for all", self.nicknameall_slash),
+            ("resetnicks", "Reset all nicknames", self.resetnicks_slash),
+            ("warn", "Warn a user", self.warn_slash),
+            ("warnings", "View warnings", self.warnings_slash),
+            ("delwarn", "Delete a warning", self.delwarn_slash),
+            ("clearwarnings", "Clear all warnings", self.clearwarnings_slash),
+            ("case", "View a case", self.case_slash),
+            ("editcase", "Edit case reason", self.editcase_slash),
+            ("history", "View user history", self.history_slash),
+            ("modlogs", "View mod logs", self.modlogs_slash),
+            ("note", "Add a note", self.note_slash),
+            ("notes", "View notes", self.notes_slash),
+            ("modstats", "View mod statistics", self.modstats_slash),
+            ("testwelcome", "Preview welcome card", self.testwelcome),
+            ("welcomeall", "Welcome all members", self.welcomeall),
+            ("ownerinfo", "View owner info", self.ownerinfo),
+        ]
+        self._global_slash_shortcuts = [cmd(name, desc, callback) for name, desc, callback in slash_shortcuts]
 
         # Emoji slash commands
         self.emoji_slash.add_command(cmd("tutorial", "Show emoji submission tutorial", self.emoji_tutorial_slash))
@@ -160,6 +123,14 @@ class Moderation(
                 )
             """)
             await db.commit()
+
+        self._registered_global_shortcuts.clear()
+        for command in self._global_slash_shortcuts:
+            try:
+                self.bot.tree.add_command(command)
+                self._registered_global_shortcuts.add(command.name)
+            except app_commands.CommandAlreadyRegistered:
+                logger.warning("Skipping global slash shortcut '/%s' (already registered)", command.name)
         
         if not self.check_quarantine_expiry.is_running():
             self.check_quarantine_expiry.start()
@@ -168,11 +139,12 @@ class Moderation(
         if self.check_quarantine_expiry.is_running():
             self.check_quarantine_expiry.cancel()
 
-        for command_name in ("moderation", "emoji", "mod"):
+        for command_name in ("moderation", "emoji", "mod", *self._registered_global_shortcuts):
             try:
                 self.bot.tree.remove_command(command_name)
             except Exception:
                 pass
+        self._registered_global_shortcuts.clear()
 
     @tasks.loop(minutes=1)
     async def check_quarantine_expiry(self):
@@ -664,30 +636,6 @@ class Moderation(
             channel = member.guild.get_channel(int(channel_id))
             if channel and isinstance(channel, discord.TextChannel):
                 await self._send_welcome_message(member=member, channel=channel)
-
-
-# Helper Class for whitelist group if not in management.py
-class WhitelistGroup(app_commands.Group):
-    def __init__(self, cog: Moderation):
-        super().__init__(name="whitelist", description="Manage server whitelist")
-        self.cog = cog
-
-    @app_commands.command(name="enable", description="Enable whitelist mode (lock server)")
-    async def enable(self, interaction: discord.Interaction):
-        await self.cog._toggle_whitelist_mode(interaction, True)
-
-    @app_commands.command(name="disable", description="Disable whitelist mode")
-    async def disable(self, interaction: discord.Interaction):
-        await self.cog._toggle_whitelist_mode(interaction, False)
-
-    @app_commands.command(name="add", description="Add user to whitelist")
-    async def add(self, interaction: discord.Interaction, user: discord.Member):
-        await self.cog._whitelist_logic(interaction, user)
-
-    @app_commands.command(name="remove", description="Remove user from whitelist")
-    async def remove(self, interaction: discord.Interaction, user: discord.Member):
-        await self.cog._unwhitelist_logic(interaction, user)
-
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Moderation(bot))

@@ -47,14 +47,30 @@ const CAPABILITY_LABELS: Record<DashboardCapability, string> = {
 const EDITABLE_DASHBOARD_ROLES: DashboardRole[] = ['admin', 'moderator', 'viewer'];
 const ALL_CAPABILITIES = Object.keys(CAPABILITY_LABELS) as DashboardCapability[];
 
+type RoleOption = { label: string; value: string; color?: number; position: number };
+
+function sortRoleOptions(options: RoleOption[]) {
+    return [...options].sort((a, b) => {
+        const byPosition = b.position - a.position;
+        if (byPosition !== 0) return byPosition;
+        return a.label.localeCompare(b.label);
+    });
+}
+
 export function Permissions() {
     const { config, roles, updateConfigLocal, saveConfig, discardChanges, configDirty, error } = useAppStore();
     const [saving, setSaving] = useState(false);
     const [addMappingModal, setAddMappingModal] = useState(false);
     const [editingDashboardRole, setEditingDashboardRole] = useState<DashboardRole | null>(null);
 
-    const discordRoles = roles.filter(r => !r.managed);
-    const roleOptions = discordRoles.map(r => ({ label: r.name, value: r.id, color: r.color }));
+    const discordRoles = roles
+        .filter(r => !r.managed)
+        .sort((a, b) => {
+            const byPosition = b.position - a.position;
+            if (byPosition !== 0) return byPosition;
+            return a.name.localeCompare(b.name);
+        });
+    const roleOptions = sortRoleOptions(discordRoles.map(r => ({ label: r.name, value: r.id, color: r.color, position: r.position })));
 
     const handleSave = async () => {
         setSaving(true);
@@ -86,17 +102,26 @@ export function Permissions() {
         });
     };
 
-    const addMapping = (roleId: string, dashboardRole: DashboardRole) => {
+    const addMappings = (roleIds: string[], dashboardRole: DashboardRole) => {
         if (!config) return;
         const permissions = config.permissions || { roleMappings: [], userOverrides: [] };
-        const existing = (permissions.roleMappings || []).find(m => m.roleId === roleId);
-        if (existing) return;
+        const uniqueRoleIds = Array.from(new Set(roleIds));
+        if (uniqueRoleIds.length === 0) return;
+        const existingRoleIds = new Set((permissions.roleMappings || []).map(mapping => mapping.roleId));
+        const newMappings = uniqueRoleIds
+            .filter(roleId => !existingRoleIds.has(roleId))
+            .map(roleId => ({
+                roleId,
+                dashboardRole,
+                capabilities: DASHBOARD_ROLE_CAPABILITIES[dashboardRole],
+            }));
+        if (newMappings.length === 0) return;
         updateConfigLocal({
             permissions: {
                 ...permissions,
                 roleMappings: [
                     ...(permissions.roleMappings || []),
-                    { roleId, dashboardRole, capabilities: DASHBOARD_ROLE_CAPABILITIES[dashboardRole] },
+                    ...newMappings,
                 ],
             },
         });
@@ -141,6 +166,14 @@ export function Permissions() {
     const mappedRoleIds = roleMappings.map(m => m.roleId);
     const unmappedRoles = discordRoles.filter(r => !mappedRoleIds.includes(r.id));
     const discordRoleById = new Map(discordRoles.map(r => [r.id, r]));
+    const sortedRoleMappings = [...roleMappings].sort((a, b) => {
+        const aPos = discordRoleById.get(a.roleId)?.position ?? -1;
+        const bPos = discordRoleById.get(b.roleId)?.position ?? -1;
+        if (aPos !== bPos) return bPos - aPos;
+        const aName = discordRoleById.get(a.roleId)?.name || a.roleId;
+        const bName = discordRoleById.get(b.roleId)?.name || b.roleId;
+        return aName.localeCompare(bName);
+    });
     const mappedRolesByDashboardRole: Record<DashboardRole, { id: string; name: string; color?: number }[]> = {
         owner: [],
         admin: [],
@@ -291,7 +324,7 @@ export function Permissions() {
                         <EmptyState icon={<Users className="w-8 h-8" />} title="No mappings" description="Add a role mapping to grant dashboard access." />
                     ) : (
                         <div className="space-y-3">
-                            {roleMappings.map(mapping => {
+                            {sortedRoleMappings.map(mapping => {
                                 const discordRole = discordRoles.find(r => r.id === mapping.roleId);
                                 return (
                                     <div key={mapping.roleId} className="flex items-center gap-4 p-4 bg-cream-50 rounded-2xl border border-cream-200">
@@ -353,9 +386,9 @@ export function Permissions() {
             {/* Add Mapping Modal */}
             {addMappingModal && (
                 <AddMappingModal
-                    roles={unmappedRoles.map(r => ({ label: r.name, value: r.id, color: r.color }))}
+                    roles={sortRoleOptions(unmappedRoles.map(r => ({ label: r.name, value: r.id, color: r.color, position: r.position })))}
                     onClose={() => setAddMappingModal(false)}
-                    onAdd={addMapping}
+                    onAdd={addMappings}
                 />
             )}
 
@@ -378,7 +411,7 @@ export function Permissions() {
 
 interface EditDashboardRoleModalProps {
     dashboardRole: DashboardRole;
-    roles: { label: string; value: string; color?: number }[];
+    roles: RoleOption[];
     selectedRoleIds: string[];
     onClose: () => void;
     onSave: (dashboardRole: DashboardRole, roleIds: string[]) => void;
@@ -395,6 +428,7 @@ function EditDashboardRoleModal({ dashboardRole, roles, selectedRoleIds, onClose
             title={`Edit ${ROLE_LABELS[dashboardRole]} Role Mappings`}
             description={`Choose which Discord roles should be treated as ${ROLE_LABELS[dashboardRole].toLowerCase()}s.`}
             size="md"
+            bodyClassName="overflow-visible"
             footer={
                 <>
                     <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -446,13 +480,13 @@ function EditDashboardRoleModal({ dashboardRole, roles, selectedRoleIds, onClose
 }
 
 interface AddMappingModalProps {
-    roles: { label: string; value: string; color?: number }[];
+    roles: RoleOption[];
     onClose: () => void;
-    onAdd: (roleId: string, dashboardRole: DashboardRole) => void;
+    onAdd: (roleIds: string[], dashboardRole: DashboardRole) => void;
 }
 
 function AddMappingModal({ roles, onClose, onAdd }: AddMappingModalProps) {
-    const [selectedRole, setSelectedRole] = useState('');
+    const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
     const [selectedDashboardRole, setSelectedDashboardRole] = useState<DashboardRole>('viewer');
 
     return (
@@ -461,28 +495,30 @@ function AddMappingModal({ roles, onClose, onAdd }: AddMappingModalProps) {
             onClose={onClose}
             title="Add Role Mapping"
             description="Map a Discord role to a dashboard permission level."
-            size="sm"
+            size="md"
+            bodyClassName="overflow-visible"
             footer={
                 <>
                     <Button variant="outline" onClick={onClose}>Cancel</Button>
                     <Button
-                        disabled={!selectedRole}
-                        onClick={() => selectedRole && onAdd(selectedRole, selectedDashboardRole)}
+                        disabled={selectedRoles.length === 0}
+                        onClick={() => onAdd(selectedRoles, selectedDashboardRole)}
                     >
-                        Add Mapping
+                        {selectedRoles.length > 1 ? 'Add Mappings' : 'Add Mapping'}
                     </Button>
                 </>
             }
         >
             <div className="space-y-5">
                 <div>
-                    <label className="text-sm font-medium text-slate-700 mb-2 block">Discord Role</label>
-                    <Select
-                        value={selectedRole}
-                        onChange={setSelectedRole}
-                        options={roles.map(r => ({ label: r.label, value: r.value }))}
-                        placeholder="Select a role..."
+                    <label className="text-sm font-medium text-slate-700 mb-2 block">Discord Roles</label>
+                    <MultiSelect
+                        values={selectedRoles}
+                        onChange={setSelectedRoles}
+                        options={roles}
+                        placeholder="Select role(s)..."
                     />
+                    <p className="mt-2 text-xs text-slate-500">Select one or more roles. Roles are ordered from highest to lowest.</p>
                 </div>
                 <div>
                     <label className="text-sm font-medium text-slate-700 mb-2 block">Dashboard Role</label>

@@ -10,9 +10,10 @@ interface ModalProps {
     children: React.ReactNode;
     footer?: React.ReactNode;
     size?: 'sm' | 'md' | 'lg' | 'xl';
+    bodyClassName?: string;
 }
 
-export function Modal({ open, onClose, title, description, children, footer, size = 'md' }: ModalProps) {
+export function Modal({ open, onClose, title, description, children, footer, size = 'md', bodyClassName }: ModalProps) {
     const overlayRef = useRef<HTMLDivElement>(null);
 
     const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -69,7 +70,7 @@ export function Modal({ open, onClose, title, description, children, footer, siz
                 </div>
 
                 {/* Body */}
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className={cn('flex-1 overflow-y-auto p-6', bodyClassName)}>
                     {children}
                 </div>
 

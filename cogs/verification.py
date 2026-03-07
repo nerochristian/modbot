@@ -134,23 +134,18 @@ def _generate_captcha_image(code: str) -> Optional[bytes]:
 
 
 def _brand_assets(guild: Optional[discord.Guild], override_banner_url: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
-    """Get logo and banner URLs, prioritizing the server's actual assets."""
+    """Get logo and banner URLs using only real guild assets for banners."""
     logo_url = None
     banner_url = None
 
-    # Prioritize override banner (e.g. from DB settings)
-    if override_banner_url:
-        banner_url = override_banner_url
-    elif guild and getattr(guild, "banner", None):
-        # Prioritize server's actual banner over config
+    # Intentionally ignore override/config banners:
+    # banner should be guild banner or nothing.
+    _ = override_banner_url
+    if guild and getattr(guild, "banner", None):
         try:
             banner_url = str(guild.banner.url)
         except Exception:
-            pass
-
-    # Fallback to config banner if server has none
-    if not banner_url:
-        banner_url = (getattr(Config, "SERVER_BANNER_URL", "") or "").strip() or None
+            banner_url = None
 
     # Prioritize server icon for logo
     if guild and getattr(guild, "icon", None):
@@ -347,6 +342,67 @@ class Verification(commands.Cog):
         unverified = guild.get_role(unverified_id) if unverified_id else None
         verified = guild.get_role(verified_id) if verified_id else None
         return unverified, verified
+
+    async def _ensure_verification_roles(
+        self, guild: discord.Guild
+    ) -> tuple[Optional[discord.Role], Optional[discord.Role], list[str]]:
+        """Ensure unverified/verified roles exist and are saved to settings."""
+        settings = await self.bot.db.get_settings(guild.id)
+        notices: list[str] = []
+
+        def _find_by_name(name: str) -> Optional[discord.Role]:
+            lowered = name.lower()
+            for role in guild.roles:
+                if role.name.lower() == lowered:
+                    return role
+            return None
+
+        updated = False
+
+        unverified_id = settings.get("unverified_role")
+        unverified = guild.get_role(int(unverified_id)) if unverified_id else None
+        if not unverified:
+            unverified = _find_by_name("unverified")
+            if not unverified:
+                try:
+                    unverified = await guild.create_role(
+                        name="unverified",
+                        color=discord.Color.darker_grey(),
+                        permissions=discord.Permissions.none(),
+                        hoist=False,
+                        reason="ModBot: auto-create verification roles",
+                    )
+                    notices.append("Created role: unverified")
+                except Exception:
+                    unverified = None
+            if unverified:
+                settings["unverified_role"] = unverified.id
+                updated = True
+
+        verified_id = settings.get("verified_role")
+        verified = guild.get_role(int(verified_id)) if verified_id else None
+        if not verified:
+            verified = _find_by_name("verified")
+            if not verified:
+                try:
+                    verified = await guild.create_role(
+                        name="verified",
+                        color=discord.Color.green(),
+                        permissions=discord.Permissions.none(),
+                        hoist=False,
+                        reason="ModBot: auto-create verification roles",
+                    )
+                    notices.append("Created role: verified")
+                except Exception:
+                    verified = None
+            if verified:
+                settings["verified_role"] = verified.id
+                updated = True
+
+        if updated:
+            await self.bot.db.update_settings(guild.id, settings)
+
+        return unverified, verified, notices
 
     async def _get_verify_log_channel(self, guild: discord.Guild) -> Optional[discord.TextChannel]:
         try:
@@ -865,6 +921,17 @@ class Verification(commands.Cog):
             )
             return
 
+        unverified_role, verified_role, role_notices = await self._ensure_verification_roles(interaction.guild)
+        if not unverified_role or not verified_role:
+            await interaction.response.send_message(
+                embed=ModEmbed.error(
+                    "Role Setup Failed",
+                    "I couldn't auto-create the required `unverified` / `verified` roles. Please check my role permissions and try again.",
+                ),
+                ephemeral=True,
+            )
+            return
+
         settings = await self.bot.db.get_settings(interaction.guild.id)
         verify_channel_id = settings.get("verify_channel")
         banner_url = settings.get("server_banner_url")
@@ -908,7 +975,13 @@ class Verification(commands.Cog):
             return
 
         await interaction.response.send_message(
-            embed=ModEmbed.success("Posted", f"Verification panel posted in {getattr(channel, 'mention', 'the channel')}."),
+            embed=ModEmbed.success(
+                "Posted",
+                (
+                    f"Verification panel posted in {getattr(channel, 'mention', 'the channel')}."
+                    + (f"\n\nAuto-setup:\n• " + "\n• ".join(role_notices) if role_notices else "")
+                ),
+            ),
             ephemeral=True,
         )
 

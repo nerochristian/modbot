@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import io
+import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
+from pathlib import Path
+from typing import Any, Mapping, Optional
 
 import aiohttp
 import discord
@@ -16,6 +18,29 @@ from config import Config
 class _BadgeItem:
     label: Optional[str] = None
     icon: Optional[Image.Image] = None
+    fill: tuple[int, int, int] = (88, 101, 242)
+    outline: tuple[int, int, int] = (205, 214, 255)
+    text_fill: tuple[int, int, int] = (255, 255, 255)
+
+
+_LOCAL_FONT_DIR = Path(__file__).resolve().parent / "fonts"
+
+
+def _font_candidates(*, bold: bool) -> list[str]:
+    local_name = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    return [
+        str(_LOCAL_FONT_DIR / local_name),
+        local_name,
+        "arialbd.ttf" if bold else "arial.ttf",
+        "segoeuib.ttf" if bold else "segoeui.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation2/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation2/LiberationSans-Regular.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf" if bold else "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
+        "C:/Windows/Fonts/segoeuib.ttf" if bold else "C:/Windows/Fonts/segoeui.ttf",
+        "/System/Library/Fonts/Supplemental/Arial Bold.ttf" if bold else "/System/Library/Fonts/Supplemental/Arial.ttf",
+        "/Library/Fonts/Arial Bold.ttf" if bold else "/Library/Fonts/Arial.ttf",
+    ]
 
 
 def _role_tag_text(member: discord.Member) -> Optional[str]:
@@ -36,11 +61,11 @@ def _role_tag_text(member: discord.Member) -> Optional[str]:
     return name.upper()
 
 
-def _parse_username(user: discord.abc.User) -> str:
-    discriminator = getattr(user, "discriminator", "0")
+def _parse_username_parts(username: str, discriminator: object) -> str:
+    discriminator = str(discriminator or "0")
     if discriminator and discriminator != "0":
-        return f"{user.name}#{discriminator}"
-    return user.name
+        return f"{username}#{discriminator}"
+    return username
 
 
 def _int_to_rgb(color: int) -> tuple[int, int, int]:
@@ -77,13 +102,10 @@ def _circle_mask(size: int) -> Image.Image:
 
 
 def _load_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    candidates = [
-        ("DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"),
-        ("arialbd.ttf" if bold else "arial.ttf"),
-        ("segoeuib.ttf" if bold else "segoeui.ttf"),
-    ]
-    for name in candidates:
+    for name in _font_candidates(bold=bold):
         try:
+            if os.path.isabs(name) and not os.path.exists(name):
+                continue
             return ImageFont.truetype(name, size=size)
         except Exception:
             continue
@@ -116,47 +138,266 @@ def _text_fit(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, m
 
 
 _BADGE_MAP: list[tuple[str, str]] = [
-    ("staff", "S"),
-    ("partner", "P"),
-    ("hypesquad", "H"),
-    ("hypesquad_bravery", "B"),
-    ("hypesquad_brilliance", "R"),
-    ("hypesquad_balance", "L"),
-    ("bug_hunter_level_1", "1"),
-    ("bug_hunter", "1"),
-    ("bug_hunter_level_2", "2"),
-    ("early_supporter", "E"),
-    ("early_verified_bot_developer", "D"),
-    ("verified_bot_developer", "D"),
-    ("discord_certified_moderator", "M"),
-    ("active_developer", "A"),
+    ("staff", "staff"),
+    ("partner", "partner"),
+    ("hypesquad", "hypesquad"),
+    ("hypesquad_bravery", "hypesquad_bravery"),
+    ("hypesquad_brilliance", "hypesquad_brilliance"),
+    ("hypesquad_balance", "hypesquad_balance"),
+    ("bug_hunter_level_1", "bug_hunter_level_1"),
+    ("bug_hunter", "bug_hunter_level_1"),
+    ("bug_hunter_level_2", "bug_hunter_level_2"),
+    ("early_supporter", "early_supporter"),
+    ("team_user", "team_user"),
+    ("system", "system"),
+    ("verified_bot", "verified_bot"),
+    ("early_verified_bot_developer", "verified_bot_developer"),
+    ("verified_bot_developer", "verified_bot_developer"),
+    ("discord_certified_moderator", "discord_certified_moderator"),
+    ("bot_http_interactions", "bot_http_interactions"),
+    ("active_developer", "active_developer"),
 ]
 
 
-def _badge_labels(
+_BADGE_STYLES: dict[str, tuple[str, tuple[int, int, int], tuple[int, int, int]]] = {
+    "nitro": ("NITRO", (88, 101, 242), (205, 214, 255)),
+    "boost": ("BOOST", (237, 96, 171), (255, 214, 234)),
+    "staff": ("STAFF", (88, 101, 242), (205, 214, 255)),
+    "partner": ("PARTNER", (35, 165, 90), (205, 242, 217)),
+    "hypesquad": ("HQ", (244, 184, 64), (255, 232, 179)),
+    "hypesquad_bravery": ("BRAVE", (226, 74, 99), (255, 210, 217)),
+    "hypesquad_brilliance": ("BRILL", (249, 168, 37), (255, 227, 179)),
+    "hypesquad_balance": ("BAL", (69, 181, 154), (194, 243, 231)),
+    "bug_hunter_level_1": ("BUG I", (74, 164, 109), (203, 242, 212)),
+    "bug_hunter_level_2": ("BUG II", (41, 121, 255), (201, 223, 255)),
+    "early_supporter": ("EARLY", (233, 131, 92), (255, 222, 208)),
+    "team_user": ("TEAM", (104, 109, 224), (215, 218, 255)),
+    "system": ("SYSTEM", (88, 101, 242), (205, 214, 255)),
+    "verified_bot": ("BOT", (88, 176, 86), (212, 245, 209)),
+    "verified_bot_developer": ("DEV", (88, 101, 242), (205, 214, 255)),
+    "discord_certified_moderator": ("MOD", (49, 152, 216), (203, 237, 255)),
+    "bot_http_interactions": ("APP", (88, 176, 86), (212, 245, 209)),
+    "active_developer": ("ACTIVE", (46, 204, 113), (208, 247, 221)),
+    "guild_tag": ("GUILD", (64, 78, 237), (214, 219, 255)),
+    "role_tag": ("ROLE", (94, 99, 115), (211, 215, 223)),
+}
+
+
+def _badge_style(key: str) -> tuple[str, tuple[int, int, int], tuple[int, int, int]]:
+    return _BADGE_STYLES.get(key, ("BADGE", (88, 101, 242), (205, 214, 255)))
+
+
+def _make_badge_item(
+    key: str,
+    *,
+    label: Optional[str] = None,
+    icon: Optional[Image.Image] = None,
+) -> _BadgeItem:
+    default_label, fill, outline = _badge_style(key)
+    return _BadgeItem(
+        label=label if label is not None else default_label,
+        icon=icon,
+        fill=fill,
+        outline=outline,
+    )
+
+
+def _asset_is_animated(asset: object) -> bool:
+    try:
+        animated = getattr(asset, "is_animated", None)
+        if callable(animated):
+            return bool(animated())
+        if animated is not None:
+            return bool(animated)
+    except Exception:
+        pass
+    return False
+
+
+def _public_user_flags_from_payload(
+    profile_payload: Optional[Mapping[str, Any]],
+) -> Optional[discord.PublicUserFlags]:
+    if not profile_payload:
+        return None
+
+    raw_value = profile_payload.get("public_flags")
+    if raw_value is None:
+        raw_value = profile_payload.get("flags")
+
+    try:
+        if raw_value is None:
+            return None
+        return discord.PublicUserFlags._from_value(int(raw_value))
+    except Exception:
+        return None
+
+
+def _user_payload_banner_url(
+    user_id: int,
+    profile_payload: Optional[Mapping[str, Any]],
+) -> Optional[str]:
+    if not profile_payload:
+        return None
+    banner_hash = str(profile_payload.get("banner") or "").strip()
+    if not banner_hash:
+        return None
+    ext = "gif" if banner_hash.startswith("a_") else "png"
+    return f"https://cdn.discordapp.com/banners/{user_id}/{banner_hash}.{ext}?size=1024"
+
+
+def _user_payload_avatar_decoration_url(
+    profile_payload: Optional[Mapping[str, Any]],
+) -> Optional[str]:
+    if not profile_payload:
+        return None
+    decoration_data = profile_payload.get("avatar_decoration_data")
+    if not isinstance(decoration_data, Mapping):
+        return None
+    asset = str(decoration_data.get("asset") or "").strip()
+    if not asset:
+        return None
+    return f"https://cdn.discordapp.com/avatar-decoration-presets/{asset}.png?size=256"
+
+
+def _user_payload_primary_guild_data(
+    profile_payload: Optional[Mapping[str, Any]],
+) -> Optional[Mapping[str, Any]]:
+    if not profile_payload:
+        return None
+    primary_guild = profile_payload.get("primary_guild")
+    if not isinstance(primary_guild, Mapping):
+        return None
+    if primary_guild.get("identity_enabled") is False:
+        return None
+    return primary_guild
+
+
+def _user_payload_primary_guild_tag(
+    profile_payload: Optional[Mapping[str, Any]],
+) -> Optional[str]:
+    primary_guild = _user_payload_primary_guild_data(profile_payload)
+    if not primary_guild:
+        return None
+    tag = str(primary_guild.get("tag") or "").strip()
+    return tag or None
+
+
+def _user_payload_primary_guild_badge_url(
+    profile_payload: Optional[Mapping[str, Any]],
+) -> Optional[str]:
+    primary_guild = _user_payload_primary_guild_data(profile_payload)
+    if not primary_guild:
+        return None
+
+    badge_hash = str(primary_guild.get("badge") or "").strip()
+    if not badge_hash:
+        return None
+
+    try:
+        guild_id = int(primary_guild.get("identity_guild_id") or 0)
+    except Exception:
+        guild_id = 0
+
+    if guild_id <= 0:
+        return None
+
+    return f"https://cdn.discordapp.com/guild-tag-badges/{guild_id}/{badge_hash}.png?size=64"
+
+
+async def _fetch_user_profile_payload(
+    bot: discord.Client,
+    user_id: int,
+) -> Optional[Mapping[str, Any]]:
+    http = getattr(bot, "http", None)
+    if http is None:
+        return None
+
+    try:
+        payload = await http.get_user(user_id)
+    except Exception:
+        return None
+
+    if isinstance(payload, Mapping):
+        return payload
+    return None
+
+
+def _infer_profile_badges(
     user: discord.User | discord.Member,
     *,
     member: Optional[discord.Member] = None,
+    profile_payload: Optional[Mapping[str, Any]] = None,
 ) -> list[str]:
-    labels: list[str] = []
+    inferred: list[str] = []
 
-    flags = getattr(user, "public_flags", None) or getattr(user, "flags", None)
+    premium_type = 0
+    if profile_payload is not None:
+        try:
+            premium_type = int(profile_payload.get("premium_type") or 0)
+        except Exception:
+            premium_type = 0
+
+    if premium_type > 0:
+        inferred.append("nitro")
+
+    avatar_asset = getattr(user, "display_avatar", None) or getattr(user, "avatar", None)
+    banner_asset = getattr(user, "banner", None)
+    decoration_asset = getattr(user, "avatar_decoration", None)
+
+    if (
+        not inferred
+        and (
+            decoration_asset is not None
+            or banner_asset is not None
+            or _asset_is_animated(avatar_asset)
+            or _user_payload_avatar_decoration_url(profile_payload) is not None
+            or _user_payload_banner_url(getattr(user, "id", 0), profile_payload) is not None
+        )
+    ):
+        inferred.append("nitro")
+
+    if member is not None and getattr(member, "premium_since", None) is not None:
+        inferred.append("boost")
+
+    seen: set[str] = set()
+    unique: list[str] = []
+    for key in inferred:
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(key)
+    return unique
+
+
+def _badge_keys(
+    user: discord.User | discord.Member,
+    *,
+    member: Optional[discord.Member] = None,
+    profile_payload: Optional[Mapping[str, Any]] = None,
+) -> list[str]:
+    keys: list[str] = []
+
+    keys.extend(_infer_profile_badges(user, member=member, profile_payload=profile_payload))
+
+    flags = _public_user_flags_from_payload(profile_payload)
+    if flags is None:
+        flags = getattr(user, "public_flags", None) or getattr(user, "flags", None)
     if flags:
-        for attr, label in _BADGE_MAP:
+        for attr, key in _BADGE_MAP:
             try:
                 if getattr(flags, attr, False):
-                    labels.append(label)
+                    keys.append(key)
             except Exception:
                 continue
 
     seen: set[str] = set()
     unique: list[str] = []
-    for label in labels:
-        if label in seen:
+    for key in keys:
+        if key in seen:
             continue
-        seen.add(label)
-        unique.append(label)
-    return unique[:6]
+        seen.add(key)
+        unique.append(key)
+    return unique[:8]
 
 
 def _role_badge_urls(member: discord.Member, *, limit: int = 6) -> list[str]:
@@ -228,11 +469,7 @@ async def build_welcome_card_png(
 ) -> bytes:
     timeout = aiohttp.ClientTimeout(total=15)
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        # fetch full user to access banner/decoration when available
-        try:
-            full_user = await bot.fetch_user(member.id)
-        except Exception:
-            full_user = member  # type: ignore[assignment]
+        profile_payload = await _fetch_user_profile_payload(bot, member.id)
 
         avatar_asset = member.display_avatar
         try:
@@ -242,20 +479,16 @@ async def build_welcome_card_png(
 
         banner_url: Optional[str] = options.brand_banner_url
         if not banner_url:
-            banner_asset = getattr(full_user, "banner", None)
-            if banner_asset:
-                try:
-                    banner_url = banner_asset.replace(size=1024).url
-                except Exception:
-                    banner_url = str(banner_asset.url)
+            banner_url = _user_payload_banner_url(member.id, profile_payload)
 
-        decoration_asset = getattr(full_user, "avatar_decoration", None)
-        decoration_url: Optional[str] = None
-        if decoration_asset:
-            try:
-                decoration_url = decoration_asset.replace(size=256).url
-            except Exception:
-                decoration_url = str(getattr(decoration_asset, "url", "") or "")
+        decoration_url = _user_payload_avatar_decoration_url(profile_payload)
+        if decoration_url is None:
+            decoration_asset = getattr(member, "avatar_decoration", None)
+            if decoration_asset:
+                try:
+                    decoration_url = decoration_asset.replace(size=256).url
+                except Exception:
+                    decoration_url = str(getattr(decoration_asset, "url", "") or "")
 
         bg_img = await _fetch_asset_image(session, banner_url) if banner_url else None
         avatar_img = await _fetch_asset_image(session, avatar_url)
@@ -265,19 +498,29 @@ async def build_welcome_card_png(
         )
 
         badge_items: list[_BadgeItem] = []
-        for label in _badge_labels(full_user, member=member):  # type: ignore[arg-type]
-            badge_items.append(_BadgeItem(label=label))
+        for key in _badge_keys(member, member=member, profile_payload=profile_payload):
+            badge_items.append(_make_badge_item(key))
+
+        primary_guild_badge_url = _user_payload_primary_guild_badge_url(profile_payload)
+        if primary_guild_badge_url:
+            primary_guild_badge = await _fetch_asset_image(session, primary_guild_badge_url)
+            if primary_guild_badge is not None:
+                badge_items.append(_make_badge_item("guild_tag", icon=primary_guild_badge))
+
+        primary_guild_tag = _user_payload_primary_guild_tag(profile_payload)
+        if primary_guild_tag:
+            badge_items.append(_make_badge_item("guild_tag", label=primary_guild_tag))
 
         if options.role_badge_fallback and not badge_items:
             for url in _role_badge_urls(member, limit=6):
                 img = await _fetch_asset_image(session, url)
                 if img is not None:
-                    badge_items.append(_BadgeItem(icon=img))
+                    badge_items.append(_make_badge_item("role_tag", icon=img))
                 if len(badge_items) >= 6:
                     break
             tag = _role_tag_text(member)
             if tag:
-                badge_items.append(_BadgeItem(label=tag))
+                badge_items.append(_make_badge_item("role_tag", label=tag))
 
     w, h = options.width, options.height
     accent_rgb = _int_to_rgb(options.accent_color)
@@ -357,7 +600,10 @@ async def build_welcome_card_png(
     small_font = _load_font(24, bold=True)
 
     display_name = getattr(member, "display_name", member.name) or member.name
-    username = _parse_username(full_user)  # type: ignore[arg-type]
+    username = _parse_username_parts(
+        str((profile_payload or {}).get("username") or member.name),
+        (profile_payload or {}).get("discriminator") or getattr(member, "discriminator", "0"),
+    )
 
     text_x = avatar_x + avatar_outer + 26
     max_text_w = w - text_x - options.margin - 10
@@ -442,7 +688,7 @@ async def build_welcome_card_png(
     # badges (top-right)
     badge_size = 34
     gap = 10
-    by = options.margin
+    row_y = options.margin
     right = w - options.margin
     for item in badge_items:
         item_w = badge_size
@@ -454,33 +700,42 @@ async def build_welcome_card_png(
             tw = bb[2] - bb[0]
             item_w = tw + 18
 
+        if right - item_w < text_x + 30:
+            next_row_y = row_y + badge_size + 8
+            if next_row_y + badge_size > name_y - 8:
+                break
+            row_y = next_row_y
+            right = w - options.margin
+
         bx = right - item_w
         draw.rounded_rectangle(
-            (bx, by, bx + item_w, by + badge_size),
+            (bx, row_y, bx + item_w, row_y + badge_size),
             radius=10,
-            fill=(*accent_rgb, 210),
+            fill=(*item.fill, 225),
+            outline=(*item.outline, 235),
+            width=2,
         )
         if item.icon is not None:
             icon = _cover_resize(item.icon.convert("RGBA"), (badge_size - 8, badge_size - 8))
             circ = _circle_mask(badge_size - 8)
             icon_layer = Image.new("RGBA", (badge_size - 8, badge_size - 8), (0, 0, 0, 0))
             icon_layer.paste(icon, (0, 0), mask=circ)
-            card.alpha_composite(icon_layer, (bx + 4, by + 4))
+            card.alpha_composite(icon_layer, (bx + 4, row_y + 4))
         elif item.label and is_tag and tag_font is not None:
             bb = draw.textbbox((0, 0), item.label, font=tag_font)
             tw = bb[2] - bb[0]
             th = bb[3] - bb[1]
             tx = bx + (item_w - tw) // 2 - bb[0]
-            ty = by + (badge_size - th) // 2 - bb[1]
-            draw.text((tx, ty), item.label, font=tag_font, fill=(255, 255, 255, 245))
+            ty = row_y + (badge_size - th) // 2 - bb[1]
+            draw.text((tx, ty), item.label, font=tag_font, fill=(*item.text_fill, 245))
         elif item.label:
             badge_font = _load_font(22, bold=True)
             bb = draw.textbbox((0, 0), item.label, font=badge_font)
             tw = bb[2] - bb[0]
             th = bb[3] - bb[1]
             tx = bx + (badge_size - tw) // 2 - bb[0]
-            ty = by + (badge_size - th) // 2 - bb[1]
-            draw.text((tx, ty), item.label, font=badge_font, fill=(255, 255, 255, 245))
+            ty = row_y + (badge_size - th) // 2 - bb[1]
+            draw.text((tx, ty), item.label, font=badge_font, fill=(*item.text_fill, 245))
         right = bx - gap
 
     out = io.BytesIO()

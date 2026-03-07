@@ -60,6 +60,34 @@ LOG_CHANNELS = [
     {"name": "ai-confirmation", "setting_key": "ai_confirmation_channel","topic": "AI moderation confirmation requests"},
 ]
 
+LOG_CHANNEL_KEY_ALIASES: Dict[str, tuple[str, ...]] = {
+    "mod_log_channel": ("mod_log_channel", "log_channel_mod"),
+    "audit_log_channel": ("audit_log_channel", "log_channel_audit"),
+    "message_log_channel": ("message_log_channel", "log_channel_message"),
+    "voice_log_channel": ("voice_log_channel", "log_channel_voice"),
+    "automod_log_channel": ("automod_log_channel", "log_channel_automod"),
+    "report_log_channel": ("report_log_channel", "log_channel_report"),
+    "ticket_log_channel": ("ticket_log_channel", "log_channel_ticket"),
+}
+
+DASHBOARD_ROLE_CAPABILITIES: Dict[str, List[str]] = {
+    "owner": [
+        "view_dashboard", "view_commands", "manage_commands", "view_modules", "manage_modules",
+        "view_logging", "manage_logging", "view_cases", "manage_cases", "view_automod",
+        "manage_automod", "manage_permissions", "export_data", "danger_zone_actions",
+        "run_sync_operations", "view_audit",
+    ],
+    "admin": [
+        "view_dashboard", "view_commands", "manage_commands", "view_modules", "manage_modules",
+        "view_logging", "manage_logging", "view_cases", "manage_cases", "view_automod",
+        "manage_automod", "export_data", "run_sync_operations", "view_audit",
+    ],
+    "moderator": [
+        "view_dashboard", "view_commands", "view_modules", "view_logging",
+        "view_cases", "manage_cases", "view_automod", "view_audit",
+    ],
+}
+
 STAFF_CHANNELS = [
     {"name": "staff-chat",          "setting_key": "staff_chat_channel",          "topic": "General staff discussion"},
     {"name": "staff-commands",      "setting_key": "staff_commands_channel",      "topic": "Bot commands for staff"},
@@ -98,6 +126,8 @@ DEFAULT_STAFF_GUIDE = {
 
 
 class Setup(commands.Cog):
+    set_group = app_commands.Group(name="set", description="Set up role and channel mappings")
+
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
@@ -144,6 +174,51 @@ class Setup(commands.Cog):
             await interaction.edit_original_response(embed=embed)
         except Exception:
             pass
+
+    @staticmethod
+    def _dashboard_mapping(role_id: int, dashboard_role: str) -> Dict[str, object]:
+        return {
+            "roleId": str(role_id),
+            "dashboardRole": dashboard_role,
+            "capabilities": DASHBOARD_ROLE_CAPABILITIES.get(dashboard_role, []),
+        }
+
+    @staticmethod
+    def _to_int(value: object) -> Optional[int]:
+        try:
+            parsed = int(value)
+        except (TypeError, ValueError):
+            return None
+        return parsed if parsed > 0 else None
+
+    def _sync_dashboard_role_mappings(self, settings: dict, owner_role_id: int, admin_role_id: int, moderator_role_id: int) -> None:
+        preserved: List[Dict[str, object]] = []
+        for entry in settings.get("dashboardRoleMappings", []):
+            if not isinstance(entry, dict):
+                continue
+            role_name = str(entry.get("dashboardRole", "")).lower()
+            if role_name in {"owner", "admin", "moderator"}:
+                continue
+            preserved.append(entry)
+
+        preserved.extend(
+            [
+                self._dashboard_mapping(owner_role_id, "owner"),
+                self._dashboard_mapping(admin_role_id, "admin"),
+                self._dashboard_mapping(moderator_role_id, "moderator"),
+            ]
+        )
+        settings["dashboardRoleMappings"] = preserved
+
+    def _sync_staff_role_lists(self, settings: dict) -> None:
+        mod_role_ids = []
+        for key in ["admin_role", "supervisor_role", "senior_mod_role", "mod_role", "trial_mod_role", "staff_role"]:
+            role_id = self._to_int(settings.get(key))
+            if role_id and role_id not in mod_role_ids:
+                mod_role_ids.append(role_id)
+        settings["mod_roles"] = mod_role_ids
+        settings["admin_roles"] = [settings["admin_role"]] if self._to_int(settings.get("admin_role")) else []
+        settings["supervisor_roles"] = [settings["supervisor_role"]] if self._to_int(settings.get("supervisor_role")) else []
 
     # ------------------------------------------------------------------
     # Role creation
@@ -224,6 +299,69 @@ class Setup(commands.Cog):
                 errors.append(f"❌ Failed to create role {cfg['name']}: {e}")
 
         # Sync aliases
+        if settings.get("muted_role") and not settings.get("mute_role"):
+            settings["mute_role"] = settings["muted_role"]
+        elif settings.get("mute_role") and not settings.get("muted_role"):
+            settings["muted_role"] = settings["mute_role"]
+        if settings.get("automod_quarantine_role_id") and not settings.get("antiraid_quarantine_role"):
+            settings["antiraid_quarantine_role"] = settings["automod_quarantine_role_id"]
+
+    async def _ensure_required_setup_roles(
+        self,
+        guild: discord.Guild,
+        settings: dict,
+        created: List[str],
+        errors: List[str],
+    ):
+        """Ensure core moderation + verification roles exist for setup."""
+        required_keys = {"muted_role", "automod_quarantine_role_id", "unverified_role", "verified_role"}
+        role_configs = [cfg for cfg in ROLES_TO_CREATE if cfg.get("setting_key") in required_keys]
+
+        def _find_by_name(name: str) -> Optional[discord.Role]:
+            lowered = name.lower()
+            for role in guild.roles:
+                if role.name.lower() == lowered:
+                    return role
+            return None
+
+        for cfg in role_configs:
+            try:
+                existing = None
+                stored_id = settings.get(cfg["setting_key"])
+                if stored_id:
+                    try:
+                        existing = guild.get_role(int(stored_id))
+                    except (TypeError, ValueError):
+                        existing = None
+                if not existing:
+                    existing = _find_by_name(cfg["name"])
+
+                if existing:
+                    try:
+                        await existing.edit(
+                            permissions=discord.Permissions.none(),
+                            color=cfg["color"],
+                            hoist=cfg["hoist"],
+                            reason="ModBot Setup: enforce required role defaults",
+                        )
+                    except Exception:
+                        pass
+                    settings[cfg["setting_key"]] = existing.id
+                    created.append(f"✅ {existing.mention} (exists)")
+                    continue
+
+                role = await guild.create_role(
+                    name=cfg["name"],
+                    color=cfg["color"],
+                    permissions=discord.Permissions.none(),
+                    hoist=cfg["hoist"],
+                    reason="ModBot Setup: required roles",
+                )
+                settings[cfg["setting_key"]] = role.id
+                created.append(f"✅ {role.mention}")
+            except Exception as e:
+                errors.append(f"❌ Failed to create required role {cfg['name']}: {e}")
+
         if settings.get("muted_role") and not settings.get("mute_role"):
             settings["mute_role"] = settings["muted_role"]
         elif settings.get("mute_role") and not settings.get("muted_role"):
@@ -329,7 +467,7 @@ class Setup(commands.Cog):
         verified_role = guild.get_role(verified_role_id) if verified_role_id else None
 
         if not unverified_role or not verified_role:
-            errors.append("⚠️ Verification roles missing; run /setup again.")
+            errors.append("⚠️ Verification roles missing; set `verified_role` and `unverified_role` first, then run `/setup` again.")
             return
 
         # --- Verification category ---
@@ -618,151 +756,124 @@ class Setup(commands.Cog):
                 except Exception:
                     pass
             created.append(f"🔒 Applied Quarantine to {q_applied} channels")
-
     # ------------------------------------------------------------------
     # /setup command
     # ------------------------------------------------------------------
 
-    @app_commands.command(name="setup", description="🛡️ Set up the moderation bot - creates channels, roles, and configurations")
-    @app_commands.describe(verify="Force everyone to re-verify", welcome_channel="Existing welcome channel to use (optional)")
+    @app_commands.command(name="setup", description="Set up logs, modmail, verification, and jail channels")
+    @app_commands.describe(
+        verify="Force everyone to re-verify",
+        welcome_channel="Optional existing welcome channel to save",
+    )
     @is_admin()
-    async def setup(self, interaction: discord.Interaction, verify: bool = False, welcome_channel: Optional[discord.TextChannel] = None):
-        """Complete server setup for the moderation bot"""
+    async def setup(
+        self,
+        interaction: discord.Interaction,
+        verify: bool = False,
+        welcome_channel: Optional[discord.TextChannel] = None,
+    ):
+        """Global-safe setup: keep key channels without creating roles or applying branding."""
         await interaction.response.defer()
         guild = interaction.guild
         created_channels: list[str] = []
-        created_roles: list[str] = []
+        created_actions: list[str] = []
         errors: list[str] = []
         settings = await self.bot.db.get_settings(guild.id)
 
-        # --- Branding ---
-        await self._update_progress(interaction, "Applying branding")
-        branding_url = "https://media.discordapp.net/attachments/1430639019582034013/1454273701716693053/unbranded.jpg?ex=696f78ad&is=696e272d&hm=f3f879e6b8d5f7f66ebdecab9a91007957d1cf7e1949624342f4ad1bd5e5f8f5&=&format=webp"
-        try:
-            await self.bot.db.set_setting(guild.id, "server_banner_url", branding_url)
-            banner_path = "assets/banner.jpg"
-            if os.path.exists(banner_path):
-                with open(banner_path, "rb") as f:
-                    banner_bytes = f.read()
-                edit_kw = {}
-                if "BANNER" in guild.features:
-                    edit_kw["banner"] = banner_bytes
-                if "INVITE_SPLASH" in guild.features:
-                    edit_kw["splash"] = banner_bytes
-                if edit_kw:
-                    await guild.edit(**edit_kw, reason="ModBot Setup: Branding")
-                    created_roles.append("✅ Updated Server Banner/Splash")
-        except Exception as e:
-            errors.append(f"⚠️ Failed to apply branding: {e}")
+        await self._update_progress(interaction, "Ensuring required roles")
+        await self._ensure_required_setup_roles(guild, settings, created_actions, errors)
 
-        # --- Roles ---
-        await self._update_progress(interaction, "Creating roles")
-        await self._create_roles(guild, settings, created_roles, errors)
-        staff_roles = self._resolve_roles(guild, settings, STAFF_ROLE_KEYS)
-
-        # --- Bot owner role ---
-        await self._setup_dot_role(guild, created_roles, errors)
-
-        # --- Mod Logs Category ---
         await self._update_progress(interaction, "Creating log channels")
-        mod_category = discord.utils.get(guild.categories, name="📋 Moderation Logs")
-        try:
-            log_ow = self._staff_overwrites(guild, staff_roles + self._resolve_roles(guild, settings, ["log_access_role"]), send=False)
-            if not mod_category:
-                mod_category = await guild.create_category("📋 Moderation Logs", overwrites=log_ow, reason="ModBot Setup")
-            else:
-                await mod_category.edit(overwrites=log_ow, reason="ModBot Setup: restrict mod logs")
-        except Exception as e:
-            errors.append(f"❌ Failed to configure mod category: {e}")
 
-        # --- Log channels ---
+        staff_roles = self._resolve_roles(guild, settings, STAFF_ROLE_KEYS)
+        mod_category = (
+            discord.utils.get(guild.categories, name="Moderation Logs")
+            or discord.utils.get(guild.categories, name="📋 Moderation Logs")
+        )
+        try:
+            log_ow = self._staff_overwrites(
+                guild,
+                staff_roles + self._resolve_roles(guild, settings, ["log_access_role"]),
+                send=False,
+            )
+            if not mod_category:
+                mod_category = await guild.create_category("Moderation Logs", overwrites=log_ow, reason="ModBot Setup")
+                created_channels.append("Created Moderation Logs category")
+            else:
+                await mod_category.edit(overwrites=log_ow, reason="ModBot Setup: refresh log permissions")
+                created_channels.append("Updated Moderation Logs category")
+            settings["mod_log_category"] = mod_category.id
+        except Exception as e:
+            errors.append(f"Failed to configure moderation log category: {e}")
+
         await self._create_category_channels(guild, mod_category, LOG_CHANNELS, settings, created_channels, errors)
 
-        # --- Staff Area ---
-        await self._update_progress(interaction, "Creating staff channels")
-        staff_category = discord.utils.get(guild.categories, name="👔 Staff Area")
-        try:
-            s_ow = self._staff_overwrites(guild, staff_roles)
-            if not staff_category:
-                staff_category = await guild.create_category("👔 Staff Area", overwrites=s_ow, reason="ModBot Setup")
-            else:
-                await staff_category.edit(overwrites=s_ow, reason="ModBot Setup: restrict staff area")
-            settings["staff_category"] = staff_category.id
-        except Exception as e:
-            errors.append(f"❌ Failed to configure staff category: {e}")
-
-        # Build supervisor-logs overwrites
-        supervisor_ow = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
-        }
-        for r in staff_roles:
-            supervisor_ow[r] = discord.PermissionOverwrite(view_channel=False)
-        for r in self._resolve_roles(guild, settings, LEADERSHIP_KEYS):
-            supervisor_ow[r] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True)
-
-        await self._create_category_channels(guild, staff_category, STAFF_CHANNELS, settings, created_channels, errors, special_overwrites={"supervisor-logs": supervisor_ow})
-
-        # --- Modmail category ---
-        await self._update_progress(interaction, "Setting up modmail & tickets")
-        modmail_cat = discord.utils.get(guild.categories, name="📨 Modmail")
-        if not modmail_cat:
-            try:
-                mm_ow = self._staff_overwrites(guild, self._resolve_roles(guild, settings, ["admin_role", "supervisor_role", "senior_mod_role", "mod_role", "staff_role"]))
-                mm_ow[guild.me] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_channels=True)
-                modmail_cat = await guild.create_category("📨 Modmail", overwrites=mm_ow, reason="ModBot Setup")
-                created_channels.append("✅ 📨 Modmail Category")
-            except Exception as e:
-                errors.append(f"❌ Failed to create modmail category: {e}")
-        else:
-            created_channels.append("✅ 📨 Modmail Category (exists)")
-        if modmail_cat:
-            settings["modmail_category_id"] = modmail_cat.id
-
-        # --- Ticket category ---
-        ticket_cat = discord.utils.get(guild.categories, name="🎫 Support Tickets")
-        if not ticket_cat:
-            try:
-                t_ow = self._staff_overwrites(guild, self._resolve_roles(guild, settings, ["admin_role", "supervisor_role", "senior_mod_role", "mod_role", "staff_role"]))
-                t_ow[guild.me] = discord.PermissionOverwrite(view_channel=True, send_messages=True, manage_channels=True)
-                ticket_cat = await guild.create_category("🎫 Support Tickets", overwrites=t_ow, reason="ModBot Setup")
-                created_channels.append("✅ 🎫 Support Tickets Category")
-            except Exception as e:
-                errors.append(f"❌ Failed to create ticket category: {e}")
-        else:
-            created_channels.append("✅ 🎫 Support Tickets Category (exists)")
-        if ticket_cat:
-            settings["ticket_category"] = ticket_cat.id
-
-        # --- Welcome channel ---
-        await self._update_progress(interaction, "Configuring welcome & verification")
+        # Keep welcome channel wiring for verification restrictions.
         resolved_wc = None
         if welcome_channel and getattr(welcome_channel, "guild", None) and welcome_channel.guild.id == guild.id:
             resolved_wc = welcome_channel
-        if not resolved_wc and settings.get("welcome_channel"):
-            ch = guild.get_channel(int(settings["welcome_channel"]))
-            if isinstance(ch, discord.TextChannel):
-                resolved_wc = ch
+        if not resolved_wc and self._to_int(settings.get("welcome_channel")):
+            candidate = guild.get_channel(int(settings["welcome_channel"]))
+            if isinstance(candidate, discord.TextChannel):
+                resolved_wc = candidate
         if not resolved_wc:
-            cid = getattr(Config, "WELCOME_CHANNEL_ID", None)
-            if cid:
-                ch = guild.get_channel(int(cid))
-                if isinstance(ch, discord.TextChannel) and ch.guild.id == guild.id:
-                    resolved_wc = ch
+            cfg_welcome_id = getattr(Config, "WELCOME_CHANNEL_ID", None)
+            if cfg_welcome_id:
+                candidate = guild.get_channel(int(cfg_welcome_id))
+                if isinstance(candidate, discord.TextChannel) and candidate.guild.id == guild.id:
+                    resolved_wc = candidate
         if not resolved_wc:
             resolved_wc = discord.utils.get(guild.text_channels, name="welcome")
         if not resolved_wc:
             try:
-                resolved_wc = await guild.create_text_channel("welcome", topic="Welcome messages and getting started", reason="ModBot Setup")
-                created_channels.append(f"✅ {resolved_wc.mention}")
+                resolved_wc = await guild.create_text_channel(
+                    "welcome",
+                    topic="Welcome messages and getting started",
+                    reason="ModBot Setup",
+                )
+                created_channels.append(f"Created {resolved_wc.mention}")
             except Exception as e:
-                errors.append(f"❌ Failed to create #welcome: {e}")
-        else:
-            created_channels.append(f"✅ {resolved_wc.mention} (exists)")
+                errors.append(f"Failed to create #welcome: {e}")
         if resolved_wc:
             settings["welcome_channel"] = resolved_wc.id
+            created_channels.append(f"Saved welcome channel: {resolved_wc.mention}")
 
-        # --- Jail channel ---
+        # Keep modmail category scaffolding.
+        await self._update_progress(interaction, "Setting up modmail")
+        modmail_cat = discord.utils.get(guild.categories, name="Modmail") or discord.utils.get(guild.categories, name="📨 Modmail")
+        if not modmail_cat:
+            try:
+                mm_roles = self._resolve_roles(guild, settings, ["admin_role", "supervisor_role", "senior_mod_role", "mod_role", "staff_role"])
+                mm_ow = self._staff_overwrites(guild, mm_roles)
+                mm_ow[guild.me] = discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                    manage_channels=True,
+                )
+                modmail_cat = await guild.create_category("Modmail", overwrites=mm_ow, reason="ModBot Setup")
+                created_channels.append("Created Modmail category")
+            except Exception as e:
+                errors.append(f"Failed to create Modmail category: {e}")
+        else:
+            try:
+                mm_roles = self._resolve_roles(guild, settings, ["admin_role", "supervisor_role", "senior_mod_role", "mod_role", "staff_role"])
+                mm_ow = self._staff_overwrites(guild, mm_roles)
+                mm_ow[guild.me] = discord.PermissionOverwrite(
+                    view_channel=True,
+                    send_messages=True,
+                    read_message_history=True,
+                    manage_channels=True,
+                )
+                await modmail_cat.edit(overwrites=mm_ow, reason="ModBot Setup: refresh modmail permissions")
+                created_channels.append("Updated Modmail category")
+            except Exception:
+                created_channels.append("Using existing Modmail category")
+        if modmail_cat:
+            settings["modmail_category_id"] = modmail_cat.id
+
+        # Keep jail channel scaffolding.
+        await self._update_progress(interaction, "Configuring jail")
         jail_ch_id = settings.get("quarantine_channel")
         jail_ch = guild.get_channel(int(jail_ch_id)) if jail_ch_id else None
         if not isinstance(jail_ch, discord.TextChannel):
@@ -774,62 +885,196 @@ class Setup(commands.Cog):
             guild.me: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_channels=True),
         }
         if quarantine_role:
-            jail_ow[quarantine_role] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, add_reactions=False, attach_files=False, embed_links=False, create_public_threads=False, create_private_threads=False, send_messages_in_threads=False)
-        for r in self._resolve_roles(guild, settings, ["owner_role", "manager_role", "admin_role", "supervisor_role", "senior_mod_role", "mod_role", "staff_role"]):
-            jail_ow[r] = discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True, manage_messages=True)
+            jail_ow[quarantine_role] = discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                add_reactions=False,
+                attach_files=False,
+                embed_links=False,
+                create_public_threads=False,
+                create_private_threads=False,
+                send_messages_in_threads=False,
+            )
+        for role in self._resolve_roles(
+            guild,
+            settings,
+            ["owner_role", "manager_role", "admin_role", "supervisor_role", "senior_mod_role", "mod_role", "staff_role"],
+        ):
+            jail_ow[role] = discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                manage_messages=True,
+            )
 
         try:
             if jail_ch:
                 await jail_ch.edit(topic="Quarantined users can only talk here.", overwrites=jail_ow, reason="ModBot Setup")
+                created_channels.append(f"Updated {jail_ch.mention} (jail)")
             else:
-                jail_ch = await guild.create_text_channel("jail", topic="Quarantined users can only talk here.", overwrites=jail_ow, reason="ModBot Setup")
+                jail_ch = await guild.create_text_channel(
+                    "jail",
+                    topic="Quarantined users can only talk here.",
+                    overwrites=jail_ow,
+                    reason="ModBot Setup",
+                )
+                created_channels.append(f"Created {jail_ch.mention} (jail)")
             settings["quarantine_channel"] = jail_ch.id
-            created_channels.append(f"✅ {jail_ch.mention} (jail)")
         except Exception as e:
-            errors.append(f"❌ Failed to configure #jail: {e}")
+            errors.append(f"Failed to configure #jail: {e}")
 
-        # --- Permissions ---
-        await self._update_progress(interaction, "Enforcing role permissions")
-        await self._enforce_permissions(guild, settings, created_roles, errors)
+        # Keep quarantine/muted permission hardening.
+        await self._update_progress(interaction, "Applying role permissions")
+        await self._enforce_permissions(guild, settings, created_actions, errors)
 
-        # --- Verification ---
+        # Keep verification scaffolding.
+        await self._update_progress(interaction, "Configuring verification")
         try:
             await self._setup_verification(guild, settings, staff_roles, mod_category, created_channels, errors, verify)
         except Exception as e:
-            errors.append(f"❌ Verification setup failed: {e}")
+            errors.append(f"Verification setup failed: {e}")
 
-        # --- Role grouping ---
-        mod_role_ids = [settings[k] for k in ["admin_role", "supervisor_role", "senior_mod_role", "mod_role", "trial_mod_role", "staff_role"] if settings.get(k)]
-        settings["mod_roles"] = mod_role_ids
-        settings["admin_roles"] = [settings["admin_role"]] if settings.get("admin_role") else []
-        settings["supervisor_roles"] = [settings["supervisor_role"]] if settings.get("supervisor_role") else []
-
-        # --- Defaults ---
         settings.setdefault("server_rules", DEFAULT_RULES)
         settings.setdefault("staff_guide", DEFAULT_STAFF_GUIDE)
-
-        # --- Save ---
         settings["setup_complete"] = True
         await self.bot.db.update_settings(guild.id, settings)
 
-        # --- Summary ---
-        summary = discord.Embed(title="🛡️ Setup Complete!", description="Your server is now configured for moderation, court, and modmail systems.", color=Config.COLOR_SUCCESS)
-        summary.add_field(name="📋 Roles", value="\n".join(created_roles[:12]) or "None", inline=False)
-        summary.add_field(name="📝 Channels", value="\n".join(created_channels[:15]) or "None", inline=False)
+        summary = discord.Embed(
+            title="Setup Complete",
+            description="Configured logs, modmail, verification, and jail channels. Roles and server branding were not changed.",
+            color=Config.COLOR_SUCCESS,
+        )
+        summary.add_field(name="Channels", value="\n".join(created_channels[:20]) or "None", inline=False)
+        if created_actions:
+            summary.add_field(name="Actions", value="\n".join(created_actions[:10]), inline=False)
         if errors:
-            summary.add_field(name="⚠️ Errors", value="\n".join(errors[:5]), inline=False)
-        summary.add_field(name="🏷️ Role Hierarchy", value="1. 👑 Owner/Admin\n2. 👁️ Supervisor\n3. ⚔️ Senior Mod\n4. 🛡️ Moderator\n5. 🔰 Trial Mod\n6. ⭐ Staff", inline=False)
-        summary.add_field(name="📌 Next Steps", value="1️⃣ Move roles above member roles\n2️⃣ Assign roles to staff\n3️⃣ `/staffguide post` in #staff-guide\n4️⃣ `/rules post` in rules channel\n5️⃣ `/automod config` to configure\n6️⃣ `/verifypanel` in #verify\n7️⃣ DM bot `.modmail` to test", inline=False)
-        summary.set_footer(text="Use /help for all available commands")
+            summary.add_field(name="Errors", value="\n".join(errors[:6]), inline=False)
+        summary.add_field(
+            name="Next",
+            value="Use `/set roles` to map owner/admin/moderator roles and `/set channels` for quick welcome/logging mapping.",
+            inline=False,
+        )
+        summary.set_footer(text="Setup is now global-safe")
 
         try:
             layout = await layout_view_from_embeds(embed=summary)
             await interaction.edit_original_response(view=layout)
         except Exception:
+            await interaction.edit_original_response(embed=summary)
+
+    @set_group.command(name="roles", description="Set owner, admin, and moderator role mappings")
+    @app_commands.describe(
+        owner_role="Role mapped to Owner",
+        admin_role="Role mapped to Admin",
+        moderator_role="Role mapped to Moderator",
+    )
+    @is_admin()
+    async def set_roles(
+        self,
+        interaction: discord.Interaction,
+        owner_role: discord.Role,
+        admin_role: discord.Role,
+        moderator_role: discord.Role,
+    ):
+        if len({owner_role.id, admin_role.id, moderator_role.id}) < 3:
+            await interaction.response.send_message(
+                embed=ModEmbed.error("Invalid Roles", "Owner, Admin, and Moderator roles must all be different."),
+                ephemeral=True,
+            )
+            return
+
+        if not (owner_role.position > admin_role.position > moderator_role.position):
+            await interaction.response.send_message(
+                embed=ModEmbed.error(
+                    "Hierarchy Invalid",
+                    "Role positions must be Owner > Admin > Moderator. Reorder roles in Discord, then run again.",
+                ),
+                ephemeral=True,
+            )
+            return
+
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        settings["owner_role"] = owner_role.id
+        settings["admin_role"] = admin_role.id
+        settings["mod_role"] = moderator_role.id
+        settings["moderator_role"] = moderator_role.id
+        self._sync_staff_role_lists(settings)
+        self._sync_dashboard_role_mappings(settings, owner_role.id, admin_role.id, moderator_role.id)
+        await self.bot.db.update_settings(interaction.guild_id, settings)
+
+        guild = interaction.guild
+        staff_roles = self._resolve_roles(guild, settings, STAFF_ROLE_KEYS)
+        mod_category = (
+            discord.utils.get(guild.categories, name="Moderation Logs")
+            or discord.utils.get(guild.categories, name="📋 Moderation Logs")
+        )
+        if mod_category:
             try:
-                await interaction.edit_original_response(embed=summary)
+                log_ow = self._staff_overwrites(
+                    guild,
+                    staff_roles + self._resolve_roles(guild, settings, ["log_access_role"]),
+                    send=False,
+                )
+                await mod_category.edit(overwrites=log_ow, reason="ModBot Set Roles: refresh log permissions")
+                for channel in mod_category.text_channels:
+                    await channel.edit(sync_permissions=True, reason="ModBot Set Roles: sync log channel permissions")
             except Exception:
                 pass
+
+        embed = ModEmbed.success(
+            "Role Mapping Updated",
+            (
+                f"Owner: {owner_role.mention}\n"
+                f"Admin: {admin_role.mention}\n"
+                f"Moderator: {moderator_role.mention}\n\n"
+                "Updated bot role keys and website dashboard role mappings."
+            ),
+        )
+        await interaction.response.send_message(embed=embed)
+
+    @set_group.command(name="channels", description="Set welcome and logging channels")
+    @app_commands.describe(
+        logging_channel="Single channel to use for all logging destinations",
+        welcome_channel="Channel for welcome messages",
+    )
+    @is_admin()
+    async def set_channels(
+        self,
+        interaction: discord.Interaction,
+        logging_channel: Optional[discord.TextChannel] = None,
+        welcome_channel: Optional[discord.TextChannel] = None,
+    ):
+        if not logging_channel and not welcome_channel:
+            await interaction.response.send_message(
+                embed=ModEmbed.error("Nothing to Update", "Provide at least one channel."),
+                ephemeral=True,
+            )
+            return
+
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        updated_lines: List[str] = []
+
+        if logging_channel:
+            for cfg in LOG_CHANNELS:
+                settings[cfg["setting_key"]] = logging_channel.id
+
+            for canonical_key, aliases in LOG_CHANNEL_KEY_ALIASES.items():
+                settings[canonical_key] = logging_channel.id
+                for alias in aliases:
+                    settings[alias] = logging_channel.id
+
+            settings["forum_alert_channel"] = logging_channel.id
+            updated_lines.append(f"Logging channels -> {logging_channel.mention}")
+
+        if welcome_channel:
+            settings["welcome_channel"] = welcome_channel.id
+            updated_lines.append(f"Welcome channel -> {welcome_channel.mention}")
+
+        await self.bot.db.update_settings(interaction.guild_id, settings)
+
+        embed = ModEmbed.success("Channels Updated", "\n".join(updated_lines))
+        await interaction.response.send_message(embed=embed)
 
     # ------------------------------------------------------------------
     # /staffupdates

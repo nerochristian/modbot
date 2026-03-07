@@ -47,7 +47,6 @@ class SettingsCategorySelect(discord.ui.Select):
     def __init__(self, parent_view, current: str = None):
         options = [
             discord.SelectOption(label="General",      description="Prefix, Core Channels, Branding",  emoji="⚙️",  value="general",      default=current == "general"),
-            discord.SelectOption(label="Roles",        description="Full Role Hierarchy (7 roles)",     emoji="👥",  value="roles",        default=current == "roles"),
             discord.SelectOption(label="Moderation",   description="Warn Thresholds & Auto-Punish",    emoji="🔨",  value="moderation",   default=current == "moderation"),
             discord.SelectOption(label="Logging",      description="All 7 Log Channels",               emoji="📝",  value="logging",      default=current == "logging"),
             discord.SelectOption(label="Voice & AFK",  description="AFK Detection, Timeouts",          emoji="🔊",  value="voice",        default=current == "voice"),
@@ -76,7 +75,6 @@ class BaseSettingsView(discord.ui.View):
         settings = await self.cog.bot.db.get_settings(self.guild.id)
         VIEW_MAP = {
             "general": GeneralSettingsView,
-            "roles": RolesSettingsView,
             "moderation": ModerationSettingsView,
             "logging": LoggingSettingsView,
             "voice": VoiceSettingsView,
@@ -634,7 +632,7 @@ class TicketsSettingsView(BaseSettingsView):
         config = (
             f"**Support Role:** {_r(g, s, 'ticket_support_role')}\n"
             f"**Log Channel:** {_c(g, s, 'ticket_log_channel')}\n"
-            f"**Category:** {_c(g, s, 'ticket_category', '`Default`')}"
+            f"**Category:** {_c(g, s, 'ticket_category', '`Auto-create on first use`')}"
         )
         embed.add_field(name="⚙️ Configuration", value=config, inline=True)
 
@@ -855,3 +853,4 @@ class Settings(commands.Cog):
 
 async def setup(bot):
     await bot.add_cog(Settings(bot))
+

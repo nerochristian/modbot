@@ -1548,6 +1548,7 @@ async def api_guild_config_update(request: web.Request):
     updated_settings["commands"] = _normalize_command_configs_blob(updated_settings.get("commands", {}))
     
     await _bot.db.update_settings(int(guild_id), updated_settings)
+    await _flush_dashboard_persistence(guild_id)
     
     # Return updated config
     saved = await _bot.db.get_settings(int(guild_id))
@@ -2050,6 +2051,22 @@ async def _append_dashboard_audit(
             await db.commit()
     except Exception as exc:
         logger.error(f"Failed to write dashboard audit entry: {exc}")
+
+
+async def _flush_dashboard_persistence(guild_id: str) -> None:
+    """Push dashboard writes to the configured persistence mirror immediately."""
+    if not _bot:
+        return
+
+    db = getattr(_bot, "db", None)
+    flush = getattr(db, "flush_persistent_snapshot", None)
+    if not callable(flush):
+        return
+
+    try:
+        await flush()
+    except Exception as exc:
+        logger.warning("Immediate persistence flush failed for guild %s: %s", guild_id, exc)
 
 
 def _empty_command_config_hints() -> Dict[str, bool]:
