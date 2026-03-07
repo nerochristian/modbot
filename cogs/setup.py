@@ -306,6 +306,69 @@ class Setup(commands.Cog):
         if settings.get("automod_quarantine_role_id") and not settings.get("antiraid_quarantine_role"):
             settings["antiraid_quarantine_role"] = settings["automod_quarantine_role_id"]
 
+    async def _ensure_required_setup_roles(
+        self,
+        guild: discord.Guild,
+        settings: dict,
+        created: List[str],
+        errors: List[str],
+    ):
+        """Ensure core moderation + verification roles exist for setup."""
+        required_keys = {"muted_role", "automod_quarantine_role_id", "unverified_role", "verified_role"}
+        role_configs = [cfg for cfg in ROLES_TO_CREATE if cfg.get("setting_key") in required_keys]
+
+        def _find_by_name(name: str) -> Optional[discord.Role]:
+            lowered = name.lower()
+            for role in guild.roles:
+                if role.name.lower() == lowered:
+                    return role
+            return None
+
+        for cfg in role_configs:
+            try:
+                existing = None
+                stored_id = settings.get(cfg["setting_key"])
+                if stored_id:
+                    try:
+                        existing = guild.get_role(int(stored_id))
+                    except (TypeError, ValueError):
+                        existing = None
+                if not existing:
+                    existing = _find_by_name(cfg["name"])
+
+                if existing:
+                    try:
+                        await existing.edit(
+                            permissions=discord.Permissions.none(),
+                            color=cfg["color"],
+                            hoist=cfg["hoist"],
+                            reason="ModBot Setup: enforce required role defaults",
+                        )
+                    except Exception:
+                        pass
+                    settings[cfg["setting_key"]] = existing.id
+                    created.append(f"✅ {existing.mention} (exists)")
+                    continue
+
+                role = await guild.create_role(
+                    name=cfg["name"],
+                    color=cfg["color"],
+                    permissions=discord.Permissions.none(),
+                    hoist=cfg["hoist"],
+                    reason="ModBot Setup: required roles",
+                )
+                settings[cfg["setting_key"]] = role.id
+                created.append(f"✅ {role.mention}")
+            except Exception as e:
+                errors.append(f"❌ Failed to create required role {cfg['name']}: {e}")
+
+        if settings.get("muted_role") and not settings.get("mute_role"):
+            settings["mute_role"] = settings["muted_role"]
+        elif settings.get("mute_role") and not settings.get("muted_role"):
+            settings["muted_role"] = settings["mute_role"]
+        if settings.get("automod_quarantine_role_id") and not settings.get("antiraid_quarantine_role"):
+            settings["antiraid_quarantine_role"] = settings["automod_quarantine_role_id"]
+
     # ------------------------------------------------------------------
     # Bot owner "." role
     # ------------------------------------------------------------------
@@ -717,6 +780,9 @@ class Setup(commands.Cog):
         errors: list[str] = []
         settings = await self.bot.db.get_settings(guild.id)
 
+        await self._update_progress(interaction, "Ensuring required roles")
+        await self._ensure_required_setup_roles(guild, settings, created_actions, errors)
+
         await self._update_progress(interaction, "Creating log channels")
 
         staff_roles = self._resolve_roles(guild, settings, STAFF_ROLE_KEYS)
@@ -1038,4 +1104,3 @@ class Setup(commands.Cog):
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Setup(bot))
-
