@@ -410,6 +410,7 @@ class MiscCommands:
         options = WelcomeCardOptions(
             accent_color=card_accent,
             server_name=f"{system_name} - Moderation",
+            role_badge_fallback=False,
         )
 
         card_file = await build_welcome_card_file(
