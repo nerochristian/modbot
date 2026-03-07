@@ -632,7 +632,7 @@ class TicketsSettingsView(BaseSettingsView):
         config = (
             f"**Support Role:** {_r(g, s, 'ticket_support_role')}\n"
             f"**Log Channel:** {_c(g, s, 'ticket_log_channel')}\n"
-            f"**Category:** {_c(g, s, 'ticket_category', '`Default`')}"
+            f"**Category:** {_c(g, s, 'ticket_category', '`Auto-create on first use`')}"
         )
         embed.add_field(name="⚙️ Configuration", value=config, inline=True)
 

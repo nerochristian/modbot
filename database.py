@@ -8,14 +8,21 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
+import ssl
 import tempfile
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
+from urllib.parse import urlparse
 
 import aiosqlite
 import aiohttp
+try:
+    import asyncpg
+except ImportError:
+    asyncpg = None
 try:
     from cogs.automod_config import AUTOMOD_SETTINGS
 except ImportError:
@@ -133,6 +140,8 @@ def _resolve_database_path() -> str:
     database_url = (os.getenv("DATABASE_URL") or "").strip()
     if database_url.startswith("sqlite:///"):
         return database_url.replace("sqlite:///", "", 1)
+    if database_url.lower().startswith(("postgresql://", "postgres://")):
+        return "modbot.db"
     if database_url and not database_url.startswith("sqlite:///"):
         logger.warning("DATABASE_URL is not sqlite. This bot runs on SQLite locally; use Supabase mirror env vars for persistent backups.")
 
@@ -144,6 +153,246 @@ def _resolve_database_path() -> str:
 
 
 DATABASE_PATH = _resolve_database_path()
+
+
+def _is_postgres_url(value: str) -> bool:
+    normalized = (value or "").strip().lower()
+    return normalized.startswith("postgresql://") or normalized.startswith("postgres://")
+
+
+def _parse_postgres_status_count(status: str) -> int:
+    match = re.search(r"(\d+)$", status or "")
+    if not match:
+        return 0
+    try:
+        return int(match.group(1))
+    except ValueError:
+        return 0
+
+
+def _translate_sqlite_placeholders(sql: str) -> str:
+    result: list[str] = []
+    index = 1
+    in_string = False
+    i = 0
+    while i < len(sql):
+        char = sql[i]
+        if char == "'":
+            result.append(char)
+            if in_string and i + 1 < len(sql) and sql[i + 1] == "'":
+                result.append(sql[i + 1])
+                i += 2
+                continue
+            in_string = not in_string
+            i += 1
+            continue
+        if char == "?" and not in_string:
+            result.append(f"${index}")
+            index += 1
+            i += 1
+            continue
+        result.append(char)
+        i += 1
+    return "".join(result)
+
+
+_SQLITE_REPLACE_CONFLICT_COLUMNS: Dict[str, List[str]] = {
+    "guild_settings": ["guild_id"],
+    "court_votes": ["session_id", "voter_id"],
+    "blacklist": ["user_id"],
+}
+
+
+def _translate_sqlite_upsert(sql: str) -> str:
+    stripped = sql.strip()
+    if stripped.upper().startswith("INSERT OR IGNORE"):
+        match = re.match(
+            r"(?is)\s*INSERT\s+OR\s+IGNORE\s+INTO\s+([A-Za-z_][A-Za-z0-9_]*)\s*(\([^)]+\))?\s*VALUES\s*(\(.+\))\s*$",
+            stripped,
+        )
+        if not match:
+            return sql.replace("INSERT OR IGNORE", "INSERT", 1)
+        table, columns_segment, values_segment = match.groups()
+        columns_sql = f" {columns_segment}" if columns_segment else ""
+        return f"INSERT INTO {table}{columns_sql} VALUES {values_segment} ON CONFLICT DO NOTHING"
+
+    if stripped.upper().startswith("INSERT OR REPLACE"):
+        match = re.match(
+            r"(?is)\s*INSERT\s+OR\s+REPLACE\s+INTO\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(([^)]+)\)\s*VALUES\s*(\(.+\))\s*$",
+            stripped,
+        )
+        if not match:
+            raise RuntimeError(f"Unsupported SQLite REPLACE query: {sql}")
+
+        table, columns_segment, values_segment = match.groups()
+        columns = [column.strip() for column in columns_segment.split(",") if column.strip()]
+        conflict_columns = _SQLITE_REPLACE_CONFLICT_COLUMNS.get(table.lower())
+        if not conflict_columns:
+            raise RuntimeError(f"Missing PostgreSQL conflict target for table: {table}")
+
+        update_columns = [column for column in columns if column not in conflict_columns]
+        if update_columns:
+            updates_sql = ", ".join(f"{column} = EXCLUDED.{column}" for column in update_columns)
+            return (
+                f"INSERT INTO {table} ({columns_segment}) VALUES {values_segment} "
+                f"ON CONFLICT ({', '.join(conflict_columns)}) DO UPDATE SET {updates_sql}"
+            )
+
+        return (
+            f"INSERT INTO {table} ({columns_segment}) VALUES {values_segment} "
+            f"ON CONFLICT ({', '.join(conflict_columns)}) DO NOTHING"
+        )
+
+    return sql
+
+
+def _translate_sqlite_ddl(sql: str) -> str:
+    translated = re.sub(
+        r"\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b",
+        "BIGSERIAL PRIMARY KEY",
+        sql,
+        flags=re.IGNORECASE,
+    )
+    translated = re.sub(
+        r"\bINTEGER\s+PRIMARY\s+KEY\b",
+        "BIGINT PRIMARY KEY",
+        translated,
+        flags=re.IGNORECASE,
+    )
+    translated = re.sub(r"\bINTEGER\b", "BIGINT", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\bBOOLEAN\s+DEFAULT\s+0\b", "BOOLEAN DEFAULT FALSE", translated, flags=re.IGNORECASE)
+    translated = re.sub(r"\bBOOLEAN\s+DEFAULT\s+1\b", "BOOLEAN DEFAULT TRUE", translated, flags=re.IGNORECASE)
+    return translated
+
+
+def _translate_sqlite_sql(sql: str) -> str:
+    stripped = sql.strip()
+    upper = stripped.upper()
+    translated = sql
+
+    if upper.startswith("PRAGMA "):
+        if "PAGE_SIZE" in upper:
+            return "SELECT 8192"
+        return "SELECT 0"
+
+    if upper.startswith("INSERT OR IGNORE") or upper.startswith("INSERT OR REPLACE"):
+        translated = _translate_sqlite_upsert(translated)
+
+    if upper.startswith("CREATE TABLE") or upper.startswith("ALTER TABLE"):
+        translated = _translate_sqlite_ddl(translated)
+
+    return _translate_sqlite_placeholders(translated)
+
+
+def _extract_insert_table_name(sql: str) -> Optional[str]:
+    match = re.match(r"(?is)\s*INSERT\s+INTO\s+([A-Za-z_][A-Za-z0-9_]*)", sql)
+    if not match:
+        return None
+    return match.group(1)
+
+
+class PostgresCursorCompat:
+    def __init__(self, rows: Optional[List[tuple[Any, ...]]] = None, *, rowcount: int = 0, lastrowid: Optional[int] = None) -> None:
+        self._rows = rows or []
+        self._index = 0
+        self.rowcount = rowcount
+        self.lastrowid = lastrowid
+
+    async def fetchone(self):
+        if self._index >= len(self._rows):
+            return None
+        row = self._rows[self._index]
+        self._index += 1
+        return row
+
+    async def fetchall(self):
+        if self._index >= len(self._rows):
+            return []
+        rows = self._rows[self._index:]
+        self._index = len(self._rows)
+        return rows
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+class PostgresExecuteOperation:
+    def __init__(self, connection: "PostgresConnectionCompat", sql: str, params: Any = None) -> None:
+        self._connection = connection
+        self._sql = sql
+        self._params = params
+        self._cursor: Optional[PostgresCursorCompat] = None
+
+    async def _run(self) -> PostgresCursorCompat:
+        if self._cursor is None:
+            self._cursor = await self._connection._run_statement(self._sql, self._params)
+        return self._cursor
+
+    def __await__(self):
+        return self._run().__await__()
+
+    async def __aenter__(self):
+        return await self._run()
+
+    async def __aexit__(self, exc_type, exc, tb):
+        return False
+
+
+class PostgresConnectionCompat:
+    def __init__(self, connection: "asyncpg.Connection") -> None:
+        self._connection = connection
+
+    def execute(self, sql: str, params: Any = None) -> PostgresExecuteOperation:
+        return PostgresExecuteOperation(self, sql, params)
+
+    async def commit(self) -> None:
+        return None
+
+    async def rollback(self) -> None:
+        return None
+
+    async def close(self) -> None:
+        return None
+
+    async def _run_statement(self, sql: str, params: Any = None) -> PostgresCursorCompat:
+        translated_sql = _translate_sqlite_sql(sql)
+        parameters: tuple[Any, ...]
+        if params is None:
+            parameters = ()
+        elif isinstance(params, tuple):
+            parameters = params
+        elif isinstance(params, list):
+            parameters = tuple(params)
+        else:
+            parameters = (params,)
+
+        upper = translated_sql.lstrip().upper()
+        if upper.startswith("SELECT"):
+            records = await self._connection.fetch(translated_sql, *parameters)
+            rows = [tuple(record) for record in records]
+            return PostgresCursorCompat(rows, rowcount=len(rows))
+
+        status = await self._connection.execute(translated_sql, *parameters)
+        rowcount = _parse_postgres_status_count(status)
+        lastrowid = None
+
+        if upper.startswith("INSERT") and rowcount > 0:
+            table_name = _extract_insert_table_name(translated_sql)
+            if table_name:
+                try:
+                    serial_value = await self._connection.fetchval(
+                        "SELECT currval(pg_get_serial_sequence($1, 'id'))",
+                        table_name,
+                    )
+                    if serial_value is not None:
+                        lastrowid = int(serial_value)
+                except Exception:
+                    lastrowid = None
+
+        return PostgresCursorCompat(rowcount=rowcount, lastrowid=lastrowid)
 
 
 class Database:
@@ -158,36 +407,66 @@ class Database:
     """
     
     def __init__(self) -> None:
+        self._database_url = (os.getenv("DATABASE_URL") or "").strip()
+        self._db_mode = "postgres" if _is_postgres_url(self._database_url) else "sqlite"
         self.db_path = DATABASE_PATH
         db_dir = os.path.dirname(self.db_path)
-        if db_dir and db_dir.strip():
+        if self._db_mode == "sqlite" and db_dir and db_dir.strip():
             try:
                 os.makedirs(db_dir, exist_ok=True)
             except Exception as e:
                 logger.error(f"Failed to create database directory {db_dir}: {e}")
-        logger.info(f"Database path: {self.db_path}")
+        if self._db_mode == "postgres":
+            parsed_url = urlparse(self._database_url)
+            logger.info(
+                "Database backend: postgres host=%s db=%s",
+                parsed_url.hostname or "unknown",
+                parsed_url.path.lstrip("/") or "postgres",
+            )
+        else:
+            logger.info(f"Database path: {self.db_path}")
                 
         self._lock = asyncio.Lock()
         self._initialized = False
         self._pool: Optional[aiosqlite.Connection] = None
+        self._pg_pool = None
         self._supabase_mirror = SupabaseStorageMirror()
         self._supabase_sync_interval_seconds = max(5, int(os.getenv("SUPABASE_SYNC_INTERVAL_SECONDS", "15")))
         self._supabase_last_token: Optional[tuple[tuple[str, int, int], ...]] = None
         self._supabase_sync_task: Optional[asyncio.Task] = None
 
-        if self._supabase_mirror.enabled:
+        if self._db_mode == "sqlite" and self._supabase_mirror.enabled:
             logger.info(
                 "Supabase mirror enabled: bucket=%s, object=%s",
                 self._supabase_mirror.bucket,
                 self._supabase_mirror.object_path,
             )
-        else:
+        elif self._db_mode == "sqlite":
             logger.info("Supabase mirror disabled (SUPABASE_URL/KEY not set).")
+
+        if (
+            self._database_url
+            and not self._database_url.startswith("sqlite:///")
+            and self._db_mode == "sqlite"
+            and not self._supabase_mirror.enabled
+            and not os.path.isdir("/app/data")
+        ):
+            logger.warning(
+                "DATABASE_URL points to a non-SQLite database, but ModBot is using local SQLite at %s. "
+                "Without a persistent volume or Supabase mirror, data can be lost on restart.",
+                self.db_path,
+            )
 
     @property
     def pool(self) -> "Database":
         """Compatibility shim for legacy call sites expecting .pool.acquire()."""
         return self
+
+    def _has_local_database(self) -> bool:
+        try:
+            return os.path.exists(self.db_path) and os.path.getsize(self.db_path) > 0
+        except OSError:
+            return False
 
     @asynccontextmanager
     async def acquire(self):
@@ -198,6 +477,27 @@ class Database:
     
     async def init_pool(self) -> None:
         """Initialize database connection pool"""
+        if self._db_mode == "postgres":
+            if self._pg_pool is not None:
+                return
+            if asyncpg is None:
+                raise RuntimeError("DATABASE_URL points to Postgres, but asyncpg is not installed.")
+
+            ssl_config = None
+            parsed_url = urlparse(self._database_url)
+            if (parsed_url.hostname or "").endswith(".supabase.co"):
+                ssl_config = ssl.create_default_context()
+
+            self._pg_pool = await asyncpg.create_pool(
+                dsn=self._database_url,
+                min_size=1,
+                max_size=10,
+                command_timeout=60,
+                ssl=ssl_config,
+            )
+            logger.info("Postgres connection pool initialized")
+            return
+
         if self._pool is None:
             await self._restore_sqlite_from_supabase()
             self._pool = await aiosqlite.connect(self.db_path)
@@ -216,6 +516,14 @@ class Database:
     @asynccontextmanager
     async def get_connection(self):
         """Get database connection as async context manager"""
+        await self.init_pool()
+
+        if self._db_mode == "postgres":
+            assert self._pg_pool is not None
+            async with self._pg_pool.acquire() as conn:
+                yield PostgresConnectionCompat(conn)
+            return
+
         # Use pooled connection if available
         if self._pool is not None:
             yield self._pool
@@ -244,6 +552,16 @@ class Database:
     async def _restore_sqlite_from_supabase(self) -> None:
         """Restore the SQLite file from Supabase before opening connections."""
         if not self._supabase_mirror.enabled:
+            return
+
+        restore_mode = (os.getenv("SUPABASE_RESTORE_MODE") or "missing").strip().lower()
+        if self._has_local_database() and restore_mode != "always":
+            self._supabase_last_token = self._sqlite_change_token()
+            logger.info(
+                "Skipping Supabase restore because local SQLite database already exists at %s. "
+                "Set SUPABASE_RESTORE_MODE=always to force remote restore on boot.",
+                self.db_path,
+            )
             return
 
         tmp_file = tempfile.NamedTemporaryFile(prefix="modbot_supabase_restore_", suffix=".db", delete=False)
@@ -275,6 +593,13 @@ class Database:
                     os.remove(tmp_path)
                 except OSError:
                     pass
+
+    async def flush_persistent_snapshot(self) -> None:
+        """Force an immediate snapshot upload when mirror persistence is enabled."""
+        if self._db_mode != "sqlite":
+            return
+        await self.init_pool()
+        await self._sync_sqlite_to_supabase(force=True)
 
     async def _create_sqlite_snapshot(self, snapshot_path: str) -> bool:
         """Create a consistent snapshot of the live SQLite database."""
@@ -358,6 +683,23 @@ class Database:
         Transaction context manager for safe database operations
         Automatically commits on success, rolls back on error
         """
+        await self.init_pool()
+
+        if self._db_mode == "postgres":
+            async with self._lock:
+                assert self._pg_pool is not None
+                async with self._pg_pool.acquire() as raw_conn:
+                    tx = raw_conn.transaction()
+                    await tx.start()
+                    conn = PostgresConnectionCompat(raw_conn)
+                    try:
+                        yield conn
+                        await tx.commit()
+                    except Exception:
+                        await tx.rollback()
+                        raise
+            return
+
         async with self._lock:
             async with self.get_connection() as conn:
                 try:
@@ -811,8 +1153,12 @@ class Database:
                 )
                 row = await cursor.fetchone()
                 settings = json.loads(row[0]) if row and row[0] else {}
-        except aiosqlite.OperationalError as e:
-            if "no such table: guild_settings" not in str(e).lower():
+        except Exception as e:
+            error_text = str(e).lower()
+            if (
+                "no such table: guild_settings" not in error_text
+                and 'relation "guild_settings" does not exist' not in error_text
+            ):
                 raise
 
             # Schema missing: initialize and retry once.
@@ -2265,11 +2611,17 @@ class Database:
                 stats[f"{table}_count"] = row[0] if row else 0
             
             # Get database size
-            cursor = await db.execute("PRAGMA page_count")
-            page_count = (await cursor.fetchone())[0]
-            cursor = await db.execute("PRAGMA page_size")
-            page_size = (await cursor.fetchone())[0]
-            stats["database_size_mb"] = round((page_count * page_size) / (1024 * 1024), 2)
+            if self._db_mode == "postgres":
+                cursor = await db.execute("SELECT pg_database_size(current_database())")
+                row = await cursor.fetchone()
+                size_bytes = row[0] if row else 0
+                stats["database_size_mb"] = round((size_bytes or 0) / (1024 * 1024), 2)
+            else:
+                cursor = await db.execute("PRAGMA page_count")
+                page_count = (await cursor.fetchone())[0]
+                cursor = await db.execute("PRAGMA page_size")
+                page_size = (await cursor.fetchone())[0]
+                stats["database_size_mb"] = round((page_count * page_size) / (1024 * 1024), 2)
         
         return stats
     
@@ -2354,8 +2706,11 @@ class Database:
                     )
                     await db.commit()
                     return True
-                except aiosqlite.IntegrityError:
-                    return False
+                except Exception as exc:
+                    error_text = str(exc).lower()
+                    if "duplicate key value" in error_text or "unique constraint failed" in error_text:
+                        return False
+                    raise
 
     async def remove_whitelist(self, guild_id: int, user_id: int) -> bool:
         """Remove user from whitelist. Returns True if removed, False if not found."""
@@ -2412,6 +2767,17 @@ class Database:
 
     async def close(self) -> None:
         """Flush WAL, do a final Supabase sync, and close the connection."""
+        if self._db_mode == "postgres":
+            if self._pg_pool is not None:
+                try:
+                    await self._pg_pool.close()
+                except Exception as exc:
+                    logger.error("Postgres connection pool close failed: %s", exc)
+                finally:
+                    self._pg_pool = None
+            logger.info("Database closed.")
+            return
+
         # Cancel the background sync loop first.
         if self._supabase_sync_task and not self._supabase_sync_task.done():
             self._supabase_sync_task.cancel()

@@ -47,6 +47,16 @@ const CAPABILITY_LABELS: Record<DashboardCapability, string> = {
 const EDITABLE_DASHBOARD_ROLES: DashboardRole[] = ['admin', 'moderator', 'viewer'];
 const ALL_CAPABILITIES = Object.keys(CAPABILITY_LABELS) as DashboardCapability[];
 
+type RoleOption = { label: string; value: string; color?: number; position: number };
+
+function sortRoleOptions(options: RoleOption[]) {
+    return [...options].sort((a, b) => {
+        const byPosition = b.position - a.position;
+        if (byPosition !== 0) return byPosition;
+        return a.label.localeCompare(b.label);
+    });
+}
+
 export function Permissions() {
     const { config, roles, updateConfigLocal, saveConfig, discardChanges, configDirty, error } = useAppStore();
     const [saving, setSaving] = useState(false);
@@ -60,7 +70,7 @@ export function Permissions() {
             if (byPosition !== 0) return byPosition;
             return a.name.localeCompare(b.name);
         });
-    const roleOptions = discordRoles.map(r => ({ label: r.name, value: r.id, color: r.color }));
+    const roleOptions = sortRoleOptions(discordRoles.map(r => ({ label: r.name, value: r.id, color: r.color, position: r.position })));
 
     const handleSave = async () => {
         setSaving(true);
@@ -376,7 +386,7 @@ export function Permissions() {
             {/* Add Mapping Modal */}
             {addMappingModal && (
                 <AddMappingModal
-                    roles={unmappedRoles.map(r => ({ label: r.name, value: r.id, color: r.color }))}
+                    roles={sortRoleOptions(unmappedRoles.map(r => ({ label: r.name, value: r.id, color: r.color, position: r.position })))}
                     onClose={() => setAddMappingModal(false)}
                     onAdd={addMappings}
                 />
@@ -401,7 +411,7 @@ export function Permissions() {
 
 interface EditDashboardRoleModalProps {
     dashboardRole: DashboardRole;
-    roles: { label: string; value: string; color?: number }[];
+    roles: RoleOption[];
     selectedRoleIds: string[];
     onClose: () => void;
     onSave: (dashboardRole: DashboardRole, roleIds: string[]) => void;
@@ -418,6 +428,7 @@ function EditDashboardRoleModal({ dashboardRole, roles, selectedRoleIds, onClose
             title={`Edit ${ROLE_LABELS[dashboardRole]} Role Mappings`}
             description={`Choose which Discord roles should be treated as ${ROLE_LABELS[dashboardRole].toLowerCase()}s.`}
             size="md"
+            bodyClassName="overflow-visible"
             footer={
                 <>
                     <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -469,7 +480,7 @@ function EditDashboardRoleModal({ dashboardRole, roles, selectedRoleIds, onClose
 }
 
 interface AddMappingModalProps {
-    roles: { label: string; value: string; color?: number }[];
+    roles: RoleOption[];
     onClose: () => void;
     onAdd: (roleIds: string[], dashboardRole: DashboardRole) => void;
 }
@@ -484,7 +495,8 @@ function AddMappingModal({ roles, onClose, onAdd }: AddMappingModalProps) {
             onClose={onClose}
             title="Add Role Mapping"
             description="Map a Discord role to a dashboard permission level."
-            size="sm"
+            size="md"
+            bodyClassName="overflow-visible"
             footer={
                 <>
                     <Button variant="outline" onClick={onClose}>Cancel</Button>
@@ -506,6 +518,7 @@ function AddMappingModal({ roles, onClose, onAdd }: AddMappingModalProps) {
                         options={roles}
                         placeholder="Select role(s)..."
                     />
+                    <p className="mt-2 text-xs text-slate-500">Select one or more roles. Roles are ordered from highest to lowest.</p>
                 </div>
                 <div>
                     <label className="text-sm font-medium text-slate-700 mb-2 block">Dashboard Role</label>

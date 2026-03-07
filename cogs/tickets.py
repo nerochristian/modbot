@@ -22,18 +22,14 @@ def _brand_assets(guild: Optional[discord.Guild], override_banner_url: Optional[
     logo_url = None
     banner_url = None
 
-    # Prioritize override banner
-    if override_banner_url:
-        banner_url = override_banner_url
-    elif guild and getattr(guild, "banner", None):
+    # Intentionally ignore override/config banners:
+    # banner should be guild banner or nothing.
+    _ = override_banner_url
+    if guild and getattr(guild, "banner", None):
         try:
             banner_url = str(guild.banner.url)
         except Exception:
-            pass
-    
-    # Fallback to config banner
-    if not banner_url:
-        banner_url = (getattr(Config, "SERVER_BANNER_URL", "") or "").strip() or None
+            banner_url = None
 
     # Prioritize server icon for logo
     if guild and getattr(guild, "icon", None):
@@ -431,16 +427,30 @@ class Tickets(commands.Cog):
     def _ticket_file_name(ticket_number: Any) -> str:
         return f"ticket-{ticket_number}.html"
 
-    async def _is_ticket_staff(self, member: discord.Member, settings: Optional[dict] = None) -> bool:
-        if is_bot_owner_id(member.id):
-            return True
-        if member.guild_permissions.administrator or member.guild_permissions.manage_messages:
-            return True
+    @staticmethod
+    def _is_default_ticket_staff_role(role: discord.Role) -> bool:
+        if role.is_default():
+            return False
 
-        if settings is None:
-            settings = await self.bot.db.get_settings(member.guild.id)
+        perms = role.permissions
+        return any(
+            (
+                perms.administrator,
+                perms.manage_guild,
+                perms.manage_channels,
+                perms.manage_messages,
+                perms.kick_members,
+                perms.ban_members,
+                perms.moderate_members,
+            )
+        )
 
-        role_ids: set[int] = set()
+    def _resolve_ticket_staff_roles(
+        self,
+        guild: discord.Guild,
+        settings: dict[str, Any],
+    ) -> list[discord.Role]:
+        configured_role_ids: set[int] = set()
         for key in (
             "ticket_support_role",
             "staff_role",
@@ -454,20 +464,146 @@ class Tickets(commands.Cog):
         ):
             raw = settings.get(key)
             if isinstance(raw, int) and raw > 0:
-                role_ids.add(raw)
+                configured_role_ids.add(raw)
 
         for key in ("admin_roles", "mod_roles"):
             raw = settings.get(key)
             if isinstance(raw, list):
                 for rid in raw:
                     if isinstance(rid, int) and rid > 0:
-                        role_ids.add(rid)
+                        configured_role_ids.add(rid)
 
-        if not role_ids:
+        resolved_roles: list[discord.Role] = []
+        seen_role_ids: set[int] = set()
+        for role_id in configured_role_ids:
+            role = guild.get_role(role_id)
+            if role and role.id not in seen_role_ids:
+                resolved_roles.append(role)
+                seen_role_ids.add(role.id)
+
+        if resolved_roles:
+            return resolved_roles
+
+        for role in guild.roles:
+            if role.id in seen_role_ids or not self._is_default_ticket_staff_role(role):
+                continue
+            resolved_roles.append(role)
+            seen_role_ids.add(role.id)
+
+        return resolved_roles
+
+    @staticmethod
+    def _find_existing_ticket_category(guild: discord.Guild) -> Optional[discord.CategoryChannel]:
+        exact_names = {"tickets", "ticket", "support tickets"}
+        for category in guild.categories:
+            category_name = (category.name or "").strip().lower()
+            if category_name in exact_names:
+                return category
+
+        for category in guild.categories:
+            category_name = (category.name or "").strip().lower()
+            if "ticket" in category_name:
+                return category
+
+        return None
+
+    def _ticket_staff_overwrites(
+        self,
+        guild: discord.Guild,
+        settings: dict[str, Any],
+    ) -> dict[discord.abc.Snowflake, discord.PermissionOverwrite]:
+        overwrites: dict[discord.abc.Snowflake, discord.PermissionOverwrite] = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        }
+
+        bot_member = guild.me
+        if bot_member is None and self.bot.user:
+            bot_member = guild.get_member(self.bot.user.id)
+        if bot_member:
+            overwrites[bot_member] = discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                manage_channels=True,
+                manage_messages=True,
+                read_message_history=True,
+            )
+
+        guild_owner = guild.owner
+        if guild_owner:
+            overwrites[guild_owner] = discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                attach_files=True,
+            )
+
+        for role in self._resolve_ticket_staff_roles(guild, settings):
+            overwrites[role] = discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                attach_files=True,
+            )
+
+        return overwrites
+
+    async def _ensure_ticket_category(
+        self,
+        guild: discord.Guild,
+        settings: dict[str, Any],
+    ) -> tuple[Optional[discord.CategoryChannel], Optional[str]]:
+        category_id = settings.get("ticket_category")
+        if isinstance(category_id, int):
+            ticket_category = guild.get_channel(category_id)
+            if isinstance(ticket_category, discord.CategoryChannel):
+                return ticket_category, None
+
+        existing_category = self._find_existing_ticket_category(guild)
+        if existing_category:
+            await self.bot.db.set_setting(guild.id, "ticket_category", existing_category.id)
+            settings["ticket_category"] = existing_category.id
+            return existing_category, None
+
+        try:
+            created_category = await guild.create_category(
+                "Tickets",
+                overwrites=self._ticket_staff_overwrites(guild, settings),
+                reason="Ticket system auto-setup",
+            )
+        except discord.Forbidden:
+            return None, "Ticket system could not auto-create its category. Give the bot Manage Channels permission."
+        except Exception as exc:
+            return None, f"Ticket system could not auto-create its category: {exc}"
+
+        await self.bot.db.set_setting(guild.id, "ticket_category", created_category.id)
+        settings["ticket_category"] = created_category.id
+        return created_category, None
+
+    async def _is_ticket_staff(self, member: discord.Member, settings: Optional[dict] = None) -> bool:
+        if is_bot_owner_id(member.id):
+            return True
+        if any(
+            (
+                member.guild_permissions.administrator,
+                member.guild_permissions.manage_guild,
+                member.guild_permissions.manage_channels,
+                member.guild_permissions.manage_messages,
+                member.guild_permissions.kick_members,
+                member.guild_permissions.ban_members,
+                member.guild_permissions.moderate_members,
+            )
+        ):
+            return True
+
+        if settings is None:
+            settings = await self.bot.db.get_settings(member.guild.id)
+
+        staff_roles = self._resolve_ticket_staff_roles(member.guild, settings)
+        if not staff_roles:
             return False
 
         member_role_ids = {r.id for r in member.roles}
-        return bool(role_ids & member_role_ids)
+        return any(role.id in member_role_ids for role in staff_roles)
 
     async def _build_ticket_transcript(
         self,
@@ -556,13 +692,11 @@ class Tickets(commands.Cog):
         details: str,
     ) -> tuple[Optional[discord.TextChannel], Optional[str]]:
         settings = await self.bot.db.get_settings(guild.id)
-        category_id = settings.get("ticket_category")
-        if not isinstance(category_id, int):
-            return None, "Ticket system is not set up. Run `/setup` first."
-
-        ticket_category = guild.get_channel(category_id)
-        if not isinstance(ticket_category, discord.CategoryChannel):
-            return None, "Ticket category is missing. Run `/setup` again."
+        ticket_category, error = await self._ensure_ticket_category(guild, settings)
+        if error:
+            return None, error
+        if not ticket_category:
+            return None, "Ticket system could not resolve its category."
 
         topic_marker = f"({opener.id})"
         for existing_channel in ticket_category.channels:
@@ -578,54 +712,13 @@ class Tickets(commands.Cog):
 
         ticket_number = await self.bot.db.get_next_ticket_number(guild.id)
 
-        bot_member = guild.me
-        if bot_member is None and self.bot.user:
-            bot_member = guild.get_member(self.bot.user.id)
-
-        overwrites: dict[discord.abc.Snowflake, discord.PermissionOverwrite] = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            opener: discord.PermissionOverwrite(view_channel=True, send_messages=True, attach_files=True),
-        }
-        if bot_member:
-            overwrites[bot_member] = discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                manage_channels=True,
-                manage_messages=True,
-                read_message_history=True,
-            )
-
-        role_ids: set[int] = set()
-        for key in (
-            "ticket_support_role",
-            "staff_role",
-            "owner_role",
-            "manager_role",
-            "admin_role",
-            "supervisor_role",
-            "senior_mod_role",
-            "mod_role",
-            "trial_mod_role",
-        ):
-            raw = settings.get(key)
-            if isinstance(raw, int) and raw > 0:
-                role_ids.add(raw)
-        for key in ("admin_roles", "mod_roles"):
-            raw = settings.get(key)
-            if isinstance(raw, list):
-                for rid in raw:
-                    if isinstance(rid, int) and rid > 0:
-                        role_ids.add(rid)
-
-        for rid in role_ids:
-            role = guild.get_role(rid)
-            if role:
-                overwrites[role] = discord.PermissionOverwrite(
-                    view_channel=True,
-                    send_messages=True,
-                    read_message_history=True,
-                    attach_files=True,
-                )
+        overwrites = self._ticket_staff_overwrites(guild, settings)
+        overwrites[opener] = discord.PermissionOverwrite(
+            view_channel=True,
+            send_messages=True,
+            attach_files=True,
+            read_message_history=True,
+        )
 
         channel = await guild.create_text_channel(
             channel_name,

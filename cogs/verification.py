@@ -134,23 +134,18 @@ def _generate_captcha_image(code: str) -> Optional[bytes]:
 
 
 def _brand_assets(guild: Optional[discord.Guild], override_banner_url: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
-    """Get logo and banner URLs, prioritizing the server's actual assets."""
+    """Get logo and banner URLs using only real guild assets for banners."""
     logo_url = None
     banner_url = None
 
-    # Prioritize override banner (e.g. from DB settings)
-    if override_banner_url:
-        banner_url = override_banner_url
-    elif guild and getattr(guild, "banner", None):
-        # Prioritize server's actual banner over config
+    # Intentionally ignore override/config banners:
+    # banner should be guild banner or nothing.
+    _ = override_banner_url
+    if guild and getattr(guild, "banner", None):
         try:
             banner_url = str(guild.banner.url)
         except Exception:
-            pass
-
-    # Fallback to config banner if server has none
-    if not banner_url:
-        banner_url = (getattr(Config, "SERVER_BANNER_URL", "") or "").strip() or None
+            banner_url = None
 
     # Prioritize server icon for logo
     if guild and getattr(guild, "icon", None):
