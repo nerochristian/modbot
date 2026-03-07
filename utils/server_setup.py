@@ -382,6 +382,48 @@ def sync_staff_role_groups(settings: Dict[str, Any]) -> None:
     settings["supervisor_roles"] = [supervisor_role] if supervisor_role else []
 
 
+def hydrate_setup_settings_from_guild(
+    guild: discord.Guild,
+    settings: Dict[str, Any],
+) -> Dict[str, Any]:
+    """
+    Backfill missing setup IDs from guild resources that already exist.
+
+    This keeps the dashboard aligned with roles/channels the bot created earlier,
+    even when the exact flat setting key was never written or drifted to an alias.
+    """
+    hydrated = dict(settings)
+    sync_setup_aliases(hydrated)
+
+    for spec in ROLE_SPECS:
+        key = spec["setting_key"]
+        if _coerce_int(hydrated.get(key)):
+            continue
+        role = _find_role(guild, None, spec["name"])
+        if role is not None:
+            hydrated[key] = role.id
+
+    for spec in CATEGORY_SPECS:
+        key = spec["setting_key"]
+        if _coerce_int(hydrated.get(key)):
+            continue
+        category = _find_category(guild, None, spec["name"])
+        if category is not None:
+            hydrated[key] = category.id
+
+    for spec in CHANNEL_SPECS:
+        key = spec["setting_key"]
+        if _coerce_int(hydrated.get(key)):
+            continue
+        channel = _find_text_channel(guild, None, spec["name"])
+        if channel is not None:
+            hydrated[key] = channel.id
+
+    sync_setup_aliases(hydrated)
+    sync_staff_role_groups(hydrated)
+    return hydrated
+
+
 def dashboard_setup_url(guild_id: int) -> Optional[str]:
     base_url = (
         os.getenv("FRONTEND_PUBLIC_URL", "").strip().rstrip("/")
@@ -398,7 +440,7 @@ def build_setup_summary(
     *,
     dashboard_url: Optional[str] = None,
 ) -> Dict[str, Any]:
-    sync_setup_aliases(settings)
+    settings = hydrate_setup_settings_from_guild(guild, settings)
 
     def role_item(label: str, key: str) -> Dict[str, Any]:
         role = guild.get_role(_coerce_int(settings.get(key)) or 0)

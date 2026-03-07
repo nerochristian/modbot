@@ -24,6 +24,7 @@ from discord import app_commands
 from utils.server_setup import (
     apply_verification_gate,
     build_setup_summary,
+    hydrate_setup_settings_from_guild,
     quickstart_server,
     sync_setup_aliases,
     sync_staff_role_groups,
@@ -1522,7 +1523,11 @@ async def api_guild_config(request: web.Request):
                                           content_type="application/json")
 
     settings = await _bot.db.get_settings(int(guild_id))
-    sync_setup_aliases(settings)
+    guild = _bot.get_guild(int(guild_id))
+    if guild is not None:
+        settings = hydrate_setup_settings_from_guild(guild, settings)
+    else:
+        sync_setup_aliases(settings)
     
     # Build a full config response, extracting dashboard blobs and bridging key flat settings.
     modules = _build_dashboard_modules(settings)
@@ -1732,7 +1737,7 @@ async def api_guild_setup_summary(request: web.Request):
         )
 
     settings = await _bot.db.get_settings(int(guild_id))
-    sync_setup_aliases(settings)
+    settings = hydrate_setup_settings_from_guild(guild, settings)
     dashboard_url = f"{_frontend_base_url(request)}/dashboard/setup?guild={guild_id}"
     summary = build_setup_summary(guild, settings, dashboard_url=dashboard_url)
     return web.json_response(summary)
