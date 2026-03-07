@@ -229,7 +229,8 @@ MOD_COMMANDS = {
 
 ADMIN_COMMANDS = {
     "Server Setup": [
-        ("`/setup`", "Configure bot settings"),
+        ("`/setup`", "Review setup status or scaffold missing setup resources"),
+        ("`/verification on|off`", "Toggle server verification"),
         ("`/setlog`", "Set logging channel"),
         ("`/setmod`", "Set mod role"),
     ],
@@ -244,6 +245,7 @@ ADMIN_COMMANDS = {
         ("`/whitelist mass_add`", "Add role to whitelist"),
     ],
     "Roles": [
+        ("`/role auto`", "Set the join autorole"),
         ("`/roles action:create`", "Create a role"),
         ("`/roles action:delete`", "Delete a role"),
         ("`/roles action:all`", "Give role to all"),

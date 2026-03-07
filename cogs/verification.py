@@ -26,6 +26,7 @@ from config import Config
 from utils.checks import is_admin
 from utils.embeds import ModEmbed
 from utils.components_v2 import branded_panel_container
+from utils.server_setup import apply_verification_gate, module_enabled, sync_setup_aliases
 
 # Try to import Pillow for image captchas
 try:
@@ -342,15 +343,43 @@ class Verification(commands.Cog):
         self, guild: discord.Guild
     ) -> tuple[Optional[discord.Role], Optional[discord.Role]]:
         settings = await self.bot.db.get_settings(guild.id)
+        sync_setup_aliases(settings)
         unverified_id = settings.get("unverified_role")
         verified_id = settings.get("verified_role")
         unverified = guild.get_role(unverified_id) if unverified_id else None
         verified = guild.get_role(verified_id) if verified_id else None
         return unverified, verified
 
+    async def _get_settings(self, guild_id: int) -> dict:
+        settings = await self.bot.db.get_settings(guild_id)
+        sync_setup_aliases(settings)
+        return settings
+
+    async def _save_verification_settings(
+        self,
+        guild: discord.Guild,
+        settings: dict,
+        *,
+        previous_unverified_role_id: Optional[int] = None,
+    ) -> dict:
+        sync_setup_aliases(settings)
+        await self.bot.db.update_settings(guild.id, settings)
+        return await apply_verification_gate(
+            guild,
+            settings,
+            previous_unverified_role_id=previous_unverified_role_id,
+        )
+
+    async def _is_server_verification_enabled(self, guild_id: int) -> bool:
+        try:
+            settings = await self._get_settings(guild_id)
+            return module_enabled(settings, "verification", False)
+        except Exception:
+            return False
+
     async def _get_verify_log_channel(self, guild: discord.Guild) -> Optional[discord.TextChannel]:
         try:
-            settings = await self.bot.db.get_settings(guild.id)
+            settings = await self._get_settings(guild.id)
             cid = settings.get("verify_log_channel")
             if not cid:
                 return None
@@ -663,6 +692,13 @@ class Verification(commands.Cog):
         # Set cooldown
         self._set_cooldown(guild.id, member.id)
 
+        if purpose == "server" and not await self._is_server_verification_enabled(guild.id):
+            await interaction.response.send_message(
+                embed=ModEmbed.error("Disabled", "Server verification is currently turned off."),
+                ephemeral=ephemeral,
+            )
+            return
+
         unverified_role, verified_role = await self._get_roles(guild)
         if not unverified_role or not verified_role:
             await interaction.response.send_message(
@@ -851,6 +887,93 @@ class Verification(commands.Cog):
     # ─────────────────────────────────────────────────────────────────────────
     # Commands
     # ─────────────────────────────────────────────────────────────────────────
+    @app_commands.command(
+        name="verification",
+        description="Turn server verification on or off and configure the verification roles",
+    )
+    @app_commands.describe(
+        state="Enable or disable server verification",
+        verified_role="Role granted after a member passes verification",
+        unverified_role="Role assigned while a member is waiting to verify",
+    )
+    @is_admin()
+    async def verification(
+        self,
+        interaction: discord.Interaction,
+        state: Literal["on", "off"],
+        verified_role: Optional[discord.Role] = None,
+        unverified_role: Optional[discord.Role] = None,
+    ) -> None:
+        if not interaction.guild:
+            await interaction.response.send_message(
+                embed=ModEmbed.error("Guild Only", "Use this command in a server."),
+                ephemeral=True,
+            )
+            return
+
+        settings = await self._get_settings(interaction.guild.id)
+        previous_unverified_role_id = int(settings.get("unverified_role", 0) or 0)
+        if verified_role is not None:
+            settings["verified_role"] = verified_role.id
+        if unverified_role is not None:
+            settings["unverified_role"] = unverified_role.id
+
+        if state == "on" and (not settings.get("verified_role") or not settings.get("unverified_role")):
+            await interaction.response.send_message(
+                embed=ModEmbed.error(
+                    "Missing Roles",
+                    "Set both the verified and unverified roles before turning verification on.",
+                ),
+                ephemeral=True,
+            )
+            return
+
+        if state == "on":
+            bot_member = interaction.guild.me
+            resolved_verified = interaction.guild.get_role(int(settings.get("verified_role", 0) or 0))
+            resolved_unverified = interaction.guild.get_role(int(settings.get("unverified_role", 0) or 0))
+            if (
+                bot_member is None
+                or not bot_member.guild_permissions.manage_roles
+                or (resolved_verified is not None and resolved_verified >= bot_member.top_role)
+                or (resolved_unverified is not None and resolved_unverified >= bot_member.top_role)
+            ):
+                await interaction.response.send_message(
+                    embed=ModEmbed.error(
+                        "Role Hierarchy",
+                        "I need `Manage Roles`, and both verification roles must stay below my top role.",
+                    ),
+                    ephemeral=True,
+                )
+                return
+
+        settings["verification_enabled"] = state == "on"
+        gate_result = await self._save_verification_settings(
+            interaction.guild,
+            settings,
+            previous_unverified_role_id=previous_unverified_role_id,
+        )
+
+        resolved_verified = interaction.guild.get_role(int(settings.get("verified_role", 0) or 0))
+        resolved_unverified = interaction.guild.get_role(int(settings.get("unverified_role", 0) or 0))
+        updated_channels = int(gate_result.get("updated", 0) or 0)
+        errors = gate_result.get("errors", [])
+
+        description = (
+            f"Verification is now **{state.upper()}**.\n"
+            f"Verified role: {resolved_verified.mention if resolved_verified else '`Not set`'}\n"
+            f"Unverified role: {resolved_unverified.mention if resolved_unverified else '`Not set`'}\n"
+            f"Channel access sync: `{updated_channels}` channel(s) updated"
+        )
+        if state == "on":
+            description += "\nAutorole is overridden while verification is enabled."
+        if errors:
+            description += f"\nPermission sync issues: `{len(errors)}`"
+
+        await interaction.response.send_message(
+            embed=ModEmbed.success("Verification Updated", description),
+            ephemeral=True,
+        )
 
     @app_commands.command(
         name="verifypanel",
@@ -865,7 +988,7 @@ class Verification(commands.Cog):
             )
             return
 
-        settings = await self.bot.db.get_settings(interaction.guild.id)
+        settings = await self._get_settings(interaction.guild.id)
         verify_channel_id = settings.get("verify_channel")
         banner_url = settings.get("server_banner_url")
         channel = (
@@ -1037,6 +1160,9 @@ class Verification(commands.Cog):
     async def on_member_join(self, member: discord.Member) -> None:
         try:
             if member.bot:
+                return
+
+            if not await self._is_server_verification_enabled(member.guild.id):
                 return
 
             unverified_role, _ = await self._get_roles(member.guild)

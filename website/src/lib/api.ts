@@ -9,6 +9,7 @@ import type {
     ModerationCase,
     AuditLogEntry,
     SyncStatus,
+    SetupSummary,
     DiscordChannel,
     DiscordRole,
     DiscordUser,
@@ -261,6 +262,8 @@ export interface ApiClient {
     // Config
     getConfig(guildId: string): Promise<ApiResponse<GuildConfig>>;
     updateConfig(guildId: string, config: GuildConfig, version: number): Promise<ApiResponse<GuildConfig>>;
+    getSetupSummary(guildId: string): Promise<SetupSummary>;
+    runSetupQuickstart(guildId: string): Promise<{ ok: boolean; summary: SetupSummary; createdRoles: string[]; createdChannels: string[]; reused: string[]; errors: string[]; permissionUpdates: number }>;
     validateConfig(guildId: string, config: GuildConfig): Promise<{ valid: boolean; errors: string[] }>;
     createSnapshot(guildId: string): Promise<{ snapshotId: string }>;
     rollbackConfig(guildId: string, snapshotId: string): Promise<ApiResponse<GuildConfig>>;
@@ -348,6 +351,16 @@ export const realApiClient: ApiClient = {
             body: JSON.stringify(config),
             version,
         });
+    },
+    async getSetupSummary(guildId) {
+        const { data } = await apiFetch<SetupSummary>(`/guilds/${guildId}/setup`);
+        return data;
+    },
+    async runSetupQuickstart(guildId) {
+        const { data } = await apiFetch<{ ok: boolean; summary: SetupSummary; createdRoles: string[]; createdChannels: string[]; reused: string[]; errors: string[]; permissionUpdates: number }>(`/guilds/${guildId}/setup/quickstart`, {
+            method: 'POST',
+        });
+        return data;
     },
     async validateConfig(guildId, config) {
         const { data } = await apiFetch<{ valid: boolean; errors: string[] }>(`/guilds/${guildId}/config/validate`, {

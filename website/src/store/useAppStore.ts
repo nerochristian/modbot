@@ -12,6 +12,7 @@ import type {
   DiscordRole,
   EventTypeCapability,
   GuildConfig,
+  GuildSetupConfig,
   LoggingRouteConfig,
   ModuleCapability,
   ModuleConfig,
@@ -403,6 +404,62 @@ function normalizeLoggingConfigEntry(eventTypeId: string, value: unknown): Loggi
   };
 }
 
+function defaultSetupConfig(): GuildSetupConfig {
+  return {
+    ownerRole: '',
+    managerRole: '',
+    adminRole: '',
+    supervisorRole: '',
+    seniorModRole: '',
+    moderatorRole: '',
+    trialModRole: '',
+    staffRole: '',
+    mutedRole: '',
+    quarantineRole: '',
+    logsAccessRole: '',
+    bypassRole: '',
+    whitelistedRole: '',
+    autoRole: '',
+    welcomeChannel: '',
+    staffChatChannel: '',
+    staffCommandsChannel: '',
+    staffAnnouncementsChannel: '',
+    staffGuideChannel: '',
+    staffUpdatesChannel: '',
+    staffSanctionsChannel: '',
+    supervisorLogChannel: '',
+  };
+}
+
+function normalizeSetupConfig(value: unknown): GuildSetupConfig {
+  const source = isObject(value) ? value : {};
+  const fallback = defaultSetupConfig();
+  return {
+    ownerRole: typeof source.ownerRole === 'string' ? source.ownerRole : fallback.ownerRole,
+    managerRole: typeof source.managerRole === 'string' ? source.managerRole : fallback.managerRole,
+    adminRole: typeof source.adminRole === 'string' ? source.adminRole : fallback.adminRole,
+    supervisorRole: typeof source.supervisorRole === 'string' ? source.supervisorRole : fallback.supervisorRole,
+    seniorModRole: typeof source.seniorModRole === 'string' ? source.seniorModRole : fallback.seniorModRole,
+    moderatorRole: typeof source.moderatorRole === 'string' ? source.moderatorRole : fallback.moderatorRole,
+    trialModRole: typeof source.trialModRole === 'string' ? source.trialModRole : fallback.trialModRole,
+    staffRole: typeof source.staffRole === 'string' ? source.staffRole : fallback.staffRole,
+    mutedRole: typeof source.mutedRole === 'string' ? source.mutedRole : fallback.mutedRole,
+    quarantineRole: typeof source.quarantineRole === 'string' ? source.quarantineRole : fallback.quarantineRole,
+    logsAccessRole: typeof source.logsAccessRole === 'string' ? source.logsAccessRole : fallback.logsAccessRole,
+    bypassRole: typeof source.bypassRole === 'string' ? source.bypassRole : fallback.bypassRole,
+    whitelistedRole: typeof source.whitelistedRole === 'string' ? source.whitelistedRole : fallback.whitelistedRole,
+    autoRole: typeof source.autoRole === 'string' ? source.autoRole : fallback.autoRole,
+    welcomeChannel: typeof source.welcomeChannel === 'string' ? source.welcomeChannel : fallback.welcomeChannel,
+    staffChatChannel: typeof source.staffChatChannel === 'string' ? source.staffChatChannel : fallback.staffChatChannel,
+    staffCommandsChannel: typeof source.staffCommandsChannel === 'string' ? source.staffCommandsChannel : fallback.staffCommandsChannel,
+    staffAnnouncementsChannel: typeof source.staffAnnouncementsChannel === 'string' ? source.staffAnnouncementsChannel : fallback.staffAnnouncementsChannel,
+    staffGuideChannel: typeof source.staffGuideChannel === 'string' ? source.staffGuideChannel : fallback.staffGuideChannel,
+    staffUpdatesChannel: typeof source.staffUpdatesChannel === 'string' ? source.staffUpdatesChannel : fallback.staffUpdatesChannel,
+    staffSanctionsChannel: typeof source.staffSanctionsChannel === 'string' ? source.staffSanctionsChannel : fallback.staffSanctionsChannel,
+    supervisorLogChannel: typeof source.supervisorLogChannel === 'string' ? source.supervisorLogChannel : fallback.supervisorLogChannel,
+  };
+}
+
 function normalizeRoleMappings(value: unknown): DashboardPermissionMapping[] {
   if (!Array.isArray(value)) return [];
   return value.filter(isObject).map((entry) => {
@@ -492,6 +549,7 @@ function normalizeConfig(rawConfig: unknown, guildId: string, capabilities: BotC
     prefix: typeof source.prefix === 'string' ? source.prefix : ',',
     defaultCooldown: typeof source.defaultCooldown === 'number' ? source.defaultCooldown : 0,
     timezone: typeof source.timezone === 'string' ? source.timezone : 'UTC',
+    setup: normalizeSetupConfig(source.setup),
     modules,
     commands,
     logging,

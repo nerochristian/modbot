@@ -13,6 +13,7 @@ from datetime import timezone, timedelta
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_admin
+from utils.server_setup import apply_verification_gate, sync_setup_aliases, sync_staff_role_groups
 from config import Config
 
 # ==============================================================================
@@ -37,6 +38,8 @@ def _b(val):
 
 async def _save(cog, guild_id, settings):
     """Save and return"""
+    sync_setup_aliases(settings)
+    sync_staff_role_groups(settings)
     await cog.bot.db.update_settings(guild_id, settings)
 
 # ==============================================================================
@@ -770,7 +773,16 @@ class VerificationSettingsView(BaseSettingsView):
     def __init__(self, cog, guild, settings):
         super().__init__(cog, guild, "verification")
         self.settings = settings
+        sync_setup_aliases(self.settings)
         self._sync_buttons()
+
+    async def _persist(self, *, previous_unverified_role_id: Optional[int] = None):
+        await _save(self.cog, self.guild.id, self.settings)
+        await apply_verification_gate(
+            self.guild,
+            self.settings,
+            previous_unverified_role_id=previous_unverified_role_id,
+        )
 
     def _sync_buttons(self):
         on = self.settings.get("verification_enabled", True)
@@ -791,8 +803,8 @@ class VerificationSettingsView(BaseSettingsView):
 
         config = (
             f"**Status:** {_b(enabled)} {'Active' if enabled else 'Disabled'}\n"
-            f"**Channel:** {_c(g, s, 'verification_channel')}\n"
-            f"**Verified Role:** {_r(g, s, 'verification_role')}\n"
+            f"**Channel:** {_c(g, s, 'verify_channel')}\n"
+            f"**Verified Role:** {_r(g, s, 'verified_role')}\n"
             f"**Unverified Role:** {_r(g, s, 'unverified_role')}"
         )
         embed.add_field(name="⚙️ Configuration", value=config, inline=True)
@@ -803,26 +815,27 @@ class VerificationSettingsView(BaseSettingsView):
     @discord.ui.button(label="Verification: OFF", style=discord.ButtonStyle.danger, row=1)
     async def verify_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.settings["verification_enabled"] = not self.settings.get("verification_enabled", True)
-        await _save(self.cog, self.guild.id, self.settings)
+        await self._persist()
         self._sync_buttons()
         await interaction.response.edit_message(embed=self.get_embed(), view=self)
 
     @discord.ui.select(cls=discord.ui.ChannelSelect, placeholder="📍 Set Verification Channel", min_values=0, max_values=1, channel_types=[discord.ChannelType.text], row=2)
     async def ver_channel(self, interaction: discord.Interaction, select: discord.ui.ChannelSelect):
-        self.settings["verification_channel"] = select.values[0].id if select.values else None
-        await _save(self.cog, self.guild.id, self.settings)
+        self.settings["verify_channel"] = select.values[0].id if select.values else None
+        await self._persist()
         await interaction.response.edit_message(embed=self.get_embed(), view=self)
 
     @discord.ui.select(cls=discord.ui.RoleSelect, placeholder="✅ Set Verified Role", min_values=0, max_values=1, row=3)
     async def ver_role(self, interaction: discord.Interaction, select: discord.ui.RoleSelect):
-        self.settings["verification_role"] = select.values[0].id if select.values else None
-        await _save(self.cog, self.guild.id, self.settings)
+        self.settings["verified_role"] = select.values[0].id if select.values else None
+        await self._persist()
         await interaction.response.edit_message(embed=self.get_embed(), view=self)
 
     @discord.ui.select(cls=discord.ui.RoleSelect, placeholder="🚫 Set Unverified Role", min_values=0, max_values=1, row=4)
     async def unver_role(self, interaction: discord.Interaction, select: discord.ui.RoleSelect):
+        previous_unverified_role_id = self.settings.get("unverified_role")
         self.settings["unverified_role"] = select.values[0].id if select.values else None
-        await _save(self.cog, self.guild.id, self.settings)
+        await self._persist(previous_unverified_role_id=previous_unverified_role_id)
         await interaction.response.edit_message(embed=self.get_embed(), view=self)
 
 

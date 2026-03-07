@@ -19,6 +19,7 @@ const navSections = [
     label: 'Configuration',
     items: [
       { icon: Command, label: 'Commands', path: '/dashboard/commands' },
+      { icon: Settings, label: 'Setup', path: '/dashboard/setup' },
       { icon: Package, label: 'Modules', path: '/dashboard/modules' },
       { icon: Zap, label: 'Automod', path: '/dashboard/automod' },
       { icon: Lock, label: 'Anti-Raid', path: '/dashboard/anti-raid' },

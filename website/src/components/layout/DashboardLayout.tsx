@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { useAppStore } from '@/store/useAppStore';
@@ -58,8 +58,24 @@ function EmptyGuildState({ title, description, inviteUrl, onRefresh }: EmptyGuil
 }
 
 export function DashboardLayout() {
-  const { loading, guilds, activeGuildId, refreshGuilds } = useAppStore();
+  const location = useLocation();
+  const { loading, guilds, activeGuildId, refreshGuilds, setActiveGuild } = useAppStore();
   const activeGuild = guilds.find((guild) => guild.id === activeGuildId);
+
+  useEffect(() => {
+    if (loading) {
+      return;
+    }
+    const params = new URLSearchParams(location.search);
+    const requestedGuildId = params.get('guild');
+    if (!requestedGuildId || requestedGuildId === activeGuildId) {
+      return;
+    }
+    if (!guilds.some((guild) => guild.id === requestedGuildId)) {
+      return;
+    }
+    setActiveGuild(requestedGuildId);
+  }, [activeGuildId, guilds, loading, location.search, setActiveGuild]);
 
   useEffect(() => {
     if (loading) {

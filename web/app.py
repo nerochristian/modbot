@@ -21,6 +21,13 @@ import aiohttp
 import discord
 from aiohttp import web
 from discord import app_commands
+from utils.server_setup import (
+    apply_verification_gate,
+    build_setup_summary,
+    quickstart_server,
+    sync_setup_aliases,
+    sync_staff_role_groups,
+)
 
 try:
     from google import genai
@@ -1049,6 +1056,7 @@ def _apply_dashboard_logging_to_flat_settings(settings: Dict[str, Any], logging_
 
 def _build_dashboard_modules(settings: Dict[str, Any]) -> Dict[str, Any]:
     """Build dashboard modules map using canonical IDs and flat-key bridges."""
+    sync_setup_aliases(settings)
     modules = _canonicalize_modules_blob(settings.get("modules", {}))
 
     # AutoMod
@@ -1458,6 +1466,51 @@ def _apply_dashboard_modules_to_flat_settings(settings: Dict[str, Any], modules:
             settings["forum_alert_channel"] = alerts
 
 
+_SETUP_FIELD_TO_SETTING_KEY: Dict[str, str] = {
+    "ownerRole": "owner_role",
+    "managerRole": "manager_role",
+    "adminRole": "admin_role",
+    "supervisorRole": "supervisor_role",
+    "seniorModRole": "senior_mod_role",
+    "moderatorRole": "mod_role",
+    "trialModRole": "trial_mod_role",
+    "staffRole": "staff_role",
+    "mutedRole": "muted_role",
+    "quarantineRole": "automod_quarantine_role_id",
+    "logsAccessRole": "logs_access_role",
+    "bypassRole": "automod_bypass_role_id",
+    "whitelistedRole": "whitelisted_role",
+    "autoRole": "auto_role",
+    "welcomeChannel": "welcome_channel",
+    "staffChatChannel": "staff_chat_channel",
+    "staffCommandsChannel": "staff_commands_channel",
+    "staffAnnouncementsChannel": "staff_announcements_channel",
+    "staffGuideChannel": "staff_guide_channel",
+    "staffUpdatesChannel": "staff_updates_channel",
+    "staffSanctionsChannel": "staff_sanctions_channel",
+    "supervisorLogChannel": "supervisor_log_channel",
+}
+
+
+def _build_setup_config(settings: Dict[str, Any]) -> Dict[str, Any]:
+    setup: Dict[str, Any] = {}
+    for field_key, setting_key in _SETUP_FIELD_TO_SETTING_KEY.items():
+        setup[field_key] = _coerce_channel_like(settings.get(setting_key)) or ""
+    return setup
+
+
+def _apply_setup_config_to_flat_settings(settings: Dict[str, Any], setup: Dict[str, Any]) -> None:
+    if not isinstance(setup, dict):
+        return
+
+    for field_key, setting_key in _SETUP_FIELD_TO_SETTING_KEY.items():
+        if field_key in setup:
+            settings[setting_key] = _coerce_channel_like(setup.get(field_key))
+
+    sync_setup_aliases(settings)
+    sync_staff_role_groups(settings)
+
+
 async def api_guild_config(request: web.Request):
     """Get guild settings from database."""
     session = _require_auth(request)
@@ -1469,6 +1522,7 @@ async def api_guild_config(request: web.Request):
                                           content_type="application/json")
 
     settings = await _bot.db.get_settings(int(guild_id))
+    sync_setup_aliases(settings)
     
     # Build a full config response, extracting dashboard blobs and bridging key flat settings.
     modules = _build_dashboard_modules(settings)
@@ -1481,6 +1535,7 @@ async def api_guild_config(request: web.Request):
         "updatedAt": settings.get("updatedAt", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())),
         "defaultCooldown": settings.get("defaultCooldown", 0),
         "timezone": settings.get("timezone", "UTC"),
+        "setup": _build_setup_config(settings),
         "settings": settings.get("general", {}),
         "commands": commands_blob,
         "modules": modules,
@@ -1523,6 +1578,8 @@ async def api_guild_config_update(request: web.Request):
         updated_settings["prefix"] = body.get("prefix", ",")
     if isinstance(body.get("settings"), dict):
         updated_settings["general"] = body.get("settings", {})
+    if isinstance(body.get("setup"), dict):
+        _apply_setup_config_to_flat_settings(updated_settings, body.get("setup", {}))
     if isinstance(body.get("commands"), dict):
         updated_settings["commands"] = _normalize_command_configs_blob(body.get("commands", {}))
     if isinstance(body.get("modules"), dict):
@@ -1545,7 +1602,32 @@ async def api_guild_config_update(request: web.Request):
     if isinstance(body.get("timezone"), str):
         updated_settings["timezone"] = body.get("timezone", "UTC")
 
+    sync_setup_aliases(updated_settings)
+    sync_staff_role_groups(updated_settings)
     updated_settings["commands"] = _normalize_command_configs_blob(updated_settings.get("commands", {}))
+
+    verification_sync_keys = (
+        "verification_enabled",
+        "unverified_role",
+        "verified_role",
+        "verify_channel",
+        "welcome_channel",
+    )
+    should_sync_verification_gate = any(
+        previous.get(key) != updated_settings.get(key)
+        for key in verification_sync_keys
+    )
+    if should_sync_verification_gate:
+        guild = _bot.get_guild(int(guild_id))
+        if guild is not None:
+            try:
+                await apply_verification_gate(
+                    guild,
+                    updated_settings,
+                    previous_unverified_role_id=_to_int(previous.get("unverified_role"), 0),
+                )
+            except Exception as exc:
+                logger.warning("Failed to sync verification gate for guild %s: %s", guild_id, exc)
     
     await _bot.db.update_settings(int(guild_id), updated_settings)
     
@@ -1561,6 +1643,7 @@ async def api_guild_config_update(request: web.Request):
         "updatedAt": saved.get("updatedAt", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())),
         "defaultCooldown": saved.get("defaultCooldown", 0),
         "timezone": saved.get("timezone", "UTC"),
+        "setup": _build_setup_config(saved),
         "settings": saved.get("general", {}),
         "commands": saved_commands,
         "modules": saved_modules,
@@ -1628,6 +1711,87 @@ async def api_guild_config_update(request: web.Request):
     )
 
     return web.json_response(config, headers={"ETag": str(config["version"])})
+
+
+async def api_guild_setup_summary(request: web.Request):
+    session = _require_auth(request)
+    guild_id = request.match_info["guild_id"]
+    _require_guild_access(session, guild_id)
+
+    if not _bot:
+        raise web.HTTPServiceUnavailable(
+            text=json.dumps({"code": 503, "message": "Bot not ready"}),
+            content_type="application/json",
+        )
+
+    guild = _bot.get_guild(int(guild_id))
+    if not guild:
+        raise web.HTTPNotFound(
+            text=json.dumps({"code": 404, "message": "Guild not found"}),
+            content_type="application/json",
+        )
+
+    settings = await _bot.db.get_settings(int(guild_id))
+    sync_setup_aliases(settings)
+    dashboard_url = f"{_frontend_base_url(request)}/dashboard/setup?guild={guild_id}"
+    summary = build_setup_summary(guild, settings, dashboard_url=dashboard_url)
+    return web.json_response(summary)
+
+
+async def api_guild_setup_quickstart(request: web.Request):
+    session = _require_auth(request)
+    guild_id = request.match_info["guild_id"]
+    _require_guild_access(session, guild_id)
+
+    if not _bot:
+        raise web.HTTPServiceUnavailable(
+            text=json.dumps({"code": 503, "message": "Bot not ready"}),
+            content_type="application/json",
+        )
+
+    guild = _bot.get_guild(int(guild_id))
+    if not guild:
+        raise web.HTTPNotFound(
+            text=json.dumps({"code": 404, "message": "Guild not found"}),
+            content_type="application/json",
+        )
+
+    previous = await _bot.db.get_settings(int(guild_id))
+    sync_setup_aliases(previous)
+    result = await quickstart_server(guild, previous)
+    updated_settings = dict(result.get("settings", previous))
+    updated_settings["_version"] = max(
+        _to_int(previous.get("_version", 1), 1) + 1,
+        _to_int(updated_settings.get("_version", 1), 1),
+    )
+    updated_settings["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    await _bot.db.update_settings(int(guild_id), updated_settings)
+
+    await _append_dashboard_audit(
+        guild_id,
+        session,
+        action="setup_quickstart",
+        target="guild_setup",
+        changes={
+            "createdRoles": {"from": None, "to": len(result.get("createdRoles", []))},
+            "createdChannels": {"from": None, "to": len(result.get("createdChannels", []))},
+            "errors": {"from": None, "to": len(result.get("errors", []))},
+        },
+    )
+
+    dashboard_url = f"{_frontend_base_url(request)}/dashboard/setup?guild={guild_id}"
+    summary = build_setup_summary(guild, updated_settings, dashboard_url=dashboard_url)
+    return web.json_response(
+        {
+            "ok": True,
+            "summary": summary,
+            "createdRoles": result.get("createdRoles", []),
+            "createdChannels": result.get("createdChannels", []),
+            "reused": result.get("reused", []),
+            "errors": result.get("errors", []),
+        }
+    )
 
 
 async def api_guild_antiraid_panic(request: web.Request):
@@ -2557,6 +2721,8 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/api/guilds/{guild_id}/roles", api_guild_roles)
     app.router.add_get("/api/guilds/{guild_id}/config", api_guild_config)
     app.router.add_put("/api/guilds/{guild_id}/config", api_guild_config_update)
+    app.router.add_get("/api/guilds/{guild_id}/setup", api_guild_setup_summary)
+    app.router.add_post("/api/guilds/{guild_id}/setup/quickstart", api_guild_setup_quickstart)
     app.router.add_post("/api/guilds/{guild_id}/antiraid/panic", api_guild_antiraid_panic)
     app.router.add_post("/api/guilds/{guild_id}/commands/sync", api_guild_commands_sync)
     app.router.add_get("/api/guilds/{guild_id}/commands/sync/status", api_guild_commands_sync_status)

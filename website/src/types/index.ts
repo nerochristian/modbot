@@ -250,6 +250,31 @@ export interface LoggingRouteConfig {
     format: 'compact' | 'detailed';
 }
 
+export interface GuildSetupConfig {
+    ownerRole: string;
+    managerRole: string;
+    adminRole: string;
+    supervisorRole: string;
+    seniorModRole: string;
+    moderatorRole: string;
+    trialModRole: string;
+    staffRole: string;
+    mutedRole: string;
+    quarantineRole: string;
+    logsAccessRole: string;
+    bypassRole: string;
+    whitelistedRole: string;
+    autoRole: string;
+    welcomeChannel: string;
+    staffChatChannel: string;
+    staffCommandsChannel: string;
+    staffAnnouncementsChannel: string;
+    staffGuideChannel: string;
+    staffUpdatesChannel: string;
+    staffSanctionsChannel: string;
+    supervisorLogChannel: string;
+}
+
 export interface GuildConfig {
     guildId: string;
     version: number;
@@ -259,6 +284,7 @@ export interface GuildConfig {
     prefix: string;
     defaultCooldown: number;
     timezone: string;
+    setup: GuildSetupConfig;
 
     // Module configs (keyed by module ID)
     modules: Record<string, ModuleConfig>;
@@ -278,6 +304,31 @@ export interface GuildConfig {
     // Global ignore/bypass lists
     globalBypassRoles: string[];
     globalBypassUsers: string[];
+}
+
+export interface SetupSummaryItem {
+    key: string;
+    label: string;
+    configured: boolean;
+    value: string | null;
+}
+
+export interface SetupSummarySection {
+    id: string;
+    label: string;
+    complete: number;
+    total: number;
+    items: SetupSummaryItem[];
+}
+
+export interface SetupSummary {
+    guildId: string;
+    setupComplete: boolean;
+    dashboardUrl: string | null;
+    complete: number;
+    total: number;
+    percent: number;
+    sections: SetupSummarySection[];
 }
 
 // ─── Moderation Case Types ──────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import { Audit } from './pages/Audit';
 import { Automod } from './pages/Automod';
 import { AntiRaid } from './pages/AntiRaid';
 import { Analytics } from './pages/Analytics';
+import { Setup } from './pages/Setup';
 import { Settings } from './pages/Settings';
 import { useAppStore } from './store/useAppStore';
 import { ErrorBoundary } from './components/ui/ErrorBoundary';
@@ -79,6 +80,7 @@ export default function App() {
             <Route index element={<Overview />} />
             <Route path="commands" element={<Commands />} />
             <Route path="modules" element={<Modules />} />
+            <Route path="setup" element={<Setup />} />
             <Route path="automod" element={<Automod />} />
             <Route path="anti-raid" element={<AntiRaid />} />
             <Route path="logging" element={<Logging />} />

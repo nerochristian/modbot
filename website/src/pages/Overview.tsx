@@ -1,6 +1,6 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Badge, PageSkeleton } from '@/components/ui/Shared';
-import { ShieldAlert, Users, MessageSquare, Activity, ShieldCheck, AlertTriangle, Command, Package, Zap, ArrowRight } from 'lucide-react';
+import { ShieldAlert, Users, MessageSquare, Activity, ShieldCheck, AlertTriangle, Command, Package, Zap, ArrowRight, Settings2 } from 'lucide-react';
 import { useAppStore } from '@/store/useAppStore';
 import { NavLink } from 'react-router-dom';
 import { cn, formatCount } from '@/lib/utils';
@@ -74,6 +74,7 @@ export function Overview() {
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {[
+                { label: 'Run Setup', desc: 'Configure the server-wide foundation', icon: Settings2, link: '/dashboard/setup', color: 'text-blue-600 bg-blue-50' },
                 { label: 'Manage Commands', desc: 'Toggle and configure bot commands', icon: Command, link: '/dashboard/commands', color: 'text-indigo-600 bg-indigo-50' },
                 { label: 'Configure Modules', desc: 'Enable features and set thresholds', icon: Package, link: '/dashboard/modules', color: 'text-emerald-600 bg-emerald-50' },
                 { label: 'Event Logging', desc: 'Route events to Discord channels', icon: Zap, link: '/dashboard/logging', color: 'text-amber-600 bg-amber-50' },

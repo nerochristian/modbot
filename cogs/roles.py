@@ -12,6 +12,7 @@ import asyncio
 import re
 from utils.embeds import ModEmbed
 from utils.checks import is_mod, is_admin, is_bot_owner_id
+from utils.server_setup import module_enabled
 from utils.status_emojis import apply_status_emoji_overrides
 from config import Config
 
@@ -72,6 +73,35 @@ class Roles(commands.Cog):
                 return
 
             await after.add_roles(staff_role, reason="Auto-add staff role when mod role assigned")
+        except Exception:
+            return
+
+    @commands.Cog.listener()
+    async def on_member_join(self, member: discord.Member) -> None:
+        try:
+            if member.bot or not member.guild:
+                return
+
+            settings = await self.bot.db.get_settings(member.guild.id)
+            if module_enabled(settings, "verification", False):
+                return
+
+            auto_role_id = settings.get("auto_role")
+            if not auto_role_id:
+                return
+
+            role = member.guild.get_role(int(auto_role_id))
+            bot_member = member.guild.me
+            if (
+                role is None
+                or bot_member is None
+                or not bot_member.guild_permissions.manage_roles
+                or role >= bot_member.top_role
+                or role in member.roles
+            ):
+                return
+
+            await member.add_roles(role, reason="Auto role on join")
         except Exception:
             return
 
@@ -362,6 +392,75 @@ class Roles(commands.Cog):
         embed.add_field(name="Key Permissions", value=", ".join(perms[:10]) or "None", inline=False)
         
         await interaction.response.send_message(embed=embed)
+
+    @mod_role_group.command(name="auto", description="Set the role given to new members when verification is off")
+    @app_commands.describe(role="Role to auto-assign on join", clear="Clear the current auto role")
+    @is_admin()
+    async def role_auto(
+        self,
+        interaction: discord.Interaction,
+        role: Optional[discord.Role] = None,
+        clear: bool = False,
+    ):
+        if not interaction.guild:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Error", "Guild only."),
+                ephemeral=True,
+            )
+
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+
+        if clear:
+            settings["auto_role"] = None
+            await self.bot.db.update_settings(interaction.guild_id, settings)
+            return await self._safe_send(
+                interaction,
+                embed=ModEmbed.success("Auto Role Cleared", "New members will no longer receive an automatic join role."),
+                ephemeral=True,
+            )
+
+        if role is None:
+            current_role = interaction.guild.get_role(int(settings.get("auto_role", 0) or 0))
+            description = (
+                f"Current auto role: {current_role.mention if current_role else '`Not set`'}\n"
+                f"Verification: {'ON (autorole overridden by unverified)' if module_enabled(settings, 'verification', False) else 'OFF'}"
+            )
+            return await self._safe_send(
+                interaction,
+                embed=ModEmbed.info("Auto Role", description),
+                ephemeral=True,
+            )
+
+        can_manage, error = self.can_manage_role(interaction.user, role)
+        if not can_manage:
+            return await self._safe_send(interaction, embed=ModEmbed.error("Permission Denied", error), ephemeral=True)
+
+        bot_member = interaction.guild.me
+        if role.managed:
+            return await self._safe_send(
+                interaction,
+                embed=ModEmbed.error("Not Allowed", "Managed roles cannot be used as the join autorole."),
+                ephemeral=True,
+            )
+        if bot_member is None or not bot_member.guild_permissions.manage_roles or role >= bot_member.top_role:
+            return await self._safe_send(
+                interaction,
+                embed=ModEmbed.error("Permission Denied", "I cannot assign that role because it is above my highest role."),
+                ephemeral=True,
+            )
+
+        settings["auto_role"] = role.id
+        await self.bot.db.update_settings(interaction.guild_id, settings)
+
+        description = f"New members will receive {role.mention} when verification is off."
+        if module_enabled(settings, "verification", False):
+            description += "\nVerification is currently on, so new joins will still receive the unverified role instead."
+
+        await self._safe_send(
+            interaction,
+            embed=ModEmbed.success("Auto Role Updated", description),
+            ephemeral=True,
+        )
 
     # ==================== ALLOWLIST SUBGROUP ====================
     # allowlist_group moved to __init__
