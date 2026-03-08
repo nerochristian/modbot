@@ -430,6 +430,121 @@ def _coerce_channel_like(value: Any) -> Optional[str]:
     return text or None
 
 
+_DASHBOARD_ROLE_CAPABILITIES: Dict[str, List[str]] = {
+    "owner": [
+        "view_dashboard", "view_commands", "manage_commands", "view_modules", "manage_modules",
+        "view_logging", "manage_logging", "view_cases", "manage_cases", "view_automod",
+        "manage_automod", "manage_permissions", "export_data", "danger_zone_actions",
+        "run_sync_operations", "view_audit",
+    ],
+    "admin": [
+        "view_dashboard", "view_commands", "manage_commands", "view_modules", "manage_modules",
+        "view_logging", "manage_logging", "view_cases", "manage_cases", "view_automod",
+        "manage_automod", "export_data", "run_sync_operations", "view_audit",
+    ],
+    "moderator": [
+        "view_dashboard", "view_commands", "view_modules", "view_logging",
+        "view_cases", "manage_cases", "view_automod", "view_audit",
+    ],
+    "viewer": ["view_dashboard", "view_commands", "view_modules", "view_logging", "view_cases"],
+}
+
+
+def _normalize_dashboard_role(value: Any) -> Optional[str]:
+    role = str(value or "").strip().lower()
+    if role in _DASHBOARD_ROLE_CAPABILITIES:
+        return role
+    return None
+
+
+def _normalize_dashboard_capabilities(role: str, raw_caps: Any) -> List[str]:
+    defaults = list(_DASHBOARD_ROLE_CAPABILITIES.get(role, []))
+    if not isinstance(raw_caps, list):
+        return defaults
+    valid = [str(cap) for cap in raw_caps if isinstance(cap, str) and cap in _DASHBOARD_ROLE_CAPABILITIES["owner"]]
+    return valid or defaults
+
+
+def _normalize_dashboard_role_mappings(raw_mappings: Any) -> List[Dict[str, Any]]:
+    if not isinstance(raw_mappings, list):
+        return []
+    normalized: List[Dict[str, Any]] = []
+    seen_role_ids: set[str] = set()
+    for entry in raw_mappings:
+        if not isinstance(entry, dict):
+            continue
+        role_id = _coerce_channel_like(entry.get("roleId"))
+        dashboard_role = _normalize_dashboard_role(entry.get("dashboardRole"))
+        if not role_id or not dashboard_role or role_id in seen_role_ids:
+            continue
+        seen_role_ids.add(role_id)
+        normalized.append({
+            "roleId": role_id,
+            "dashboardRole": dashboard_role,
+            "capabilities": _normalize_dashboard_capabilities(dashboard_role, entry.get("capabilities")),
+        })
+    return normalized
+
+
+def _normalize_dashboard_user_overrides(raw_overrides: Any) -> List[Dict[str, Any]]:
+    if not isinstance(raw_overrides, list):
+        return []
+    normalized: List[Dict[str, Any]] = []
+    seen_user_ids: set[str] = set()
+    for entry in raw_overrides:
+        if not isinstance(entry, dict):
+            continue
+        user_id = _coerce_channel_like(entry.get("userId"))
+        dashboard_role = _normalize_dashboard_role(entry.get("dashboardRole"))
+        if not user_id or not dashboard_role or user_id in seen_user_ids:
+            continue
+        seen_user_ids.add(user_id)
+        normalized.append({
+            "userId": user_id,
+            "dashboardRole": dashboard_role,
+            "capabilities": _normalize_dashboard_capabilities(dashboard_role, entry.get("capabilities")),
+        })
+    return normalized
+
+
+def _derived_dashboard_role_mappings(settings: Dict[str, Any]) -> List[Dict[str, Any]]:
+    derived_pairs = (
+        ("owner_role", "owner"),
+        ("manager_role", "admin"),
+        ("admin_role", "admin"),
+        ("supervisor_role", "moderator"),
+        ("senior_mod_role", "moderator"),
+        ("mod_role", "moderator"),
+        ("trial_mod_role", "moderator"),
+        ("staff_role", "moderator"),
+    )
+    mappings: List[Dict[str, Any]] = []
+    seen_role_ids: set[str] = set()
+    for setting_key, dashboard_role in derived_pairs:
+        role_id = _coerce_channel_like(settings.get(setting_key))
+        if not role_id or role_id in seen_role_ids:
+            continue
+        seen_role_ids.add(role_id)
+        mappings.append({
+            "roleId": role_id,
+            "dashboardRole": dashboard_role,
+            "capabilities": list(_DASHBOARD_ROLE_CAPABILITIES[dashboard_role]),
+        })
+    return mappings
+
+
+def _effective_dashboard_permissions(settings: Dict[str, Any]) -> Dict[str, Any]:
+    explicit_mappings = _normalize_dashboard_role_mappings(settings.get("dashboardRoleMappings", []))
+    overrides = _normalize_dashboard_user_overrides(settings.get("dashboardUserOverrides", []))
+    configured = _coerce_bool(settings.get("dashboardPermissionsConfigured"), False)
+    role_mappings = explicit_mappings if (configured or explicit_mappings) else _derived_dashboard_role_mappings(settings)
+    return {
+        "dashboardRoleMappings": role_mappings,
+        "roleMappings": role_mappings,
+        "userOverrides": overrides,
+    }
+
+
 def _get_log_setting(settings: Dict[str, Any], canonical_key: str) -> Optional[str]:
     for key in _LOG_SETTING_ALIASES.get(canonical_key, (canonical_key,)):
         value = _coerce_channel_like(settings.get(key))
@@ -1482,6 +1597,8 @@ _SETUP_FIELD_TO_SETTING_KEY: Dict[str, str] = {
     "bypassRole": "automod_bypass_role_id",
     "whitelistedRole": "whitelisted_role",
     "autoRole": "auto_role",
+    "verifiedRole": "verified_role",
+    "unverifiedRole": "unverified_role",
     "welcomeChannel": "welcome_channel",
     "staffChatChannel": "staff_chat_channel",
     "staffCommandsChannel": "staff_commands_channel",
@@ -1528,6 +1645,7 @@ async def api_guild_config(request: web.Request):
         settings = hydrate_setup_settings_from_guild(guild, settings)
     else:
         sync_setup_aliases(settings)
+    effective_permissions = _effective_dashboard_permissions(settings)
     
     # Build a full config response, extracting dashboard blobs and bridging key flat settings.
     modules = _build_dashboard_modules(settings)
@@ -1545,11 +1663,7 @@ async def api_guild_config(request: web.Request):
         "commands": commands_blob,
         "modules": modules,
         "logging": logging_blob,
-        "permissions": {
-            "dashboardRoleMappings": settings.get("dashboardRoleMappings", []),
-            "roleMappings": settings.get("dashboardRoleMappings", []),
-            "userOverrides": settings.get("dashboardUserOverrides", []),
-        },
+        "permissions": effective_permissions,
         "globalBypassRoles": settings.get("globalBypassRoles", []),
         "globalBypassUsers": settings.get("globalBypassUsers", []),
     }
@@ -1595,9 +1709,11 @@ async def api_guild_config_update(request: web.Request):
         updated_settings["logging"] = body.get("logging", {})
         _apply_dashboard_logging_to_flat_settings(updated_settings, body.get("logging", {}))
     if isinstance(role_mappings, list):
-        updated_settings["dashboardRoleMappings"] = role_mappings
+        updated_settings["dashboardRoleMappings"] = _normalize_dashboard_role_mappings(role_mappings)
+        updated_settings["dashboardPermissionsConfigured"] = True
     if isinstance(permissions_payload.get("userOverrides"), list):
-        updated_settings["dashboardUserOverrides"] = permissions_payload.get("userOverrides")
+        updated_settings["dashboardUserOverrides"] = _normalize_dashboard_user_overrides(permissions_payload.get("userOverrides"))
+        updated_settings["dashboardPermissionsConfigured"] = True
     if isinstance(body.get("globalBypassRoles"), list):
         updated_settings["globalBypassRoles"] = body.get("globalBypassRoles", [])
     if isinstance(body.get("globalBypassUsers"), list):
@@ -1638,9 +1754,15 @@ async def api_guild_config_update(request: web.Request):
     
     # Return updated config
     saved = await _bot.db.get_settings(int(guild_id))
+    guild = _bot.get_guild(int(guild_id))
+    if guild is not None:
+        saved = hydrate_setup_settings_from_guild(guild, saved)
+    else:
+        sync_setup_aliases(saved)
     saved_modules = _build_dashboard_modules(saved)
     saved_logging = _build_dashboard_logging(saved)
     saved_commands = _normalize_command_configs_blob(saved.get("commands", {}))
+    effective_permissions = _effective_dashboard_permissions(saved)
     config = {
         "guildId": guild_id,
         "version": saved.get("_version", 1),
@@ -1653,11 +1775,7 @@ async def api_guild_config_update(request: web.Request):
         "commands": saved_commands,
         "modules": saved_modules,
         "logging": saved_logging,
-        "permissions": {
-            "dashboardRoleMappings": saved.get("dashboardRoleMappings", []),
-            "roleMappings": saved.get("dashboardRoleMappings", []),
-            "userOverrides": saved.get("dashboardUserOverrides", []),
-        },
+        "permissions": effective_permissions,
         "globalBypassRoles": saved.get("globalBypassRoles", []),
         "globalBypassUsers": saved.get("globalBypassUsers", []),
     }

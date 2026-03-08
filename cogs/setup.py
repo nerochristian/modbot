@@ -8,6 +8,7 @@ for the rest of the server-wide tuning.
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Optional
 
@@ -18,6 +19,8 @@ from discord.ext import commands
 from utils.checks import is_admin
 from utils.embeds import ModEmbed
 from utils.server_setup import build_setup_summary, dashboard_setup_url, quickstart_server
+
+logger = logging.getLogger(__name__)
 
 
 class Setup(commands.Cog):
@@ -51,7 +54,7 @@ class Setup(commands.Cog):
             description=(
                 f"Setup coverage for **{guild.name}**\n\n"
                 f"**Progress:** `{percent}%` ({complete}/{total})\n"
-                f"Use `/setup create_missing:true` to scaffold missing defaults, or finish the rest in the dashboard."
+                f"Run `/setup` to scaffold missing defaults, or use `/setup create_missing:false` for status only."
             ),
             color=color,
         )
@@ -83,16 +86,16 @@ class Setup(commands.Cog):
 
     @app_commands.command(
         name="setup",
-        description="Review setup status or create missing baseline setup resources",
+        description="Create missing baseline setup resources and show setup status",
     )
     @app_commands.describe(
-        create_missing="Create missing baseline safety roles and sync verification access without forcing a full server rewrite",
+        create_missing="Create missing baseline roles, categories, and channels. Disable this to only view status.",
     )
     @is_admin()
     async def setup_command(
         self,
         interaction: discord.Interaction,
-        create_missing: bool = False,
+        create_missing: bool = True,
     ) -> None:
         guild = interaction.guild
         if guild is None:
@@ -103,43 +106,50 @@ class Setup(commands.Cog):
             return
 
         await interaction.response.defer(ephemeral=True)
-        settings = await self.bot.db.get_settings(guild.id)
-        if create_missing:
-            result = await quickstart_server(guild, settings)
-            settings = result["settings"]
-            settings["_version"] = int(settings.get("_version", 1) or 1) + 1
-            settings["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-            await self.bot.db.update_settings(guild.id, settings)
+        try:
+            settings = await self.bot.db.get_settings(guild.id)
+            if create_missing:
+                result = await quickstart_server(guild, settings)
+                settings = result["settings"]
+                settings["_version"] = int(settings.get("_version", 1) or 1) + 1
+                settings["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+                await self.bot.db.update_settings(guild.id, settings)
+
+                summary = build_setup_summary(guild, settings, dashboard_url=dashboard_setup_url(guild.id))
+                embed = self._build_status_embed(guild, summary)
+                embed.description = (
+                    f"Missing baseline resources were created where possible for **{guild.name}**.\n\n"
+                    f"**Progress:** `{summary['percent']}%` ({summary['complete']}/{summary['total']})\n"
+                    "Review the remaining items in the dashboard or rerun `/setup create_missing:false` for status only."
+                )
+                embed.add_field(
+                    name="Created",
+                    value=(
+                        f"Roles: `{len(result.get('createdRoles', []))}`\n"
+                        f"Channels/Categories: `{len(result.get('createdChannels', []))}`\n"
+                        f"Reused Existing: `{len(result.get('reused', []))}`\n"
+                        f"Verification Access Updates: `{int(result.get('permissionUpdates', 0) or 0)}`"
+                    ),
+                    inline=False,
+                )
+                if result.get("errors"):
+                    embed.add_field(
+                        name="Errors",
+                        value="\n".join(str(item)[:150] for item in result["errors"][:5]),
+                        inline=False,
+                    )
+                await interaction.followup.send(embed=embed, view=self._dashboard_view(guild.id), ephemeral=True)
+                return
 
             summary = build_setup_summary(guild, settings, dashboard_url=dashboard_setup_url(guild.id))
             embed = self._build_status_embed(guild, summary)
-            embed.description = (
-                f"Missing baseline resources were created where possible for **{guild.name}**.\n\n"
-                f"**Progress:** `{summary['percent']}%` ({summary['complete']}/{summary['total']})\n"
-                "Review the remaining items in the dashboard or rerun `/setup` for status."
-            )
-            embed.add_field(
-                name="Created",
-                value=(
-                    f"Roles: `{len(result.get('createdRoles', []))}`\n"
-                    f"Channels/Categories: `{len(result.get('createdChannels', []))}`\n"
-                    f"Reused Existing: `{len(result.get('reused', []))}`\n"
-                    f"Verification Access Updates: `{int(result.get('permissionUpdates', 0) or 0)}`"
-                ),
-                inline=False,
-            )
-            if result.get("errors"):
-                embed.add_field(
-                    name="Errors",
-                    value="\n".join(str(item)[:150] for item in result["errors"][:5]),
-                    inline=False,
-                )
             await interaction.followup.send(embed=embed, view=self._dashboard_view(guild.id), ephemeral=True)
-            return
-
-        summary = build_setup_summary(guild, settings, dashboard_url=dashboard_setup_url(guild.id))
-        embed = self._build_status_embed(guild, summary)
-        await interaction.followup.send(embed=embed, view=self._dashboard_view(guild.id), ephemeral=True)
+        except Exception as exc:
+            logger.exception("Setup command failed for guild %s", guild.id)
+            await interaction.followup.send(
+                embed=ModEmbed.error("Setup Failed", f"An error occurred while running setup: {exc}"),
+                ephemeral=True,
+            )
 
     @app_commands.command(
         name="staffupdates",

@@ -513,9 +513,8 @@ def build_setup_summary(
                 role_item("Bypass Role", "automod_bypass_role_id"),
                 role_item("Whitelisted Role", "whitelisted_role"),
                 role_item("Auto Join Role", "auto_role"),
-                module_role_item("Verified Role", "verification", "verifiedRole", "verified_role"),
-                module_role_item("Unverified Role", "verification", "unverifiedRole", "unverified_role"),
-                module_role_item("Ticket Support Role", "tickets", "supportRole", "ticket_support_role"),
+                role_item("Verified Role", "verified_role"),
+                role_item("Unverified Role", "unverified_role"),
             ],
         },
         {
@@ -715,6 +714,52 @@ async def quickstart_server(guild: discord.Guild, settings: Dict[str, Any]) -> D
             reused.append(f"role:{spec['name']}")
 
         updated[spec["setting_key"]] = role.id
+
+    category_lookup: Dict[str, discord.CategoryChannel] = {}
+    for spec in CATEGORY_SPECS:
+        category = _find_category(guild, updated.get(spec["setting_key"]), spec["name"])
+        if category is None:
+            try:
+                category = await guild.create_category(
+                    name=spec["name"],
+                    reason="ModBot setup quickstart",
+                )
+                created_channels.append(spec["name"])
+            except Exception as exc:
+                errors.append(f"Category {spec['name']}: {exc}")
+                continue
+        else:
+            reused.append(f"category:{spec['name']}")
+
+        updated[spec["setting_key"]] = category.id
+        category_lookup[spec["setting_key"]] = category
+
+    for spec in CHANNEL_SPECS:
+        channel = _find_text_channel(guild, updated.get(spec["setting_key"]), spec["name"])
+        if channel is None:
+            category = None
+            category_key = spec.get("category")
+            if isinstance(category_key, str):
+                category = category_lookup.get(category_key)
+                if category is None:
+                    found_category = guild.get_channel(_coerce_int(updated.get(category_key)) or 0)
+                    if isinstance(found_category, discord.CategoryChannel):
+                        category = found_category
+            try:
+                channel = await guild.create_text_channel(
+                    name=spec["name"],
+                    category=category,
+                    topic=spec.get("topic"),
+                    reason="ModBot setup quickstart",
+                )
+                created_channels.append(spec["name"])
+            except Exception as exc:
+                errors.append(f"Channel {spec['name']}: {exc}")
+                continue
+        else:
+            reused.append(f"channel:{spec['name']}")
+
+        updated[spec["setting_key"]] = channel.id
 
     for key, default in FEATURE_DEFAULTS.items():
         updated.setdefault(key, default)

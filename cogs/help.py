@@ -229,7 +229,7 @@ MOD_COMMANDS = {
 
 ADMIN_COMMANDS = {
     "Server Setup": [
-        ("`/setup`", "Review setup status or scaffold missing setup resources"),
+        ("`/setup`", "Create missing setup roles/channels and show current setup status"),
         ("`/verification on|off`", "Toggle server verification"),
         ("`/setlog`", "Set logging channel"),
         ("`/setmod`", "Set mod role"),

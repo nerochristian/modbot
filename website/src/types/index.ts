@@ -265,6 +265,8 @@ export interface GuildSetupConfig {
     bypassRole: string;
     whitelistedRole: string;
     autoRole: string;
+    verifiedRole: string;
+    unverifiedRole: string;
     welcomeChannel: string;
     staffChatChannel: string;
     staffCommandsChannel: string;

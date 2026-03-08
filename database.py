@@ -8,6 +8,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shutil
 import tempfile
 from contextlib import asynccontextmanager
@@ -17,11 +18,272 @@ from typing import Optional, List, Dict, Any
 import aiosqlite
 import aiohttp
 try:
+    import asyncpg
+except ImportError:
+    asyncpg = None
+try:
     from cogs.automod_config import AUTOMOD_SETTINGS
 except ImportError:
     AUTOMOD_SETTINGS = {}
 
 logger = logging.getLogger("ModBot.Database")
+
+
+def _is_postgres_url(database_url: str) -> bool:
+    database_url = (database_url or "").strip().lower()
+    return database_url.startswith("postgresql://") or database_url.startswith("postgres://")
+
+
+def _normalize_postgres_url(database_url: str) -> str:
+    database_url = (database_url or "").strip()
+    if database_url.lower().startswith("postgres://"):
+        return "postgresql://" + database_url[len("postgres://"):]
+    return database_url
+
+
+_POSTGRES_UPSERT_CONFLICT_COLUMNS: dict[str, tuple[str, ...]] = {
+    "guild_settings": ("guild_id",),
+    "court_votes": ("session_id", "voter_id"),
+    "giveaway_entries": ("giveaway_id", "user_id"),
+    "blacklist": ("user_id",),
+}
+
+_POSTGRES_SERIAL_ID_TABLES = {
+    "cases",
+    "warnings",
+    "mod_notes",
+    "tempbans",
+    "mod_stats",
+    "reports",
+    "tickets",
+    "staff_sanctions",
+    "court_sessions",
+    "court_evidence",
+    "court_votes",
+    "modmail_threads",
+    "modmail_messages",
+    "modmail_blocks",
+    "giveaways",
+    "reaction_roles",
+    "voice_roles",
+    "quarantines",
+    "dashboard_audit",
+}
+
+
+def _normalize_query_params(params: Any = None) -> tuple[Any, ...]:
+    if params is None:
+        return ()
+    if isinstance(params, tuple):
+        return params
+    if isinstance(params, list):
+        return tuple(params)
+    return (params,)
+
+
+def _convert_sqlite_placeholders(query: str) -> str:
+    index = 0
+
+    def repl(_: re.Match[str]) -> str:
+        nonlocal index
+        index += 1
+        return f"${index}"
+
+    return re.sub(r"\?", repl, query)
+
+
+def _convert_sqlite_schema_sql(query: str) -> str:
+    converted = query
+    converted = re.sub(
+        r"\bINTEGER\s+PRIMARY\s+KEY\s+AUTOINCREMENT\b",
+        "BIGSERIAL PRIMARY KEY",
+        converted,
+        flags=re.IGNORECASE,
+    )
+    converted = re.sub(r"\bBOOLEAN\b", "BIGINT", converted, flags=re.IGNORECASE)
+    converted = re.sub(r"\bINTEGER\b", "BIGINT", converted, flags=re.IGNORECASE)
+    return converted
+
+
+def _parse_insert_columns(columns: str) -> list[str]:
+    return [column.strip().strip('"') for column in columns.split(",") if column.strip()]
+
+
+def _convert_sqlite_insert_sql(query: str) -> tuple[str, bool]:
+    stripped = query.strip()
+    match = re.match(
+        r"(?is)^INSERT\s+OR\s+(IGNORE|REPLACE)\s+INTO\s+([A-Za-z_][A-Za-z0-9_]*)\s*\((.*?)\)\s*VALUES\b",
+        stripped,
+    )
+    if not match:
+        plain_match = re.match(r"(?is)^INSERT\s+INTO\s+([A-Za-z_][A-Za-z0-9_]*)\b", stripped)
+        if not plain_match:
+            return query, False
+
+        table_name = plain_match.group(1)
+        if table_name in _POSTGRES_SERIAL_ID_TABLES and "RETURNING" not in stripped.upper():
+            return stripped.rstrip().rstrip(";") + " RETURNING id", True
+        return query, False
+
+    mode = match.group(1).upper()
+    table_name = match.group(2)
+    columns = _parse_insert_columns(match.group(3))
+    conflict_columns = _POSTGRES_UPSERT_CONFLICT_COLUMNS.get(table_name)
+
+    converted = re.sub(
+        r"(?is)^INSERT\s+OR\s+(IGNORE|REPLACE)\s+INTO\b",
+        "INSERT INTO",
+        stripped,
+        count=1,
+    ).rstrip().rstrip(";")
+
+    if mode == "IGNORE":
+        if conflict_columns:
+            conflict_sql = ", ".join(conflict_columns)
+            converted += f" ON CONFLICT ({conflict_sql}) DO NOTHING"
+        else:
+            converted += " ON CONFLICT DO NOTHING"
+        return converted, False
+
+    if not conflict_columns:
+        raise ValueError(f"Missing conflict target for SQLite REPLACE on table '{table_name}'")
+
+    update_columns = [column for column in columns if column not in conflict_columns]
+    update_sql = ", ".join(f"{column} = EXCLUDED.{column}" for column in update_columns)
+    conflict_sql = ", ".join(conflict_columns)
+    converted += f" ON CONFLICT ({conflict_sql}) DO UPDATE SET {update_sql}"
+    if table_name in _POSTGRES_SERIAL_ID_TABLES and "RETURNING" not in converted.upper():
+        converted += " RETURNING id"
+        return converted, True
+    return converted, False
+
+
+def _parse_status_rowcount(status: str) -> int:
+    if not status:
+        return 0
+    parts = status.split()
+    for part in reversed(parts):
+        if part.isdigit():
+            return int(part)
+    return 0
+
+
+class PostgresCompatCursor:
+    def __init__(
+        self,
+        rows: Optional[list[Any]] = None,
+        *,
+        rowcount: int = 0,
+        lastrowid: Optional[int] = None,
+    ) -> None:
+        self._rows = [tuple(row) if not isinstance(row, tuple) else row for row in (rows or [])]
+        self._index = 0
+        self.rowcount = rowcount
+        self.lastrowid = lastrowid
+
+    async def fetchone(self):
+        if self._index >= len(self._rows):
+            return None
+        row = self._rows[self._index]
+        self._index += 1
+        return row
+
+    async def fetchall(self):
+        if self._index >= len(self._rows):
+            return []
+        rows = self._rows[self._index:]
+        self._index = len(self._rows)
+        return rows
+
+    async def __aenter__(self) -> "PostgresCompatCursor":
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb) -> None:
+        return None
+
+
+class PostgresCompatConnection:
+    def __init__(self, conn: "asyncpg.Connection") -> None:
+        self._conn = conn
+        self._transaction: Optional["asyncpg.Transaction"] = None
+
+    async def _start_transaction(self) -> None:
+        if self._transaction is not None:
+            return
+        self._transaction = self._conn.transaction()
+        await self._transaction.start()
+
+    async def _finish_transaction(self, *, commit: bool) -> None:
+        if self._transaction is None:
+            return
+        try:
+            if commit:
+                await self._transaction.commit()
+            else:
+                await self._transaction.rollback()
+        finally:
+            self._transaction = None
+
+    async def commit(self) -> None:
+        await self._finish_transaction(commit=True)
+
+    async def rollback(self) -> None:
+        await self._finish_transaction(commit=False)
+
+    async def execute(self, query: str, params: Any = None) -> PostgresCompatCursor:
+        if asyncpg is None:
+            raise RuntimeError("asyncpg is required for PostgreSQL mode")
+
+        normalized_params = _normalize_query_params(params)
+        stripped = (query or "").strip()
+        upper = stripped.upper()
+
+        if upper == "BEGIN":
+            await self._start_transaction()
+            return PostgresCompatCursor()
+
+        if upper.startswith("PRAGMA "):
+            pragma = upper[7:].strip()
+            if pragma.startswith("PAGE_COUNT"):
+                return PostgresCompatCursor([(0,)], rowcount=1)
+            if pragma.startswith("PAGE_SIZE"):
+                return PostgresCompatCursor([(8192,)], rowcount=1)
+            return PostgresCompatCursor()
+
+        if upper.startswith("VACUUM INTO"):
+            return PostgresCompatCursor()
+
+        if upper.startswith("CREATE TABLE") or upper.startswith("ALTER TABLE") or upper.startswith("CREATE INDEX"):
+            stripped = _convert_sqlite_schema_sql(stripped)
+
+        stripped, has_returning_id = _convert_sqlite_insert_sql(stripped)
+        stripped = _convert_sqlite_placeholders(stripped)
+        upper = stripped.upper()
+
+        is_write = upper.startswith(("INSERT", "UPDATE", "DELETE", "CREATE", "ALTER", "DROP", "TRUNCATE"))
+        if is_write and self._transaction is None:
+            await self._start_transaction()
+
+        try:
+            if upper.startswith("SELECT") or " RETURNING " in upper:
+                rows = await self._conn.fetch(stripped, *normalized_params)
+                lastrowid = None
+                if has_returning_id and rows:
+                    lastrowid = rows[0][0]
+                rowcount = len(rows)
+                if has_returning_id and not rowcount:
+                    rowcount = 0
+                return PostgresCompatCursor(rows, rowcount=rowcount, lastrowid=lastrowid)
+
+            status = await self._conn.execute(stripped, *normalized_params)
+            return PostgresCompatCursor(rowcount=_parse_status_rowcount(status))
+        except asyncpg.UniqueViolationError as exc:
+            raise aiosqlite.IntegrityError(str(exc)) from exc
+        except asyncpg.PostgresError as exc:
+            raise aiosqlite.OperationalError(str(exc)) from exc
+
+    async def close_pending_transaction(self) -> None:
+        await self.rollback()
 
 
 class SupabaseStorageMirror:
@@ -133,8 +395,6 @@ def _resolve_database_path() -> str:
     database_url = (os.getenv("DATABASE_URL") or "").strip()
     if database_url.startswith("sqlite:///"):
         return database_url.replace("sqlite:///", "", 1)
-    if database_url and not database_url.startswith("sqlite:///"):
-        logger.warning("DATABASE_URL is not sqlite. This bot runs on SQLite locally; use Supabase mirror env vars for persistent backups.")
 
     # Railway persistent volume mount path.
     if os.path.isdir("/app/data"):
@@ -158,24 +418,31 @@ class Database:
     """
     
     def __init__(self) -> None:
+        self.database_url = _normalize_postgres_url((os.getenv("DATABASE_URL") or "").strip())
+        self._is_postgres = _is_postgres_url(self.database_url)
         self.db_path = DATABASE_PATH
-        db_dir = os.path.dirname(self.db_path)
-        if db_dir and db_dir.strip():
-            try:
-                os.makedirs(db_dir, exist_ok=True)
-            except Exception as e:
-                logger.error(f"Failed to create database directory {db_dir}: {e}")
-        logger.info(f"Database path: {self.db_path}")
+        if not self._is_postgres:
+            db_dir = os.path.dirname(self.db_path)
+            if db_dir and db_dir.strip():
+                try:
+                    os.makedirs(db_dir, exist_ok=True)
+                except Exception as e:
+                    logger.error(f"Failed to create database directory {db_dir}: {e}")
+            logger.info("Database mode: sqlite (%s)", self.db_path)
+        else:
+            logger.info("Database mode: postgres")
                 
         self._lock = asyncio.Lock()
         self._initialized = False
-        self._pool: Optional[aiosqlite.Connection] = None
+        self._pool: Optional[Any] = None
         self._supabase_mirror = SupabaseStorageMirror()
         self._supabase_sync_interval_seconds = max(5, int(os.getenv("SUPABASE_SYNC_INTERVAL_SECONDS", "15")))
         self._supabase_last_token: Optional[tuple[tuple[str, int, int], ...]] = None
         self._supabase_sync_task: Optional[asyncio.Task] = None
 
-        if self._supabase_mirror.enabled:
+        if self._is_postgres:
+            logger.info("Supabase storage mirror disabled while PostgreSQL is the live database.")
+        elif self._supabase_mirror.enabled:
             logger.info(
                 "Supabase mirror enabled: bucket=%s, object=%s",
                 self._supabase_mirror.bucket,
@@ -199,6 +466,18 @@ class Database:
     async def init_pool(self) -> None:
         """Initialize database connection pool"""
         if self._pool is None:
+            if self._is_postgres:
+                if asyncpg is None:
+                    raise RuntimeError("DATABASE_URL points to PostgreSQL but asyncpg is not installed")
+                self._pool = await asyncpg.create_pool(
+                    dsn=self.database_url,
+                    min_size=1,
+                    max_size=max(2, int(os.getenv("DATABASE_POOL_MAX_SIZE", "10"))),
+                    command_timeout=60,
+                )
+                logger.info("Database connection pool initialized (PostgreSQL)")
+                return
+
             await self._restore_sqlite_from_supabase()
             self._pool = await aiosqlite.connect(self.db_path)
             # Enable WAL mode for better concurrency
@@ -216,11 +495,21 @@ class Database:
     @asynccontextmanager
     async def get_connection(self):
         """Get database connection as async context manager"""
-        # Use pooled connection if available
+        await self.init_pool()
+
+        if self._is_postgres:
+            raw_conn = await self._pool.acquire()
+            compat_conn = PostgresCompatConnection(raw_conn)
+            try:
+                yield compat_conn
+            finally:
+                await compat_conn.close_pending_transaction()
+                await self._pool.release(raw_conn)
+            return
+
         if self._pool is not None:
             yield self._pool
         else:
-            # Fallback to creating new connection
             conn = await aiosqlite.connect(self.db_path)
             try:
                 yield conn
@@ -243,7 +532,7 @@ class Database:
 
     async def _restore_sqlite_from_supabase(self) -> None:
         """Restore the SQLite file from Supabase before opening connections."""
-        if not self._supabase_mirror.enabled:
+        if self._is_postgres or not self._supabase_mirror.enabled:
             return
 
         tmp_file = tempfile.NamedTemporaryFile(prefix="modbot_supabase_restore_", suffix=".db", delete=False)
@@ -278,6 +567,8 @@ class Database:
 
     async def _create_sqlite_snapshot(self, snapshot_path: str) -> bool:
         """Create a consistent snapshot of the live SQLite database."""
+        if self._is_postgres:
+            return False
         if os.path.exists(snapshot_path):
             try:
                 os.remove(snapshot_path)
@@ -305,7 +596,7 @@ class Database:
 
     async def _sync_sqlite_to_supabase(self, *, force: bool = False) -> None:
         """Upload current SQLite state to Supabase Storage."""
-        if not self._supabase_mirror.enabled:
+        if self._is_postgres or not self._supabase_mirror.enabled:
             return
 
         current_token = self._sqlite_change_token()
@@ -337,7 +628,7 @@ class Database:
     async def _supabase_sync_loop(self) -> None:
         """Periodic background sync so abrupt restarts don't lose recent writes."""
         try:
-            while self._pool is not None:
+            while self._pool is not None and not self._is_postgres:
                 await asyncio.sleep(self._supabase_sync_interval_seconds)
                 await self._sync_sqlite_to_supabase(force=False)
         except asyncio.CancelledError:
@@ -346,7 +637,7 @@ class Database:
             logger.error("Supabase sync loop crashed: %s", exc)
 
     def _start_supabase_sync_loop(self) -> None:
-        if not self._supabase_mirror.enabled:
+        if self._is_postgres or not self._supabase_mirror.enabled:
             return
         if self._supabase_sync_task and not self._supabase_sync_task.done():
             return
@@ -2252,7 +2543,6 @@ class Database:
         stats = {}
         
         async with self.get_connection() as db:
-            # Get table sizes
             tables = [
                 "guild_settings", "cases", "warnings", "mod_notes",
                 "reports", "tickets", "staff_sanctions", "court_sessions",
@@ -2263,13 +2553,21 @@ class Database:
                 cursor = await db.execute(f"SELECT COUNT(*) FROM {table}")
                 row = await cursor.fetchone()
                 stats[f"{table}_count"] = row[0] if row else 0
-            
-            # Get database size
-            cursor = await db.execute("PRAGMA page_count")
-            page_count = (await cursor.fetchone())[0]
-            cursor = await db.execute("PRAGMA page_size")
-            page_size = (await cursor.fetchone())[0]
-            stats["database_size_mb"] = round((page_count * page_size) / (1024 * 1024), 2)
+
+            if self._is_postgres:
+                cursor = await db.execute(
+                    """
+                    SELECT ROUND(pg_database_size(current_database())::numeric / (1024 * 1024), 2)
+                    """
+                )
+                row = await cursor.fetchone()
+                stats["database_size_mb"] = float(row[0]) if row and row[0] is not None else 0.0
+            else:
+                cursor = await db.execute("PRAGMA page_count")
+                page_count = (await cursor.fetchone())[0]
+                cursor = await db.execute("PRAGMA page_size")
+                page_size = (await cursor.fetchone())[0]
+                stats["database_size_mb"] = round((page_count * page_size) / (1024 * 1024), 2)
         
         return stats
     
@@ -2412,7 +2710,6 @@ class Database:
 
     async def close(self) -> None:
         """Flush WAL, do a final Supabase sync, and close the connection."""
-        # Cancel the background sync loop first.
         if self._supabase_sync_task and not self._supabase_sync_task.done():
             self._supabase_sync_task.cancel()
             try:
@@ -2423,20 +2720,21 @@ class Database:
 
         if self._pool is not None:
             try:
-                # Flush WAL completely so the main .db file is up-to-date.
-                await self._pool.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-                await self._pool.commit()
-            except Exception as exc:
-                logger.error("WAL checkpoint on close failed: %s", exc)
+                if self._is_postgres:
+                    await self._pool.close()
+                else:
+                    try:
+                        await self._pool.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                        await self._pool.commit()
+                    except Exception as exc:
+                        logger.error("WAL checkpoint on close failed: %s", exc)
 
-            # Final Supabase upload so remote always has latest data.
-            try:
-                await self._sync_sqlite_to_supabase(force=True)
-            except Exception as exc:
-                logger.error("Final Supabase sync on close failed: %s", exc)
+                    try:
+                        await self._sync_sqlite_to_supabase(force=True)
+                    except Exception as exc:
+                        logger.error("Final Supabase sync on close failed: %s", exc)
 
-            try:
-                await self._pool.close()
+                    await self._pool.close()
             except Exception as exc:
                 logger.error("Database connection close failed: %s", exc)
             finally:

@@ -414,9 +414,8 @@ export function Setup() {
             <SelectField label="Bypass Role" value={setup.bypassRole} options={roleOptions} placeholder="Select bypass role" onChange={(value) => updateSetup({ bypassRole: value })} />
             <SelectField label="Whitelisted Role" value={setup.whitelistedRole} options={roleOptions} placeholder="Select whitelisted role" onChange={(value) => updateSetup({ whitelistedRole: value })} />
             <SelectField label="Auto Join Role" value={setup.autoRole} options={roleOptions} placeholder="Select auto join role" onChange={(value) => updateSetup({ autoRole: value })} />
-            <SelectField label="Verified Role" value={moduleSettingValue('verification', 'verifiedRole')} options={roleOptions} placeholder="Select verified role" onChange={(value) => updateModuleSetting('verification', 'verifiedRole', value)} />
-            <SelectField label="Unverified Role" value={moduleSettingValue('verification', 'unverifiedRole')} options={roleOptions} placeholder="Select unverified role" onChange={(value) => updateModuleSetting('verification', 'unverifiedRole', value)} />
-            <SelectField label="Support Role" value={moduleSettingValue('tickets', 'supportRole')} options={roleOptions} placeholder="Select support role" onChange={(value) => updateModuleSetting('tickets', 'supportRole', value)} />
+            <SelectField label="Verified Role" value={setup.verifiedRole} options={roleOptions} placeholder="Select verified role" onChange={(value) => updateSetup({ verifiedRole: value })} />
+            <SelectField label="Unverified Role" value={setup.unverifiedRole} options={roleOptions} placeholder="Select unverified role" onChange={(value) => updateSetup({ unverifiedRole: value })} />
           </CardContent>
         </Card>
       </div>

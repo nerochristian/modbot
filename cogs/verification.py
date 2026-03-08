@@ -704,7 +704,7 @@ class Verification(commands.Cog):
             await interaction.response.send_message(
                 embed=ModEmbed.error(
                     "Not Configured",
-                    "Verification roles are not set. Run `/setup` first.",
+                    "Verification roles are not set. Run `/setup` to create the baseline verification roles first.",
                 ),
                 ephemeral=ephemeral,
             )
