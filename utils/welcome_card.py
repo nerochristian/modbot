@@ -201,11 +201,11 @@ async def _fetch_asset_image(session: aiohttp.ClientSession, url: str) -> Option
 
 @dataclass(frozen=True)
 class WelcomeCardOptions:
-    width: int = 1000
-    height: int = 300
+    width: int = 940
+    height: int = 360
     radius: int = 26
-    avatar_size: int = 196
-    margin: int = 28
+    avatar_size: int = 220
+    margin: int = 24
     accent_color: int = getattr(Config, "EMBED_ACCENT_COLOR", Config.COLOR_EMBED)
     server_name: str = "8kstore"
     welcome_label: str = "WELCOME!"
@@ -297,10 +297,10 @@ async def build_welcome_card_png(
             bg_img = Image.new("RGBA", (w, h), (18, 18, 18, 255))
 
     bg = _cover_resize(bg_img, (w, h)).convert("RGBA")
-    bg = bg.filter(ImageFilter.GaussianBlur(radius=7))
+    bg = bg.filter(ImageFilter.GaussianBlur(radius=8))
 
     # dark overlay for legibility
-    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 150))
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 156))
     bg = Image.alpha_composite(bg, overlay)
 
     # rounded card
@@ -315,7 +315,7 @@ async def build_welcome_card_png(
         (5, 5, w - 5, h - 5),
         radius=max(0, options.radius - 1),
         outline=(*accent_rgb, 220),
-        width=14,
+        width=15,
     )
     border_layer = border_layer.filter(ImageFilter.GaussianBlur(radius=4))
     card.alpha_composite(border_layer)
@@ -332,7 +332,7 @@ async def build_welcome_card_png(
     avatar_size = options.avatar_size
     avatar_outer = avatar_size + 24
     avatar_x = options.margin
-    avatar_y = (h - avatar_outer) // 2 + 10
+    avatar_y = (h - avatar_outer) // 2 + 6
 
     ring_inner = Image.new("RGBA", (avatar_outer, avatar_outer), (0, 0, 0, 0))
     ring_inner_draw = ImageDraw.Draw(ring_inner)
@@ -360,22 +360,22 @@ async def build_welcome_card_png(
             card.alpha_composite(deco, (deco_x, deco_y))
 
     # text
-    name_font = _load_font(60, bold=True)
-    user_font = _load_font(34, bold=False)
-    small_font = _load_font(24, bold=True)
-    header_font = _load_font(24, bold=True)
+    name_font = _load_font(74, bold=True)
+    user_font = _load_font(38, bold=False)
+    small_font = _load_font(22, bold=True)
+    header_font = _load_font(20, bold=True)
 
     display_name = getattr(member, "display_name", member.name) or member.name
     username = _parse_username(full_user)  # type: ignore[arg-type]
 
     text_x = avatar_x + avatar_outer + 26
-    max_text_w = w - text_x - options.margin - 10
+    max_text_w = w - text_x - options.margin - 12
 
     display_name = _text_fit(draw, display_name, name_font, max_text_w)
     username = _text_fit(draw, username, user_font, max_text_w)
 
-    name_y = 106
-    user_y = name_y + 66
+    name_y = 128
+    user_y = name_y + 78
 
     # subtle shadow
     draw.text((text_x + 2, name_y + 2), display_name, font=name_font, fill=(0, 0, 0, 180))
@@ -398,7 +398,7 @@ async def build_welcome_card_png(
     logo_h = 0
     if brand_logo_img is not None:
         pill_logo = brand_logo_img.copy()
-        icon_size = text_h + 6
+        icon_size = text_h + 4
         pill_logo.thumbnail((icon_size, icon_size), Image.Resampling.LANCZOS)
         logo_w, logo_h = pill_logo.size
 
@@ -409,7 +409,7 @@ async def build_welcome_card_png(
     pill_y = h - options.margin - pill_h
     draw.rounded_rectangle(
         (pill_x, pill_y, pill_x + pill_w, pill_y + pill_h),
-        radius=18,
+    radius=16,
         fill=(0, 0, 0, 130),
         outline=(*accent_rgb, 200),
         width=2,
@@ -432,20 +432,20 @@ async def build_welcome_card_png(
     )
 
     # header chip (top-left)
-    header_text = _text_fit(draw, options.server_name, header_font, w - (options.margin * 2) - 240)
+    header_text = _text_fit(draw, options.server_name, header_font, w - (options.margin * 2) - 220)
     header_bbox = draw.textbbox((0, 0), header_text, font=header_font)
     header_w = header_bbox[2] - header_bbox[0]
     header_h = header_bbox[3] - header_bbox[1]
-    header_x = options.margin + 6
+    header_x = options.margin + 4
     header_y = 14
     draw.rounded_rectangle(
         (
-            header_x - 12,
-            header_y - 8,
-            header_x + header_w + 12,
-            header_y + header_h + 8,
+            header_x - 10,
+            header_y - 7,
+            header_x + header_w + 10,
+            header_y + header_h + 7,
         ),
-        radius=16,
+        radius=14,
         fill=(0, 0, 0, 95),
         outline=(255, 255, 255, 40),
         width=2,
@@ -458,32 +458,32 @@ async def build_welcome_card_png(
     )
 
     # badges (top-right)
-    badge_size = 34
-    gap = 10
+    badge_size = 30
+    gap = 8
     by = 16
     right = w - options.margin + 2
     for item in badge_items:
         item_w = badge_size
-        badge_font = _load_font(17, bold=True)
+        badge_font = _load_font(15, bold=True)
         if item.label:
             bb = draw.textbbox((0, 0), item.label, font=badge_font)
             tw = bb[2] - bb[0]
-            item_w = max(badge_size, tw + 22)
+            item_w = max(badge_size, tw + 18)
 
         bx = right - item_w
         draw.rounded_rectangle(
             (bx, by, bx + item_w, by + badge_size),
-            radius=11,
+            radius=10,
             fill=(12, 12, 12, 180),
             outline=(*accent_rgb, 210),
             width=2,
         )
         if item.icon is not None:
-            icon = _cover_resize(item.icon.convert("RGBA"), (badge_size - 10, badge_size - 10))
-            badge_mask = _rounded_mask((badge_size - 10, badge_size - 10), 8)
-            icon_layer = Image.new("RGBA", (badge_size - 10, badge_size - 10), (0, 0, 0, 0))
+            icon = _cover_resize(item.icon.convert("RGBA"), (badge_size - 8, badge_size - 8))
+            badge_mask = _rounded_mask((badge_size - 8, badge_size - 8), 7)
+            icon_layer = Image.new("RGBA", (badge_size - 8, badge_size - 8), (0, 0, 0, 0))
             icon_layer.paste(icon, (0, 0), mask=badge_mask)
-            card.alpha_composite(icon_layer, (bx + 5, by + 5))
+            card.alpha_composite(icon_layer, (bx + 4, by + 4))
         elif item.label:
             bb = draw.textbbox((0, 0), item.label, font=badge_font)
             tw = bb[2] - bb[0]
