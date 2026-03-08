@@ -29,6 +29,14 @@ except ImportError:
 logger = logging.getLogger("ModBot.Database")
 
 
+def _explicit_database_mode() -> Optional[str]:
+    for env_key in ("DB_MODE", "DATABASE_MODE"):
+        value = (os.getenv(env_key) or "").strip().lower()
+        if value in {"sqlite", "postgres", "postgresql"}:
+            return "postgres" if value in {"postgres", "postgresql"} else "sqlite"
+    return None
+
+
 def _is_postgres_url(database_url: str) -> bool:
     database_url = (database_url or "").strip().lower()
     return database_url.startswith("postgresql://") or database_url.startswith("postgres://")
@@ -418,8 +426,21 @@ class Database:
     """
     
     def __init__(self) -> None:
-        self.database_url = _normalize_postgres_url((os.getenv("DATABASE_URL") or "").strip())
-        self._is_postgres = _is_postgres_url(self.database_url)
+        explicit_mode = _explicit_database_mode()
+        raw_database_url = _normalize_postgres_url((os.getenv("DATABASE_URL") or "").strip())
+
+        if explicit_mode == "sqlite":
+            self.database_url = ""
+            self._is_postgres = False
+        elif explicit_mode == "postgres":
+            self.database_url = raw_database_url
+            self._is_postgres = True
+            if not _is_postgres_url(self.database_url):
+                raise RuntimeError("DB_MODE=postgres requires DATABASE_URL to be a PostgreSQL URL")
+        else:
+            self.database_url = raw_database_url
+            self._is_postgres = _is_postgres_url(self.database_url)
+
         self.db_path = DATABASE_PATH
         if not self._is_postgres:
             db_dir = os.path.dirname(self.db_path)
@@ -428,9 +449,15 @@ class Database:
                     os.makedirs(db_dir, exist_ok=True)
                 except Exception as e:
                     logger.error(f"Failed to create database directory {db_dir}: {e}")
-            logger.info("Database mode: sqlite (%s)", self.db_path)
+            if explicit_mode == "sqlite":
+                logger.info("Database mode: sqlite (%s) [forced by DB_MODE]", self.db_path)
+            else:
+                logger.info("Database mode: sqlite (%s)", self.db_path)
         else:
-            logger.info("Database mode: postgres")
+            if explicit_mode == "postgres":
+                logger.info("Database mode: postgres [forced by DB_MODE]")
+            else:
+                logger.info("Database mode: postgres")
                 
         self._lock = asyncio.Lock()
         self._initialized = False

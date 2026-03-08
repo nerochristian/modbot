@@ -1,192 +1,418 @@
 from __future__ import annotations
 
 import io
-from dataclasses import dataclass, field
+import logging
+import os
+import urllib.request
+from dataclasses import dataclass
 from typing import Optional
 
 import aiohttp
 import discord
+
+log = logging.getLogger(__name__)
+
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 from config import Config
 
-
 # ---------------------------------------------------------------------------
-# Helpers
+# Font loading
 # ---------------------------------------------------------------------------
 
-def _asset_url(asset: object, *, size: int = 64, static_format: str = "png") -> Optional[str]:
-    if asset is None:
-        return None
-    try:
-        return asset.replace(size=size, static_format=static_format).url  # type: ignore[union-attr]
-    except Exception:
+_FONT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fonts")
+
+_FONT_URLS: dict[str, list[str]] = {
+    "DejaVuSans.ttf": [
+        "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf",
+        "https://cdn.jsdelivr.net/gh/dejavu-fonts/dejavu-fonts/ttf/DejaVuSans.ttf",
+    ],
+    "DejaVuSans-Bold.ttf": [
+        "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans-Bold.ttf",
+        "https://cdn.jsdelivr.net/gh/dejavu-fonts/dejavu-fonts/ttf/DejaVuSans-Bold.ttf",
+    ],
+}
+
+_SYSTEM_DIRS = [
+    _FONT_DIR,
+    "/usr/share/fonts/truetype/dejavu",
+    "/usr/share/fonts/truetype/liberation",
+    "/usr/share/fonts/truetype/freefont",
+    "/usr/share/fonts/truetype/msttcorefonts",
+    "/usr/share/fonts",
+    "/usr/local/share/fonts",
+    "/System/Library/Fonts",
+    "/Library/Fonts",
+    os.path.join(os.environ.get("WINDIR", "C:/Windows"), "Fonts"),
+    ".",
+]
+
+_FONT_ALIASES = {
+    "DejaVuSans.ttf":      ["DejaVuSans.ttf", "arial.ttf", "segoeui.ttf", "LiberationSans-Regular.ttf", "FreeSans.ttf"],
+    "DejaVuSans-Bold.ttf": ["DejaVuSans-Bold.ttf", "arialbd.ttf", "segoeuib.ttf", "LiberationSans-Bold.ttf", "FreeSansBold.ttf"],
+}
+
+_font_cache: dict[tuple[str, int], ImageFont.FreeTypeFont | ImageFont.ImageFont] = {}
+
+
+def _ensure_font(filename: str) -> Optional[str]:
+    for alias in _FONT_ALIASES.get(filename, [filename]):
+        for d in _SYSTEM_DIRS:
+            p = os.path.join(d, alias)
+            if os.path.isfile(p):
+                return p
+    os.makedirs(_FONT_DIR, exist_ok=True)
+    dest = os.path.join(_FONT_DIR, filename)
+    if os.path.isfile(dest) and os.path.getsize(dest) > 1000:
+        return dest
+    for url in _FONT_URLS.get(filename, []):
         try:
-            return str(asset.url)  # type: ignore[union-attr]
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                data = resp.read()
+            if len(data) > 1000:
+                with open(dest, "wb") as f:
+                    f.write(data)
+                return dest
         except Exception:
-            return None
+            continue
+    return None
 
 
-def _parse_username(user: discord.abc.User) -> str:
-    discriminator = getattr(user, "discriminator", "0")
-    if discriminator and discriminator != "0":
-        return f"{user.name}#{discriminator}"
-    return user.name
+def load_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    filename = "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"
+    key = (filename, size)
+    if key in _font_cache:
+        return _font_cache[key]
+    path = _ensure_font(filename)
+    if path:
+        try:
+            font = ImageFont.truetype(path, size=size)
+            _font_cache[key] = font
+            return font
+        except Exception:
+            pass
+    fallback = ImageFont.load_default()
+    _font_cache[key] = fallback
+    return fallback
 
 
-def _int_to_rgb(color: int) -> tuple[int, int, int]:
-    return ((color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF)
+def _prefetch_fonts() -> None:
+    for filename in _FONT_URLS:
+        _ensure_font(filename)
+
+
+_prefetch_fonts()
+
+
+# ---------------------------------------------------------------------------
+# Discord badge icons
+# Official badge images downloaded from Discord's CDN at startup.
+# Mapping: public_flags attribute → (cache filename, CDN url)
+# ---------------------------------------------------------------------------
+
+_BADGE_ICON_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "badge_icons")
+
+# flag attr → (local filename, primary CDN url, fallback CDN url)
+_DISCORD_BADGE_ICONS: dict[str, tuple[str, str, str]] = {
+    "staff": (
+        "staff.png",
+        "https://cdn.discordapp.com/badge-icons/5e74e9b61934fc1f67c65515d1f7e60d.png",
+        "https://discord.com/assets/5e74e9b61934fc1f67c65515d1f7e60d.png",
+    ),
+    "partner": (
+        "partner.png",
+        "https://cdn.discordapp.com/badge-icons/3f9748e53446a137a052f3454e2de41e.png",
+        "https://discord.com/assets/3f9748e53446a137a052f3454e2de41e.png",
+    ),
+    "hypesquad": (
+        "hypesquad.png",
+        "https://cdn.discordapp.com/badge-icons/bf01d1073931f921909045f3a39fd264.png",
+        "https://discord.com/assets/bf01d1073931f921909045f3a39fd264.png",
+    ),
+    "hypesquad_bravery": (
+        "hypesquad_bravery.png",
+        "https://cdn.discordapp.com/badge-icons/8a88d63823d8a71cd5e390baa45afa0d.png",
+        "https://discord.com/assets/8a88d63823d8a71cd5e390baa45afa0d.png",
+    ),
+    "hypesquad_brilliance": (
+        "hypesquad_brilliance.png",
+        "https://cdn.discordapp.com/badge-icons/011940fd013082a75b1fde53a8500bbf.png",
+        "https://discord.com/assets/011940fd013082a75b1fde53a8500bbf.png",
+    ),
+    "hypesquad_balance": (
+        "hypesquad_balance.png",
+        "https://cdn.discordapp.com/badge-icons/3aa41de486fa12454c3761e8e223442e.png",
+        "https://discord.com/assets/3aa41de486fa12454c3761e8e223442e.png",
+    ),
+    "bug_hunter": (
+        "bug_hunter.png",
+        "https://cdn.discordapp.com/badge-icons/2717692e7220792d9d1c3cc5b2f50f10.png",
+        "https://discord.com/assets/2717692e7220792d9d1c3cc5b2f50f10.png",
+    ),
+    "bug_hunter_level_1": (
+        "bug_hunter.png",
+        "https://cdn.discordapp.com/badge-icons/2717692e7220792d9d1c3cc5b2f50f10.png",
+        "https://discord.com/assets/2717692e7220792d9d1c3cc5b2f50f10.png",
+    ),
+    "bug_hunter_level_2": (
+        "bug_hunter_2.png",
+        "https://cdn.discordapp.com/badge-icons/848f79194d4be5ff5f81505cbd0ce1e6.png",
+        "https://discord.com/assets/848f79194d4be5ff5f81505cbd0ce1e6.png",
+    ),
+    "early_supporter": (
+        "early_supporter.png",
+        "https://cdn.discordapp.com/badge-icons/7060786766c9c840eb3019e725d2b358.png",
+        "https://discord.com/assets/7060786766c9c840eb3019e725d2b358.png",
+    ),
+    "early_verified_bot_developer": (
+        "verified_dev.png",
+        "https://cdn.discordapp.com/badge-icons/6df5892e0f35b051d8b61d8330539633.png",
+        "https://discord.com/assets/6df5892e0f35b051d8b61d8330539633.png",
+    ),
+    "verified_bot_developer": (
+        "verified_dev.png",
+        "https://cdn.discordapp.com/badge-icons/6df5892e0f35b051d8b61d8330539633.png",
+        "https://discord.com/assets/6df5892e0f35b051d8b61d8330539633.png",
+    ),
+    "discord_certified_moderator": (
+        "certified_mod.png",
+        "https://cdn.discordapp.com/badge-icons/fee1624003e2fee35cb398e125dc479b.png",
+        "https://discord.com/assets/fee1624003e2fee35cb398e125dc479b.png",
+    ),
+    "active_developer": (
+        "active_developer.png",
+        "https://cdn.discordapp.com/badge-icons/6bdc42827a38498929a4920da12695d9.png",
+        "https://discord.com/assets/6bdc42827a38498929a4920da12695d9.png",
+    ),
+}
+
+# Loaded PIL images, keyed by flag attr. Populated at startup.
+_badge_icon_cache: dict[str, Image.Image] = {}
+
+
+def _download_badge_icon(flag_attr: str, filename: str, urls: tuple[str, str]) -> Optional[str]:
+    """Download a badge icon to the local cache dir. Returns local path or None."""
+    os.makedirs(_BADGE_ICON_DIR, exist_ok=True)
+    dest = os.path.join(_BADGE_ICON_DIR, filename)
+    if os.path.isfile(dest) and os.path.getsize(dest) > 100:
+        return dest
+    for url in urls:
+        try:
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 DiscordBot"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = resp.read()
+            if len(data) > 100:
+                with open(dest, "wb") as f:
+                    f.write(data)
+                log.debug("Downloaded badge icon %s from %s", filename, url)
+                return dest
+        except Exception as exc:
+            log.debug("Failed to download badge icon %s from %s: %s", filename, url, exc)
+    return None
+
+
+def _prefetch_badge_icons() -> None:
+    """Download all known Discord badge icons at startup."""
+    seen_files: set[str] = set()
+    for flag_attr, (filename, primary, fallback) in _DISCORD_BADGE_ICONS.items():
+        if filename in seen_files:
+            # Reuse already-loaded image for duplicate filenames (e.g. bug_hunter / bug_hunter_level_1)
+            src_attr = next(
+                (a for a, (f, *_) in _DISCORD_BADGE_ICONS.items() if f == filename and a in _badge_icon_cache),
+                None,
+            )
+            if src_attr:
+                _badge_icon_cache[flag_attr] = _badge_icon_cache[src_attr]
+            continue
+        seen_files.add(filename)
+        path = _download_badge_icon(flag_attr, filename, (primary, fallback))
+        if path:
+            try:
+                img = Image.open(path).convert("RGBA")
+                _badge_icon_cache[flag_attr] = img
+                # Also populate duplicate-filename attrs right away
+                for other_attr, (other_file, *_) in _DISCORD_BADGE_ICONS.items():
+                    if other_file == filename and other_attr not in _badge_icon_cache:
+                        _badge_icon_cache[other_attr] = img
+            except Exception as exc:
+                log.warning("Could not load badge icon %s: %s", path, exc)
+
+
+_prefetch_badge_icons()
+
+
+# ---------------------------------------------------------------------------
+# Drawing helpers
+# ---------------------------------------------------------------------------
+
+def _int_to_rgb(c: int) -> tuple[int, int, int]:
+    return ((c >> 16) & 0xFF, (c >> 8) & 0xFF, c & 0xFF)
 
 
 def _cover_resize(img: Image.Image, size: tuple[int, int]) -> Image.Image:
-    target_w, target_h = size
-    src_w, src_h = img.size
-    if src_w <= 0 or src_h <= 0:
+    tw, th = size
+    sw, sh = img.size
+    if sw <= 0 or sh <= 0:
         return Image.new("RGBA", size, (0, 0, 0, 255))
-    scale = max(target_w / src_w, target_h / src_h)
-    resized = img.resize(
-        (max(1, int(src_w * scale)), max(1, int(src_h * scale))),
-        Image.Resampling.LANCZOS,
-    )
-    left = (resized.size[0] - target_w) // 2
-    top = (resized.size[1] - target_h) // 2
-    return resized.crop((left, top, left + target_w, top + target_h))
+    scale = max(tw / sw, th / sh)
+    rw, rh = max(1, int(sw * scale)), max(1, int(sh * scale))
+    resized = img.resize((rw, rh), Image.Resampling.LANCZOS)
+    l, t = (rw - tw) // 2, (rh - th) // 2
+    return resized.crop((l, t, l + tw, t + th))
 
 
-def _rounded_mask(size: tuple[int, int], radius: int) -> Image.Image:
-    mask = Image.new("L", size, 0)
-    draw = ImageDraw.Draw(mask)
-    draw.rounded_rectangle((0, 0, size[0], size[1]), radius=radius, fill=255)
-    return mask
-
-
-def _circle_mask(size: int) -> Image.Image:
+def _circle_crop(img: Image.Image, size: int) -> Image.Image:
+    img = img.resize((size, size), Image.Resampling.LANCZOS).convert("RGBA")
     mask = Image.new("L", (size, size), 0)
-    draw = ImageDraw.Draw(mask)
-    draw.ellipse((0, 0, size, size), fill=255)
-    return mask
+    ImageDraw.Draw(mask).ellipse((0, 0, size, size), fill=255)
+    out = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    out.paste(img, mask=mask)
+    return out
 
 
-def _load_font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    candidates = [
-        ("DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf"),
-        ("arialbd.ttf" if bold else "arial.ttf"),
-        ("segoeuib.ttf" if bold else "segoeui.ttf"),
-    ]
-    for name in candidates:
+def _get_textbbox(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -> tuple[int, int, int, int]:
+    """Safe textbbox wrapper."""
+    try:
+        return draw.textbbox((0, 0), text, font=font)
+    except AttributeError:
         try:
-            return ImageFont.truetype(name, size=size)
+            tw, th = draw.textsize(text, font=font)  # type: ignore[attr-defined]
+            return (0, 0, tw, th)
         except Exception:
-            continue
-    return ImageFont.load_default()
+            return (0, 0, len(text) * 8, 16)
 
 
-def _text_fit(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_width: int) -> str:
-    if not text:
+def _text_fit(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, max_w: int) -> str:
+    def w(s: str) -> int:
+        bb = _get_textbbox(draw, s, font)
+        return bb[2] - bb[0]
+    if w(text) <= max_w:
         return text
-
-    def width(s: str) -> int:
-        bbox = draw.textbbox((0, 0), s, font=font)
-        return bbox[2] - bbox[0]
-
-    if width(text) <= max_width:
-        return text
-
-    ellipsis = "..."
-    lo, hi = 0, len(text)
-    best = ellipsis
+    lo, hi, best = 0, len(text), "..."
     while lo <= hi:
         mid = (lo + hi) // 2
-        candidate = text[:mid].rstrip() + ellipsis
-        if width(candidate) <= max_width:
-            best = candidate
+        cand = text[:mid].rstrip() + "..."
+        if w(cand) <= max_w:
+            best = cand
             lo = mid + 1
         else:
             hi = mid - 1
     return best
 
 
+async def _fetch(session: aiohttp.ClientSession, url: str) -> Optional[Image.Image]:
+    try:
+        async with session.get(url) as r:
+            if r.status != 200:
+                return None
+            return Image.open(io.BytesIO(await r.read())).convert("RGBA")
+    except Exception:
+        return None
+
+
+def _asset_url(asset: object, *, size: int = 512, fmt: str = "png") -> Optional[str]:
+    if asset is None:
+        return None
+    try:
+        return asset.replace(size=size, static_format=fmt).url  # type: ignore
+    except Exception:
+        try:
+            return str(asset.url)  # type: ignore
+        except Exception:
+            return None
+
+
 # ---------------------------------------------------------------------------
 # Badge helpers
 # ---------------------------------------------------------------------------
 
-_BADGE_MAP: list[tuple[str, str]] = [
-    ("staff", "STAFF"),
-    ("partner", "PART"),
-    ("hypesquad", "HYPE"),
-    ("hypesquad_bravery", "BRV"),
-    ("hypesquad_brilliance", "BRL"),
-    ("hypesquad_balance", "BAL"),
-    ("bug_hunter_level_1", "BH1"),
-    ("bug_hunter", "BH1"),
-    ("bug_hunter_level_2", "BH2"),
-    ("early_supporter", "EARLY"),
-    ("early_verified_bot_developer", "DEV"),
-    ("verified_bot_developer", "DEV"),
-    ("discord_certified_moderator", "MOD"),
-    ("active_developer", "ACTIVE"),
-    ("nitro", "NITRO"),
-    ("premium", "NITRO"),
+# Ordered list of flag attributes to check (highest priority first).
+# Only attrs present in _DISCORD_BADGE_ICONS will render — as real images.
+_FLAG_BADGE_ATTRS: list[str] = [
+    "staff",
+    "partner",
+    "hypesquad_bravery",
+    "hypesquad_brilliance",
+    "hypesquad_balance",
+    "hypesquad",
+    "bug_hunter_level_2",
+    "bug_hunter_level_1",
+    "bug_hunter",
+    "early_supporter",
+    "early_verified_bot_developer",
+    "verified_bot_developer",
+    "discord_certified_moderator",
+    "active_developer",
 ]
 
 
-def _has_nitro(user: discord.User | discord.Member) -> bool:
-    """Return True if the user appears to have Nitro (via public flags or premium type)."""
-    flags = getattr(user, "public_flags", None) or getattr(user, "flags", None)
-    if flags:
-        for attr in ("premium", "nitro"):
-            try:
-                if getattr(flags, attr, False):
-                    return True
-            except Exception:
-                pass
-    # premium_type: 1 = Nitro Classic, 2 = Nitro, 3 = Nitro Basic
-    premium_type = getattr(user, "premium_type", None)
-    if premium_type and getattr(premium_type, "value", premium_type) not in (0, None):
-        return True
-    return False
+@dataclass
+class _Badge:
+    label: Optional[str] = None
+    icon:  Optional[Image.Image] = None
 
 
-def _badge_labels(
-    user: discord.User | discord.Member,
-    *,
-    member: Optional[discord.Member] = None,
-) -> list[str]:
-    labels: list[str] = []
-    flags = getattr(user, "public_flags", None) or getattr(user, "flags", None)
-    if flags:
-        for attr, label in _BADGE_MAP:
-            try:
-                if getattr(flags, attr, False):
-                    labels.append(label)
-            except Exception:
-                continue
-
-    seen: set[str] = set()
-    unique: list[str] = []
-    for label in labels:
-        if label in seen:
-            continue
-        seen.add(label)
-        unique.append(label)
-    return unique[:6]
+def _parse_username(user: discord.abc.User) -> str:
+    disc = getattr(user, "discriminator", "0")
+    return f"{user.name}#{disc}" if disc and disc != "0" else user.name
 
 
-def _role_badge_urls(member: discord.Member, *, limit: int = 6) -> list[str]:
+def _top_role_color(member: discord.Member) -> Optional[tuple[int, int, int]]:
     roles = sorted(
         getattr(member, "roles", []) or [],
-        key=lambda r: getattr(r, "position", 0),
-        reverse=True,
+        key=lambda r: getattr(r, "position", 0), reverse=True,
+    )
+    guild_id = getattr(getattr(member, "guild", None), "id", None)
+    for role in roles:
+        if guild_id and getattr(role, "id", None) == guild_id:
+            continue
+        val = getattr(getattr(role, "color", None), "value", 0)
+        if val:
+            return _int_to_rgb(val)
+    return None
+
+
+def _collect_flag_badges(user: discord.abc.User) -> list["_Badge"]:
+    """Return _Badge objects (with real Discord icon images) for all active profile flags."""
+    result: list[_Badge] = []
+    seen_icons: set[str] = set()   # deduplicate by filename
+    flags = getattr(user, "public_flags", None) or getattr(user, "flags", None)
+    if not flags:
+        return result
+    for attr in _FLAG_BADGE_ATTRS:
+        try:
+            if not getattr(flags, attr, False):
+                continue
+        except Exception:
+            continue
+        # Use real icon if available
+        icon_img = _badge_icon_cache.get(attr)
+        if icon_img is not None:
+            # Deduplicate by canonical filename so bug_hunter/bug_hunter_level_1 don't both appear
+            fname = _DISCORD_BADGE_ICONS.get(attr, ("",))[0]
+            if fname in seen_icons:
+                continue
+            seen_icons.add(fname)
+            result.append(_Badge(icon=icon_img.copy()))
+        # If icon failed to download we silently skip — no text fallback for profile flags
+    return result
+
+
+def _role_badge_urls(member: discord.Member, limit: int = 6) -> list[str]:
+    roles = sorted(
+        getattr(member, "roles", []) or [],
+        key=lambda r: getattr(r, "position", 0), reverse=True,
     )
     guild_id = getattr(getattr(member, "guild", None), "id", None)
     urls: list[str] = []
     for role in roles:
-        if guild_id is not None and getattr(role, "id", None) == guild_id:
+        if guild_id and getattr(role, "id", None) == guild_id:
             continue
-        display_icon = getattr(role, "display_icon", None)
-        if display_icon is None:
+        icon = getattr(role, "display_icon", None)
+        if icon is None:
             continue
-        url = _asset_url(display_icon, size=64, static_format="png") or ""
+        url = _asset_url(icon, size=64) or ""
         if url:
             urls.append(url)
         if len(urls) >= limit:
@@ -194,83 +420,43 @@ def _role_badge_urls(member: discord.Member, *, limit: int = 6) -> list[str]:
     return urls
 
 
-def _primary_guild_badge_url(user: discord.User | discord.Member) -> Optional[str]:
+def _primary_guild_badge_url(user: discord.abc.User) -> Optional[str]:
     try:
-        primary_guild = getattr(user, "primary_guild", None)
-    except Exception:
-        primary_guild = None
-    if primary_guild is None:
-        return None
-    try:
-        badge = primary_guild.badge
-    except Exception:
-        badge = None
-    return _asset_url(badge, size=64, static_format="png")
-
-
-def _top_role_color(member: discord.Member) -> Optional[tuple[int, int, int]]:
-    """Return the RGB of the member's highest coloured role, or None."""
-    roles = sorted(
-        getattr(member, "roles", []) or [],
-        key=lambda r: getattr(r, "position", 0),
-        reverse=True,
-    )
-    guild_id = getattr(getattr(member, "guild", None), "id", None)
-    for role in roles:
-        if guild_id is not None and getattr(role, "id", None) == guild_id:
-            continue
-        color_val = getattr(getattr(role, "color", None), "value", 0)
-        if color_val:
-            return _int_to_rgb(color_val)
-    return None
-
-
-async def _fetch_asset_image(session: aiohttp.ClientSession, url: str) -> Optional[Image.Image]:
-    try:
-        async with session.get(url) as resp:
-            if resp.status != 200:
-                return None
-            data = await resp.read()
-        img = Image.open(io.BytesIO(data)).convert("RGBA")
-        return img
+        pg = getattr(user, "primary_guild", None)
+        return _asset_url(getattr(pg, "badge", None), size=64) if pg else None
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# Per-guild welcome text
+# ---------------------------------------------------------------------------
+
+GUILD_WELCOME_LABELS: dict[int, str] = {
+    # guild_id: "Custom welcome text",
+}
+DEFAULT_WELCOME_LABEL = "WELCOME!"
 
 
 # ---------------------------------------------------------------------------
 # Options
 # ---------------------------------------------------------------------------
 
-# Per-guild welcome labels: map guild_id (int) → welcome text shown in the pill.
-# Add entries here as needed; falls back to DEFAULT_WELCOME_LABEL.
-GUILD_WELCOME_LABELS: dict[int, str] = {
-    # 123456789012345678: "Welcome to MyCoolServer!",
-}
-
-DEFAULT_WELCOME_LABEL: str = "WELCOME!"
-
-
 @dataclass(frozen=True)
 class WelcomeCardOptions:
-    width: int = 940
-    height: int = 360
-    radius: int = 26
-    avatar_size: int = 220
-    margin: int = 24
-    # Accent colour used for the card border & badge outlines.
-    # Overridden at runtime by the member's top-role colour when available.
+    width: int        = 940
+    height: int       = 300
+    radius: int       = 20
+    avatar_size: int  = 200
+    margin: int       = 30
     accent_color: int = getattr(Config, "EMBED_ACCENT_COLOR", Config.COLOR_EMBED)
-    # When True, the member's top-role colour replaces accent_color.
-    use_role_color: bool = True
-    # Fallback server name shown in the header chip (top-left).
-    server_name: str = ""
-    # Pill text override.  Leave empty to use GUILD_WELCOME_LABELS / DEFAULT.
-    welcome_label: str = ""
+    use_role_color: bool      = True
+    welcome_label: str        = ""
     role_badge_fallback: bool = True
 
 
 # ---------------------------------------------------------------------------
-# Main builder
+# Card builder
 # ---------------------------------------------------------------------------
 
 async def build_welcome_card_png(
@@ -279,99 +465,79 @@ async def build_welcome_card_png(
     *,
     options: WelcomeCardOptions = WelcomeCardOptions(),
 ) -> bytes:
-    timeout = aiohttp.ClientTimeout(total=15)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        # Fetch full user so we can access banner / decoration
+    try:
+        return await _build_welcome_card_png_inner(bot, member, options=options)
+    except Exception as exc:
+        log.exception("welcome_card build failed for %s: %s", getattr(member, "id", "?"), exc)
+        raise
+
+
+async def _build_welcome_card_png_inner(
+    bot: discord.Client,
+    member: discord.Member,
+    *,
+    options: WelcomeCardOptions = WelcomeCardOptions(),
+) -> bytes:
+
+    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
+
+        # Full user object
         try:
-            full_user = await bot.fetch_user(member.id)
+            full_user: discord.abc.User = await bot.fetch_user(member.id)
         except Exception:
-            full_user = member  # type: ignore[assignment]
+            full_user = member  # type: ignore
 
-        # --- Avatar ---
-        avatar_asset = member.display_avatar
-        try:
-            avatar_url = avatar_asset.replace(size=512, static_format="png").url
-        except Exception:
-            avatar_url = str(avatar_asset.url)
+        # Avatar
+        avatar_img = await _fetch(session, _asset_url(member.display_avatar, size=512) or "")
 
-        # --- Background: user banner if Nitro, else pfp ---
-        banner_url: Optional[str] = None
-        user_has_nitro = _has_nitro(full_user)  # type: ignore[arg-type]
-        if user_has_nitro:
-            banner_asset = getattr(full_user, "banner", None)
-            if banner_asset:
-                try:
-                    banner_url = banner_asset.replace(size=1024).url
-                except Exception:
-                    banner_url = str(getattr(banner_asset, "url", "") or "")
-
-        # --- Avatar decoration ---
-        decoration_asset = getattr(full_user, "avatar_decoration", None)
-        decoration_url: Optional[str] = None
-        if decoration_asset:
-            try:
-                decoration_url = decoration_asset.replace(size=256).url
-            except Exception:
-                decoration_url = str(getattr(decoration_asset, "url", "") or "")
-
-        # Fetch images concurrently (well, sequentially – aiohttp is already async)
-        avatar_img = await _fetch_asset_image(session, avatar_url)
-        bg_img = await _fetch_asset_image(session, banner_url) if banner_url else None
-        # If no banner, use avatar as background
+        # Background: user banner if available, else blurred avatar
+        bg_img: Optional[Image.Image] = None
+        banner_url = _asset_url(getattr(full_user, "banner", None), size=1024)
+        if banner_url:
+            bg_img = await _fetch(session, banner_url)
         if bg_img is None and avatar_img is not None:
             bg_img = avatar_img.copy()
-        decoration_img = await _fetch_asset_image(session, decoration_url) if decoration_url else None
 
-        # --- Badges ---
-        @dataclass
-        class _BadgeItem:
-            label: Optional[str] = None
-            icon: Optional[Image.Image] = None
+        # Avatar decoration
+        deco_url = _asset_url(getattr(full_user, "avatar_decoration", None), size=256)
+        deco_img = await _fetch(session, deco_url) if deco_url else None
 
-        badge_items: list[_BadgeItem] = []
-        seen_badge_labels: set[str] = set()
+        # ── Badges ──────────────────────────────────────────────────────────
+        badges: list[_Badge] = []
 
-        # Primary guild badge (clan icon)
-        primary_badge_url = _primary_guild_badge_url(full_user)  # type: ignore[arg-type]
-        if primary_badge_url:
-            primary_badge_img = await _fetch_asset_image(session, primary_badge_url)
-            if primary_badge_img is not None:
-                badge_items.append(_BadgeItem(icon=primary_badge_img))
+        # 1. Clan / primary guild badge
+        pgb_url = _primary_guild_badge_url(full_user)
+        if pgb_url:
+            pgb = await _fetch(session, pgb_url)
+            if pgb:
+                badges.append(_Badge(icon=pgb))
 
-        # Public flag badges (text labels)
-        for label in _badge_labels(full_user, member=member):  # type: ignore[arg-type]
-            normalized = label.strip().upper()
-            if not normalized or normalized in seen_badge_labels:
-                continue
-            seen_badge_labels.add(normalized)
-            badge_items.append(_BadgeItem(label=label))
+        # 2. Discord flag badges (real images)
+        for badge in _collect_flag_badges(full_user):
+            badges.append(badge)
+            if len(badges) >= 6:
+                break
 
-        # Role icon badges (fallback)
-        if options.role_badge_fallback:
-            remaining_slots = max(0, 6 - len(badge_items))
-            for url in _role_badge_urls(member, limit=remaining_slots):
-                img = await _fetch_asset_image(session, url)
-                if img is not None:
-                    badge_items.append(_BadgeItem(icon=img))
-                if len(badge_items) >= 6:
+        # 3. Role icon badges
+        if options.role_badge_fallback and len(badges) < 6:
+            for url in _role_badge_urls(member, limit=6 - len(badges)):
+                img = await _fetch(session, url)
+                if img:
+                    badges.append(_Badge(icon=img))
+                if len(badges) >= 6:
                     break
 
-    # ---------------------------------------------------------------------------
-    # Resolve accent colour
-    # ---------------------------------------------------------------------------
-    accent_rgb: tuple[int, int, int]
-    if options.use_role_color:
-        role_color = _top_role_color(member)
-        accent_rgb = role_color if role_color else _int_to_rgb(options.accent_color)
-    else:
-        accent_rgb = _int_to_rgb(options.accent_color)
+    badges = badges[:6]
 
-    # ---------------------------------------------------------------------------
-    # Resolve per-guild text
-    # ---------------------------------------------------------------------------
-    guild = getattr(member, "guild", None)
+    # ── Accent colour ─────────────────────────────────────────────────────
+    if options.use_role_color:
+        accent = _top_role_color(member) or _int_to_rgb(options.accent_color)
+    else:
+        accent = _int_to_rgb(options.accent_color)
+
+    # ── Guild / pill text ──────────────────────────────────────────────────
+    guild    = getattr(member, "guild", None)
     guild_id = getattr(guild, "id", None)
-    guild_name: str = getattr(guild, "name", None) or options.server_name or ""
 
     if options.welcome_label:
         pill_text = options.welcome_label
@@ -380,207 +546,185 @@ async def build_welcome_card_png(
     else:
         pill_text = DEFAULT_WELCOME_LABEL
 
-    # ---------------------------------------------------------------------------
-    # Canvas setup
-    # ---------------------------------------------------------------------------
-    w, h = options.width, options.height
+    # ── Fonts ──────────────────────────────────────────────────────────────
+    font_name  = load_font(72, bold=True)
+    font_user  = load_font(34, bold=False)
+    font_pill  = load_font(22, bold=True)
+    font_badge = load_font(13, bold=True)
 
+    # ── Canvas ─────────────────────────────────────────────────────────────
+    W, H, R, M = options.width, options.height, options.radius, options.margin
+
+    # Background
     if bg_img is None:
-        bg_img = Image.new("RGBA", (w, h), (18, 18, 18, 255))
+        bg_img = Image.new("RGBA", (W, H), (18, 18, 18, 255))
 
-    bg = _cover_resize(bg_img, (w, h)).convert("RGBA")
-    bg = bg.filter(ImageFilter.GaussianBlur(radius=10))
-
-    # Dark overlay for legibility
-    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 170))
+    bg = _cover_resize(bg_img, (W, H)).convert("RGBA")
+    bg = bg.filter(ImageFilter.GaussianBlur(radius=14))
+    # Dark overlay for readability
+    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 175))
     bg = Image.alpha_composite(bg, overlay)
 
     # Rounded card mask
-    card = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    mask = _rounded_mask((w, h), options.radius)
-    card.paste(bg, (0, 0), mask=mask)
+    card_mask = Image.new("L", (W, H), 0)
+    ImageDraw.Draw(card_mask).rounded_rectangle((0, 0, W, H), radius=R, fill=255)
+    card = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    card.paste(bg, mask=card_mask)
 
-    # Glowing accent border (blurred outer glow)
-    glow_layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    glow_draw = ImageDraw.Draw(glow_layer)
-    glow_draw.rounded_rectangle(
-        (4, 4, w - 4, h - 4),
-        radius=options.radius,
-        outline=(*accent_rgb, 200),
-        width=14,
-    )
-    glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=5))
-    card.alpha_composite(glow_layer)
-
-    # Sharp inner border
     draw = ImageDraw.Draw(card)
+
+    # Subtle card border using accent color
     draw.rounded_rectangle(
-        (5, 5, w - 5, h - 5),
-        radius=max(0, options.radius - 1),
-        outline=(*accent_rgb, 160),
+        (2, 2, W - 2, H - 2),
+        radius=R,
+        outline=(*accent, 160),
         width=3,
     )
 
-    # ---------------------------------------------------------------------------
-    # Avatar
-    # ---------------------------------------------------------------------------
-    avatar_size = options.avatar_size
-    avatar_outer = avatar_size + 28
-    avatar_x = options.margin
-    avatar_y = (h - avatar_outer) // 2 + 4
+    # ── Avatar ─────────────────────────────────────────────────────────────
+    AV    = options.avatar_size
+    RING  = 8        # ring thickness
+    GLOW  = 16       # extra glow blur radius
+    total = AV + RING * 2
+    ax    = M
+    ay    = (H - total) // 2
 
-    # Subtle white backing circle (sits behind avatar, visible if decoration has gaps)
-    ring_inner = Image.new("RGBA", (avatar_outer, avatar_outer), (0, 0, 0, 0))
-    ring_inner_draw = ImageDraw.Draw(ring_inner)
-    ring_inner_draw.ellipse(
-        (0, 0, avatar_outer, avatar_outer),
-        fill=(255, 255, 255, 30),
+    # Draw glowing ring behind avatar
+    # 1. Soft outer glow layer
+    glow_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    glow_draw  = ImageDraw.Draw(glow_layer)
+    glow_draw.ellipse(
+        (ax - GLOW, ay - GLOW, ax + total + GLOW, ay + total + GLOW),
+        fill=(*accent, 90),
     )
-    card.alpha_composite(ring_inner, (avatar_x, avatar_y))
+    glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=GLOW))
+    card.alpha_composite(glow_layer)
 
+    # 2. Solid ring
+    draw = ImageDraw.Draw(card)
+    draw.ellipse(
+        (ax, ay, ax + total, ay + total),
+        fill=(*accent, 255),
+    )
+
+    # 3. Inner dark background circle (so ring has defined edge)
+    pad = RING
+    draw.ellipse(
+        (ax + pad, ay + pad, ax + total - pad, ay + total - pad),
+        fill=(15, 15, 15, 200),
+    )
+
+    # 4. Avatar image
     if avatar_img is not None:
-        avatar = avatar_img.resize((avatar_size, avatar_size), Image.Resampling.LANCZOS)
-        circ = _circle_mask(avatar_size)
-        avatar_layer = Image.new("RGBA", (avatar_size, avatar_size), (0, 0, 0, 0))
-        avatar_layer.paste(avatar, (0, 0), mask=circ)
-        inner_x = avatar_x + (avatar_outer - avatar_size) // 2
-        inner_y = avatar_y + (avatar_outer - avatar_size) // 2
-        card.alpha_composite(avatar_layer, (inner_x, inner_y))
+        av = _circle_crop(avatar_img, AV)
+        card.alpha_composite(av, (ax + RING, ay + RING))
 
-        if decoration_img is not None:
-            deco_size = avatar_outer + 12
-            deco = _cover_resize(decoration_img, (deco_size, deco_size))
-            deco_x = avatar_x + (avatar_outer - deco_size) // 2
-            deco_y = avatar_y + (avatar_outer - deco_size) // 2
-            card.alpha_composite(deco, (deco_x, deco_y))
+    # 5. Avatar decoration overlay
+    if deco_img is not None:
+        dsz  = total + 20
+        deco = deco_img.resize((dsz, dsz), Image.Resampling.LANCZOS)
+        card.alpha_composite(deco, (ax + (total - dsz) // 2, ay + (total - dsz) // 2))
 
-    # ---------------------------------------------------------------------------
-    # Text
-    # ---------------------------------------------------------------------------
-    name_font = _load_font(72, bold=True)
-    user_font = _load_font(36, bold=False)
-    small_font = _load_font(22, bold=True)
-    header_font = _load_font(20, bold=True)
+    # ── Text ───────────────────────────────────────────────────────────────
+    tx     = ax + total + 28
+    max_tw = W - tx - M - 8
 
     display_name = getattr(member, "display_name", member.name) or member.name
-    username = _parse_username(full_user)  # type: ignore[arg-type]
+    username     = _parse_username(full_user)  # type: ignore
 
-    text_x = avatar_x + avatar_outer + 28
-    max_text_w = w - text_x - options.margin - 14
+    draw = ImageDraw.Draw(card)
+    display_name = _text_fit(draw, display_name, font_name, max_tw)
+    username     = _text_fit(draw, username,     font_user, max_tw)
 
-    draw2 = ImageDraw.Draw(card)
+    # Vertically center text block in the card
+    dn_bb   = _get_textbbox(draw, display_name, font_name)
+    dn_h    = dn_bb[3] - dn_bb[1]
+    un_bb   = _get_textbbox(draw, username, font_user)
+    un_h    = un_bb[3] - un_bb[1]
+    gap     = 10
+    block_h = dn_h + gap + un_h
+    name_y  = (H - block_h) // 2
+    user_y  = name_y + dn_h + gap
 
-    display_name = _text_fit(draw2, display_name, name_font, max_text_w)
-    username = _text_fit(draw2, username, user_font, max_text_w)
+    # Drop shadow on name
+    draw.text((tx + 2, name_y + 3), display_name, font=font_name, fill=(0, 0, 0, 180))
+    # Main name in white
+    draw.text((tx,     name_y),     display_name, font=font_name, fill=(255, 255, 255, 250))
 
-    name_y = 118
-    user_y = name_y + 82
+    # Username in muted white
+    draw.text((tx + 1, user_y + 2), username, font=font_user, fill=(0, 0, 0, 130))
+    draw.text((tx,     user_y),     username, font=font_user, fill=(190, 190, 190, 220))
 
-    # Drop shadow + main text for display name
-    draw2.text((text_x + 2, name_y + 3), display_name, font=name_font, fill=(0, 0, 0, 200))
-    draw2.text((text_x, name_y), display_name, font=name_font, fill=(255, 255, 255, 245))
+    # ── WELCOME pill (bottom-right) ────────────────────────────────────────
+    pbb    = _get_textbbox(draw, pill_text, font_pill)
+    pw, ph = pbb[2] - pbb[0], pbb[3] - pbb[1]
+    ppx, ppy = 18, 9
+    pill_w = pw + ppx * 2
+    pill_h = ph + ppy * 2
+    px     = W - M - pill_w
+    py     = H - M - pill_h
 
-    # Username (slightly muted)
-    draw2.text((text_x + 1, user_y + 2), username, font=user_font, fill=(0, 0, 0, 160))
-    draw2.text((text_x, user_y), username, font=user_font, fill=(210, 210, 210, 220))
-
-    # ---------------------------------------------------------------------------
-    # WELCOME pill (bottom-right)
-    # ---------------------------------------------------------------------------
-    bbox = draw2.textbbox((0, 0), pill_text, font=small_font)
-    text_w = bbox[2] - bbox[0]
-    text_h = bbox[3] - bbox[1]
-    pill_px = 20
-    pill_py = 11
-
-    pill_w = text_w + pill_px * 2
-    pill_h = text_h + pill_py * 2
-    pill_x = w - options.margin - pill_w
-    pill_y = h - options.margin - pill_h
-
-    draw2.rounded_rectangle(
-        (pill_x, pill_y, pill_x + pill_w, pill_y + pill_h),
-        radius=14,
-        fill=(10, 10, 10, 140),
-        outline=(*accent_rgb, 200),
+    # Pill background
+    draw.rounded_rectangle(
+        (px, py, px + pill_w, py + pill_h),
+        radius=12,
+        fill=(12, 12, 12, 160),
+        outline=(*accent, 220),
         width=2,
     )
-    pill_text_x = pill_x + pill_px - bbox[0]
-    pill_text_y = pill_y + pill_py - bbox[1]
-    draw2.text((pill_text_x, pill_text_y), pill_text, font=small_font, fill=(255, 255, 255, 240))
+    draw.text(
+        (px + ppx - pbb[0], py + ppy - pbb[1]),
+        pill_text,
+        font=font_pill,
+        fill=(255, 255, 255, 245),
+    )
 
-    # ---------------------------------------------------------------------------
-    # Server name header chip (top-left) — only if server_name is set
-    # ---------------------------------------------------------------------------
-    if guild_name:
-        header_text = _text_fit(draw2, guild_name, header_font, w // 2)
-        header_bbox = draw2.textbbox((0, 0), header_text, font=header_font)
-        header_w = header_bbox[2] - header_bbox[0]
-        header_h = header_bbox[3] - header_bbox[1]
-        hx = options.margin + 4
-        hy = 14
-        draw2.rounded_rectangle(
-            (hx - 10, hy - 7, hx + header_w + 10, hy + header_h + 7),
-            radius=12,
-            fill=(0, 0, 0, 100),
-            outline=(255, 255, 255, 40),
-            width=2,
-        )
-        draw2.text(
-            (hx - header_bbox[0], hy - header_bbox[1]),
-            header_text,
-            font=header_font,
-            fill=(255, 255, 255, 220),
-        )
+    # ── Badges (top-right, flowing left) ──────────────────────────────────
+    BSIZE  = 32          # chip height & width for icon-only badges
+    BGAP   = 6
+    right  = W - M + 2
+    badge_y = 12
 
-    # ---------------------------------------------------------------------------
-    # Badges (top-right, flowing left)
-    # ---------------------------------------------------------------------------
-    badge_size = 32
-    gap = 8
-    by = 14
-    right = w - options.margin + 2
-    badge_font = _load_font(14, bold=True)
+    for badge in badges:
+        bw = BSIZE
 
-    for item in badge_items:
-        item_w = badge_size
-        if item.label:
-            bb = draw2.textbbox((0, 0), item.label, font=badge_font)
-            tw = bb[2] - bb[0]
-            item_w = max(badge_size, tw + 16)
+        # All profile-flag badges are now images; text-label badges only appear
+        # for role chips (if any were added as _Badge(label=…) elsewhere).
+        if badge.label:
+            lbb = _get_textbbox(draw, badge.label, font_badge)
+            bw  = max(BSIZE, lbb[2] - lbb[0] + 16)
 
-        bx = right - item_w
+        bx = right - bw
 
-        # Badge background with accent outline
-        draw2.rounded_rectangle(
-            (bx, by, bx + item_w, by + badge_size),
-            radius=10,
-            fill=(8, 8, 8, 190),
-            outline=(*accent_rgb, 220),
+        # Chip background
+        draw.rounded_rectangle(
+            (bx, badge_y, bx + bw, badge_y + BSIZE),
+            radius=9,
+            fill=(10, 10, 10, 185),
+            outline=(*accent, 215),
             width=2,
         )
 
-        if item.icon is not None:
-            icon_pad = 6
-            icon_sz = badge_size - icon_pad * 2
-            icon = _cover_resize(item.icon.convert("RGBA"), (icon_sz, icon_sz))
-            icon_mask = _circle_mask(icon_sz)
-            icon_layer = Image.new("RGBA", (icon_sz, icon_sz), (0, 0, 0, 0))
-            icon_layer.paste(icon, (0, 0), mask=icon_mask)
-            card.alpha_composite(icon_layer, (bx + icon_pad, by + icon_pad))
-        elif item.label:
-            bb = draw2.textbbox((0, 0), item.label, font=badge_font)
-            tw = bb[2] - bb[0]
-            th = bb[3] - bb[1]
-            tx = bx + (item_w - tw) // 2 - bb[0]
-            ty = by + (badge_size - th) // 2 - bb[1]
-            draw2.text((tx, ty), item.label, font=badge_font, fill=(255, 255, 255, 245))
+        if badge.icon is not None:
+            pad = 4
+            isz = BSIZE - pad * 2
+            # Scale icon to fit, preserving transparency (no circle crop for official badges)
+            icon = badge.icon.resize((isz, isz), Image.Resampling.LANCZOS)
+            card.alpha_composite(icon, (bx + pad, badge_y + pad))
+            draw = ImageDraw.Draw(card)
+        elif badge.label:
+            lbb = _get_textbbox(draw, badge.label, font_badge)
+            lw, lh = lbb[2] - lbb[0], lbb[3] - lbb[1]
+            draw.text(
+                (bx + (bw - lw) // 2 - lbb[0], badge_y + (BSIZE - lh) // 2 - lbb[1]),
+                badge.label,
+                font=font_badge,
+                fill=(255, 255, 255, 245),
+            )
 
-        right = bx - gap
+        right = bx - BGAP
 
-    # ---------------------------------------------------------------------------
-    # Export
-    # ---------------------------------------------------------------------------
+    # ── Export ─────────────────────────────────────────────────────────────
     out = io.BytesIO()
     card.save(out, format="PNG", optimize=True)
     return out.getvalue()
