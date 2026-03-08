@@ -28,6 +28,22 @@ class Setup(commands.Cog):
         self.bot = bot
 
     @staticmethod
+    async def _safe_followup_send(
+        interaction: discord.Interaction,
+        *,
+        embed: discord.Embed,
+        view: Optional[discord.ui.View] = None,
+        ephemeral: bool = True,
+    ) -> None:
+        kwargs = {
+            "embed": embed,
+            "ephemeral": ephemeral,
+        }
+        if view is not None:
+            kwargs["view"] = view
+        await interaction.followup.send(**kwargs)
+
+    @staticmethod
     def _section_lines(section: dict) -> str:
         lines = []
         for item in section.get("items", [])[:8]:
@@ -138,12 +154,22 @@ class Setup(commands.Cog):
                         value="\n".join(str(item)[:150] for item in result["errors"][:5]),
                         inline=False,
                     )
-                await interaction.followup.send(embed=embed, view=self._dashboard_view(guild.id), ephemeral=True)
+                await self._safe_followup_send(
+                    interaction,
+                    embed=embed,
+                    view=self._dashboard_view(guild.id),
+                    ephemeral=True,
+                )
                 return
 
             summary = build_setup_summary(guild, settings, dashboard_url=dashboard_setup_url(guild.id))
             embed = self._build_status_embed(guild, summary)
-            await interaction.followup.send(embed=embed, view=self._dashboard_view(guild.id), ephemeral=True)
+            await self._safe_followup_send(
+                interaction,
+                embed=embed,
+                view=self._dashboard_view(guild.id),
+                ephemeral=True,
+            )
         except Exception as exc:
             logger.exception("Setup command failed for guild %s", guild.id)
             await interaction.followup.send(

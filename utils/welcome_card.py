@@ -116,20 +116,20 @@ def _text_fit(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, m
 
 
 _BADGE_MAP: list[tuple[str, str]] = [
-    ("staff", "S"),
-    ("partner", "P"),
-    ("hypesquad", "H"),
-    ("hypesquad_bravery", "B"),
-    ("hypesquad_brilliance", "R"),
-    ("hypesquad_balance", "L"),
-    ("bug_hunter_level_1", "1"),
-    ("bug_hunter", "1"),
-    ("bug_hunter_level_2", "2"),
-    ("early_supporter", "E"),
-    ("early_verified_bot_developer", "D"),
-    ("verified_bot_developer", "D"),
-    ("discord_certified_moderator", "M"),
-    ("active_developer", "A"),
+    ("staff", "STAFF"),
+    ("partner", "PART"),
+    ("hypesquad", "HYPE"),
+    ("hypesquad_bravery", "BRV"),
+    ("hypesquad_brilliance", "BRL"),
+    ("hypesquad_balance", "BAL"),
+    ("bug_hunter_level_1", "BH1"),
+    ("bug_hunter", "BH1"),
+    ("bug_hunter_level_2", "BH2"),
+    ("early_supporter", "EARLY"),
+    ("early_verified_bot_developer", "DEV"),
+    ("verified_bot_developer", "DEV"),
+    ("discord_certified_moderator", "MOD"),
+    ("active_developer", "ACTIVE"),
 ]
 
 
@@ -265,18 +265,26 @@ async def build_welcome_card_png(
         )
 
         badge_items: list[_BadgeItem] = []
+        seen_badge_labels: set[str] = set()
         for label in _badge_labels(full_user, member=member):  # type: ignore[arg-type]
+            normalized = label.strip().upper()
+            if not normalized or normalized in seen_badge_labels:
+                continue
+            seen_badge_labels.add(normalized)
             badge_items.append(_BadgeItem(label=label))
 
-        if options.role_badge_fallback and not badge_items:
-            for url in _role_badge_urls(member, limit=6):
+        if options.role_badge_fallback:
+            remaining_slots = max(0, 6 - len(badge_items))
+            for url in _role_badge_urls(member, limit=remaining_slots):
                 img = await _fetch_asset_image(session, url)
                 if img is not None:
                     badge_items.append(_BadgeItem(icon=img))
                 if len(badge_items) >= 6:
                     break
             tag = _role_tag_text(member)
-            if tag:
+            normalized_tag = (tag or "").strip().upper()
+            if normalized_tag and normalized_tag not in seen_badge_labels and len(badge_items) < 6:
+                seen_badge_labels.add(normalized_tag)
                 badge_items.append(_BadgeItem(label=tag))
 
     w, h = options.width, options.height
@@ -289,10 +297,10 @@ async def build_welcome_card_png(
             bg_img = Image.new("RGBA", (w, h), (18, 18, 18, 255))
 
     bg = _cover_resize(bg_img, (w, h)).convert("RGBA")
-    bg = bg.filter(ImageFilter.GaussianBlur(radius=8))
+    bg = bg.filter(ImageFilter.GaussianBlur(radius=7))
 
     # dark overlay for legibility
-    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 140))
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 150))
     bg = Image.alpha_composite(bg, overlay)
 
     # rounded card
@@ -304,12 +312,12 @@ async def build_welcome_card_png(
     border_layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     border_draw = ImageDraw.Draw(border_layer)
     border_draw.rounded_rectangle(
-        (4, 4, w - 4, h - 4),
+        (5, 5, w - 5, h - 5),
         radius=max(0, options.radius - 1),
         outline=(*accent_rgb, 220),
-        width=16,
+        width=14,
     )
-    border_layer = border_layer.filter(ImageFilter.GaussianBlur(radius=5))
+    border_layer = border_layer.filter(ImageFilter.GaussianBlur(radius=4))
     card.alpha_composite(border_layer)
 
     draw = ImageDraw.Draw(card)
@@ -322,16 +330,16 @@ async def build_welcome_card_png(
 
     # avatar
     avatar_size = options.avatar_size
-    avatar_outer = avatar_size + 28
+    avatar_outer = avatar_size + 24
     avatar_x = options.margin
-    avatar_y = (h - avatar_outer) // 2
+    avatar_y = (h - avatar_outer) // 2 + 10
 
     ring_inner = Image.new("RGBA", (avatar_outer, avatar_outer), (0, 0, 0, 0))
     ring_inner_draw = ImageDraw.Draw(ring_inner)
     ring_inner_draw.ellipse(
-        (12, 12, avatar_outer - 12, avatar_outer - 12),
-        outline=(255, 255, 255, 60),
-        width=3,
+        (10, 10, avatar_outer - 10, avatar_outer - 10),
+        outline=(255, 255, 255, 80),
+        width=4,
     )
     card.alpha_composite(ring_inner, (avatar_x, avatar_y))
 
@@ -352,9 +360,10 @@ async def build_welcome_card_png(
             card.alpha_composite(deco, (deco_x, deco_y))
 
     # text
-    name_font = _load_font(58, bold=True)
+    name_font = _load_font(60, bold=True)
     user_font = _load_font(34, bold=False)
     small_font = _load_font(24, bold=True)
+    header_font = _load_font(24, bold=True)
 
     display_name = getattr(member, "display_name", member.name) or member.name
     username = _parse_username(full_user)  # type: ignore[arg-type]
@@ -365,8 +374,8 @@ async def build_welcome_card_png(
     display_name = _text_fit(draw, display_name, name_font, max_text_w)
     username = _text_fit(draw, username, user_font, max_text_w)
 
-    name_y = int(h * 0.36)
-    user_y = name_y + 62
+    name_y = 106
+    user_y = name_y + 66
 
     # subtle shadow
     draw.text((text_x + 2, name_y + 2), display_name, font=name_font, fill=(0, 0, 0, 180))
@@ -422,63 +431,64 @@ async def build_welcome_card_png(
         fill=(255, 255, 255, 240),
     )
 
-    # server name (above avatar)
-    server_font = _load_font(22, bold=True)
-    server_text = _text_fit(draw, options.server_name, server_font, w - 2 * options.margin)
-    server_bbox = draw.textbbox((0, 0), server_text, font=server_font)
-    server_tw = server_bbox[2] - server_bbox[0]
-    server_th = server_bbox[3] - server_bbox[1]
-
-    stx = avatar_x + max(0, (avatar_outer - server_tw) // 2) - server_bbox[0]
-    min_x = options.margin - server_bbox[0]
-    max_x = w - options.margin - server_bbox[2]
-    stx = max(min_x, min(stx, max_x))
-
-    sty = max(8, avatar_y - server_th - 4) - server_bbox[1]
-
-    draw.text((stx + 2, sty + 2), server_text, font=server_font, fill=(0, 0, 0, 170))
-    draw.text((stx, sty), server_text, font=server_font, fill=(255, 255, 255, 220))
+    # header chip (top-left)
+    header_text = _text_fit(draw, options.server_name, header_font, w - (options.margin * 2) - 240)
+    header_bbox = draw.textbbox((0, 0), header_text, font=header_font)
+    header_w = header_bbox[2] - header_bbox[0]
+    header_h = header_bbox[3] - header_bbox[1]
+    header_x = options.margin + 6
+    header_y = 14
+    draw.rounded_rectangle(
+        (
+            header_x - 12,
+            header_y - 8,
+            header_x + header_w + 12,
+            header_y + header_h + 8,
+        ),
+        radius=16,
+        fill=(0, 0, 0, 95),
+        outline=(255, 255, 255, 40),
+        width=2,
+    )
+    draw.text(
+        (header_x - header_bbox[0], header_y - header_bbox[1]),
+        header_text,
+        font=header_font,
+        fill=(255, 255, 255, 224),
+    )
 
     # badges (top-right)
     badge_size = 34
     gap = 10
-    by = options.margin
-    right = w - options.margin
+    by = 16
+    right = w - options.margin + 2
     for item in badge_items:
         item_w = badge_size
-        is_tag = bool(item.label) and len(item.label or "") > 1
-        tag_font = None
-        if is_tag:
-            tag_font = _load_font(18, bold=True)
-            bb = draw.textbbox((0, 0), item.label or "", font=tag_font)
+        badge_font = _load_font(17, bold=True)
+        if item.label:
+            bb = draw.textbbox((0, 0), item.label, font=badge_font)
             tw = bb[2] - bb[0]
-            item_w = tw + 18
+            item_w = max(badge_size, tw + 22)
 
         bx = right - item_w
         draw.rounded_rectangle(
             (bx, by, bx + item_w, by + badge_size),
-            radius=10,
-            fill=(*accent_rgb, 210),
+            radius=11,
+            fill=(12, 12, 12, 180),
+            outline=(*accent_rgb, 210),
+            width=2,
         )
         if item.icon is not None:
-            icon = _cover_resize(item.icon.convert("RGBA"), (badge_size - 8, badge_size - 8))
-            circ = _circle_mask(badge_size - 8)
-            icon_layer = Image.new("RGBA", (badge_size - 8, badge_size - 8), (0, 0, 0, 0))
-            icon_layer.paste(icon, (0, 0), mask=circ)
-            card.alpha_composite(icon_layer, (bx + 4, by + 4))
-        elif item.label and is_tag and tag_font is not None:
-            bb = draw.textbbox((0, 0), item.label, font=tag_font)
-            tw = bb[2] - bb[0]
-            th = bb[3] - bb[1]
-            tx = bx + (item_w - tw) // 2 - bb[0]
-            ty = by + (badge_size - th) // 2 - bb[1]
-            draw.text((tx, ty), item.label, font=tag_font, fill=(255, 255, 255, 245))
+            icon = _cover_resize(item.icon.convert("RGBA"), (badge_size - 10, badge_size - 10))
+            badge_mask = _rounded_mask((badge_size - 10, badge_size - 10), 8)
+            icon_layer = Image.new("RGBA", (badge_size - 10, badge_size - 10), (0, 0, 0, 0))
+            icon_layer.paste(icon, (0, 0), mask=badge_mask)
+            card.alpha_composite(icon_layer, (bx + 5, by + 5))
         elif item.label:
-            badge_font = _load_font(22, bold=True)
             bb = draw.textbbox((0, 0), item.label, font=badge_font)
             tw = bb[2] - bb[0]
             th = bb[3] - bb[1]
-            tx = bx + (badge_size - tw) // 2 - bb[0]
+            tx = bx + (item_w - tw) // 2 - bb[0]
             ty = by + (badge_size - th) // 2 - bb[1]
             draw.text((tx, ty), item.label, font=badge_font, fill=(255, 255, 255, 245))
         right = bx - gap

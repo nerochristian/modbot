@@ -13,48 +13,30 @@ import unicodedata
 from utils.embeds import ModEmbed
 from utils.components_v2 import branded_panel_container
 from utils.checks import is_mod, is_bot_owner_id
+from utils.guild_branding import (
+    get_guild_brand_assets,
+    get_ticket_panel_component_emojis,
+    resolve_guild_component_emoji,
+)
 from utils.logging import send_log_embed
 from config import Config
 import io
 from utils.transcript import generate_html_transcript
 
-def _brand_assets(guild: Optional[discord.Guild], override_banner_url: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
-    logo_url = None
-    banner_url = None
-
-    # Prioritize override banner
-    if override_banner_url:
-        banner_url = override_banner_url
-    elif guild and getattr(guild, "banner", None):
-        try:
-            banner_url = str(guild.banner.url)
-        except Exception:
-            pass
-    
-    # Fallback to config banner
-    if not banner_url:
-        banner_url = (getattr(Config, "SERVER_BANNER_URL", "") or "").strip() or None
-
-    # Prioritize server icon for logo
-    if guild and getattr(guild, "icon", None):
-        try:
-            logo_url = str(guild.icon.url)
-        except Exception:
-            pass
-
-    # Fallback to config logo
-    if not logo_url:
-        logo_url = (getattr(Config, "SERVER_LOGO_URL", "") or "").strip() or None
-
-    return logo_url, banner_url
-
 
 class TicketPanelView(discord.ui.LayoutView):
-    def __init__(self, cog: "Tickets", *, guild: Optional[discord.Guild] = None, banner_url: Optional[str] = None):
+    def __init__(
+        self,
+        cog: "Tickets",
+        *,
+        guild: Optional[discord.Guild] = None,
+        category_emojis: Optional[dict[str, object]] = None,
+    ):
         super().__init__(timeout=None)
         self.cog = cog
 
-        logo_url, banner_url = _brand_assets(guild, override_banner_url=banner_url)
+        logo_url, banner_url = get_guild_brand_assets(guild)
+        category_emojis = category_emojis or {}
         title = f"{guild.name} Tickets" if guild else "Tickets"
         description = (
             "If you need help, click on the option corresponding to the type of ticket you want to open.\n"
@@ -92,6 +74,38 @@ class TicketPanelView(discord.ui.LayoutView):
                 ),
             ],
             custom_id="ticket_panel_select",
+        )
+        select.options[0].emoji = category_emojis.get("general") or resolve_guild_component_emoji(
+            guild,
+            "ticket_support",
+            "support",
+            "ticket",
+            "help",
+            fallback="🛠️",
+        )
+        select.options[1].emoji = category_emojis.get("report") or resolve_guild_component_emoji(
+            guild,
+            "ticket_report",
+            "report",
+            "alert",
+            "siren",
+            fallback="🚨",
+        )
+        select.options[2].emoji = category_emojis.get("appeal") or resolve_guild_component_emoji(
+            guild,
+            "ticket_appeal",
+            "appeal",
+            "note",
+            "pencil",
+            fallback="📝",
+        )
+        select.options[3].emoji = category_emojis.get("other") or resolve_guild_component_emoji(
+            guild,
+            "ticket_other",
+            "other",
+            "chat",
+            "message",
+            fallback="💬",
         )
 
         async def _select_cb(interaction: discord.Interaction):
@@ -686,9 +700,8 @@ class Tickets(commands.Cog):
         )
 
     async def _send_ticket_panel_to_channel(self, channel: discord.TextChannel, guild: discord.Guild) -> None:
-        settings = await self.bot.db.get_settings(guild.id)
-        banner_url = settings.get("server_banner_url")
-        await channel.send(view=TicketPanelView(self, guild=guild, banner_url=banner_url))
+        category_emojis = await get_ticket_panel_component_emojis(guild)
+        await channel.send(view=TicketPanelView(self, guild=guild, category_emojis=category_emojis))
 
     async def _handle_ticket_claim_button(self, interaction: discord.Interaction, *, panel: TicketThreadPanel) -> None:
         if not interaction.guild or not isinstance(interaction.user, discord.Member):

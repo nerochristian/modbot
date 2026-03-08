@@ -1,6 +1,6 @@
 import type { DiscordChannel } from '@/types';
 
-const NON_MESSAGE_CHANNEL_TYPES = new Set([2, 4, 13]); // voice, category, stage
+const MESSAGE_DESTINATION_CHANNEL_TYPES = new Set([0, 5]); // text, announcement
 
 function normalizeType(value: number | string): number {
   if (typeof value === 'number') return value;
@@ -9,7 +9,7 @@ function normalizeType(value: number | string): number {
 }
 
 export function isMessageCapableChannel(channel: Pick<DiscordChannel, 'type'>): boolean {
-  return !NON_MESSAGE_CHANNEL_TYPES.has(normalizeType(channel.type));
+  return MESSAGE_DESTINATION_CHANNEL_TYPES.has(normalizeType(channel.type));
 }
 
 export function toChannelOptions(channels: DiscordChannel[]): { label: string; value: string }[] {
@@ -17,4 +17,3 @@ export function toChannelOptions(channels: DiscordChannel[]): { label: string; v
     .filter(isMessageCapableChannel)
     .map((channel) => ({ label: `#${channel.name}`, value: channel.id }));
 }
-

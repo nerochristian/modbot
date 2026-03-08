@@ -659,11 +659,31 @@ class Moderation(
                         pass
         
         # Welcome Message
-        channel_id = settings.get("welcome_channel")
+        channel_id = settings.get("welcome_channel") or getattr(Config, "WELCOME_CHANNEL_ID", 0)
         if channel_id:
-            channel = member.guild.get_channel(int(channel_id))
-            if channel and isinstance(channel, discord.TextChannel):
-                await self._send_welcome_message(member=member, channel=channel)
+            try:
+                channel = await self._resolve_message_channel(
+                    member.guild,
+                    channel_id,
+                    purpose="welcome channel",
+                )
+            except Exception:
+                logger.exception(
+                    "Failed resolving welcome channel %r for guild %s",
+                    channel_id,
+                    member.guild.id,
+                )
+                channel = None
+
+            if channel is not None:
+                try:
+                    await self._send_welcome_message(member=member, channel=channel)
+                except Exception:
+                    logger.exception(
+                        "Failed sending welcome message for member %s in guild %s",
+                        member.id,
+                        member.guild.id,
+                    )
 
 
 # Helper Class for whitelist group if not in management.py

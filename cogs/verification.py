@@ -26,6 +26,7 @@ from config import Config
 from utils.checks import is_admin
 from utils.embeds import ModEmbed
 from utils.components_v2 import branded_panel_container
+from utils.guild_branding import get_guild_brand_assets, resolve_guild_component_emoji
 from utils.server_setup import apply_verification_gate, module_enabled, sync_setup_aliases
 
 # Try to import Pillow for image captchas
@@ -134,39 +135,6 @@ def _generate_captcha_image(code: str) -> Optional[bytes]:
         return None
 
 
-def _brand_assets(guild: Optional[discord.Guild], override_banner_url: Optional[str] = None) -> tuple[Optional[str], Optional[str]]:
-    """Get logo and banner URLs, prioritizing the server's actual assets."""
-    logo_url = None
-    banner_url = None
-
-    # Prioritize override banner (e.g. from DB settings)
-    if override_banner_url:
-        banner_url = override_banner_url
-    elif guild and getattr(guild, "banner", None):
-        # Prioritize server's actual banner over config
-        try:
-            banner_url = str(guild.banner.url)
-        except Exception:
-            pass
-
-    # Fallback to config banner if server has none
-    if not banner_url:
-        banner_url = (getattr(Config, "SERVER_BANNER_URL", "") or "").strip() or None
-
-    # Prioritize server icon for logo
-    if guild and getattr(guild, "icon", None):
-        try:
-            logo_url = str(guild.icon.url)
-        except Exception:
-            pass
-
-    # Fallback to config logo
-    if not logo_url:
-        logo_url = (getattr(Config, "SERVER_LOGO_URL", "") or "").strip() or None
-
-    return logo_url, banner_url
-
-
 class CaptchaModal(discord.ui.Modal, title="Verification Captcha"):
     captcha = discord.ui.TextInput(
         label="Enter the captcha code",
@@ -258,11 +226,11 @@ class CaptchaView(discord.ui.View):
 
 
 class VerificationPanelLayout(discord.ui.LayoutView):
-    def __init__(self, cog: "Verification", *, guild: Optional[discord.Guild] = None, banner_url: Optional[str] = None):
+    def __init__(self, cog: "Verification", *, guild: Optional[discord.Guild] = None):
         super().__init__(timeout=None)
         self._cog = cog
 
-        logo_url, banner_url = _brand_assets(guild, override_banner_url=banner_url)
+        logo_url, banner_url = get_guild_brand_assets(guild)
         container = branded_panel_container(
             title="Server Verification",
             description=(
@@ -284,6 +252,14 @@ class VerificationPanelLayout(discord.ui.LayoutView):
         start_button = discord.ui.Button(
             label="Start Verification",
             style=discord.ButtonStyle.success,
+            emoji=resolve_guild_component_emoji(
+                guild,
+                "verify",
+                "verified",
+                "success",
+                "check",
+                fallback="✅",
+            ),
             custom_id="verification:start",
         )
 
@@ -295,6 +271,13 @@ class VerificationPanelLayout(discord.ui.LayoutView):
         tutorial_button = discord.ui.Button(
             label="Tutorial",
             style=discord.ButtonStyle.secondary,
+            emoji=resolve_guild_component_emoji(
+                guild,
+                "tutorial",
+                "info",
+                "help",
+                fallback="ℹ️",
+            ),
             custom_id="verification:tutorial",
         )
 
@@ -539,10 +522,7 @@ class Verification(commands.Cog):
     async def _send_voice_verify_dm(self, *, guild: discord.Guild, member: discord.Member) -> None:
         layout = discord.ui.LayoutView(timeout=15 * 60)
 
-        settings = await self.bot.db.get_settings(guild.id)
-        banner_override = settings.get("server_banner_url")
-
-        logo_url, banner_url = _brand_assets(guild, override_banner_url=banner_override)
+        logo_url, banner_url = get_guild_brand_assets(guild)
         container = branded_panel_container(
             title="🔊 Voice Verification Required",
             description=(
@@ -559,6 +539,14 @@ class Verification(commands.Cog):
         start_button = discord.ui.Button(
             label="Start Verification",
             style=discord.ButtonStyle.success,
+            emoji=resolve_guild_component_emoji(
+                guild,
+                "verify",
+                "verified",
+                "success",
+                "check",
+                fallback="✅",
+            ),
         )
 
         async def _start(interaction: discord.Interaction) -> None:
@@ -580,6 +568,13 @@ class Verification(commands.Cog):
         tutorial_button = discord.ui.Button(
             label="Tutorial",
             style=discord.ButtonStyle.secondary,
+            emoji=resolve_guild_component_emoji(
+                guild,
+                "tutorial",
+                "info",
+                "help",
+                fallback="ℹ️",
+            ),
         )
 
         async def _tutorial(interaction: discord.Interaction) -> None:
@@ -742,7 +737,7 @@ class Verification(commands.Cog):
             code = existing.code
             image_bytes = existing.image_bytes
 
-        logo_url, _ = _brand_assets(guild)
+        logo_url, _ = get_guild_brand_assets(guild)
 
         # Build message with image or text fallback
         if image_bytes:
@@ -990,7 +985,6 @@ class Verification(commands.Cog):
 
         settings = await self._get_settings(interaction.guild.id)
         verify_channel_id = settings.get("verify_channel")
-        banner_url = settings.get("server_banner_url")
         channel = (
             interaction.guild.get_channel(int(verify_channel_id)) if verify_channel_id else None
         )
@@ -998,7 +992,7 @@ class Verification(commands.Cog):
             channel = interaction.channel
 
         try:
-            await channel.send(view=VerificationPanelLayout(self, guild=interaction.guild, banner_url=banner_url))
+            await channel.send(view=VerificationPanelLayout(self, guild=interaction.guild))
         except discord.Forbidden:
             # Self-healing: try to fix permissions if we are admin but locked out
             try:

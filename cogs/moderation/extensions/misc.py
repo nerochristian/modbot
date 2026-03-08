@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from datetime import datetime, timezone
+import logging
 import re
 import asyncio
 import aiohttp
@@ -13,6 +14,8 @@ from utils.checks import is_mod, is_admin, is_owner_only
 from utils.welcome_card import WelcomeCardOptions, build_welcome_card_file
 from config import Config
 from .ui import EmojiApprovalView, AddEmojiTutorialView, _fetch_addemoji_tutorial_gif_file, ADD_EMOJI_TUTORIAL_GIF_FILENAME, ADD_EMOJI_TUTORIAL_GIF_URL, EMOJI_COMMAND_CHANNEL_ID
+
+logger = logging.getLogger("ModBot.Moderation.Welcome")
 
 class MiscCommands:
     # ==================== EMOJI/STICKER MANAGEMENT ====================
@@ -89,6 +92,84 @@ class MiscCommands:
             if isinstance(ch, discord.TextChannel):
                 return ch
         return None
+
+    async def _resolve_message_channel(
+        self,
+        guild: discord.Guild,
+        channel_id: object,
+        *,
+        purpose: str,
+    ) -> Optional[discord.abc.Messageable]:
+        raw_channel_id = str(channel_id or "").strip()
+        if not raw_channel_id:
+            return None
+
+        try:
+            resolved_id = int(raw_channel_id)
+        except (TypeError, ValueError):
+            logger.warning(
+                "Invalid %s id %r for guild %s",
+                purpose,
+                channel_id,
+                guild.id,
+            )
+            return None
+
+        channel = guild.get_channel_or_thread(resolved_id)
+        if channel is None:
+            try:
+                fetched = await self.bot.fetch_channel(resolved_id)
+            except (discord.NotFound, discord.Forbidden):
+                fetched = None
+            except Exception:
+                logger.exception(
+                    "Failed fetching %s %s for guild %s",
+                    purpose,
+                    resolved_id,
+                    guild.id,
+                )
+                fetched = None
+
+            if fetched is not None and getattr(getattr(fetched, "guild", None), "id", None) == guild.id:
+                channel = fetched
+
+        if channel is None:
+            logger.warning(
+                "Configured %s %s could not be resolved for guild %s",
+                purpose,
+                resolved_id,
+                guild.id,
+            )
+            return None
+
+        if isinstance(
+            channel,
+            (
+                discord.CategoryChannel,
+                discord.ForumChannel,
+                discord.StageChannel,
+                discord.VoiceChannel,
+            ),
+        ):
+            logger.warning(
+                "Configured %s %s has unsupported channel type %s in guild %s",
+                purpose,
+                resolved_id,
+                type(channel).__name__,
+                guild.id,
+            )
+            return None
+
+        if not isinstance(channel, discord.abc.Messageable):
+            logger.warning(
+                "Configured %s %s is not messageable in guild %s",
+                purpose,
+                resolved_id,
+                guild.id,
+            )
+            return None
+
+        return channel
 
     @commands.group(name="emoji", invoke_without_command=True)
     async def emoji_group(self, ctx: commands.Context):
@@ -412,16 +493,8 @@ class MiscCommands:
             server_name=f"{system_name} - Moderation",
         )
 
-        card_file = await build_welcome_card_file(
-            self.bot,
-            member,
-            filename=f"welcome_{member.id}.png",
-            options=options,
-        )
-
-        view = discord.ui.LayoutView(timeout=60)
-        view.add_item(
-            discord.ui.Container(
+        def build_view(image_filename: Optional[str] = None) -> discord.ui.LayoutView:
+            items: list[discord.ui.Item[discord.ui.View]] = [
                 discord.ui.TextDisplay(f"# {system_name} - {server_name}"),
                 discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
                 discord.ui.TextDisplay(f"# \N{INVERTED EXCLAMATION MARK}Welcome to {server_name}!"),
@@ -430,14 +503,56 @@ class MiscCommands:
                     f"| Joined On: <t:{ts}:D> at <t:{ts}:t>"
                 ),
                 discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
-                discord.ui.MediaGallery(
-                    discord.MediaGalleryItem(f"attachment://{card_file.filename}")
-                ),
-                accent_color=accent,
-            )
-        )
+            ]
+            if image_filename:
+                items.append(
+                    discord.ui.MediaGallery(
+                        discord.MediaGalleryItem(f"attachment://{image_filename}")
+                    )
+                )
+            else:
+                items.append(
+                    discord.ui.TextDisplay(
+                        "*Welcome card image unavailable. Check channel attach-file permissions if this keeps happening.*"
+                    )
+                )
 
-        await channel.send(view=view, file=card_file)
+            view = discord.ui.LayoutView(timeout=60)
+            view.add_item(discord.ui.Container(*items, accent_color=accent))
+            return view
+
+        card_file: Optional[discord.File] = None
+        try:
+            card_file = await build_welcome_card_file(
+                self.bot,
+                member,
+                filename=f"welcome_{member.id}.png",
+                options=options,
+            )
+        except Exception:
+            logger.exception(
+                "Failed building welcome card for member %s in guild %s",
+                member.id,
+                member.guild.id,
+            )
+
+        try:
+            if card_file is not None:
+                await channel.send(view=build_view(card_file.filename), file=card_file)
+            else:
+                await channel.send(view=build_view())
+            return
+        except Exception:
+            if card_file is None:
+                raise
+
+            logger.exception(
+                "Failed sending welcome card with attachment for member %s in guild %s; retrying without image",
+                member.id,
+                member.guild.id,
+            )
+
+        await channel.send(view=build_view())
 
     # Slash command - registered dynamically in __init__.py
     async def testwelcome(
@@ -502,8 +617,12 @@ class MiscCommands:
             settings = await self.bot.db.get_settings(interaction.guild.id)
             channel_id = settings.get("welcome_channel")
             if channel_id:
-                resolved = interaction.guild.get_channel(int(channel_id))
-                if isinstance(resolved, discord.TextChannel):
+                resolved = await self._resolve_message_channel(
+                    interaction.guild,
+                    channel_id,
+                    purpose="welcome channel",
+                )
+                if resolved is not None:
                     dest = resolved
 
         if dest is None:
@@ -538,10 +657,11 @@ class MiscCommands:
             )
 
         if not confirm:
+            dest_mention = getattr(dest, "mention", "the configured channel")
             return await interaction.response.send_message(
                 embed=ModEmbed.warning(
                     "Confirmation Required",
-                    f"This will send **{len(members)}** welcome message(s) in {dest.mention}.\n"
+                    f"This will send **{len(members)}** welcome message(s) in {dest_mention}.\n"
                     "Re-run with `confirm: True` to proceed.",
                 ),
                 ephemeral=True,
@@ -559,10 +679,11 @@ class MiscCommands:
                 failed += 1
             await asyncio.sleep(0.35)
 
+        dest_mention = getattr(dest, "mention", "the configured channel")
         return await interaction.followup.send(
             embed=ModEmbed.success(
                 "Done",
-                f"Sent **{sent}** welcome message(s) in {dest.mention}."
+                f"Sent **{sent}** welcome message(s) in {dest_mention}."
                 + (f" Failed: **{failed}**." if failed else ""),
             ),
             ephemeral=True,

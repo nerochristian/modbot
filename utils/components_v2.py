@@ -676,7 +676,18 @@ def patch_components_v2() -> None:
         # Fall back to global config
         return ComponentsV2Config.enabled
 
+    def _strip_none_view_for_send(kwargs: dict[str, Any]) -> None:
+        """
+        Discord send APIs reject an explicit `view=None`.
+
+        Keep `view=None` semantics for edit operations, but drop it for send paths
+        where omitting the parameter is equivalent and avoids type errors.
+        """
+        if kwargs.get("view", MISSING) is None:
+            kwargs.pop("view", None)
+
     async def patched_interaction_send_message(self, *args, **kwargs):
+        _strip_none_view_for_send(kwargs)
         existing_embed = kwargs.get("embed", MISSING)
         existing_embeds = kwargs.get("embeds", MISSING)
         if not _is_missing_like(existing_embed) or _has_embed_payload(existing_embeds):
@@ -793,6 +804,7 @@ def patch_components_v2() -> None:
         )
 
     async def patched_webhook_send(self, *args, **kwargs):
+        _strip_none_view_for_send(kwargs)
         existing_embed = kwargs.get("embed", MISSING)
         existing_embeds = kwargs.get("embeds", MISSING)
         if not _is_missing_like(existing_embed) or _has_embed_payload(existing_embeds):
@@ -855,6 +867,7 @@ def patch_components_v2() -> None:
         return await original_webhook_send(self, content=content, **kwargs)
 
     async def patched_messageable_send(self, *args, **kwargs):
+        _strip_none_view_for_send(kwargs)
         has_embed_kw = "embed" in kwargs
         has_embeds_kw = "embeds" in kwargs
         maybe_embed = kwargs.get("embed", None)
