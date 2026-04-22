@@ -497,11 +497,11 @@ class HelperCommands:
                 """
 
                 try:
-                    async with conn.execute(query_started, (guild_id, user_id)) as cursor:
-                        row = await cursor.fetchone()
+                    cursor = await conn.execute(query_started, (guild_id, user_id))
+                    row = await cursor.fetchone()
                 except Exception:
-                    async with conn.execute(query_created, (guild_id, user_id)) as cursor:
-                        row = await cursor.fetchone()
+                    cursor = await conn.execute(query_created, (guild_id, user_id))
+                    row = await cursor.fetchone()
                 
             if not row:
                 return None

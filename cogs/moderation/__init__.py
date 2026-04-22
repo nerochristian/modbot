@@ -180,8 +180,11 @@ class Moderation(
         now = datetime.now(timezone.utc)
         try:
             async with self.bot.db.pool.acquire() as conn:
-                async with conn.execute("SELECT id, guild_id, user_id, roles_backup, moderator_id FROM quarantines WHERE active = 1 AND expires_at IS NOT NULL AND expires_at <= ?", (now,)) as cursor:
-                    expired = await cursor.fetchall()
+                cursor = await conn.execute(
+                    "SELECT id, guild_id, user_id, roles_backup, moderator_id FROM quarantines WHERE active = 1 AND expires_at IS NOT NULL AND expires_at <= ?",
+                    (now,),
+                )
+                expired = await cursor.fetchall()
             
             for q in expired:
                 q_id, guild_id, user_id, roles_backup, mod_id = q

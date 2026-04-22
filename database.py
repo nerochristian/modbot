@@ -519,6 +519,21 @@ class Database:
             self._start_supabase_sync_loop()
             logger.info("✅ Database connection pool initialized")
     
+    async def _ensure_blacklist_table(self) -> None:
+        """Ensure the global blacklist table exists before blacklist operations."""
+        async with self.get_connection() as db:
+            await db.execute(
+                """
+                CREATE TABLE IF NOT EXISTS blacklist (
+                    user_id INTEGER PRIMARY KEY,
+                    reason TEXT,
+                    added_by INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+                """
+            )
+            await db.commit()
+
     @asynccontextmanager
     async def get_connection(self):
         """Get database connection as async context manager"""
@@ -2604,6 +2619,7 @@ class Database:
         """Add a user to the global blacklist"""
         self._validate_user_id(user_id)
         self._validate_user_id(added_by)
+        await self._ensure_blacklist_table()
         
         async with self._lock:
             async with self.get_connection() as db:
@@ -2623,6 +2639,7 @@ class Database:
     async def remove_from_blacklist(self, user_id: int) -> bool:
         """Remove a user from the global blacklist"""
         self._validate_user_id(user_id)
+        await self._ensure_blacklist_table()
         
         async with self._lock:
             async with self.get_connection() as db:
@@ -2635,6 +2652,7 @@ class Database:
     
     async def get_blacklist(self) -> List[Dict[str, Any]]:
         """Get all blacklisted users"""
+        await self._ensure_blacklist_table()
         async with self.get_connection() as db:
             cursor = await db.execute(
                 "SELECT user_id, reason, added_by, created_at FROM blacklist ORDER BY created_at DESC"
@@ -2652,6 +2670,7 @@ class Database:
     
     async def is_blacklisted(self, user_id: int) -> bool:
         """Check if a user is blacklisted"""
+        await self._ensure_blacklist_table()
         async with self.get_connection() as db:
             cursor = await db.execute(
                 "SELECT 1 FROM blacklist WHERE user_id = ?",
