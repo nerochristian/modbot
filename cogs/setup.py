@@ -1,9 +1,8 @@
 """
 Server setup command.
 
-This setup flow is intentionally status-first. It shows what is configured,
-offers an optional quickstart scaffold, and points admins to the web dashboard
-for the rest of the server-wide tuning.
+This setup flow is intentionally status-first. It shows what is configured
+and can scaffold the core roles, categories, and compact log channels.
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ from discord.ext import commands
 
 from utils.checks import is_admin
 from utils.embeds import ModEmbed
-from utils.server_setup import build_setup_summary, dashboard_setup_url, quickstart_server
+from utils.server_setup import build_setup_summary, quickstart_server
 
 logger = logging.getLogger(__name__)
 
@@ -91,15 +90,6 @@ class Setup(commands.Cog):
 
         return embed
 
-    @staticmethod
-    def _dashboard_view(guild_id: int) -> Optional[discord.ui.View]:
-        url = dashboard_setup_url(guild_id)
-        if not url:
-            return None
-        view = discord.ui.View()
-        view.add_item(discord.ui.Button(label="Open Dashboard Setup", url=url))
-        return view
-
     @app_commands.command(
         name="setup",
         description="Create missing baseline setup resources and show setup status",
@@ -131,12 +121,12 @@ class Setup(commands.Cog):
                 settings["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                 await self.bot.db.update_settings(guild.id, settings)
 
-                summary = build_setup_summary(guild, settings, dashboard_url=dashboard_setup_url(guild.id))
+                summary = build_setup_summary(guild, settings)
                 embed = self._build_status_embed(guild, summary)
                 embed.description = (
                     f"Missing baseline resources were created where possible for **{guild.name}**.\n\n"
                     f"**Progress:** `{summary['percent']}%` ({summary['complete']}/{summary['total']})\n"
-                    "Review the remaining items in the dashboard or rerun `/setup create_missing:false` for status only."
+                    "The default setup keeps logging compact: moderation goes to `#mod-logs`, verification to `#verify-logs`, and everything else to `#audit-logs`."
                 )
                 embed.add_field(
                     name="Created",
@@ -157,17 +147,15 @@ class Setup(commands.Cog):
                 await self._safe_followup_send(
                     interaction,
                     embed=embed,
-                    view=self._dashboard_view(guild.id),
                     ephemeral=True,
                 )
                 return
 
-            summary = build_setup_summary(guild, settings, dashboard_url=dashboard_setup_url(guild.id))
+            summary = build_setup_summary(guild, settings)
             embed = self._build_status_embed(guild, summary)
             await self._safe_followup_send(
                 interaction,
                 embed=embed,
-                view=self._dashboard_view(guild.id),
                 ephemeral=True,
             )
         except Exception as exc:

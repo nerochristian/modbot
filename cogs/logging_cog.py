@@ -34,6 +34,8 @@ class Logging(commands.Cog):
         "report": ("report_log_channel", "log_channel_report"),
         "ticket": ("ticket_log_channel", "log_channel_ticket"),
     }
+    _MOD_LOG_FALLBACK_TYPES: set[str] = {"automod"}
+    _AUDIT_LOG_FALLBACK_TYPES: set[str] = {"message", "voice", "report", "ticket"}
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -202,6 +204,11 @@ class Logging(commands.Cog):
                 settings = await self.bot.db.get_settings(guild.id)
                 channel_id = self._resolve_log_channel_id(settings, log_type)
 
+                if not channel_id and log_type in self._MOD_LOG_FALLBACK_TYPES:
+                    channel_id = self._resolve_log_channel_id(settings, "mod")
+                elif not channel_id and log_type in self._AUDIT_LOG_FALLBACK_TYPES:
+                    channel_id = self._resolve_log_channel_id(settings, "audit")
+
                 # Global audit fallback: if a type-specific channel is not configured,
                 # route logs into the audit channel so events are never dropped.
                 if allow_audit_fallback and not channel_id and log_type != "audit":
@@ -211,7 +218,7 @@ class Logging(commands.Cog):
                 # If a non-mod log type resolves to the mod log channel, drop it.
                 if log_type != "mod" and channel_id:
                     mod_channel_id = self._resolve_log_channel_id(settings, "mod")
-                    if mod_channel_id and channel_id == mod_channel_id:
+                    if mod_channel_id and channel_id == mod_channel_id and log_type not in self._MOD_LOG_FALLBACK_TYPES:
                         # For audit specifically, prefer any alternate audit key first.
                         if log_type == "audit":
                             for key in self._log_channel_setting_keys("audit"):

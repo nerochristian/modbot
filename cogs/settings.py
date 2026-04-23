@@ -13,7 +13,7 @@ from datetime import timezone, timedelta
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_admin
-from utils.server_setup import apply_verification_gate, sync_setup_aliases, sync_staff_role_groups
+from utils.server_setup import apply_compact_log_routing, apply_verification_gate, sync_setup_aliases, sync_staff_role_groups
 from config import Config
 
 # ==============================================================================
@@ -52,7 +52,7 @@ class SettingsCategorySelect(discord.ui.Select):
             discord.SelectOption(label="General",      description="Prefix, Core Channels, Branding",  emoji="⚙️",  value="general",      default=current == "general"),
             discord.SelectOption(label="Roles",        description="Full Role Hierarchy (7 roles)",     emoji="👥",  value="roles",        default=current == "roles"),
             discord.SelectOption(label="Moderation",   description="Warn Thresholds & Auto-Punish",    emoji="🔨",  value="moderation",   default=current == "moderation"),
-            discord.SelectOption(label="Logging",      description="All 7 Log Channels",               emoji="📝",  value="logging",      default=current == "logging"),
+            discord.SelectOption(label="Logging",      description="Compact log routing",              emoji="📝",  value="logging",      default=current == "logging"),
             discord.SelectOption(label="Voice & AFK",  description="AFK Detection, Timeouts",          emoji="🔊",  value="voice",        default=current == "voice"),
             discord.SelectOption(label="Tickets",      description="Support Ticket System",             emoji="🎫",  value="tickets",      default=current == "tickets"),
             discord.SelectOption(label="Anti-Raid",    description="Raid Detection & Response",         emoji="🚨",  value="antiraid",     default=current == "antiraid"),
@@ -409,26 +409,14 @@ class PunishmentSettingsModal(discord.ui.Modal, title="⚡ Punishment Settings")
 
 
 # ==============================================================================
-# 📝 LOGGING (7 log channels across 2 pages)
+# 📝 LOGGING (compact routing)
 # ==============================================================================
 
 LOG_PAGES = [
-    # (setting_key, label, emoji)
-    [("log_channel_mod", "Mod Actions", "🛡️"), ("log_channel_audit", "Audit", "⚙️"), ("log_channel_message", "Messages", "💬")],
-    [("log_channel_voice", "Voice", "🔊"), ("log_channel_automod", "AutoMod", "🤖"), ("log_channel_report", "Reports", "🚩")],
+    [("mod_log_channel", "Mod Logs", "Mod"), ("audit_log_channel", "Audit Logs", "Audit"), ("verify_log_channel", "Verify Logs", "Verify")],
 ]
 
 class LoggingSettingsView(BaseSettingsView):
-    _LEGACY_LOG_KEY_MAP = {
-        "log_channel_mod": "mod_log_channel",
-        "log_channel_audit": "audit_log_channel",
-        "log_channel_message": "message_log_channel",
-        "log_channel_voice": "voice_log_channel",
-        "log_channel_automod": "automod_log_channel",
-        "log_channel_report": "report_log_channel",
-        "log_channel_ticket": "ticket_log_channel",
-    }
-
     def __init__(self, cog, guild, settings):
         super().__init__(cog, guild, "logging")
         self.settings = settings
@@ -437,51 +425,63 @@ class LoggingSettingsView(BaseSettingsView):
 
     def _set_log_channel_setting(self, key: str, channel_id: Optional[int]) -> None:
         self.settings[key] = channel_id
-        legacy_key = self._LEGACY_LOG_KEY_MAP.get(key)
-        if legacy_key:
-            self.settings[legacy_key] = channel_id
+        if key == "mod_log_channel":
+            self.settings["log_channel_mod"] = channel_id
+        elif key == "audit_log_channel":
+            self.settings["log_channel_audit"] = channel_id
+        elif key == "verify_log_channel":
+            self.settings["verification_log_channel"] = channel_id
+        apply_compact_log_routing(self.settings)
 
     def _update_placeholders(self):
         page = LOG_PAGES[self.page]
         self.ch_1.placeholder = f"{page[0][2]} Set {page[0][1]} Channel"
         self.ch_2.placeholder = f"{page[1][2]} Set {page[1][1]} Channel"
         self.ch_3.placeholder = f"{page[2][2]} Set {page[2][1]} Channel"
-        self.log_prev.disabled = self.page == 0
-        self.log_next.disabled = self.page == len(LOG_PAGES) - 1
+        self.log_prev.disabled = True
+        self.log_next.disabled = True
 
     def get_embed(self) -> discord.Embed:
         s = self.settings
         g = self.guild
         embed = discord.Embed(
             title="📝 Logging Configuration",
-            description="Configure where the bot sends log messages.\nAll log channels shown at a glance — use pages to edit.",
+            description=(
+                "Configure the three channels the bot actually needs.\n"
+                "`#mod-logs` gets manual and automated moderation actions, "
+                "`#verify-logs` gets verification logs, and everything else routes to `#audit-logs`."
+            ),
             color=Colors.INFO,
             timestamp=datetime.datetime.now(timezone.utc),
         )
 
         # ── All channels at a glance ──
         col1 = (
-            f"🛡️ **Mod Actions:** {_c(g, s, 'log_channel_mod', '`Disabled`')}\n"
-            f"⚙️ **Audit:** {_c(g, s, 'log_channel_audit', '`Disabled`')}\n"
-            f"💬 **Messages:** {_c(g, s, 'log_channel_message', '`Disabled`')}\n"
-            f"🔊 **Voice:** {_c(g, s, 'log_channel_voice', '`Disabled`')}"
+            f"**Mod Logs:** {_c(g, s, 'mod_log_channel', '`Disabled`')}\n"
+            f"**Audit Logs:** {_c(g, s, 'audit_log_channel', '`Disabled`')}\n"
+            f"**Verify Logs:** {_c(g, s, 'verify_log_channel', '`Disabled`')}"
         )
-        embed.add_field(name="📋 Log Channels", value=col1, inline=True)
+        embed.add_field(name="Main Channels", value=col1, inline=True)
 
         col2 = (
-            f"🤖 **AutoMod:** {_c(g, s, 'log_channel_automod', '`Disabled`')}\n"
-            f"🚩 **Reports:** {_c(g, s, 'log_channel_report', '`Disabled`')}\n"
-            f"🎫 **Tickets:** {_c(g, s, 'log_channel_ticket', '`Disabled`')}\n"
-            f"📜 **Mod Log:** {_c(g, s, 'mod_log_channel', '`Disabled`')}"
+            f"**AutoMod:** {_c(g, s, 'automod_log_channel', '`Uses Mod Logs`')}\n"
+            f"**Message Logs:** {_c(g, s, 'message_log_channel', '`Uses Audit Logs`')}\n"
+            f"**Voice Logs:** {_c(g, s, 'voice_log_channel', '`Uses Audit Logs`')}\n"
+            f"**Tickets/Modmail:** {_c(g, s, 'ticket_log_channel', '`Uses Audit Logs`')}"
         )
-        embed.add_field(name="\u200b", value=col2, inline=True)
+        embed.add_field(name="Fallback Routing", value=col2, inline=True)
 
-        # Page info
-        page = LOG_PAGES[self.page]
-        editing = ", ".join(f"**{lbl}**" for _, lbl, _ in page)
-        embed.add_field(name=f"✏️ Editing (Page {self.page + 1}/{len(LOG_PAGES)})", value=editing, inline=False)
+        embed.add_field(
+            name="Routing Rules",
+            value=(
+                "`mod-logs`: moderation, automod, forum alerts, AI confirmations\n"
+                "`audit-logs`: message edits/deletes, voice, reports, tickets, modmail, audit events\n"
+                "`verify-logs`: verification actions only"
+            ),
+            inline=False,
+        )
 
-        embed.set_footer(text="Config Dashboard • Use ◀ ▶ to switch pages")
+        embed.set_footer(text="Config Dashboard • Compact logging keeps setup simple")
         return embed
 
     @discord.ui.select(cls=discord.ui.ChannelSelect, placeholder="Set Channel 1", min_values=0, max_values=1, channel_types=[discord.ChannelType.text], row=1)

@@ -40,10 +40,11 @@ class Reports(commands.Cog):
             interaction.guild_id, interaction.user.id, user.id, reason
         )
         
-        # Send to report log channel
+        # Send to report log channel, falling back to audit logs in compact setups
         settings = await self.bot.db.get_settings(interaction.guild_id)
-        if settings.get('report_log_channel'):
-            channel = interaction.guild.get_channel(settings['report_log_channel'])
+        report_channel_id = settings.get('report_log_channel') or settings.get('audit_log_channel') or settings.get('log_channel_audit')
+        if report_channel_id:
+            channel = interaction.guild.get_channel(report_channel_id)
             if channel:
                 embed = discord.Embed(
                     title=f"📝 New Report #{report_id}",
@@ -114,10 +115,11 @@ class Reports(commands.Cog):
         if success:
             embed = ModEmbed.success("Report Resolved", f"Report #{report_id} has been marked as resolved.")
             
-            # Log the resolution
+            # Log the resolution, falling back to audit logs in compact setups
             settings = await self.bot.db.get_settings(interaction.guild_id)
-            if settings.get('report_log_channel'):
-                channel = interaction.guild.get_channel(settings['report_log_channel'])
+            report_channel_id = settings.get('report_log_channel') or settings.get('audit_log_channel') or settings.get('log_channel_audit')
+            if report_channel_id:
+                channel = interaction.guild.get_channel(report_channel_id)
                 if channel:
                     log_embed = discord.Embed(
                         title=f"✅ Report #{report_id} Resolved",

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 from typing import Any, Dict, List, Optional
 
 import discord
@@ -233,18 +232,8 @@ CHANNEL_SPECS: List[Dict[str, Any]] = [
     {"name": "welcome", "setting_key": "welcome_channel", "topic": "Welcome and onboarding messages."},
     {"name": "verify", "setting_key": "verify_channel", "category": "verification_category", "topic": "Verification instructions."},
     {"name": "verify-logs", "setting_key": "verify_log_channel", "category": "verification_category", "topic": "Verification logs."},
-    {"name": "mod-logs", "setting_key": "mod_log_channel", "category": "logs_category", "topic": "Moderation actions."},
-    {"name": "audit-logs", "setting_key": "audit_log_channel", "category": "logs_category", "topic": "Server and audit events."},
-    {"name": "message-logs", "setting_key": "message_log_channel", "category": "logs_category", "topic": "Edited and deleted messages."},
-    {"name": "voice-logs", "setting_key": "voice_log_channel", "category": "logs_category", "topic": "Voice activity."},
-    {"name": "automod-logs", "setting_key": "automod_log_channel", "category": "logs_category", "topic": "AutoMod actions."},
-    {"name": "report-logs", "setting_key": "report_log_channel", "category": "logs_category", "topic": "User reports."},
-    {"name": "ticket-logs", "setting_key": "ticket_log_channel", "category": "logs_category", "topic": "Ticket transcripts and events."},
-    {"name": "modmail-logs", "setting_key": "modmail_log_channel", "category": "logs_category", "topic": "Modmail transcripts and events."},
-    {"name": "forum-alerts", "setting_key": "forum_alerts_channel", "category": "logs_category", "topic": "Forum moderation alerts."},
-    {"name": "ai-confirmation", "setting_key": "ai_confirmation_channel", "category": "logs_category", "topic": "AI moderation confirmations."},
-    {"name": "court-logs", "setting_key": "court_log_channel", "category": "logs_category", "topic": "Court transcripts and events."},
-    {"name": "emoji-logs", "setting_key": "emoji_log_channel", "category": "logs_category", "topic": "Emoji requests and approvals."},
+    {"name": "mod-logs", "setting_key": "mod_log_channel", "category": "logs_category", "topic": "Moderation and automated actions."},
+    {"name": "audit-logs", "setting_key": "audit_log_channel", "category": "logs_category", "topic": "Server, message, voice, ticket, and audit events."},
     {"name": "staff-chat", "setting_key": "staff_chat_channel", "category": "staff_category", "topic": "General staff discussion."},
     {"name": "staff-commands", "setting_key": "staff_commands_channel", "category": "staff_category", "topic": "Staff bot commands."},
     {"name": "staff-announcements", "setting_key": "staff_announcements_channel", "category": "staff_category", "topic": "Important staff announcements."},
@@ -363,6 +352,52 @@ def sync_setup_aliases(settings: Dict[str, Any]) -> None:
         settings["forum_alerts_channel"] = settings["forum_alert_channel"]
 
 
+def apply_compact_log_routing(settings: Dict[str, Any]) -> None:
+    """
+    Collapse optional log channels into a compact setup.
+
+    - verification logs stay in verify logs
+    - moderation + automated moderation stay in mod logs
+    - everything else defaults to audit logs
+    """
+    sync_setup_aliases(settings)
+
+    mod_log_id = _coerce_int(settings.get("mod_log_channel")) or _coerce_int(settings.get("log_channel_mod"))
+    audit_log_id = _coerce_int(settings.get("audit_log_channel")) or _coerce_int(settings.get("log_channel_audit"))
+
+    if mod_log_id:
+        for key in (
+            "mod_log_channel",
+            "log_channel_mod",
+            "automod_log_channel",
+            "log_channel_automod",
+            "forum_alerts_channel",
+            "forum_alert_channel",
+            "ai_confirmation_channel",
+        ):
+            settings[key] = mod_log_id
+
+    if audit_log_id:
+        for key in (
+            "audit_log_channel",
+            "log_channel_audit",
+            "message_log_channel",
+            "log_channel_message",
+            "voice_log_channel",
+            "log_channel_voice",
+            "report_log_channel",
+            "log_channel_report",
+            "ticket_log_channel",
+            "log_channel_ticket",
+            "modmail_log_channel",
+            "court_log_channel",
+            "emoji_log_channel",
+        ):
+            settings[key] = audit_log_id
+
+    sync_setup_aliases(settings)
+
+
 def sync_staff_role_groups(settings: Dict[str, Any]) -> None:
     admin_role = _coerce_int(settings.get("admin_role"))
     supervisor_role = _coerce_int(settings.get("supervisor_role"))
@@ -389,7 +424,7 @@ def hydrate_setup_settings_from_guild(
     """
     Backfill missing setup IDs from guild resources that already exist.
 
-    This keeps the dashboard aligned with roles/channels the bot created earlier,
+    This keeps setup/status output aligned with roles/channels the bot created earlier,
     even when the exact flat setting key was never written or drifted to an alias.
     """
     hydrated = dict(settings)
@@ -419,26 +454,15 @@ def hydrate_setup_settings_from_guild(
         if channel is not None:
             hydrated[key] = channel.id
 
+    apply_compact_log_routing(hydrated)
     sync_setup_aliases(hydrated)
     sync_staff_role_groups(hydrated)
     return hydrated
 
 
-def dashboard_setup_url(guild_id: int) -> Optional[str]:
-    base_url = (
-        os.getenv("FRONTEND_PUBLIC_URL", "").strip().rstrip("/")
-        or os.getenv("DASHBOARD_PUBLIC_URL", "").strip().rstrip("/")
-    )
-    if not base_url:
-        return None
-    return f"{base_url}/dashboard/setup?guild={guild_id}"
-
-
 def build_setup_summary(
     guild: discord.Guild,
     settings: Dict[str, Any],
-    *,
-    dashboard_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     settings = hydrate_setup_settings_from_guild(guild, settings)
 
@@ -477,15 +501,6 @@ def build_setup_summary(
             "label": label,
             "configured": channel is not None,
             "value": f"#{getattr(channel, 'name', 'unknown')}" if channel else None,
-        }
-
-    def module_role_item(label: str, module_id: str, field_key: str, fallback_key: str) -> Dict[str, Any]:
-        role = guild.get_role(module_setting(settings, module_id, field_key, fallback_key=fallback_key) or 0)
-        return {
-            "key": f"{module_id}.{field_key}",
-            "label": label,
-            "configured": role is not None,
-            "value": f"@{role.name}" if role else None,
         }
 
     sections = [
@@ -536,15 +551,12 @@ def build_setup_summary(
             "items": [
                 module_channel_item("Mod Log Channel", "logging", "modChannel", "mod_log_channel"),
                 module_channel_item("Audit Log Channel", "logging", "auditChannel", "audit_log_channel"),
+                module_channel_item("AutoMod Log Channel", "logging", "automodChannel", "automod_log_channel"),
                 module_channel_item("Message Log Channel", "logging", "messageChannel", "message_log_channel"),
                 module_channel_item("Voice Log Channel", "logging", "voiceChannel", "voice_log_channel"),
-                module_channel_item("AutoMod Log Channel", "logging", "automodChannel", "automod_log_channel"),
                 category_item("Ticket Category", "ticket_category"),
-                module_channel_item("Ticket Log Channel", "tickets", "logChannel", "ticket_log_channel"),
                 category_item("Modmail Category", "modmail_category_id"),
-                module_channel_item("Modmail Log Channel", "modmail", "logChannel", "modmail_log_channel"),
-                module_channel_item("Forum Alerts Channel", "forum_moderation", "alertsChannel", "forum_alerts_channel"),
-                module_channel_item("AI Confirmation Channel", "aimod", "confirmationChannel", "ai_confirmation_channel"),
+                module_channel_item("Ticket/Modmail Log Channel", "tickets", "logChannel", "ticket_log_channel"),
             ],
         },
         {
@@ -576,7 +588,6 @@ def build_setup_summary(
     return {
         "guildId": str(guild.id),
         "setupComplete": bool(settings.get("setup_complete")),
-        "dashboardUrl": dashboard_url or dashboard_setup_url(guild.id),
         "complete": complete,
         "total": total,
         "percent": percent,
@@ -768,6 +779,7 @@ async def quickstart_server(guild: discord.Guild, settings: Dict[str, Any]) -> D
     updated.setdefault("staff_guide", DEFAULT_STAFF_GUIDE)
     updated["setup_complete"] = True
 
+    apply_compact_log_routing(updated)
     sync_setup_aliases(updated)
     sync_staff_role_groups(updated)
     verification_sync = await apply_verification_gate(guild, updated)
