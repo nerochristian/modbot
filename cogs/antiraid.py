@@ -185,20 +185,17 @@ Guidelines:
 - severity < 5 = quarantine/watch
 """
 
-        def _call():
+        try:
             config = genai_types.GenerateContentConfig(
                 temperature=0.15,
                 max_output_tokens=250,
                 response_mime_type="application/json"
             )
-            return self.client.models.generate_content(
+            completion = await self.client.aio.models.generate_content(
                 model=self.model,
                 contents=prompt,
                 config=config,
             )
-
-        try:
-            completion = await asyncio.to_thread(_call)
             self._record_request()
             raw = completion.text.strip()
 
