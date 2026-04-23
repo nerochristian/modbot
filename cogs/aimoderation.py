@@ -1667,6 +1667,7 @@ class AIModeration(commands.Cog):
             "hey",
             "yo",
             "sup",
+            "howdy",
             "what's up",
             "whats up",
             "good morning",
@@ -1676,7 +1677,7 @@ class AIModeration(commands.Cog):
     )
     _THANKS_RE: ClassVar[re.Pattern] = re.compile(r"\b(thanks|thank you|thx|ty)\b", re.IGNORECASE)
     _HOW_ARE_YOU_RE: ClassVar[re.Pattern] = re.compile(
-        r"\b(how are you|how's it going|hows it going|you good)\b",
+        r"\b(how are (?:you|u)|how r (?:you|u)|how's it going|hows it going|you good)\b",
         re.IGNORECASE,
     )
     _WHO_ARE_YOU_RE: ClassVar[re.Pattern] = re.compile(
@@ -2490,11 +2491,11 @@ class AIModeration(commands.Cog):
                 return
 
         settings = await self.get_guild_settings(message.guild.id)
-        if not settings.enabled:
-            return
 
         # Proactive response gate
         if not is_mentioned:
+            if not settings.enabled:
+                return
             if settings.proactive_chance <= 0 or random.random() > settings.proactive_chance:
                 return
 
@@ -2507,6 +2508,27 @@ class AIModeration(commands.Cog):
         if is_mentioned:
             if quick_reply := self._quick_conversation_reply(content):
                 await self.reply(message, content=quick_reply)
+                return
+
+            # Keep normal AI chat usable even when moderation actions are disabled.
+            # This avoids silent failures after easy setup disables the AI mod module.
+            if not settings.enabled:
+                recent = await self.fetch_recent_messages(message.channel, limit=settings.context_messages)
+                async with message.channel.typing():
+                    response = await self.ai.converse(
+                        user_content=content,
+                        guild=message.guild,
+                        author=message.author,
+                        recent_messages=recent,
+                        model=settings.model,
+                    )
+                if response:
+                    if len(response) > 1900:
+                        await self.reply(message, embed=discord.Embed(description=response, color=discord.Color.blue()))
+                    else:
+                        await self.reply(message, content=response)
+                else:
+                    await self.reply(message, content="i blanked for a sec. send that again, or use `/aihelp` for examples.")
                 return
 
         permissions = (

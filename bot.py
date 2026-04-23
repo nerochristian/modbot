@@ -553,6 +553,14 @@ class ModBot(commands.Bot):
             return name
         return None
 
+    def _starts_with_bot_mention(self, message: discord.Message) -> bool:
+        """Return True when the message is using this bot's mention as its prefix."""
+        user = self.user
+        if user is None:
+            return False
+        content = message.content or ""
+        return content.startswith(f"<@{user.id}>") or content.startswith(f"<@!{user.id}>")
+
     def _root_command_name_from_interaction(self, interaction: discord.Interaction) -> Optional[str]:
         command_name = self._root_command_name(getattr(interaction, "command", None))
         if command_name:
@@ -1922,6 +1930,11 @@ class ModBot(commands.Bot):
 
         ctx = await self.get_context(message)
         if ctx.command is None:
+            # Mention-prefix messages are often natural chat for AIModeration.
+            # Avoid treating "@bot how are u" as an unknown command named "how".
+            if self._starts_with_bot_mention(message):
+                return
+
             invoked = (ctx.invoked_with or "").strip()
             if invoked:
                 loading_reaction = await self._try_add_loading_reaction(message)
