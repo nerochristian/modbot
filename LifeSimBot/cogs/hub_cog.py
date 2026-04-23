@@ -9,9 +9,9 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from utils.checks import safe_defer
-from views.modern_hub import ModernHub
-from views.v2_embed import apply_v2_embed_layout
+from ..utils.checks import safe_defer
+from ..views.modern_hub import ModernHub
+from ..views.v2_embed import apply_v2_embed_layout
 
 
 class HubCog(commands.Cog):
@@ -31,8 +31,8 @@ class HubCog(commands.Cog):
         # Get user data for initial page
         u = self.bot.db.getuser(str(interaction.user.id))
         
-        from utils.format import money
-        from views.modern_ui import Colors, create_progress_bar
+        from ..utils.format import money
+        from ..views.modern_ui import Colors, create_progress_bar
         
         balance = int(u.get("balance", 0))
         level = int(u.get("level", 1))

@@ -5,9 +5,9 @@ Modern Hub - Central navigation with clean, simple UI
 
 import discord
 from typing import Optional
-from views.modern_ui import ModernView, Colors, Icons, create_progress_bar, format_stat_box
-from utils.format import money, format_time
-from views.v2_embed import apply_v2_embed_layout
+from ..views.modern_ui import ModernView, Colors, Icons, create_progress_bar, format_stat_box
+from ..utils.format import money, format_time
+from ..views.v2_embed import apply_v2_embed_layout
 
 
 class ModernHub(ModernView):

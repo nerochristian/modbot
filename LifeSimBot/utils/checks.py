@@ -2,7 +2,7 @@
 import discord
 from discord import app_commands
 from .constants import Emojis
-from db.database import db # This assumes db is initialized in your bot lifecycle
+from ..db.database import db # This assumes db is initialized in your bot lifecycle
 from datetime import datetime, timezone
 
 def is_developer():
@@ -124,7 +124,7 @@ async def safe_reply(
         layout_view_type = getattr(getattr(discord, "ui", None), "LayoutView", None)
         if view is not None and layout_view_type is not None and isinstance(view, layout_view_type):
             try:
-                from views.v2_embed import apply_v2_embed_layout, embed_to_v2_items, iter_all_items
+                from ..views.v2_embed import apply_v2_embed_layout, embed_to_v2_items, iter_all_items
 
                 layout_types = (
                     discord.ui.Container,
@@ -144,7 +144,7 @@ async def safe_reply(
                     for emb in merged_embeds:
                         body_items.extend(embed_to_v2_items(emb))
                         try:
-                            from views.v2_embed import _safe_separator
+                            from ..views.v2_embed import _safe_separator
 
                             body_items.append(_safe_separator())
                         except Exception:
@@ -231,7 +231,7 @@ def check_in_jail(user_data: dict) -> str | None:
         return None
 
     remaining = int((until - now).total_seconds())
-    from utils.format import format_time
+    from ..utils.format import format_time
     return f"⛓️ You're in jail for **{format_time(remaining)}**."
 
 
@@ -246,7 +246,7 @@ def check_in_hospital(user_data: dict) -> str | None:
         return None
 
     remaining = int((until - now).total_seconds())
-    from utils.format import format_time
+    from ..utils.format import format_time
     return f"🏥 You're in the hospital for **{format_time(remaining)}**."
 
 

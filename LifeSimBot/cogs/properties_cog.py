@@ -7,13 +7,13 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from data.properties_advanced import (
+from ..data.properties_advanced import (
     PROPERTY_TYPES,
     calculate_property_rent,
     calculate_property_upgrade_cost,
 )
-from utils.format import money, progress_bar
-from utils.checks import safe_defer, safe_reply
+from ..utils.format import money, progress_bar
+from ..utils.checks import safe_defer, safe_reply
 
 
 class PropertiesCog(commands.Cog):

@@ -6,9 +6,9 @@ import discord
 import random
 from typing import Optional
 
-from utils.format import money
-from data.recipes import RECIPES, RECIPE_CATEGORIES, COOKING_INGREDIENTS
-from views.v2_embed import apply_v2_embed_layout
+from ..utils.format import money
+from ..data.recipes import RECIPES, RECIPE_CATEGORIES, COOKING_INGREDIENTS
+from ..views.v2_embed import apply_v2_embed_layout
 
 
 # ============= CONSTANTS =============

@@ -7,16 +7,16 @@ from discord.ext import commands
 import json
 from typing import Optional, Dict, List
 
-from data.achievements import ACHIEVEMENTS, ACHIEVEMENT_TIERS
-from services.achievements_service import (
+from ..data.achievements import ACHIEVEMENTS, ACHIEVEMENT_TIERS
+from ..services.achievements_service import (
     get_unlocked_achievements,
     check_all_achievements,
     calculate_achievement_progress,
     group_achievements_by_category
 )
-from utils.format import money
-from utils.checks import safe_defer, safe_reply
-from views.v2_embed import apply_v2_embed_layout
+from ..utils.format import money
+from ..utils.checks import safe_defer, safe_reply
+from ..views.v2_embed import apply_v2_embed_layout
 
 
 # ============= ACHIEVEMENT VIEWS =============

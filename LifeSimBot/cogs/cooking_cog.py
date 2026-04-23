@@ -6,10 +6,10 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from views.cooking_views import RecipeBrowserView, CookingMinigameView
-from data.recipes import RECIPES, COOKING_INGREDIENTS
-from utils.checks import safe_defer, safe_reply
-from utils.format import money
+from ..views.cooking_views import RecipeBrowserView, CookingMinigameView
+from ..data.recipes import RECIPES, COOKING_INGREDIENTS
+from ..utils.checks import safe_defer, safe_reply
+from ..utils.format import money
 
 
 class CookingCog(commands.Cog):

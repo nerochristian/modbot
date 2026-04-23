@@ -8,7 +8,7 @@ import asyncio
 from typing import Optional, List, Tuple
 from datetime import datetime
 
-from utils.format import money
+from ..utils.format import money
 
 
 # ============= CONSTANTS =============

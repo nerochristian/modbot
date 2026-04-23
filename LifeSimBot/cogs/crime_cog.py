@@ -8,8 +8,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from utils.format import money
-from utils.checks import (
+from ..utils.format import money
+from ..utils.checks import (
     safe_defer,
     safe_reply,
     check_in_hospital,
@@ -17,14 +17,14 @@ from utils.checks import (
     check_cooldown,
     check_user_stats,
 )
-from utils.constants import (
+from ..utils.constants import (
     ROB_COOLDOWN,
     ROB_ENERGY_COST,
     MIN_ROB_BALANCE,
     CRIME_COOLDOWN,
 )
-from views.crime_views import LockpickGame
-from views.v2_embed import apply_v2_embed_layout
+from ..views.crime_views import LockpickGame
+from ..views.v2_embed import apply_v2_embed_layout
 
 
 class CrimeCog(commands.Cog):
@@ -78,7 +78,7 @@ class CrimeCog(commands.Cog):
         can_rob, remaining = check_cooldown(last_rob, ROB_COOLDOWN)
 
         if not can_rob:
-            from utils.format import format_time
+            from ..utils.format import format_time
 
             embed = discord.Embed(
                 title="⏰ Robbery Cooldown",
@@ -170,7 +170,7 @@ class CrimeCog(commands.Cog):
         can_crime, remaining = check_cooldown(last_crime, CRIME_COOLDOWN)
 
         if not can_crime:
-            from utils.format import format_time
+            from ..utils.format import format_time
 
             embed = discord.Embed(
                 title="⏰ Crime Cooldown",
@@ -256,7 +256,7 @@ class CrimeCog(commands.Cog):
                 jail_until = datetime.now(timezone.utc).timestamp() + jail_time
                 db.updatestat(userid, "jail_until", jail_until)
 
-                from utils.format import format_time
+                from ..utils.format import format_time
 
                 embed = discord.Embed(
                     title="🚔 Arrested!",

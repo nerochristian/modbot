@@ -15,10 +15,10 @@ import logging
 import os
 from enum import Enum
 
-from utils.format import format_currency, format_time, format_percentage
-from utils.checks import is_registered
-from utils.constants import *
-from views.v2_embed import apply_v2_embed_layout
+from ..utils.format import format_currency, format_time, format_percentage
+from ..utils.checks import is_registered
+from ..utils.constants import *
+from ..views.v2_embed import apply_v2_embed_layout
 
 logger = logging.getLogger('LifeSimBot.Core')
 

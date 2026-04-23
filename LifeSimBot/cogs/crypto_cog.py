@@ -6,10 +6,10 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-from views.crypto_views import CryptoMarketView, CryptoPortfolioView, CryptoTradeView
-from data.crypto import CRYPTOCURRENCIES, price_simulator
-from utils.checks import safe_defer, safe_reply
-from utils.format import money
+from ..views.crypto_views import CryptoMarketView, CryptoPortfolioView, CryptoTradeView
+from ..data.crypto import CRYPTOCURRENCIES, price_simulator
+from ..utils.checks import safe_defer, safe_reply
+from ..utils.format import money
 
 
 class CryptoCog(commands.Cog):

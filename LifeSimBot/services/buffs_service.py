@@ -4,9 +4,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Any
 
-from services.family_service import calculate_family_bonus
-from services.relationships_service import RelationshipsService
-from data.properties_advanced import PROPERTY_TYPES
+from ..services.family_service import calculate_family_bonus
+from ..services.relationships_service import RelationshipsService
+from ..data.properties_advanced import PROPERTY_TYPES
 # if you have pets_service later, we can plug it here too
 
 

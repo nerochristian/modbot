@@ -7,9 +7,9 @@ from typing import Optional
 from datetime import datetime, timezone
 import json
 
-from utils.format import money
-from data.crypto import CRYPTOCURRENCIES, price_simulator
-from views.v2_embed import apply_v2_embed_layout
+from ..utils.format import money
+from ..data.crypto import CRYPTOCURRENCIES, price_simulator
+from ..views.v2_embed import apply_v2_embed_layout
 
 
 # ============= HELPER FUNCTIONS =============

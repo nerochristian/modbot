@@ -6,9 +6,9 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from views.casino_views import CasinoMenuV2View
-from utils.format import money
-from utils.checks import safe_defer, safe_reply
+from ..views.casino_views import CasinoMenuV2View
+from ..utils.format import money
+from ..utils.checks import safe_defer, safe_reply
 
 
 logger = logging.getLogger("LifeSimBot.Casino")

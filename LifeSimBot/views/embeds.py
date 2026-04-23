@@ -5,7 +5,7 @@ from __future__ import annotations
 import discord
 from typing import Optional
 
-from utils.format import money, progress_bar
+from ..utils.format import money, progress_bar
 
 
 def create_success_embed(title: str, description: str, **kwargs) -> discord.Embed:

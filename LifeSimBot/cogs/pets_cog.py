@@ -6,12 +6,12 @@ from discord import app_commands
 from discord.ext import commands
 from datetime import datetime, timezone
 
-from data.items import PET_TYPES
-from views.pet_views import PetSelector
-from services.pets_service import calculate_pet_level_from_xp, get_pet_buffs, calculate_total_buffs
-from utils.format import money, progress_bar
-from utils.checks import safe_defer, safe_reply
-from views.v2_embed import apply_v2_embed_layout
+from ..data.items import PET_TYPES
+from ..views.pet_views import PetSelector
+from ..services.pets_service import calculate_pet_level_from_xp, get_pet_buffs, calculate_total_buffs
+from ..utils.format import money, progress_bar
+from ..utils.checks import safe_defer, safe_reply
+from ..views.v2_embed import apply_v2_embed_layout
 
 
 class PetsCog(commands.Cog):

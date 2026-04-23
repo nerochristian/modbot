@@ -8,9 +8,9 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from utils.format import format_number, progress_bar, format_time
-from utils.checks import safe_defer, safe_reply, check_cooldown
-from utils.constants import (
+from ..utils.format import format_number, progress_bar, format_time
+from ..utils.checks import safe_defer, safe_reply, check_cooldown
+from ..utils.constants import (
     SLEEP_COOLDOWN,
     MAX_HEALTH,
     MAX_ENERGY,

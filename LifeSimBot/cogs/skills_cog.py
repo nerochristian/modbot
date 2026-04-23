@@ -5,15 +5,15 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from services.skills_service import (
+from ..services.skills_service import (
     SKILLS,
     calculate_skill_level,
     get_all_skill_levels,
     calculate_training_xp,
     get_training_cost
 )
-from utils.format import progress_bar
-from utils.checks import safe_defer, safe_reply
+from ..utils.format import progress_bar
+from ..utils.checks import safe_defer, safe_reply
 
 
 class SkillsCog(commands.Cog):

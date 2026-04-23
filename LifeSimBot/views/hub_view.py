@@ -5,11 +5,11 @@ from __future__ import annotations
 import discord
 from datetime import datetime, timezone
 
-from utils.format import money, progress_bar, format_time
-from utils.checks import check_cooldown
-from utils.constants import *
+from ..utils.format import money, progress_bar, format_time
+from ..utils.checks import check_cooldown
+from ..utils.constants import *
 import json
-from views.v2_embed import apply_v2_embed_layout
+from ..views.v2_embed import apply_v2_embed_layout
 
 
 def parse_json_field(data):
@@ -400,7 +400,7 @@ class HubView(discord.ui.LayoutView):
             if can_use:
                 ready_commands.append(f"✅ **{name}** - Ready!")
             else:
-                from utils.format import format_time
+                from ..utils.format import format_time
                 waiting_commands.append(f"⏰ **{name}** - {format_time(remaining)}")
         
         if ready_commands:
@@ -439,7 +439,7 @@ class HubView(discord.ui.LayoutView):
             return embed
         
         # Count by category
-        from views.shop_views import SHOP_ITEMS
+        from ..views.shop_views import SHOP_ITEMS
         
         categories = {}
         for item_id, qty in inventory.items():

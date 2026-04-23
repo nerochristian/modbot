@@ -7,8 +7,8 @@ import random
 import asyncio
 from typing import Optional, List, Dict
 
-from utils.format import money
-from views.v2_embed import apply_v2_embed_layout, iter_all_items
+from ..utils.format import money
+from ..views.v2_embed import apply_v2_embed_layout, iter_all_items
 
 # ============= CONSTANTS =============
 

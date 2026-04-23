@@ -9,17 +9,17 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from services.family_service import (
+from ..services.family_service import (
     get_kids,
     add_kid,
     calculate_family_bonus,
     generate_kid_names,
     calculate_divorce_cost,
 )
-from services.relationships_service import RelationshipsService
-from views.family_views import MarriageProposal, DivorceConfirmation
-from utils.format import money
-from utils.checks import safe_defer, safe_reply
+from ..services.relationships_service import RelationshipsService
+from ..views.family_views import MarriageProposal, DivorceConfirmation
+from ..utils.format import money
+from ..utils.checks import safe_defer, safe_reply
 
 
 class FamilyCog(commands.Cog):

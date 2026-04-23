@@ -8,7 +8,7 @@ import discord
 from typing import Optional, List, Dict, Callable, Any
 from datetime import datetime, timezone
 
-from views.v2_embed import apply_v2_embed_layout, disable_all_interactive
+from ..views.v2_embed import apply_v2_embed_layout, disable_all_interactive
 
 # ============= COLOR SCHEME =============
 

@@ -1,9 +1,9 @@
 # services/jobs_service.py
 import math
 import random
-from services.base_service import BaseService
-from services.economy_service import economy_service
-from utils.constants import JobConfig
+from ..services.base_service import BaseService
+from ..services.economy_service import economy_service
+from ..utils.constants import JobConfig
 
 
 def calculate_work_earnings(

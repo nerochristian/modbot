@@ -14,10 +14,10 @@ import asyncio
 import random
 import logging
 
-from utils.format import format_currency, format_time, format_percentage
-from utils.checks import is_registered, safe_reply
-from utils.constants import *
-from views.v2_embed import apply_v2_embed_layout
+from ..utils.format import format_currency, format_time, format_percentage
+from ..utils.checks import is_registered, safe_reply
+from ..utils.constants import *
+from ..views.v2_embed import apply_v2_embed_layout
 
 logger = logging.getLogger('LifeSimBot.Economy')
 

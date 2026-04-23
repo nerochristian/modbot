@@ -6,9 +6,9 @@ from discord import app_commands
 from discord.ext import commands
 from datetime import datetime, timezone
 
-from data.businesses import BUSINESS_TYPES, calculate_business_revenue, calculate_upgrade_cost
-from utils.format import money, progress_bar
-from utils.checks import safe_defer, safe_reply
+from ..data.businesses import BUSINESS_TYPES, calculate_business_revenue, calculate_upgrade_cost
+from ..utils.format import money, progress_bar
+from ..utils.checks import safe_defer, safe_reply
 
 
 class BusinessesCog(commands.Cog):

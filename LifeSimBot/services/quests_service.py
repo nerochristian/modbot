@@ -5,7 +5,7 @@ import random
 from typing import Dict, List, Any
 from datetime import datetime, timezone
 
-from data.quests import DAILY_QUESTS, WEEKLY_QUESTS
+from ..data.quests import DAILY_QUESTS, WEEKLY_QUESTS
 
 
 def get_active_quests(user_data: Dict[str, Any]) -> List[Dict[str, Any]]:

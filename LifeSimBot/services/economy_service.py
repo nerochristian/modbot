@@ -2,9 +2,9 @@
 import math
 import random
 from datetime import datetime, timedelta
-from services.base_service import BaseService
-from utils.constants import EconomyConfig, Colors, Emojis
-from utils.format import format_currency
+from ..services.base_service import BaseService
+from ..utils.constants import EconomyConfig, Colors, Emojis
+from ..utils.format import format_currency
 
 class EconomyService(BaseService):
     def __init__(self):

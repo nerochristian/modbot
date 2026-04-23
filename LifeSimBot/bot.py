@@ -25,6 +25,8 @@ import aiosqlite
 from dotenv import load_dotenv
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = BASE_DIR.parent
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 # Prefer project-level .env, then local override if present.
 load_dotenv(PROJECT_ROOT / ".env")
@@ -153,18 +155,18 @@ def _setup_logging() -> logging.Logger:
 logger = _setup_logging()
 
 # Import database/utils (supports direct script and package import modes)
-try:
-    from db.database import DatabaseManager, db as database
-    from utils.constants import *
-    from utils.format import format_currency, format_time, format_percentage
-    from utils.checks import is_registered, has_permissions, safe_reply
-    from views.v2_embed import patch_layoutview_declarative_items
-except ImportError:
+if __package__:
     from .db.database import DatabaseManager, db as database
     from .utils.constants import *
     from .utils.format import format_currency, format_time, format_percentage
     from .utils.checks import is_registered, has_permissions, safe_reply
     from .views.v2_embed import patch_layoutview_declarative_items
+else:
+    from LifeSimBot.db.database import DatabaseManager, db as database
+    from LifeSimBot.utils.constants import *
+    from LifeSimBot.utils.format import format_currency, format_time, format_percentage
+    from LifeSimBot.utils.checks import is_registered, has_permissions, safe_reply
+    from LifeSimBot.views.v2_embed import patch_layoutview_declarative_items
 
 
 # Work around discord.py alpha LayoutView bug where @discord.ui.button controls
@@ -213,7 +215,7 @@ class LifeSimBot(commands.Bot):
         self.cooldowns = {}
         self.active_sessions = {}  # For tracking active minigames, duels, etc.
         self.startup_report: dict[str, object] = {}
-        self.cog_package = f"{__package__}.cogs" if __package__ else "cogs"
+        self.cog_package = f"{__package__}.cogs" if __package__ else "LifeSimBot.cogs"
         
         # Feature flags
         self.features = {

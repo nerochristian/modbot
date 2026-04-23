@@ -5,7 +5,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from services.guilds_service import (
+from ..services.guilds_service import (
     generate_guild_id,
     calculate_guild_level,
     get_guild_perks,
@@ -13,10 +13,10 @@ from services.guilds_service import (
     get_guild_members,
     can_manage_guild
 )
-from views.guild_views import GuildInvite, LeaveGuildConfirmation
-from utils.format import money, progress_bar
-from utils.checks import safe_defer, safe_reply
-from views.v2_embed import apply_v2_embed_layout
+from ..views.guild_views import GuildInvite, LeaveGuildConfirmation
+from ..utils.format import money, progress_bar
+from ..utils.checks import safe_defer, safe_reply
+from ..views.v2_embed import apply_v2_embed_layout
 
 
 class GuildsCog(commands.Cog):

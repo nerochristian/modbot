@@ -10,10 +10,10 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from utils.checks import safe_defer, safe_reply
-from utils.format import money
-from views.shop_views import ItemDetailView, SHOP_ITEMS, ShopBrowserView
-from views.v2_embed import apply_v2_embed_layout
+from ..utils.checks import safe_defer, safe_reply
+from ..utils.format import money
+from ..views.shop_views import ItemDetailView, SHOP_ITEMS, ShopBrowserView
+from ..views.v2_embed import apply_v2_embed_layout
 
 
 class ShopCog(commands.Cog):

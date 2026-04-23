@@ -4,8 +4,8 @@ from __future__ import annotations
 from typing import Dict, List, Any
 import json
 
-from data.achievements import ACHIEVEMENTS
-from services.skills_service import calculate_skill_level
+from ..data.achievements import ACHIEVEMENTS
+from ..services.skills_service import calculate_skill_level
 
 
 def check_achievement(achievement_id: str, user_data: Dict[str, Any]) -> bool:

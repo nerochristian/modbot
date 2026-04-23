@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from typing import Tuple, Dict, Any
-from data.items import PET_TYPES
+from ..data.items import PET_TYPES
 
 
 def calculate_pet_level_from_xp(xp: int) -> Tuple[int, int, int]:

@@ -11,8 +11,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from utils.format import format_number, money, progress_bar, level_from_xp, format_time
-from utils.checks import (
+from ..utils.format import format_number, money, progress_bar, level_from_xp, format_time
+from ..utils.checks import (
     safe_defer,
     safe_reply,
     check_in_hospital,
@@ -20,16 +20,16 @@ from utils.checks import (
     check_cooldown,
     check_user_stats,
 )
-from utils.constants import WORK_COOLDOWN, SKILL_EMOJIS
-from services.jobs_service import (
+from ..utils.constants import WORK_COOLDOWN, SKILL_EMOJIS
+from ..services.jobs_service import (
     calculate_work_earnings,
     calculate_work_xp,
     calculate_job_xp,
     get_job_level_from_xp,
 )
-from data.jobs import JOBS, JOB_CATEGORIES
-from views.job_minigames import get_job_minigame
-from views.v2_embed import apply_v2_embed_layout
+from ..data.jobs import JOBS, JOB_CATEGORIES
+from ..views.job_minigames import get_job_minigame
+from ..views.v2_embed import apply_v2_embed_layout
 
 logger = logging.getLogger('LifeSimBot.Jobs')
 

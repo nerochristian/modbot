@@ -6,8 +6,8 @@ import discord
 from datetime import datetime, timezone
 from typing import Optional
 
-from utils.format import money
-from views.v2_embed import apply_v2_embed_layout, disable_all_interactive
+from ..utils.format import money
+from ..views.v2_embed import apply_v2_embed_layout, disable_all_interactive
 
 
 # ============= CONSTANTS =============

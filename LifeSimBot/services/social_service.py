@@ -1,5 +1,5 @@
 # services/social_service.py
-from services.base_service import BaseService
+from ..services.base_service import BaseService
 
 class SocialService(BaseService):
     def __init__(self):

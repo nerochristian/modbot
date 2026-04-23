@@ -6,7 +6,7 @@ import json
 import logging
 from pathlib import Path
 import sqlite3
-from utils.constants import Paths, EconomyConfig
+from ..utils.constants import Paths, EconomyConfig
 
 class DatabaseManager:
     def __init__(self):
@@ -443,7 +443,7 @@ class DatabaseManager:
 
             # Seed achievements/items (best-effort)
             try:
-                from data.achievements import ACHIEVEMENTS as ACHIEVEMENTS_SEED
+                from ..data.achievements import ACHIEVEMENTS as ACHIEVEMENTS_SEED
 
                 for ach_id, ach in ACHIEVEMENTS_SEED.items():
                     await db.execute(
@@ -481,7 +481,7 @@ class DatabaseManager:
                     pass
 
                 try:
-                    from views.shop_views import SHOP_ITEMS as SHOP_ITEMS_SEED
+                    from ..views.shop_views import SHOP_ITEMS as SHOP_ITEMS_SEED
 
                     for item_id, item in SHOP_ITEMS_SEED.items():
                         if isinstance(item_id, str) and isinstance(item, dict):
@@ -663,7 +663,7 @@ class DatabaseManager:
                 data[f"skill_{row['skill_name']}"] = int(row["xp"])
 
             try:
-                from services.skills_service import calculate_skill_level
+                from ..services.skills_service import calculate_skill_level
 
                 for base in ("strength", "intelligence", "charisma", "luck"):
                     xp = int(data.get(f"skill_{base}", 0) or 0)
@@ -812,7 +812,7 @@ class DatabaseManager:
 
                 level = 1
                 try:
-                    from services.skills_service import calculate_skill_level
+                    from ..services.skills_service import calculate_skill_level
 
                     level, _, _ = calculate_skill_level(xp_val)
                 except Exception:

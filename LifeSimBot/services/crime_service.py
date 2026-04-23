@@ -2,9 +2,9 @@
 import random
 import time
 from datetime import datetime, timedelta
-from services.base_service import BaseService
-from services.economy_service import economy_service
-from utils.constants import CrimeConfig, Cooldowns, Times
+from ..services.base_service import BaseService
+from ..services.economy_service import economy_service
+from ..utils.constants import CrimeConfig, Cooldowns, Times
 
 class CrimeService(BaseService):
     def __init__(self):

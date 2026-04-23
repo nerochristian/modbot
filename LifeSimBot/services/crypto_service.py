@@ -7,7 +7,7 @@ import json
 from typing import Dict, Tuple, Optional
 from datetime import datetime, timezone
 
-from data.crypto_assets import CRYPTO_ASSETS, CRYPTO_NEWS_EVENTS
+from ..data.crypto_assets import CRYPTO_ASSETS, CRYPTO_NEWS_EVENTS
 
 
 class CryptoService:

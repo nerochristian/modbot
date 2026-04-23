@@ -6,10 +6,10 @@ import discord
 import json
 from typing import Optional, List, Dict, Tuple
 
-from utils.format import money, progress_bar
-from views.shop_views import SHOP_ITEMS, safe_get_inventory
-from data.recipes import RECIPES
-from views.v2_embed import apply_v2_embed_layout
+from ..utils.format import money, progress_bar
+from ..views.shop_views import SHOP_ITEMS, safe_get_inventory
+from ..data.recipes import RECIPES
+from ..views.v2_embed import apply_v2_embed_layout
 
 
 # ============= CONSTANTS =============
@@ -159,7 +159,7 @@ class InventoryView(discord.ui.LayoutView):
 
         components.append(discord.ui.TextDisplay(content=header_text))
         try:
-            from views.v2_embed import _safe_separator
+            from ..views.v2_embed import _safe_separator
 
             components.append(_safe_separator())
         except Exception:
@@ -215,7 +215,7 @@ class InventoryView(discord.ui.LayoutView):
             footer_text = "*Use /buy to purchase items • /cook to make dishes*"
 
         try:
-            from views.v2_embed import _safe_separator
+            from ..views.v2_embed import _safe_separator
 
             components.append(_safe_separator())
         except Exception:
@@ -349,7 +349,7 @@ class ItemUseView(discord.ui.LayoutView):
         components.append(discord.ui.TextDisplay(content=header))
         
         try:
-            from views.v2_embed import _safe_separator
+            from ..views.v2_embed import _safe_separator
 
             components.append(_safe_separator())
         except Exception:
@@ -385,7 +385,7 @@ class ItemUseView(discord.ui.LayoutView):
             components.append(discord.ui.TextDisplay(content=effects_text.strip()))
 
         try:
-            from views.v2_embed import _safe_separator
+            from ..views.v2_embed import _safe_separator
 
             components.append(_safe_separator())
         except Exception:
@@ -531,7 +531,7 @@ class ItemDetailView(discord.ui.LayoutView):
         components.append(discord.ui.TextDisplay(content=header))
         
         try:
-            from views.v2_embed import _safe_separator
+            from ..views.v2_embed import _safe_separator
 
             components.append(_safe_separator())
         except Exception:
@@ -557,7 +557,7 @@ class ItemDetailView(discord.ui.LayoutView):
             components.append(discord.ui.TextDisplay(content=effects_text.strip()))
 
         try:
-            from views.v2_embed import _safe_separator
+            from ..views.v2_embed import _safe_separator
 
             components.append(_safe_separator())
         except Exception:

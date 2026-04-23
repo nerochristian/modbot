@@ -11,10 +11,10 @@ from typing import Optional, List, Dict, Any
 from datetime import datetime
 import logging
 
-from utils.format import format_currency, format_time
-from utils.constants import *
-from utils.checks import safe_defer, safe_reply
-from views.v2_embed import apply_v2_embed_layout
+from ..utils.format import format_currency, format_time
+from ..utils.constants import *
+from ..utils.checks import safe_defer, safe_reply
+from ..views.v2_embed import apply_v2_embed_layout
 
 logger = logging.getLogger('LifeSimBot.Help')
 

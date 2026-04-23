@@ -7,8 +7,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from data.quests import DAILY_QUESTS, WEEKLY_QUESTS, QUEST_DIFFICULTIES
-from services.quests_service import (
+from ..data.quests import DAILY_QUESTS, WEEKLY_QUESTS, QUEST_DIFFICULTIES
+from ..services.quests_service import (
     get_active_quests,
     get_completed_today,
     generate_daily_quests,
@@ -16,8 +16,8 @@ from services.quests_service import (
     should_reset_daily_quests,
     calculate_quest_progress_percent,
 )
-from utils.format import money, progress_bar
-from utils.checks import safe_defer, safe_reply
+from ..utils.format import money, progress_bar
+from ..utils.checks import safe_defer, safe_reply
 
 
 class QuestsCog(commands.Cog):

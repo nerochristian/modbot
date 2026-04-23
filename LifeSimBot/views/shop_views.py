@@ -6,9 +6,9 @@ import discord
 import json
 from typing import Optional, List, Dict
 
-from utils.format import money
-from data.recipes import COOKING_INGREDIENTS
-from views.v2_embed import apply_v2_embed_layout
+from ..utils.format import money
+from ..data.recipes import COOKING_INGREDIENTS
+from ..views.v2_embed import apply_v2_embed_layout
 
 
 # ============= HELPER FUNCTION =============

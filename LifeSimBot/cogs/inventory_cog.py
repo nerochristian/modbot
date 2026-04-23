@@ -8,12 +8,12 @@ from discord.ext import commands
 from typing import Optional, List, Dict
 import json
 
-from views.inventory_views import InventoryView, ItemUseView, ItemDetailView
-from views.shop_views import SHOP_ITEMS, safe_get_inventory
-from data.recipes import RECIPES
-from utils.checks import safe_defer, safe_reply
-from utils.format import money
-from views.v2_embed import apply_v2_embed_layout
+from ..views.inventory_views import InventoryView, ItemUseView, ItemDetailView
+from ..views.shop_views import SHOP_ITEMS, safe_get_inventory
+from ..data.recipes import RECIPES
+from ..utils.checks import safe_defer, safe_reply
+from ..utils.format import money
+from ..views.v2_embed import apply_v2_embed_layout
 
 
 def parse_inventory(inventory_data):
@@ -63,7 +63,7 @@ class ItemSelectorView(discord.ui.LayoutView):
         
         components.append(discord.ui.TextDisplay(content=header))
         try:
-            from views.v2_embed import _safe_separator
+            from ..views.v2_embed import _safe_separator
 
             components.append(_safe_separator())
         except Exception:

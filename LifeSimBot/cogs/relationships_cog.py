@@ -4,9 +4,9 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from services.relationships_service import RelationshipsService
-from utils.checks import safe_defer, safe_reply
-from utils.format import progress_bar
+from ..services.relationships_service import RelationshipsService
+from ..utils.checks import safe_defer, safe_reply
+from ..utils.format import progress_bar
 
 
 class RelationshipsCog(commands.Cog):

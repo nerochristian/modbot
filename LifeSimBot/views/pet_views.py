@@ -5,9 +5,9 @@ import discord
 from typing import List, Dict, Any
 import math
 
-from data.items import PET_TYPES
-from utils.format import money, progress_bar
-from services.pets_service import calculate_pet_level_from_xp, get_pet_buffs
+from ..data.items import PET_TYPES
+from ..utils.format import money, progress_bar
+from ..services.pets_service import calculate_pet_level_from_xp, get_pet_buffs
 
 
 class PetSelector(discord.ui.LayoutView):

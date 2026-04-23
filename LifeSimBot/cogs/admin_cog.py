@@ -5,7 +5,7 @@ from discord import app_commands
 from discord.ext import commands
 from datetime import datetime, timezone
 
-from utils.format import format_number, money
+from ..utils.format import format_number, money
 
 
 class AdminCog(commands.Cog):
@@ -309,7 +309,7 @@ class AdminCog(commands.Cog):
         await interaction.response.defer(ephemeral=True)
 
         try:
-            from services.quests_service import QuestsService
+            from ..services.quests_service import QuestsService
         except Exception as e:
             return await interaction.followup.send(
                 f"❌ QuestsService import failed: `{e}`",
@@ -333,7 +333,7 @@ class AdminCog(commands.Cog):
         await interaction.response.defer(ephemeral=True)
 
         try:
-            from services.buffs_service import BuffsService
+            from ..services.buffs_service import BuffsService
         except Exception as e:
             return await interaction.followup.send(
                 f"❌ BuffsService import failed: `{e}`",

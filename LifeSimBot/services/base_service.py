@@ -1,6 +1,6 @@
 # services/base_service.py
 import logging
-from db.database import db
+from ..db.database import db
 from abc import ABC
 
 class BaseService(ABC):
