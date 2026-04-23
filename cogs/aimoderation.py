@@ -1708,6 +1708,7 @@ class AIModeration(commands.Cog):
         self.ai = GeminiClient(bot, self.config)
         # actor_id -> (target_id, expiry)
         self._target_cache: Dict[int, Tuple[int, datetime]] = {}
+        self._handled_message_ids: Set[int] = set()
 
         if not hasattr(bot, "db"):
             logger.warning("Bot.db is missing — database features unavailable.")
@@ -1774,11 +1775,28 @@ class AIModeration(commands.Cog):
     def _looks_like_mod_request(self, content: str) -> bool:
         return bool(self._MOD_REQUEST_RE.match(self._normalize_chat_text(content)))
 
+    def is_casual_mention(self, message: discord.Message) -> bool:
+        """Return True when a bot mention should be handled as chatbot text."""
+        if not self.bot.user or self.bot.user not in message.mentions:
+            return False
+        content = self.clean_content(message)
+        if not content:
+            return True
+        return not self._looks_like_mod_request(content)
+
     def _quick_conversation_reply(self, content: str) -> Optional[str]:
         low = self._normalize_chat_text(content).strip("!?., ")
         if not low or self._looks_like_mod_request(low):
             return None
 
+        if re.fullmatch(r"(hey+|hi+|hello+|yo+|sup+|howdy+)(?:\s+.*)?", low):
+            return random.choice(
+                [
+                    "hey, i'm here. what's up?",
+                    "yo. what do you need?",
+                    "hi. i'm listening.",
+                ]
+            )
         if low in self._GREETING_WORDS:
             return random.choice(
                 [
@@ -1813,6 +1831,53 @@ class AIModeration(commands.Cog):
                 "use `/aihelp` for full examples."
             )
         return None
+
+    async def _reply_with_conversation(
+        self,
+        message: discord.Message,
+        content: str,
+        settings: GuildSettings,
+        recent: Optional[List[discord.Message]] = None,
+    ) -> None:
+        recent_messages = recent
+        if recent_messages is None:
+            recent_messages = await self.fetch_recent_messages(message.channel, limit=settings.context_messages)
+        async with message.channel.typing():
+            response = await self.ai.converse(
+                user_content=content,
+                guild=message.guild,
+                author=message.author,
+                recent_messages=recent_messages,
+                model=settings.model,
+            )
+        if response:
+            if len(response) > 1900:
+                await self.reply(message, embed=discord.Embed(description=response, color=discord.Color.blue()))
+            else:
+                await self.reply(message, content=response)
+        else:
+            await self.reply(message, content="i blanked for a sec. send that again, or use `/aihelp` for examples.")
+
+    async def handle_casual_mention(self, message: discord.Message) -> bool:
+        """Handle direct mention chatbot text outside the command parser."""
+        if message.id in self._handled_message_ids:
+            return True
+        if not self.is_casual_mention(message):
+            return False
+
+        self._handled_message_ids.add(message.id)
+        self.bot.loop.call_later(90, self._handled_message_ids.discard, message.id)
+
+        settings = await self.get_guild_settings(message.guild.id)
+        content = self.clean_content(message)
+        if not content:
+            await self.reply(message, embed=self.build_help_embed(message.guild))
+            return True
+        if quick_reply := self._quick_conversation_reply(content):
+            await self.reply(message, content=quick_reply)
+            return True
+        await self._reply_with_conversation(message, content, settings)
+        return True
 
     def _friendly_error_reply(self, content: str, reason: str) -> str:
         text = (reason or "I could not process that.").strip()
@@ -2474,6 +2539,9 @@ class AIModeration(commands.Cog):
         if message.author.bot or not message.guild or not self.bot.user:
             return
 
+        if message.id in self._handled_message_ids:
+            return
+
         is_mentioned = self.bot.user in message.mentions
 
         # Let the command framework handle prefix/mention commands normally
@@ -2513,22 +2581,14 @@ class AIModeration(commands.Cog):
             # Keep normal AI chat usable even when moderation actions are disabled.
             # This avoids silent failures after easy setup disables the AI mod module.
             if not settings.enabled:
-                recent = await self.fetch_recent_messages(message.channel, limit=settings.context_messages)
-                async with message.channel.typing():
-                    response = await self.ai.converse(
-                        user_content=content,
-                        guild=message.guild,
-                        author=message.author,
-                        recent_messages=recent,
-                        model=settings.model,
-                    )
-                if response:
-                    if len(response) > 1900:
-                        await self.reply(message, embed=discord.Embed(description=response, color=discord.Color.blue()))
-                    else:
-                        await self.reply(message, content=response)
-                else:
-                    await self.reply(message, content="i blanked for a sec. send that again, or use `/aihelp` for examples.")
+                await self._reply_with_conversation(message, content, settings)
+                return
+
+            # Direct mentions that do not look like moderation requests are chat.
+            # Routing every casual message through the moderation classifier causes
+            # false "AI hiccup" replies when the user is only talking to the bot.
+            if not self._looks_like_mod_request(content):
+                await self._reply_with_conversation(message, content, settings)
                 return
 
         permissions = (
@@ -2594,21 +2654,7 @@ class AIModeration(commands.Cog):
                 await self.reply_tool_result(message, result)
 
         elif decision.type == DecisionType.CHAT:
-            async with message.channel.typing():
-                response = await self.ai.converse(
-                    user_content=content,
-                    guild=message.guild,
-                    author=message.author,
-                    recent_messages=recent,
-                    model=settings.model,
-                )
-            if response:
-                if len(response) > 1900:
-                    await self.reply(message, embed=discord.Embed(description=response, color=discord.Color.blue()))
-                else:
-                    await self.reply(message, content=response)
-            else:
-                await self.reply(message, content="i blanked for a sec. send that again, or use `/aihelp` for command examples.")
+            await self._reply_with_conversation(message, content, settings, recent)
 
         else:  # ERROR
             if not is_mentioned:

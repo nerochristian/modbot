@@ -1933,6 +1933,14 @@ class ModBot(commands.Bot):
             # Mention-prefix messages are often natural chat for AIModeration.
             # Avoid treating "@bot how are u" as an unknown command named "how".
             if self._starts_with_bot_mention(message):
+                aimod = self.get_cog("AIModeration")
+                if aimod and hasattr(aimod, "handle_casual_mention"):
+                    try:
+                        handled = await aimod.handle_casual_mention(message)
+                        if handled:
+                            return
+                    except Exception:
+                        logger.exception("AIModeration casual mention handler failed")
                 return
 
             invoked = (ctx.invoked_with or "").strip()
@@ -2032,6 +2040,8 @@ class ModBot(commands.Bot):
                 return await ctx.send(embed=embed, view=view)
 
         if isinstance(error, commands.CommandNotFound):
+            if getattr(ctx, "message", None) is not None and self._starts_with_bot_mention(ctx.message):
+                return
             invoked = (ctx.invoked_with or "unknown").strip()
             embed = ModEmbed.error("Command not found", f"There's no command called `{invoked}`.")
             return await _send_error_response(embed)
