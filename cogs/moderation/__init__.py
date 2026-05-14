@@ -33,6 +33,7 @@ class Moderation(
     # Named 'moderation' (not 'mod') to avoid collision with standalone commands from mixins
     mod_slash = app_commands.Group(name="moderation", description="🛡️ Moderation commands")
     
+    shortcut_slash = app_commands.Group(name="mod", description="Fast moderation shortcuts")
     emoji_slash = app_commands.Group(name="emoji", description="Emoji request commands")
 
     def __init__(self, bot: commands.Bot):
@@ -114,6 +115,7 @@ class Moderation(
         case_group.add_command(cmd("modstats", "View mod statistics", self.modstats_slash))
 
         # Top-level shortcuts under /moderation
+        self.mod_slash.add_command(cmd("guide", "Show the simplified moderation guide", self.guide_slash))
         self.mod_slash.add_command(cmd("kick", "Kick a user", self.kick_slash))
         self.mod_slash.add_command(cmd("ban", "Ban a user", self.ban_slash))
         self.mod_slash.add_command(cmd("unban", "Unban a user", self.unban_slash))
@@ -130,6 +132,23 @@ class Moderation(
         self.mod_slash.add_command(cmd("note", "Add a note", self.note_slash))
         self.mod_slash.add_command(cmd("notes", "View notes", self.notes_slash))
 
+        # Short /mod shortcuts for the commands moderators use most often.
+        self.shortcut_slash.add_command(cmd("guide", "Show the simplified moderation guide", self.guide_slash))
+        self.shortcut_slash.add_command(cmd("warn", "Warn a user", self.warn_slash))
+        self.shortcut_slash.add_command(cmd("mute", "Timeout a user", self.mute_slash))
+        self.shortcut_slash.add_command(cmd("timeout", "Timeout a user", self.timeout_slash))
+        self.shortcut_slash.add_command(cmd("unmute", "Remove a timeout", self.unmute_slash))
+        self.shortcut_slash.add_command(cmd("kick", "Kick a user", self.kick_slash))
+        self.shortcut_slash.add_command(cmd("ban", "Ban a user", self.ban_slash))
+        self.shortcut_slash.add_command(cmd("unban", "Unban a user by ID", self.unban_slash))
+        self.shortcut_slash.add_command(cmd("purge", "Bulk delete messages", self.purge_slash))
+        self.shortcut_slash.add_command(cmd("lock", "Lock a channel", self.lock_slash))
+        self.shortcut_slash.add_command(cmd("unlock", "Unlock a channel", self.unlock_slash))
+        self.shortcut_slash.add_command(cmd("slowmode", "Set channel slowmode", self.slowmode_slash))
+        self.shortcut_slash.add_command(cmd("case", "View a case", self.case_slash))
+        self.shortcut_slash.add_command(cmd("history", "View user history", self.history_slash))
+        self.shortcut_slash.add_command(cmd("warnings", "View warnings", self.warnings_slash))
+
         # Misc commands directly on /moderation
         self.mod_slash.add_command(cmd("testwelcome", "Preview welcome card", self.testwelcome))
         self.mod_slash.add_command(cmd("welcomeall", "Welcome all members", self.welcomeall))
@@ -139,6 +158,45 @@ class Moderation(
         self.emoji_slash.add_command(cmd("tutorial", "Show emoji submission tutorial", self.emoji_tutorial_slash))
         self.emoji_slash.add_command(cmd("add", "Request a new emoji", self.emoji_add_slash))
         self.emoji_slash.add_command(cmd("steal", "Request emojis from pasted custom emojis", self.emoji_steal_slash))
+
+    async def guide_slash(self, interaction: discord.Interaction):
+        """Show a compact moderation guide focused on day-to-day commands."""
+        embed = discord.Embed(
+            title="Moderation Guide",
+            description="Use `/mod` for common actions and `/moderation` when you need the full toolbox.",
+            color=Config.COLOR_INFO,
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.add_field(
+            name="Fast Actions",
+            value=(
+                "`/mod warn user reason`\n"
+                "`/mod mute user duration reason`\n"
+                "`/mod kick user reason`\n"
+                "`/mod ban user reason`\n"
+                "`/mod purge amount user`"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Channel Control",
+            value="`/mod lock`, `/mod unlock`, `/mod slowmode`",
+            inline=False,
+        )
+        embed.add_field(
+            name="Records",
+            value="`/mod warnings`, `/mod case`, `/mod history`, `/moderation cases note`",
+            inline=False,
+        )
+        embed.add_field(
+            name="Reply Shortcuts",
+            value=(
+                "Reply to a user's message with `warn`, `mute`, `kick`, or `ban`.\n"
+                "Reply to a bot moderation embed with `undo` where the action supports it."
+            ),
+            inline=False,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     def cog_check(self, ctx: commands.Context) -> bool:
         return True
@@ -179,7 +237,7 @@ class Moderation(
         """Check for expired quarantines and restore roles"""
         now = datetime.now(timezone.utc)
         try:
-            async with self.bot.db.pool.acquire() as conn:
+            async with self.bot.db.get_connection() as conn:
                 cursor = await conn.execute(
                     "SELECT id, guild_id, user_id, roles_backup, moderator_id FROM quarantines WHERE active = 1 AND expires_at IS NOT NULL AND expires_at <= ?",
                     (now,),
@@ -193,10 +251,10 @@ class Moderation(
                 
                 try:
                     user = await guild.fetch_member(user_id)
-                except:
+                except (discord.NotFound, discord.HTTPException):
                     user = None
                 
-                async with self.bot.db.pool.acquire() as conn:
+                async with self.bot.db.get_connection() as conn:
                     await conn.execute("UPDATE quarantines SET active = 0 WHERE id = ?", (q_id,))
                     await conn.commit()
                 
@@ -204,8 +262,8 @@ class Moderation(
                     try:
                         role_ids = json.loads(roles_backup)
                         await self._restore_roles(user, role_ids)
-                    except:
-                        pass
+                    except (json.JSONDecodeError, discord.HTTPException) as e:
+                        logger.warning(f"Failed to restore roles for {user_id}: {e}")
                         
                     settings = await self.bot.db.get_settings(guild.id)
                     q_role_id = settings.get("automod_quarantine_role_id")
@@ -214,14 +272,14 @@ class Moderation(
                         if role:
                             try:
                                 await user.remove_roles(role, reason="Quarantine expired")
-                            except:
-                                pass
+                            except discord.HTTPException as e:
+                                logger.warning(f"Failed to remove quarantine role: {e}")
                     
                     try:
                         embed = discord.Embed(title="✅ Quarantine Expired", description=f"{user.mention} released.", color=0x00ff00)
                         await self.log_action(guild, embed)
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.debug(f"Failed to log quarantine expiry: {e}")
         except Exception as e:
             logger.error(f"Error checking quarantine expiry: {e}")
 
@@ -637,8 +695,8 @@ class Moderation(
             whitelisted_ids = settings.get("whitelisted_ids", [])
             if member.id not in whitelisted_ids and not member.bot:
                 try:
-                    await member.dm_channel.send(f"🔒 **{member.guild.name}** is currently in whitelist-only mode. You are not on the whitelist.")
-                except:
+                    await member.send(f"🔒 **{member.guild.name}** is currently in whitelist-only mode. You are not on the whitelist.")
+                except (discord.Forbidden, discord.HTTPException):
                     pass
                 
                 try:
@@ -658,8 +716,8 @@ class Moderation(
                 if role:
                     try:
                         await member.add_roles(role, reason="Whitelist role auto-assign")
-                    except:
-                        pass
+                    except (discord.Forbidden, discord.HTTPException) as e:
+                        logger.warning(f"Failed to assign whitelist role to {member.id}: {e}")
         
         # Welcome Message
         channel_id = settings.get("welcome_channel") or getattr(Config, "WELCOME_CHANNEL_ID", 0)

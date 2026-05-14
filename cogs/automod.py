@@ -128,6 +128,42 @@ class UserHistory:
             score *= 2.0
         return min(100.0, score)
 
+    def to_dict(self):
+        return {
+            "user_id": self.user_id,
+            "guild_id": self.guild_id,
+            "violations": [
+                {**v, "timestamp": v["timestamp"].isoformat()} for v in self.violations
+            ],
+            "warnings": self.warnings,
+            "mutes": self.mutes,
+            "kicks": self.kicks,
+            "last_violation": self.last_violation.isoformat() if self.last_violation else None
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict):
+        last_violation = data.get("last_violation")
+        if last_violation:
+            last_violation = datetime.fromisoformat(last_violation)
+        
+        violations = []
+        for v in data.get("violations", []):
+            vc = v.copy()
+            if isinstance(vc.get("timestamp"), str):
+                vc["timestamp"] = datetime.fromisoformat(vc["timestamp"])
+            violations.append(vc)
+
+        return cls(
+            user_id=data["user_id"],
+            guild_id=data["guild_id"],
+            violations=violations,
+            warnings=data.get("warnings", 0),
+            mutes=data.get("mutes", 0),
+            kicks=data.get("kicks", 0),
+            last_violation=last_violation
+        )
+
 # =============================================================================
 # PATTERN LIBRARY
 # =============================================================================
@@ -520,14 +556,20 @@ class AutoModEngine:
         self.bot = bot
         self.filters = [cls() for cls in _FILTER_CLASSES]
         self.filters.sort(key=lambda f: f.PRIORITY, reverse=True)
-        self.user_histories: Dict[Tuple[int, int], UserHistory] = {}
         self.stats = {"messages_checked": 0, "violations_detected": 0, "actions_taken": 0}
 
-    def get_user_history(self, guild_id: int, user_id: int) -> UserHistory:
-        key = (guild_id, user_id)
-        if key not in self.user_histories:
-            self.user_histories[key] = UserHistory(user_id, guild_id)
-        return self.user_histories[key]
+    async def get_user_history(self, guild_id: int, user_id: int) -> UserHistory:
+        cache = self.bot.caches.get("automod_history")
+        if cache:
+            data = await cache.get(f"{guild_id}:{user_id}")
+            if data:
+                return UserHistory.from_dict(data)
+        return UserHistory(user_id, guild_id)
+
+    async def save_user_history(self, hist: UserHistory):
+        cache = self.bot.caches.get("automod_history")
+        if cache:
+            await cache.set(f"{hist.guild_id}:{hist.user_id}", hist.to_dict())
 
     async def check_bypass(self, message: discord.Message, settings: dict) -> Tuple[bool, str]:
         if is_bot_owner_id(message.author.id):
@@ -545,7 +587,7 @@ class AutoModEngine:
 
     async def process_message(self, message: discord.Message, settings: dict) -> Optional[FilterResult]:
         self.stats["messages_checked"] += 1
-        user_hist = self.get_user_history(message.guild.id, message.author.id)
+        user_hist = await self.get_user_history(message.guild.id, message.author.id)
         ctx = {"user_history": user_hist, "risk_score": user_hist.get_risk_score(), "channel_type": str(message.channel.type)}
 
         for filt in self.filters:
@@ -554,6 +596,7 @@ class AutoModEngine:
                 if result.triggered:
                     self.stats["violations_detected"] += 1
                     user_hist.add_violation(result)
+                    await self.save_user_history(user_hist)
                     return result
             except Exception as e:
                 logger.error(f"Filter {filt.__class__.__name__} error: {e}", exc_info=True)
@@ -597,7 +640,11 @@ class AutoModEngine:
                 role_id = settings.get("automod_quarantine_role_id")
                 role = guild.get_role(role_id) if role_id else None
                 if role:
-                    await user.add_roles(role, reason=f"[AutoMod] {result.reason}")
+                    # Strip all roles and apply quarantine role (matching manual quarantine behavior)
+                    try:
+                        await user.edit(roles=[role], reason=f"[AutoMod] {result.reason}")
+                    except discord.Forbidden:
+                        await user.add_roles(role, reason=f"[AutoMod] {result.reason}")
                     log.update(success=True, details="Quarantined")
                 else:
                     await user.timeout(timedelta(minutes=30), reason=f"[AutoMod] {result.reason}")
@@ -633,12 +680,23 @@ class AutoModEngine:
         return log
 
     async def _schedule_unban(self, guild: discord.Guild, user_id: int, duration: int):
-        await asyncio.sleep(duration)
+        """Register the temp ban in the database for persistence across restarts."""
+        from datetime import timezone
+        expires_at = datetime.now(timezone.utc) + timedelta(seconds=duration)
         try:
-            user = await self.bot.fetch_user(user_id)
-            await guild.unban(user, reason="[AutoMod] Temporary ban expired")
-        except Exception:
-            pass
+            await self.bot.db.add_tempban(
+                guild.id, user_id, self.bot.user.id,
+                "[AutoMod] Temporary ban", expires_at
+            )
+        except Exception as e:
+            logger.error(f"Failed to register automod tempban in DB: {e}")
+            # Fallback to in-memory sleep if DB fails
+            await asyncio.sleep(duration)
+            try:
+                user = await self.bot.fetch_user(user_id)
+                await guild.unban(user, reason="[AutoMod] Temporary ban expired")
+            except Exception:
+                pass
 
 
 # =============================================================================
@@ -658,10 +716,8 @@ class AutoModV3(commands.Cog):
 
     @tasks.loop(hours=1)
     async def cleanup_task(self):
-        cutoff = datetime.now(timezone.utc) - timedelta(days=30)
-        for key, hist in list(self.engine.user_histories.items()):
-            if hist.last_violation and hist.last_violation < cutoff:
-                del self.engine.user_histories[key]
+        # Memory and Redis TTL caches automatically handle cleanup.
+        pass
 
     # ------------------------------------------------------------------
     # Logging
@@ -684,7 +740,7 @@ class AutoModV3(commands.Cog):
         embed.add_field(name="Channel", value=message.channel.mention, inline=True)
         if result.matched_patterns:
             embed.add_field(name="Matched", value=", ".join(f"||{p}||" for p in result.matched_patterns[:3]), inline=False)
-        hist = self.engine.get_user_history(guild.id, message.author.id)
+        hist = await self.engine.get_user_history(guild.id, message.author.id)
         embed.add_field(name="User History", value=f"Violations: {len(hist.violations)} | Risk: {hist.get_risk_score():.0f}/100", inline=True)
         preview = message.content[:500] + ("..." if len(message.content) > 500 else "")
         embed.add_field(name="Message", value=f"```{preview}```", inline=False)
@@ -746,6 +802,65 @@ class AutoModV3(commands.Cog):
         "automod_notify_users": ("Notify Users", True, "DM users after action"),
     }
 
+    _PRESETS: Dict[str, Dict[str, Any]] = {
+        "relaxed": {
+            "automod_enabled": True,
+            "automod_links_enabled": True,
+            "automod_invites_enabled": False,
+            "automod_scam_protection": True,
+            "automod_spam_threshold": 7,
+            "automod_caps_percentage": 90,
+            "automod_caps_min_length": 20,
+            "automod_max_mentions": 8,
+            "automod_newaccount_days": 0,
+            "automod_punishment": "warn",
+            "automod_mute_duration": 1800,
+            "automod_notify_users": True,
+        },
+        "standard": {
+            "automod_enabled": True,
+            "automod_links_enabled": True,
+            "automod_invites_enabled": True,
+            "automod_scam_protection": True,
+            "automod_spam_threshold": 5,
+            "automod_caps_percentage": 80,
+            "automod_caps_min_length": 12,
+            "automod_max_mentions": 6,
+            "automod_newaccount_days": 3,
+            "automod_punishment": "warn",
+            "automod_mute_duration": 3600,
+            "automod_notify_users": True,
+        },
+        "strict": {
+            "automod_enabled": True,
+            "automod_links_enabled": True,
+            "automod_invites_enabled": True,
+            "automod_scam_protection": True,
+            "automod_spam_threshold": 4,
+            "automod_caps_percentage": 70,
+            "automod_caps_min_length": 10,
+            "automod_max_mentions": 5,
+            "automod_newaccount_days": 7,
+            "automod_punishment": "mute",
+            "automod_mute_duration": 3600,
+            "automod_notify_users": True,
+        },
+        "raid": {
+            "automod_enabled": True,
+            "automod_links_enabled": True,
+            "automod_invites_enabled": True,
+            "automod_scam_protection": True,
+            "automod_spam_threshold": 3,
+            "automod_caps_percentage": 65,
+            "automod_caps_min_length": 8,
+            "automod_max_mentions": 4,
+            "automod_newaccount_days": 14,
+            "automod_punishment": "mute",
+            "automod_mute_duration": 7200,
+            "automod_notify_users": False,
+        },
+    }
+
     @staticmethod
     def _bool_text(v: bool) -> str:
         return "Enabled" if v else "Disabled"
@@ -786,6 +901,156 @@ class AutoModV3(commands.Cog):
             return "`Not set`"
         c = guild.get_channel(int(ch_id))
         return c.mention if c else "`Not set`"
+
+    def _apply_preset(self, settings: Dict[str, Any], preset: str) -> List[str]:
+        profile = self._PRESETS.get(preset)
+        if not profile:
+            return []
+
+        updates = []
+        for key, value in profile.items():
+            if settings.get(key) != value:
+                settings[key] = value
+                updates.append(key)
+        return updates
+
+    def _settings_summary(self, settings: Dict[str, Any], guild: Optional[discord.Guild]) -> str:
+        return (
+            f"State: **{self._bool_text(bool(settings.get('automod_enabled', True)))}**\n"
+            f"Action: **{str(settings.get('automod_punishment', 'warn')).upper()}**\n"
+            f"Spam: `{settings.get('automod_spam_threshold', 5)}` msgs/5s\n"
+            f"Caps: `{settings.get('automod_caps_percentage', 70)}%` after `{settings.get('automod_caps_min_length', 10)}` chars\n"
+            f"Mentions: `{settings.get('automod_max_mentions', 5)}`\n"
+            f"New accounts: `{settings.get('automod_newaccount_days', 7)}` days\n"
+            f"Log: {self._ch_mention(guild, settings.get('automod_log_channel'))}\n"
+            f"Bypass: {self._role_mention(guild, settings.get('automod_bypass_role_id'))}\n"
+            f"Quarantine: {self._role_mention(guild, settings.get('automod_quarantine_role_id'))}"
+        )
+
+    @automod.command(name="guide", description="Show the simplest AutoMod setup path")
+    @is_admin()
+    async def automod_guide(self, interaction: discord.Interaction):
+        embed = discord.Embed(
+            title="AutoMod Guide",
+            description="Start with a preset, then adjust only the parts your server needs.",
+            color=Config.COLOR_INFO,
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.add_field(
+            name="Fast Setup",
+            value=(
+                "`/automod setup preset:standard log_channel:#mod-logs`\n"
+                "`/automod enable`\n"
+                "`/automod test content:free nitro click here`"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Presets",
+            value=(
+                "`relaxed` - lighter checks, warns by default\n"
+                "`standard` - recommended everyday setup\n"
+                "`strict` - lower thresholds, timeout by default\n"
+                "`raid` - temporary high-pressure mode"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Tune Later",
+            value=(
+                "`/automod toggle`, `/automod thresholds`, `/automod punishment`, "
+                "`/automod roles`, `/automod channels`, `/automod badwords`, `/automod domains`"
+            ),
+            inline=False,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @automod.command(name="enable", description="Enable AutoMod")
+    @is_admin()
+    async def automod_enable(self, interaction: discord.Interaction):
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        settings["automod_enabled"] = True
+        await self.bot.db.update_settings(interaction.guild_id, settings)
+        await interaction.response.send_message(
+            embed=ModEmbed.success("AutoMod Enabled", self._settings_summary(settings, interaction.guild)),
+            ephemeral=True,
+        )
+
+    @automod.command(name="disable", description="Disable AutoMod")
+    @is_admin()
+    async def automod_disable(self, interaction: discord.Interaction):
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        settings["automod_enabled"] = False
+        await self.bot.db.update_settings(interaction.guild_id, settings)
+        await interaction.response.send_message(
+            embed=ModEmbed.success("AutoMod Disabled", "AutoMod will stop checking new messages."),
+            ephemeral=True,
+        )
+
+    @automod.command(name="setup", description="Apply a preset and common AutoMod settings in one command")
+    @app_commands.describe(
+        preset="Recommended: standard. Use raid only during active raids.",
+        log_channel="Where AutoMod actions should be logged.",
+        bypass_role="Role that bypasses AutoMod checks.",
+        quarantine_role="Role used by quarantine punishment.",
+        action="Optional default punishment override.",
+        notify_users="DM users when AutoMod acts.",
+    )
+    @app_commands.choices(
+        preset=[
+            app_commands.Choice(name="Standard (recommended)", value="standard"),
+            app_commands.Choice(name="Relaxed", value="relaxed"),
+            app_commands.Choice(name="Strict", value="strict"),
+            app_commands.Choice(name="Raid mode", value="raid"),
+        ],
+        action=[
+            app_commands.Choice(name="Warn", value="warn"),
+            app_commands.Choice(name="Delete", value="delete"),
+            app_commands.Choice(name="Mute", value="mute"),
+            app_commands.Choice(name="Kick", value="kick"),
+            app_commands.Choice(name="Ban", value="ban"),
+            app_commands.Choice(name="Temporary Ban", value="tempban"),
+            app_commands.Choice(name="Quarantine", value="quarantine"),
+            app_commands.Choice(name="Log Only", value="log"),
+        ],
+    )
+    @is_admin()
+    async def automod_setup(
+        self,
+        interaction: discord.Interaction,
+        preset: app_commands.Choice[str],
+        log_channel: Optional[discord.TextChannel] = None,
+        bypass_role: Optional[discord.Role] = None,
+        quarantine_role: Optional[discord.Role] = None,
+        action: Optional[app_commands.Choice[str]] = None,
+        notify_users: Optional[bool] = None,
+    ):
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        changed = self._apply_preset(settings, preset.value)
+
+        if log_channel:
+            settings["automod_log_channel"] = log_channel.id
+            changed.append("automod_log_channel")
+        if bypass_role:
+            settings["automod_bypass_role_id"] = bypass_role.id
+            changed.append("automod_bypass_role_id")
+        if quarantine_role:
+            settings["automod_quarantine_role_id"] = quarantine_role.id
+            changed.append("automod_quarantine_role_id")
+        if action:
+            settings["automod_punishment"] = action.value
+            changed.append("automod_punishment")
+        if notify_users is not None:
+            settings["automod_notify_users"] = bool(notify_users)
+            changed.append("automod_notify_users")
+
+        await self.bot.db.update_settings(interaction.guild_id, settings)
+
+        embed = ModEmbed.success(
+            "AutoMod Setup Applied",
+            f"Preset: `{preset.value}`\nUpdated: `{len(set(changed))}` setting(s)\n\n{self._settings_summary(settings, interaction.guild)}",
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @automod.command(name="config", description="View AutoMod configuration")
     @is_admin()

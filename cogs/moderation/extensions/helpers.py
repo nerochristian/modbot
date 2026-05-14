@@ -437,8 +437,8 @@ class HelperCommands:
         if not bot_member:
             try:
                 bot_member = user.guild.get_member(self.bot.user.id)
-            except:
-                pass
+            except Exception:
+                bot_member = None
         
         for role_id in role_ids:
             role = user.guild.get_role(role_id)

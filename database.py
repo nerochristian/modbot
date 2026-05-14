@@ -28,6 +28,12 @@ except ImportError:
 
 logger = logging.getLogger("ModBot.Database")
 
+try:
+    from utils.query_builder import QueryBuilder
+except ImportError:
+    QueryBuilder = None
+
+
 
 def _explicit_database_mode() -> Optional[str]:
     for env_key in ("DB_MODE", "DATABASE_MODE"):
@@ -477,6 +483,14 @@ class Database:
             )
         else:
             logger.info("Supabase mirror disabled (SUPABASE_URL/KEY not set).")
+
+        # Query builder for dialect-aware SQL generation
+        self._qb = QueryBuilder(is_postgres=self._is_postgres) if QueryBuilder else None
+
+    @property
+    def qb(self) -> "QueryBuilder":
+        """Dialect-aware query builder (SQLite or PostgreSQL)."""
+        return self._qb
 
     @property
     def pool(self) -> "Database":
@@ -2495,28 +2509,6 @@ class Database:
     
     # ==================== CLEANUP ====================
     
-    async def close(self):
-        """Close database connections"""
-        if self._supabase_sync_task is not None:
-            self._supabase_sync_task.cancel()
-            try:
-                await self._supabase_sync_task
-            except asyncio.CancelledError:
-                pass
-            except Exception:
-                pass
-            self._supabase_sync_task = None
-
-        # Final forced sync before closing the DB connection.
-        try:
-            await self._sync_sqlite_to_supabase(force=True)
-        except Exception as exc:
-            logger.error("Final Supabase sync failed during close: %s", exc)
-
-        if self._pool is not None:
-            await self._pool.close()
-            self._pool = None
-        logger.info("🗄️ Database cleanup complete")
     
     async def backup_guild_data(self, guild_id: int) -> str:
         """

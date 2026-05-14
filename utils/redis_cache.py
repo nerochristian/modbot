@@ -357,6 +357,7 @@ async def create_cache_backend() -> dict[str, Any]:
             "snipe_cache": RedisSnipeCache(max_age_seconds=300, max_size=500),
             "edit_snipe_cache": RedisSnipeCache(max_age_seconds=300, max_size=500),
             "prefix_cache": RedisPrefixCache(ttl=600),
+            "automod_history": RedisTTLCache(namespace="automod_history", ttl=2592000, max_size=10000),
         }
 
     logger.info("Using in-memory caches (no REDIS_URL configured).")
@@ -365,4 +366,5 @@ async def create_cache_backend() -> dict[str, Any]:
         "snipe_cache": MemorySnipeCache(max_age_seconds=300, max_size=500),
         "edit_snipe_cache": MemorySnipeCache(max_age_seconds=300, max_size=500),
         "prefix_cache": MemoryPrefixCache(ttl=600),
+        "automod_history": MemoryTTLCache(ttl=2592000, max_size=10000),
     }

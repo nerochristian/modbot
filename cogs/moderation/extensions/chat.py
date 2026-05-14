@@ -384,7 +384,7 @@ class ChatCommands:
                 logging_cog.suppress_message_delete_log(source.channel.id)
             try:
                 await source.message.delete()
-            except:
+            except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                 pass
             channel = source.channel
             interaction = None

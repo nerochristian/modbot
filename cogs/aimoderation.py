@@ -2582,6 +2582,26 @@ class AIModeration(commands.Cog):
     # Slash commands
     # ------------------------------------------------------------------
 
+    def build_help_embed(self, guild: Optional[discord.Guild]) -> discord.Embed:
+        me = guild.me if guild else None
+        mention = me.mention if me else (self.bot.user.mention if self.bot.user else "@ModBot")
+        desc = (
+            "Mention me and use plain English. I will only run actions you have permission for.\n\n"
+            "**Examples:**\n"
+            f"- `{mention} timeout @User 1h for spamming`\n"
+            f"- `{mention} warn @User keep it respectful`\n"
+            f"- `{mention} purge 50 messages`\n"
+            f"- `{mention} ban @User alt account`\n\n"
+            "**Settings:**\n"
+            "- `/aimod status` - View current settings\n"
+            "- `/aimod setup` - Apply simple defaults\n"
+            "- `/aimod toggle` - Enable or disable AI moderation\n"
+            "- `/aimod confirm` - Toggle confirmations"
+        )
+        embed = discord.Embed(title="AI Moderation Help", description=desc, color=discord.Color.blurple())
+        embed.set_footer(text="Powered by Gemini AI | Respects your permissions")
+        return embed
+
     def _can_manage(self, interaction: discord.Interaction) -> bool:
         if is_bot_owner_id(interaction.user.id):
             return True
@@ -2602,6 +2622,43 @@ class AIModeration(commands.Cog):
         return False
 
     aimod_group = app_commands.Group(name="aimod", description="AI Moderation settings")
+
+    @aimod_group.command(name="setup")
+    @app_commands.describe(
+        enabled="Enable AI moderation mention handling.",
+        confirmations="Require confirmation for high-impact actions.",
+        context_messages="Recent messages AI can use as context.",
+        proactive_percent="Chance to reply without being mentioned. Recommended: 0.",
+    )
+    async def aimod_setup(
+        self,
+        interaction: discord.Interaction,
+        enabled: bool = True,
+        confirmations: bool = True,
+        context_messages: app_commands.Range[int, 1, 50] = 15,
+        proactive_percent: app_commands.Range[int, 0, 100] = 0,
+    ) -> None:
+        """Apply simple AI moderation defaults."""
+        if not await self._require_manage(interaction):
+            return
+
+        guild_id = interaction.guild.id
+        await self.update_guild_setting(guild_id, "aimod_enabled", enabled)
+        await self.update_guild_setting(guild_id, "aimod_confirm_enabled", confirmations)
+        await self.update_guild_setting(guild_id, "aimod_context_messages", int(context_messages))
+        await self.update_guild_setting(guild_id, "aimod_proactive_chance", float(proactive_percent) / 100)
+
+        embed = discord.Embed(title="AI Moderation Setup", color=discord.Color.blurple())
+        embed.add_field(name="Enabled", value="Yes" if enabled else "No", inline=True)
+        embed.add_field(name="Confirmations", value="On" if confirmations else "Off", inline=True)
+        embed.add_field(name="Context", value=f"{int(context_messages)} messages", inline=True)
+        embed.add_field(name="Proactive Replies", value=f"{int(proactive_percent)}%", inline=True)
+        embed.add_field(
+            name="Try It",
+            value="Mention the bot: `timeout @User 1h for spam` or use `/aihelp` for examples.",
+            inline=False,
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @aimod_group.command(name="status")
     async def aimod_status(self, interaction: discord.Interaction) -> None:

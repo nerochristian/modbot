@@ -148,20 +148,9 @@ try:
 except ImportError:
     pass
 
-# ==================== GLOBAL EMBED DEFAULT COLOR ====================
-_ORIGINAL_EMBED_INIT = discord.Embed.__init__
-
-
-def _embed_init_force_accent(self, *args, **kwargs):
-    explicit_colour = kwargs.pop("colour", None)
-    if "color" not in kwargs and explicit_colour is not None:
-        kwargs["color"] = explicit_colour
-    if "color" not in kwargs or kwargs["color"] is None:
-        kwargs["color"] = getattr(Config, "EMBED_ACCENT_COLOR", 0x5865F2)
-    return _ORIGINAL_EMBED_INIT(self, *args, **kwargs)
-
-
-discord.Embed.__init__ = _embed_init_force_accent
+# NOTE: Embed colour defaults are enforced via utils.embeds.ModEmbed / Colors
+# rather than monkey-patching discord.Embed.__init__.  This avoids conflicts
+# with third-party libraries that construct raw embeds.
 
 # ==================== CONSOLE ENCODING FIX ====================
 if sys.platform == "win32":
@@ -224,6 +213,7 @@ logger = setup_logging()
 try:
     from database import Database
     from utils.cache import SnipeCache, PrefixCache
+    from utils.redis_cache import create_cache_backend
     from utils.components_v2 import (
         ComponentsV2Config,
         patch_components_v2,
@@ -496,7 +486,7 @@ class ModBot(commands.Bot):
         """Load bot owner IDs from environment."""
         owner_ids_str = os.getenv("OWNER_IDS") or os.getenv("OWNER_ID") or ""
         try:
-            owner_ids = {1269772767516033025}
+            owner_ids: set[int] = set()
             for part in re.split(r"[,\s]+", owner_ids_str.strip()):
                 part = part.strip()
                 if not part:
@@ -505,7 +495,7 @@ class ModBot(commands.Bot):
             return owner_ids
         except ValueError:
             logger.warning("[WARN] Invalid OWNER_IDS in .env, using default")
-            return {1269772767516033025}
+            return set()
 
     @classmethod
     def _normalize_module_id(cls, module_id: object) -> str:
@@ -1604,8 +1594,16 @@ class ModBot(commands.Bot):
             logger.error(f"[ERR] Failed to initialize database pool: {e}")
             raise
 
-        # Start cache cleanup task
-        self._cache_cleanup_task = self.loop.create_task(self._cache_cleanup_loop())
+        # Upgrade caches to Redis if REDIS_URL is configured
+        try:
+            cache_cfg = await create_cache_backend()
+            self._cache_backend = cache_cfg["backend"]
+            self.snipe_cache = cache_cfg["snipe_cache"]
+            self.edit_snipe_cache = cache_cfg["edit_snipe_cache"]
+            self.prefix_cache = cache_cfg["prefix_cache"]
+            logger.info(f"[CACHE] Backend: {self._cache_backend}")
+        except Exception as exc:
+            logger.warning(f"[CACHE] Failed to initialise Redis, using in-memory fallback: {exc}")
 
         # Ensure cogs directory exists
         cogs_path = Path("./cogs")

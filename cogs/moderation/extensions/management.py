@@ -451,7 +451,7 @@ class ManagementCommands:
             try:
                 await member.kick(reason=f"Mass kick by {moderator}: {reason}")
                 count += 1
-            except:
+            except (discord.Forbidden, discord.HTTPException):
                 failed += 1
         
         await self._respond(source, embed=ModEmbed.success("Mass Kick Complete", f"Kicked {count} members.\nFailed: {failed}"), ephemeral=False)
@@ -471,7 +471,7 @@ class ManagementCommands:
             try:
                 await member.ban(reason=f"Mass ban by {moderator}: {reason}")
                 count += 1
-            except:
+            except (discord.Forbidden, discord.HTTPException):
                 failed += 1
         
         await self._respond(source, embed=ModEmbed.success("Mass Ban Complete", f"Banned {count} members.\nFailed: {failed}"), ephemeral=False)
@@ -883,8 +883,8 @@ class ManagementCommands:
             if role and role in user.roles:
                 try:
                     await user.remove_roles(role, reason=f"[UNQUARANTINE] {author}: {reason}")
-                except:
-                    pass
+                except (discord.Forbidden, discord.HTTPException) as e:
+                    logger.warning(f"Failed to remove quarantine role: {e}")
 
         # DB update
         await self.bot.db.remove_quarantine(source.guild.id, user.id)

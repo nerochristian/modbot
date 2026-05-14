@@ -249,7 +249,7 @@ class ModEmbed:
     @staticmethod
     def case(case_number: int, action: str, user, moderator, reason: str) -> discord.Embed:
         """Case embed for mod logs"""
-        embed = discord. Embed(
+        embed = discord.Embed(
             title=f"Case #{case_number} | {action}",
             color=Colors.MOD,
         )
@@ -278,20 +278,20 @@ class ModEmbed:
         embed = discord.Embed(
             title=title,
             description=description,
-            color=color or Colors. EMBED,
+            color=color or Colors.EMBED,
         )
         return embed
 
     @staticmethod
     def staff_warning(staff:  discord.Member, reason: str, warn_count: int, strike_count: int) -> discord.Embed:
         """Staff warning embed"""
-        embed = discord. Embed(
+        embed = discord.Embed(
             title="⚠️ Staff Warning Applied",
             color=Colors.GOLD,
         )
         embed.add_field(
             name="Staff Member:",
-            value=f"{staff. mention}\n{staff.name} ({staff.display_name})",
+            value=f"{staff.mention}\n{staff.name} ({staff.display_name})",
             inline=True
         )
         embed.add_field(
@@ -333,7 +333,7 @@ class ModEmbed:
         )
         embed.add_field(
             name="Staff Member:",
-            value=f"{staff. mention}\n{staff.name} ({staff.display_name})",
+            value=f"{staff.mention}\n{staff.name} ({staff.display_name})",
             inline=True
         )
         embed.add_field(
@@ -357,7 +357,7 @@ class ModEmbed:
         embed.set_thumbnail(url=staff.display_avatar.url)
         
         if is_ban:
-            embed. add_field(
+            embed.add_field(
                 name="",
                 value="🚨 **3 STRIKES REACHED - Staff member will be removed for 7 days.**",
                 inline=False
@@ -370,7 +370,7 @@ class ModEmbed:
         """Staff status embed"""
         embed = discord.Embed(
             title="📊 Staff Status",
-            color=Colors. MOD,
+            color=Colors.MOD,
         )
         
         embed.add_field(
@@ -411,9 +411,9 @@ class ModEmbed:
         if recent_sanctions:
             recent = []
             for s in recent_sanctions[: 5]: 
-                icon = "⚠️" if s. get('sanction_type') == 'warn' else "⛔"
+                icon = "⚠️" if s.get('sanction_type') == 'warn' else "⛔"
                 reason = s.get('reason', 'No reason')[: 40]
-                recent.append(f"{icon} {reason}{'.. .' if len(s.get('reason', '')) > 40 else ''}")
+                recent.append(f"{icon} {reason}{'...' if len(s.get('reason', '')) > 40 else ''}")
             
             embed.add_field(
                 name="Recent Sanctions:",
