@@ -134,6 +134,7 @@ class AIConfig:
 class GuildSettings:
     """Per-guild AI moderation settings."""
     enabled: bool = True
+    chat_enabled: bool = True
     model: Optional[str] = None
     context_messages: int = 15
     confirm_enabled: bool = True
@@ -177,6 +178,7 @@ class GuildSettings:
     def from_dict(cls, data: Dict[str, Any]) -> "GuildSettings":
         return cls(
             enabled=cls._coerce_bool(data.get("aimod_enabled", True), True),
+            chat_enabled=cls._coerce_bool(data.get("aimod_chat_enabled", True), True),
             model=data.get("aimod_model"),
             context_messages=int(data.get("aimod_context_messages", 15)),
             confirm_enabled=cls._coerce_bool(data.get("aimod_confirm_enabled", True), True),
@@ -188,6 +190,7 @@ class GuildSettings:
     def to_dict(self) -> Dict[str, Any]:
         return {
             "aimod_enabled": self.enabled,
+            "aimod_chat_enabled": self.chat_enabled,
             "aimod_model": self.model,
             "aimod_context_messages": self.context_messages,
             "aimod_confirm_enabled": self.confirm_enabled,
@@ -2462,21 +2465,26 @@ class AIModeration(commands.Cog):
         if not is_mentioned:
             if not settings.enabled:
                 return
+            if not settings.chat_enabled:
+                return
             if settings.proactive_chance <= 0 or random.random() > settings.proactive_chance:
                 return
 
         content = self.clean_content(message)
         if not content:
-            if is_mentioned:
+            if is_mentioned and settings.chat_enabled:
                 await self.reply(message, embed=self.build_help_embed(message.guild))
             return
 
         if is_mentioned:
             if quick_reply := self._quick_conversation_reply(content):
-                await self.reply(message, content=quick_reply)
+                if settings.chat_enabled:
+                    await self.reply(message, content=quick_reply)
                 return
 
             if not settings.enabled:
+                if not settings.chat_enabled:
+                    return
                 recent = await self.fetch_recent_messages(message.channel, limit=settings.context_messages)
                 async with message.channel.typing():
                     response = await self.ai.converse(
@@ -2557,6 +2565,8 @@ class AIModeration(commands.Cog):
                 await self.reply_tool_result(message, result)
 
         elif decision.type == DecisionType.CHAT:
+            if not settings.chat_enabled:
+                return
             async with message.channel.typing():
                 response = await self.ai.converse(
                     user_content=content,
@@ -2596,6 +2606,7 @@ class AIModeration(commands.Cog):
             "- `/aimod status` - View current settings\n"
             "- `/aimod setup` - Apply simple defaults\n"
             "- `/aimod toggle` - Enable or disable AI moderation\n"
+            "- `/aimod talking` - Enable or disable casual AI replies\n"
             "- `/aimod confirm` - Toggle confirmations"
         )
         embed = discord.Embed(title="AI Moderation Help", description=desc, color=discord.Color.blurple())
@@ -2626,6 +2637,7 @@ class AIModeration(commands.Cog):
     @aimod_group.command(name="setup")
     @app_commands.describe(
         enabled="Enable AI moderation mention handling.",
+        talking="Enable casual AI replies when no moderation action is needed.",
         confirmations="Require confirmation for high-impact actions.",
         context_messages="Recent messages AI can use as context.",
         proactive_percent="Chance to reply without being mentioned. Recommended: 0.",
@@ -2634,6 +2646,7 @@ class AIModeration(commands.Cog):
         self,
         interaction: discord.Interaction,
         enabled: bool = True,
+        talking: bool = True,
         confirmations: bool = True,
         context_messages: app_commands.Range[int, 1, 50] = 15,
         proactive_percent: app_commands.Range[int, 0, 100] = 0,
@@ -2644,12 +2657,14 @@ class AIModeration(commands.Cog):
 
         guild_id = interaction.guild.id
         await self.update_guild_setting(guild_id, "aimod_enabled", enabled)
+        await self.update_guild_setting(guild_id, "aimod_chat_enabled", talking)
         await self.update_guild_setting(guild_id, "aimod_confirm_enabled", confirmations)
         await self.update_guild_setting(guild_id, "aimod_context_messages", int(context_messages))
         await self.update_guild_setting(guild_id, "aimod_proactive_chance", float(proactive_percent) / 100)
 
         embed = discord.Embed(title="AI Moderation Setup", color=discord.Color.blurple())
         embed.add_field(name="Enabled", value="Yes" if enabled else "No", inline=True)
+        embed.add_field(name="Talking", value="On" if talking else "Off", inline=True)
         embed.add_field(name="Confirmations", value="On" if confirmations else "Off", inline=True)
         embed.add_field(name="Context", value=f"{int(context_messages)} messages", inline=True)
         embed.add_field(name="Proactive Replies", value=f"{int(proactive_percent)}%", inline=True)
@@ -2670,6 +2685,7 @@ class AIModeration(commands.Cog):
         color = discord.Color.blurple() if settings.enabled else discord.Color.greyple()
         embed = discord.Embed(title="🤖 AI Moderation Status", color=color)
         embed.add_field(name="Enabled", value="✅ Yes" if settings.enabled else "❌ No", inline=True)
+        embed.add_field(name="Talking", value="On" if settings.chat_enabled else "Off", inline=True)
         embed.add_field(name="Model", value=f"`{settings.model or self.config.model}`", inline=True)
         embed.add_field(name="Context Messages", value=str(settings.context_messages), inline=True)
         embed.add_field(name="Confirmations", value="✅ On" if settings.confirm_enabled else "❌ Off", inline=True)
@@ -2690,6 +2706,24 @@ class AIModeration(commands.Cog):
         await self.update_guild_setting(interaction.guild.id, "aimod_enabled", new_value)
         status = "✅ enabled" if new_value else "❌ disabled"
         await interaction.response.send_message(f"AI Moderation is now **{status}**.", ephemeral=True)
+
+    @aimod_group.command(name="talking")
+    @app_commands.describe(enabled="Turn casual AI replies on or off. Leave empty to toggle.")
+    async def aimod_talking(self, interaction: discord.Interaction, enabled: Optional[bool] = None) -> None:
+        """Toggle casual AI conversation replies on or off."""
+        if not await self._require_manage(interaction):
+            return
+
+        settings = await self.get_guild_settings(interaction.guild.id)
+        new_value = (not settings.chat_enabled) if enabled is None else bool(enabled)
+        await self.update_guild_setting(interaction.guild.id, "aimod_chat_enabled", new_value)
+        status = "enabled" if new_value else "disabled"
+        detail = (
+            "I will answer normal mentions and chat prompts."
+            if new_value else
+            "I will stay quiet for casual chat and only handle moderation flows."
+        )
+        await interaction.response.send_message(f"AI talking is now **{status}**. {detail}", ephemeral=True)
 
     @aimod_group.command(name="confirm")
     @app_commands.describe(enabled="Enable confirmation dialogs for high-impact actions.")
