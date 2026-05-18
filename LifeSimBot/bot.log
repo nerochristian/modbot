@@ -22218,3 +22218,48 @@ aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host gatewa
 2026-03-02 19:52:22,112 | INFO | LifeSimBot | Bot shutting down...
 2026-03-02 19:52:22,116 | INFO | LifeSimBot | Bot shutdown complete
 2026-03-02 19:52:22,117 | INFO | LifeSimBot | Bot stopped by user
+2026-05-14 12:00:04,499 | INFO | LifeSimBot | [1mLifeSimBot[0m starting up
+2026-05-14 12:00:04,500 | INFO | LifeSimBot | [2mPython[0m 3.14.0 | [2mdiscord.py[0m 2.7.0a | [2mOS[0m Windows 11
+2026-05-14 12:00:04,500 | INFO | LifeSimBot | [2mDB[0m C:\Users\Dell\mod\LifeSimBot\modbot.db | [2mLog[0m C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-05-14 12:00:04,500 | INFO | LifeSimBot | [2mDebug[0m False | [2mFeatures[0m 16 enabled
+2026-05-14 12:00:04,501 | INFO | LifeSimBot | Connecting LifeSimBot to Discord...
+2026-05-14 12:00:04,507 | INFO | ModBot.Dashboard | Dashboard running on http://0.0.0.0:10547
+2026-05-14 12:00:04,507 | INFO | ModBot | [OK] Dashboard started (pre-connect)
+2026-05-14 12:00:04,507 | INFO | ModBot | [NET] Connecting ModBot to Discord...
+2026-05-14 12:00:06,708 | INFO | LifeSimBot | Initializing...
+2026-05-14 12:00:06,708 | INFO | bot.database | Initializing Database Schema...
+2026-05-14 12:00:06,804 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-05-14 12:00:06,807 | INFO | LifeSimBot | [OK] Database initialized
+2026-05-14 12:00:06,811 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-05-14 12:00:06,812 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-05-14 12:00:06,814 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-05-14 12:00:06,817 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-05-14 12:00:06,817 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-05-14 12:00:06,853 | INFO | LifeSimBot.Core | Core cog initialized
+2026-05-14 12:00:06,854 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-05-14 12:00:06,880 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-05-14 12:00:06,880 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-05-14 12:00:06,899 | INFO | LifeSimBot.Help | Help cog initialized
+2026-05-14 12:00:06,900 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-05-14 12:00:06,924 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-05-14 12:00:06,941 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-05-14 12:00:06,951 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-05-14 12:00:06,958 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-05-14 12:00:06,990 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-05-14 12:00:07,006 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-05-14 12:00:07,026 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-05-14 12:00:07,054 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-05-14 12:00:07,082 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-05-14 12:00:07,106 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-05-14 12:00:07,136 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-05-14 12:00:07,171 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-05-14 12:00:07,171 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-05-14 12:00:07,190 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-05-14 12:00:07,195 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-05-14 12:00:07,217 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-05-14 12:00:07,226 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-05-14 12:00:07,236 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-05-14 12:00:07,243 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-05-14 12:00:07,251 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-05-14 12:00:07,258 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-05-14 12:00:07,258 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
