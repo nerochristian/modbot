@@ -28,7 +28,7 @@ from config import Config
 
 def _normalize_command_name(value: str) -> str:
     value = (value or "").strip()
-    if value.startswith("/"):
+    if value.startswith(("/", ",")):
         value = value[1:]
     return " ".join(value.lower().split())
 
@@ -134,7 +134,7 @@ class _HelpIndex:
 
                 category = _category_for_command(cmd)
                 categories.setdefault(category, []).append(cmd)
-                by_name[_normalize_command_name(cmd.qualified_name)] = cmd
+                by_name.setdefault(_normalize_command_name(cmd.qualified_name), cmd)
 
         if include_prefix:
             seen_prefix: set[str] = set()
@@ -149,13 +149,13 @@ class _HelpIndex:
 
                 category = _category_for_command(cmd)
                 categories.setdefault(category, []).append(cmd)
-                by_name[qname] = cmd
+                by_name.setdefault(qname, cmd)
 
                 for alias in cmd.aliases:
-                    by_name[_normalize_command_name(alias)] = cmd
+                    by_name.setdefault(_normalize_command_name(alias), cmd)
                     if cmd.parent:
                         parent_name = _normalize_command_name(cmd.parent.qualified_name)
-                        by_name[_normalize_command_name(f"{parent_name} {alias}")] = cmd
+                        by_name.setdefault(_normalize_command_name(f"{parent_name} {alias}"), cmd)
 
         for cat in categories:
             categories[cat].sort(key=lambda c: c.qualified_name)
@@ -329,86 +329,66 @@ class HelpView(discord.ui.View):
 
     def _build_category_options(self) -> list[discord.SelectOption]:
         opts: list[discord.SelectOption] = [
-            discord.SelectOption(label="Overview", value="Overview", emoji="🏠", description="Bot overview & quick start"),
-            discord.SelectOption(label="All Commands", value="__all__", emoji="📋", description="Complete command list"),
-            discord.SelectOption(label="Search Tips", value="__search__", emoji="🔍", description="How to find commands"),
+            discord.SelectOption(label="Overview", value="Overview", description="Bot overview and quick start"),
+            discord.SelectOption(label="All Commands", value="__all__", description="Complete command list"),
+            discord.SelectOption(label="Search Tips", value="__search__", description="How to find commands"),
         ]
         for category in sorted(self.index.categories.keys()):
             count = len(self.index.categories[category])
-            emoji = get_category_icon(category)
             opts.append(discord.SelectOption(
-                label=f"{category} ({count})", 
-                value=category, 
-                emoji=emoji,
-                description=f"{count} commands in this category"
+                label=f"{category} ({count})",
+                value=category,
+                description=f"{count} commands in this category",
             ))
         return opts[:25]
 
     def _help_label(self) -> str:
-        return ",help" if self.mode == "prefix" else "/help"
+        return "/help or ,help"
 
     def _details_hint(self) -> str:
-        if self.mode == "prefix":
-            return "Use ,help <name> (example: ,help ticket close)"
-        return "Use /help command:<name> (example: /help command:ticket close)"
+        return "Use /help command:<name> or ,help <name>"
 
     def _build_overview_embed(self) -> discord.Embed:
         total = sum(len(v) for v in self.index.categories.values())
-        help_label = self._help_label()
-
-        if self.mode == "prefix":
-            quick_access = (
-                f"? `{help_label} <name>` ? Detailed command info\n"
-                "? `,ticket create` ? Open a ticket from prefix commands\n"
-            )
-        else:
-            quick_access = (
-                "? `/modpanel` ? Moderation quick actions\n"
-                "? `/adminpanel` ? Server configuration\n"
-                "? `/ticket create` ? Open a ticket\n"
-                f"? `{help_label} command:<name>` ? Detailed command info\n"
-            )
+        quick_access = (
+            "`/mod guide` - Moderation shortcuts\n"
+            "`/automod help` - AutoMod setup and tuning\n"
+            "`/aimod status` - AI moderation settings\n"
+            "`/ticket create` or `,ticket create` - Open a ticket\n"
+            "`/help command:<name>` or `,help <name>` - Detailed command info\n"
+        )
 
         embed = discord.Embed(
-            title="?? Command Help",
+            title="Command Help",
             description=(
-                f"Welcome! This bot has **{total}** commands across **{len(self.index.categories)}** categories.\n\n"
+                f"Browse **{total}** commands across **{len(self.index.categories)}** categories.\n"
+                "Slash and prefix commands are shown together so `/help` and `,help` match.\n\n"
                 "**Quick Access:**\n"
                 f"{quick_access}"
             ),
             color=Config.COLOR_EMBED,
-            timestamp=datetime.now(timezone.utc)
+            timestamp=datetime.now(timezone.utc),
         )
 
-        # Category summary
         cat_lines = []
         for category in sorted(self.index.categories.keys()):
             emoji = get_category_icon(category)
             count = len(self.index.categories[category])
-            cat_lines.append(f"{emoji} **{category}** ? {count} commands")
-        
-        embed.add_field(
-            name="?? Categories", 
-            value="\n".join(cat_lines[:10]) if cat_lines else "No categories found.",
-            inline=False
-        )
-        if self.mode == "prefix":
-            tips = (
-                "? Use the dropdown menu to browse categories\n"
-                f"? Use `{help_label} ban` for detailed info\n"
-                "? Prefix commands start with a comma"
-            )
-        else:
-            tips = (
-                "? Use the dropdown menu to browse categories\n"
-                f"? Use `{help_label} command:ban` for detailed info\n"
-                "? Group commands use subcommands (example: /ticket close)"
-            )
+            cat_lines.append(f"{emoji} **{category}** - {count} commands")
 
         embed.add_field(
-            name="?? Tips",
-            value=tips,
-            inline=False
+            name="Categories",
+            value="\n".join(cat_lines[:10]) if cat_lines else "No categories found.",
+            inline=False,
+        )
+        embed.add_field(
+            name="Tips",
+            value=(
+                "Use the dropdown menu to browse categories.\n"
+                "Use `/help command:ban` or `,help ban` for details.\n"
+                "Group commands use subcommands, for example `/automod setup`."
+            ),
+            inline=False,
         )
 
         embed.set_footer(text="Use the dropdown menu below to navigate")
@@ -425,7 +405,7 @@ class HelpView(discord.ui.View):
             desc = (getattr(cmd, "description", None) or "No description").strip()
             if len(desc) > 50:
                 desc = desc[:47] + "..."
-            lines.append(f"`{_format_invocation(cmd)}` ? {desc}")
+            lines.append(f"`{_format_invocation(cmd)}` - {desc}")
 
         pages: list[discord.Embed] = []
         chunks = list(_chunked(lines, size=10)) or [[]]
@@ -435,55 +415,41 @@ class HelpView(discord.ui.View):
                 description="\n".join(chunk) if chunk else "No commands found.",
                 color=Config.COLOR_EMBED,
             )
-            embed.set_footer(text=f"Page {idx}/{len(chunks)} ? {self._details_hint()}")
+            embed.set_footer(text=f"Page {idx}/{len(chunks)} | {self._details_hint()}")
             pages.append(embed)
         return pages
 
     def _build_search_embed(self) -> discord.Embed:
-        help_label = self._help_label()
         embed = discord.Embed(
-            title="?? Finding Commands",
-            description="Here's how to find what you need:",
+            title="Finding Commands",
+            description="Use either help command. Both show the same command index.",
             color=Config.COLOR_INFO,
         )
-        if self.mode == "prefix":
-            by_name = f"`{help_label} ban` ? Get detailed info about a specific command"
-        else:
-            by_name = f"`{help_label} command:ban` ? Get detailed info about a specific command"
-
         embed.add_field(
             name="By Name",
-            value=by_name,
-            inline=False
+            value="`/help command:ban` or `,help ban` - Get detailed info about a command",
+            inline=False,
         )
         embed.add_field(
             name="By Category",
-            value="Use the dropdown menu above to browse by category (Moderation, Admin, etc.)",
-            inline=False
+            value="Use the dropdown menu above to browse by category.",
+            inline=False,
         )
         embed.add_field(
             name="All Commands",
-            value="Select 'All Commands' from the dropdown for a complete list",
-            inline=False
+            value="Select 'All Commands' from the dropdown for a complete list.",
+            inline=False,
         )
-        if self.mode != "prefix":
-            embed.add_field(
-                name="Command Patterns",
-                value=(
-                    "Common patterns you can use:\n"
-                    "? `/vc action:mute` ? Mute in voice\n"
-                    "? `/roles action:add` ? Add a role\n"
-                    "? `/ticket close` ? Close a ticket\n"
-                    "? `/help command:ticket close` ? Command details"
-                ),
-                inline=False
-            )
-        else:
-            embed.add_field(
-                name="Prefix Reminder",
-                value="Use a comma before commands (example: `,ban`, `,kick`, `,mute`).",
-                inline=False
-            )
+        embed.add_field(
+            name="Command Patterns",
+            value=(
+                "`/automod setup` - Configure AutoMod quickly\n"
+                "`/mod ban` or `,ban` - Moderate a user\n"
+                "`/ticket close` or `,ticket close` - Close a ticket\n"
+                "`/help command:ticket close` or `,help ticket close` - Command details"
+            ),
+            inline=False,
+        )
         return embed
 
     async def _on_category_selected(self, interaction: discord.Interaction) -> None:
@@ -495,7 +461,7 @@ class HelpView(discord.ui.View):
             self.pages = [self._build_overview_embed()]
         elif value == "__all__":
             self.category = "All Commands"
-            all_cmds: list[app_commands.Command | app_commands.Group] = []
+            all_cmds: list[app_commands.Command | app_commands.Group | commands.Command] = []
             for cat in sorted(self.index.categories.keys()):
                 all_cmds.extend(self.index.categories[cat])
             all_cmds.sort(key=lambda c: c.qualified_name)
@@ -1255,65 +1221,69 @@ class Help(commands.Cog):
         if examples:
             embed.add_field(name="Examples", value="\n".join(examples), inline=False)
 
-        embed.set_footer(text="Use /help to browse slash commands or ,help to browse prefix commands")
+        embed.set_footer(text="/help and ,help use the same command index")
         return embed
+
+    def _build_unified_index(self) -> _HelpIndex:
+        return _HelpIndex.build(self.bot, include_slash=True, include_prefix=True)
+
+    def _find_command(self, index: _HelpIndex, command: str):
+        key = _normalize_command_name(command)
+        cmd = index.by_name.get(key)
+        if cmd:
+            return cmd
+        matches = [name for name in index.by_name.keys() if key and key in name]
+        if matches:
+            return index.by_name[matches[0]]
+        return None
+
+    def _not_found_text(self, index: _HelpIndex, command: str, help_label: str) -> str:
+        key = _normalize_command_name(command)
+        matches = [name for name in index.by_name.keys() if key and key in name]
+        if matches:
+            suggestions = ", ".join([f"`{m}`" for m in matches[:5]])
+            return f"Command `{command}` not found. Did you mean: {suggestions}?"
+        return f"Command `{command}` not found. Try `{help_label}` to browse categories."
 
     @commands.command(name="help", help="Browse commands and get detailed help")
     async def help_prefix(self, ctx: commands.Context, *, command: Optional[str] = None):
-        """Text-based help command"""
-        index = _HelpIndex.build(self.bot, include_slash=False, include_prefix=True)
+        """Browse the same help index used by /help."""
+        index = self._build_unified_index()
 
         if command:
-            key = _normalize_command_name(command)
-            cmd = index.by_name.get(key)
+            cmd = self._find_command(index, command)
             if not cmd:
-                # Try partial match
-                matches = [n for n in index.by_name.keys() if key in n]
-                if matches:
-                    suggestions = ", ".join([f"`{m}`" for m in matches[:5]])
-                    await ctx.send(f"Command `{command}` not found. Did you mean: {suggestions}?", delete_after=15)
-                else:
-                    await ctx.send(f"Command `{command}` not found. Try `,help` to browse categories.", delete_after=15)
+                await ctx.send(self._not_found_text(index, command, ",help"), delete_after=15)
                 return
             await ctx.send(embed=self._build_details_embed(cmd))
             return
 
-        view = HelpView(bot=self.bot, author_id=ctx.author.id, index=index, mode="prefix")
+        view = HelpView(bot=self.bot, author_id=ctx.author.id, index=index, mode="unified")
         view.message = await ctx.send(embed=view.pages[0], view=view)
 
     @app_commands.command(name="help", description="📚 Browse commands and get detailed help")
     @app_commands.describe(command="Specific command to view (example: ban, warn, vc)")
     async def help_slash(self, interaction: discord.Interaction, command: Optional[str] = None) -> None:
-        index = _HelpIndex.build(self.bot, include_slash=True, include_prefix=False)
+        index = self._build_unified_index()
 
         if command:
-            key = _normalize_command_name(command)
-            cmd = index.by_name.get(key)
+            cmd = self._find_command(index, command)
             if not cmd:
-                # Try partial match
-                matches = [n for n in index.by_name.keys() if key in n]
-                if matches:
-                    suggestions = ", ".join([f"`/{m}`" for m in matches[:5]])
-                    await interaction.response.send_message(
-                        f"Command `{command}` not found. Did you mean: {suggestions}?",
-                        ephemeral=True,
-                    )
-                else:
-                    await interaction.response.send_message(
-                        f"Command `{command}` not found. Try `/help` to browse categories.",
-                        ephemeral=True,
-                    )
+                await interaction.response.send_message(
+                    self._not_found_text(index, command, "/help"),
+                    ephemeral=True,
+                )
                 return
             await interaction.response.send_message(embed=self._build_details_embed(cmd), ephemeral=True)
             return
 
-        view = HelpView(bot=self.bot, author_id=interaction.user.id, index=index, mode="slash")
+        view = HelpView(bot=self.bot, author_id=interaction.user.id, index=index, mode="unified")
         await interaction.response.send_message(embed=view.pages[0], view=view, ephemeral=True)
         view.message = await interaction.original_response()
 
     @help_slash.autocomplete("command")
     async def help_autocomplete(self, interaction: discord.Interaction, current: str):
-        index = _HelpIndex.build(self.bot, include_slash=True, include_prefix=False)
+        index = self._build_unified_index()
         q = _normalize_command_name(current)
 
         results: list[app_commands.Choice[str]] = []
