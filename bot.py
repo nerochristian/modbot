@@ -22,7 +22,7 @@ from difflib import SequenceMatcher
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, Iterable, get_args, get_origin
 from pathlib import Path
-from dotenv import dotenv_values, load_dotenv
+from dotenv import load_dotenv
 
 from config import Config
 from utils.embeds import ModEmbed
@@ -60,14 +60,7 @@ def _get_lifesim_token() -> Optional[str]:
 
 def _get_groupbot_token() -> Optional[str]:
     """Resolve the extracted group bot token without reusing ModBot's token."""
-    token = os.getenv("GROUPBOT_DISCORD_TOKEN") or os.getenv("GC_DISCORD_TOKEN")
-    if token:
-        return token
-
-    gc_env_path = Path(__file__).resolve().parent / "gc" / ".env"
-    if gc_env_path.exists():
-        return dotenv_values(gc_env_path).get("DISCORD_TOKEN")
-    return None
+    return os.getenv("GROUPBOT_DISCORD_TOKEN") or os.getenv("GC_DISCORD_TOKEN")
 
 
 def validate_environment() -> None:
