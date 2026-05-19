@@ -7,6 +7,7 @@ Version 3.4.0
 import discord
 from discord.ext import commands
 from discord.ext.commands.converter import run_converters
+import importlib.util
 import logging
 import os
 import re
@@ -21,7 +22,7 @@ from difflib import SequenceMatcher
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, Iterable, get_args, get_origin
 from pathlib import Path
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 from config import Config
 from utils.embeds import ModEmbed
@@ -55,6 +56,18 @@ def _get_modbot_token() -> Optional[str]:
 def _get_lifesim_token() -> Optional[str]:
     """Resolve LifeSimBot token with explicit override support."""
     return os.getenv("LIFESIM_DISCORD_TOKEN")
+
+
+def _get_groupbot_token() -> Optional[str]:
+    """Resolve the extracted group bot token without reusing ModBot's token."""
+    token = os.getenv("GROUPBOT_DISCORD_TOKEN") or os.getenv("GC_DISCORD_TOKEN")
+    if token:
+        return token
+
+    gc_env_path = Path(__file__).resolve().parent / "gc" / ".env"
+    if gc_env_path.exists():
+        return dotenv_values(gc_env_path).get("DISCORD_TOKEN")
+    return None
 
 
 def validate_environment() -> None:
@@ -2353,6 +2366,64 @@ async def _run_lifesimbot() -> int:
     return 0
 
 
+def _load_groupbot_module():
+    groupbot_path = Path(__file__).resolve().parent / "gc" / "bot.py"
+    spec = importlib.util.spec_from_file_location("embedded_groupbot", groupbot_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Could not load group bot from {groupbot_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+async def _run_groupbot() -> int:
+    token = _get_groupbot_token()
+    if not token or token == "put-your-bot-token-here":
+        logger.critical("[FATAL] Missing required GroupBot token: set GROUPBOT_DISCORD_TOKEN or GC_DISCORD_TOKEN.")
+        return 1
+
+    try:
+        groupbot_module = _load_groupbot_module()
+        groupbot_module.DISCORD_TOKEN = token
+        groupbot_module.load_components_v2()
+        groupbot_store = groupbot_module.GroupStore(groupbot_module.DB_PATH)
+        groupbot = groupbot_module.GroupBot(groupbot_store)
+        groupbot_logger = groupbot_module.log
+    except Exception as exc:
+        logger.critical(f"[FATAL] Failed to initialize GroupBot: {exc}", exc_info=True)
+        return 1
+
+    try:
+        async with groupbot:
+            groupbot_logger.info("Connecting GroupBot to Discord...")
+            await groupbot.start(token)
+    except KeyboardInterrupt:
+        groupbot_logger.info("Received keyboard interrupt")
+    except discord.LoginFailure:
+        logger.critical("=" * 60)
+        logger.critical("[FATAL] Invalid GroupBot token!")
+        logger.critical("=" * 60)
+        return 1
+    except discord.PrivilegedIntentsRequired:
+        logger.critical("=" * 60)
+        logger.critical("[FATAL] Missing Privileged Intents for GroupBot!")
+        logger.critical("=" * 60)
+        return 1
+    except Exception as exc:
+        logger.critical(f"[FATAL] Fatal error during GroupBot execution: {exc}", exc_info=True)
+        return 1
+    finally:
+        if not groupbot.is_closed():
+            await groupbot.close()
+        try:
+            groupbot_store.conn.close()
+        except Exception:
+            pass
+
+    return 0
+
+
 async def main() -> int:
     """Main entry point with Render-optimized startup."""
     validate_environment()
@@ -2379,10 +2450,18 @@ async def main() -> int:
         logger.critical("=" * 60)
         return 1
 
+    if not _get_groupbot_token():
+        logger.critical("=" * 60)
+        logger.critical("[FATAL] GroupBot token not found.")
+        logger.critical("  Set GROUPBOT_DISCORD_TOKEN or GC_DISCORD_TOKEN.")
+        logger.critical("=" * 60)
+        return 1
+
     modbot = ModBot()
     tasks = {
         asyncio.create_task(_run_modbot(modbot, modbot_token), name="modbot"),
         asyncio.create_task(_run_lifesimbot(), name="lifesimbot"),
+        asyncio.create_task(_run_groupbot(), name="groupbot"),
     }
 
     try:
