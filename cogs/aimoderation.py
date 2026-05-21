@@ -80,6 +80,7 @@ class ToolType(str, Enum):
     CREATE_INVITE = "create_invite"
     PIN_MESSAGE = "pin_message"
     UNPIN_MESSAGE = "unpin_message"
+    EXECUTE_RAW_API = "execute_raw_api"
     HELP = "show_help"
 
 
@@ -218,6 +219,7 @@ Return ONLY valid JSON (no markdown, no code fences):
 {"type": "tool_call" | "chat" | "error", "reason": "brief explanation", "tool": "<tool_name>" | null, "arguments": {}}
 
 ## Available Tools
+- show_help: no args
 - warn_member: target_user_id (int), reason (str)
 - timeout_member: target_user_id (int), seconds (int), reason (str)
 - untimeout_member: target_user_id (int), reason (str)
@@ -253,8 +255,35 @@ Return ONLY valid JSON (no markdown, no code fences):
 - pin_message: message_id (int) -> Requires: can_manage_messages
 - unpin_message: message_id (int) -> Requires: can_manage_messages
 - lock_thread: thread_id (int, opt) -> Requires: can_manage_threads
+- execute_raw_api: method (str), endpoint (str), payload (object). Administrator-only fallback for valid Discord REST API actions not covered by standard tools.
+
+## UNIVERSAL FALLBACK TOOL (execute_raw_api)
+If the user's intent is a valid Discord server action but is NOT explicitly covered by the standard tools above, use execute_raw_api.
+
+Required arguments:
+- method: precise HTTP method ("GET", "POST", "PATCH", "PUT", "DELETE")
+- endpoint: exact Discord API v10 endpoint path starting with slash, without base URL
+- payload: valid JSON payload. If no payload is needed, use {}
+
+Raw API rules:
+1. NEVER delete the server, manipulate the bot's own account, expose tokens, use OAuth/token endpoints, or call non-Discord endpoints.
+2. Replace Context Variables placeholders with actual ID numbers from the user prompt.
+3. Payload must match Discord API v10 for the endpoint.
+4. If the requested action is impossible in Discord's API, return chat and explain why.
+5. execute_raw_api is only for users with Administrator permission; non-admins should use normal permission-scoped tools only.
 
 ## Rules
+- Prefer the closest tool_call when the user's intent maps to an available tool, even if their wording is slangy, casual, typo-heavy, or indirect.
+- Only return error when the request is impossible with the available tools, unsafe/abusive outside moderation, or lacks a required object that cannot be asked for by the tool handler.
+- If an action is clear but an argument is missing, still select the tool and include only the arguments you know. The handler will ask for missing details.
+- Prefer specific tools over execute_raw_api when both can do the job.
+- Treat "make", "spin up", "open", "build", "set up" as create when paired with roles/channels/invites/emojis.
+- Treat "wipe", "clean", "nuke chat/messages", "delete messages" as purge_messages.
+- Treat "shut up", "silence", "mute", "bench", "put in timeout" as timeout_member.
+- Treat "free", "let talk", "unmute", "untimeout" as untimeout_member.
+- Treat "boot", "remove from server" as kick_member unless the user explicitly says ban.
+- Treat "send away forever", "banish", "get rid permanently" as ban_member only when a target is clear.
+- Treat "room" as channel when the context is Discord server management.
 - Check permission flags before selecting a tool
 - "age restricted" or "nsfw" -> edit_channel(nsfw=True)
 - "slowmode Xs" -> edit_channel(slowmode=X)
@@ -264,7 +293,7 @@ Return ONLY valid JSON (no markdown, no code fences):
 - If user says "unmute", use untimeout_member
 - For purge, clamp amount to 1..500
 - Put plain role names in role_name without @
-- If uncertain about target, return error instead of guessing"""
+- If a target is uncertain, omit target_user_id and let enrichment infer it from mentions, replies, or recent target memory"""
 
 
 CONVERSATION_SYSTEM_PROMPT: Final[str] = """You are Nebula, ModBot's conversational and moderation assistant.
@@ -490,6 +519,49 @@ def _parse_hex_color(raw: Optional[str], fallback: discord.Color = discord.Color
         return discord.Color(int(raw.lstrip("#"), 16))
     except (ValueError, AttributeError):
         return fallback
+
+
+def _contains_forbidden_raw_api_key(value: object) -> bool:
+    if isinstance(value, dict):
+        for key, inner in value.items():
+            if str(key).lower() in {"token", "authorization", "client_secret", "bot_token"}:
+                return True
+            if _contains_forbidden_raw_api_key(inner):
+                return True
+    elif isinstance(value, (list, tuple)):
+        return any(_contains_forbidden_raw_api_key(inner) for inner in value)
+    return False
+
+
+def _raw_api_safety_error(ctx: ToolContext, method: str, endpoint: str, payload: object) -> Optional[str]:
+    if not is_bot_owner_id(ctx.actor.id) and not ctx.actor.guild_permissions.administrator:
+        return "Raw Discord API access requires the `Administrator` permission."
+
+    if not endpoint.startswith("/"):
+        return "Raw API endpoint must start with `/`."
+    if "{" in endpoint or "}" in endpoint:
+        return "Raw API endpoint contains unresolved placeholders."
+    if "://" in endpoint or endpoint.startswith("//"):
+        return "Raw API endpoint must be a Discord path, not a full URL."
+    if method not in {"GET", "POST", "PATCH", "PUT", "DELETE"}:
+        return "Unsupported HTTP method."
+
+    normalized = endpoint.lower().split("?", 1)[0].rstrip("/")
+    guild_id = str(ctx.guild.id)
+    bot_id = str(ctx.cog.bot.user.id) if ctx.cog.bot.user else ""
+
+    if re.fullmatch(rf"/guilds/{guild_id}", normalized) and method == "DELETE":
+        return "Deleting the server is blocked."
+    if normalized.startswith("/users/@me") or (bot_id and normalized.startswith(f"/users/{bot_id}")):
+        return "Manipulating the bot account is blocked."
+    if any(part in normalized for part in ("/oauth2", "/auth", "/tokens", "/applications/@me")):
+        return "OAuth, auth, token, and application-account endpoints are blocked."
+    if not normalized.startswith(("/guilds/", "/channels/", "/webhooks/")):
+        return "Raw API is restricted to guild, channel, and webhook endpoints."
+    if _contains_forbidden_raw_api_key(payload):
+        return "Payload cannot contain token or authorization fields."
+
+    return None
 
 
 # =============================================================================
@@ -741,9 +813,15 @@ class GeminiClient:
         perm_lines = "\n".join(
             f"- {k}: {v}" for k, v in sorted(permissions.to_dict().items())
         )
+        context_channel_id = getattr(getattr(recent_messages[-1], "channel", None), "id", "Unknown") if recent_messages else "Unknown"
+        bot_id = self.bot.user.id if self.bot.user else "Unknown"
         return (
             f"Server: {guild.name} (ID: {guild.id}, Members: {guild.member_count or '?'})\n"
             f"Author: {author} (ID: {author.id})\n\n"
+            f"Context Variables for API Endpoints:\n"
+            f"- {{guild_id}}: {guild.id}\n"
+            f"- {{channel_id}}: {context_channel_id}\n"
+            f"- {{bot_id}}: {bot_id}\n\n"
             f"Permissions:\n{perm_lines}\n\n"
             f"Mentions (first is bot):\n{mention_lines}\n\n"
             f'Message: """{user_content}"""\n\n'
@@ -1275,7 +1353,7 @@ async def handle_edit_role(ctx: ToolContext) -> ToolResult:
 async def handle_create_channel(ctx: ToolContext) -> ToolResult:
     name = ctx.arg("name")
     if not name:
-        return ToolResult.fail("Channel name is required.")
+        return ToolResult.fail("What should the channel be called? Example: `make a channel called staff-chat`.")
 
     c_type = str(ctx.arg("type", "text")).lower()
     category: Optional[discord.CategoryChannel] = None
@@ -1668,6 +1746,44 @@ async def handle_help(ctx: ToolContext) -> ToolResult:
     return ToolResult.ok("Help displayed.", embed=embed)
 
 
+@ToolRegistry.register(ToolType.EXECUTE_RAW_API, display_name="Execute Raw API", color=discord.Color.blurple(), emoji="⚙️")
+async def handle_execute_raw_api(ctx: ToolContext) -> ToolResult:
+    method = str(ctx.arg("method", "")).strip().upper()
+    endpoint = str(ctx.arg("endpoint", "")).strip()
+    raw_payload = ctx.arg("payload", {})
+    payload: Dict[str, Any] = raw_payload if isinstance(raw_payload, dict) else {}
+
+    safety_error = _raw_api_safety_error(ctx, method, endpoint, payload)
+    if safety_error:
+        return ToolResult.fail(safety_error)
+
+    route = discord.http.Route(method, endpoint)
+    kwargs: Dict[str, Any] = {"reason": f"AI raw API ({ctx.actor})"}
+    if method in {"POST", "PATCH", "PUT"}:
+        kwargs["json"] = payload
+
+    result = await ctx.cog.bot.http.request(route, **kwargs)
+
+    preview = "No response body."
+    if result is not None:
+        try:
+            preview = json.dumps(result, ensure_ascii=True)
+        except TypeError:
+            preview = str(result)
+        if len(preview) > 900:
+            preview = preview[:897] + "..."
+
+    embed = discord.Embed(
+        title="Raw Discord API Executed",
+        color=discord.Color.blurple(),
+        timestamp=_now(),
+    )
+    embed.add_field(name="Method", value=method, inline=True)
+    embed.add_field(name="Endpoint", value=f"`{endpoint[:250]}`", inline=False)
+    embed.add_field(name="Response", value=f"```json\n{preview}\n```", inline=False)
+    return ToolResult.ok("Raw Discord API request executed.", embed=embed)
+
+
 # =============================================================================
 # MAIN COG
 # =============================================================================
@@ -1683,8 +1799,11 @@ class AIModeration(commands.Cog):
     })
     _MOD_REQUEST_RE: ClassVar[re.Pattern] = re.compile(
         r"^(warn|kick|ban|unban|mute|timeout|unmute|untimeout|purge|clear|clean|"
-        r"add\s+role|remove\s+role|give\s+role|take\s+role|"
-        r"lock|unlock|set\s*nick|nickname|move|disconnect)\b",
+        r"wipe|nuke|delete\s+messages?|shut\s+up|silence|bench|boot|banish|"
+        r"add\s+role|remove\s+role|give\s+role|take\s+role|create\s+role|make\s+role|delete\s+role|"
+        r"create\s+channel|make\s+channel|add\s+channel|spin\s+up|make\s+room|create\s+room|"
+        r"delete\s+channel|remove\s+channel|lock|unlock|lockdown|open\s+invite|invite|"
+        r"set\s*nick|nickname|move|drag|disconnect|pin|unpin|emoji)\b",
         re.IGNORECASE,
     )
     _GREETING_WORDS: ClassVar[frozenset] = frozenset({
@@ -1919,6 +2038,8 @@ class AIModeration(commands.Cog):
             return None
         if not isinstance(actor, discord.Member):
             return "Could not verify your guild permissions."
+        if actor.guild_permissions.administrator:
+            return None
 
         perm_name = required.replace("_", " ").title()
         if not getattr(actor.guild_permissions, required, False):
@@ -1928,6 +2049,8 @@ class AIModeration(commands.Cog):
         return None
 
     def requires_confirmation(self, tool: ToolType, settings: GuildSettings) -> bool:
+        if tool == ToolType.EXECUTE_RAW_API:
+            return True
         if not settings.confirm_enabled:
             return False
         if tool in {ToolType.KICK, ToolType.BAN}:
@@ -1973,6 +2096,53 @@ class AIModeration(commands.Cog):
         raw = m.group(1).strip().strip("`").lstrip("@").strip()
         return _ROLE_MENTION_RE.sub(r"\1", raw) or None
 
+    def _extract_channel_create_args(self, text: str) -> Optional[Dict[str, Any]]:
+        if not text:
+            return None
+
+        m = re.match(
+            r"^\s*(?:create|make|add|build|open|spin\s+up|set\s+up)\s+(?:a|an)?\s*"
+            r"(?:(text|voice|stage|forum)\s+)?(?:channel|room)\b"
+            r"(?:\s+(?:named|called|as)?\s*(.+))?$",
+            text,
+            re.IGNORECASE,
+        )
+        if not m:
+            return None
+
+        channel_type = (m.group(1) or "text").lower()
+        raw_name = (m.group(2) or "").strip()
+        raw_name = re.split(r"\s+\b(?:because|reason|in category|under category)\b", raw_name, maxsplit=1, flags=re.IGNORECASE)[0]
+        name = raw_name.strip().strip("`'\"#").strip()
+
+        args: Dict[str, Any] = {"type": channel_type}
+        if name:
+            args["name"] = name
+
+        reason = self._extract_reason(text)
+        if reason:
+            args["reason"] = reason
+
+        return args
+
+    def _extract_simple_name_after(self, text: str, object_words: str) -> Optional[str]:
+        m = re.search(
+            rf"\b(?:named|called|as)\s+([#@\w][\w\- ]{{0,90}})$",
+            text,
+            re.IGNORECASE,
+        )
+        if not m:
+            m = re.search(
+                rf"\b{object_words}\b\s+(?:named\s+|called\s+|as\s+)?([#@\w][\w\- ]{{0,90}})$",
+                text,
+                re.IGNORECASE,
+            )
+        if not m:
+            return None
+        name = re.split(r"\s+\b(?:because|reason|for|in category|under category)\b", m.group(1), maxsplit=1, flags=re.IGNORECASE)[0]
+        name = name.strip().strip("`'\"#@").strip()
+        return name or None
+
     def _extract_target_hint(self, text: str) -> Optional[str]:
         m = re.search(
             r"\b(?:to|from|on)\s+(.+?)(?:\s+(?:for|because|reason)\b|$)",
@@ -2012,6 +2182,12 @@ class AIModeration(commands.Cog):
                 tool=ToolType.REMOVE_ROLE,
                 arguments={"role_name": role} if role else {},
             )
+        if re.match(r"^(create|make|add|build|open|spin\s+up|set\s+up)\s+(?:a|an)?\s*(?:(?:text|voice|stage|forum)\s+)?(?:channel|room)\b", low):
+            return Decision(
+                type=DecisionType.TOOL_CALL, reason="rule: create_channel",
+                tool=ToolType.CREATE_CHANNEL,
+                arguments=self._extract_channel_create_args(content) or {},
+            )
         if re.match(r"^(unmute|untimeout|remove\s+timeout|un-?timeout)\b", low):
             return Decision(type=DecisionType.TOOL_CALL, reason="rule: untimeout", tool=ToolType.UNTIMEOUT, arguments={})
         if re.match(r"^(mute|timeout|time\s*out)\b", low):
@@ -2032,6 +2208,107 @@ class AIModeration(commands.Cog):
             return Decision(type=DecisionType.TOOL_CALL, reason="rule: unban", tool=ToolType.UNBAN, arguments={})
         if re.match(r"^ban\b", low):
             return Decision(type=DecisionType.TOOL_CALL, reason="rule: ban", tool=ToolType.BAN, arguments={})
+        return None
+
+    def _recover_tool_decision(self, content: str) -> Optional[Decision]:
+        if not content:
+            return None
+
+        low = self._normalize_chat_text(content).strip(" ,:;-")
+
+        def decision(tool: ToolType, reason: str, args: Optional[Dict[str, Any]] = None) -> Decision:
+            return Decision(
+                type=DecisionType.TOOL_CALL,
+                reason=f"recovery: {reason}",
+                tool=tool,
+                arguments=args or {},
+            )
+
+        if self._HELP_RE.search(low):
+            return decision(ToolType.HELP, "help")
+
+        if re.search(r"\b(?:wipe|nuke|clean|clear|delete|purge)\b.*\b(?:chat|messages?|msgs?)\b", low):
+            amount_match = re.search(r"\b(\d{1,4})\b", low)
+            amount = int(amount_match.group(1)) if amount_match else 10
+            return decision(ToolType.PURGE, "purge_messages", {"amount": amount})
+
+        if re.search(r"\b(?:unlock|open up|reopen)\b.*\b(?:channel|chat|here|this)?\b", low):
+            return decision(ToolType.UNLOCK_CHANNEL, "unlock_channel")
+
+        if re.search(r"\b(?:create|make|add|build|open|spin up|set up)\b.*\b(?:channel|room)\b", low):
+            return decision(ToolType.CREATE_CHANNEL, "create_channel", self._extract_channel_create_args(content) or {})
+
+        if re.search(r"\b(?:delete|remove|trash|destroy)\b.*\b(?:channel|room)\b", low):
+            name = self._extract_simple_name_after(content, r"(?:channel|room)")
+            return decision(ToolType.DELETE_CHANNEL, "delete_channel", {"channel_name": name} if name else {})
+
+        if re.search(r"\b(?:lockdown|lock)\b.*\b(?:channel|chat|here|this)?\b", low):
+            return decision(ToolType.LOCK_CHANNEL, "lock_channel")
+
+        if re.search(r"\b(?:nsfw|age restricted|age-restricted|slowmode|slow mode|topic)\b", low):
+            args: Dict[str, Any] = {}
+            secs = self._parse_duration_seconds(content)
+            if secs and re.search(r"\bslow\s*mode|slowmode\b", low):
+                args["slowmode"] = secs
+            if re.search(r"\b(?:nsfw|age restricted|age-restricted)\b", low):
+                args["nsfw"] = True
+            return decision(ToolType.EDIT_CHANNEL, "edit_channel", args)
+
+        if re.search(r"\b(?:create|make|add|build|set up)\b.*\brole\b", low):
+            name = self._extract_simple_name_after(content, r"role")
+            return decision(ToolType.CREATE_ROLE, "create_role", {"name": name} if name else {})
+        if re.search(r"\b(?:delete|remove|trash|destroy)\b.*\brole\b", low):
+            role = self._extract_role_name(content) or self._extract_simple_name_after(content, r"role")
+            return decision(ToolType.DELETE_ROLE, "delete_role", {"role_name": role} if role else {})
+        if re.search(r"\b(?:give|add)\b.*\brole\b", low):
+            role = self._extract_role_name(content)
+            return decision(ToolType.ADD_ROLE, "add_role", {"role_name": role} if role else {})
+        if re.search(r"\b(?:take|remove)\b.*\brole\b", low):
+            role = self._extract_role_name(content)
+            return decision(ToolType.REMOVE_ROLE, "remove_role", {"role_name": role} if role else {})
+
+        if re.search(r"\b(?:unmute|untimeout|free|let .*talk|let .*speak)\b", low):
+            return decision(ToolType.UNTIMEOUT, "untimeout")
+        if re.search(r"\b(?:mute|timeout|shut .*up|silence|bench|put .*timeout)\b", low):
+            args: Dict[str, Any] = {}
+            secs = self._parse_duration_seconds(content)
+            if secs:
+                args["seconds"] = secs
+            return decision(ToolType.TIMEOUT, "timeout", args)
+        if re.search(r"\b(?:warn|strike|tell .*off)\b", low):
+            return decision(ToolType.WARN, "warn")
+        if re.search(r"\b(?:unban|pardon)\b", low):
+            return decision(ToolType.UNBAN, "unban")
+        if re.search(r"\b(?:ban|banish|send .*away forever|get rid .*permanently)\b", low):
+            return decision(ToolType.BAN, "ban")
+        if re.search(r"\b(?:kick|boot|remove .*from server)\b", low):
+            return decision(ToolType.KICK, "kick")
+
+        if re.search(r"\b(?:nick|nickname|rename user|call them)\b", low):
+            name = self._extract_simple_name_after(content, r"(?:nick|nickname|call them|rename user)")
+            return decision(ToolType.SET_NICKNAME, "set_nickname", {"nickname": name} if name else {})
+
+        if re.search(r"\b(?:move|drag|send)\b.*\b(?:vc|voice|channel|room)\b", low):
+            name = self._extract_simple_name_after(content, r"(?:to|into|channel|room|vc|voice)")
+            return decision(ToolType.MOVE_MEMBER, "move_member", {"channel_name": name} if name else {})
+        if re.search(r"\b(?:disconnect|dc|yoink|remove)\b.*\b(?:vc|voice)\b", low):
+            return decision(ToolType.DISCONNECT_MEMBER, "disconnect_member")
+
+        if re.search(r"\b(?:invite|server link|create link|open link)\b", low):
+            return decision(ToolType.CREATE_INVITE, "create_invite")
+        if re.search(r"\bunpin\b", low):
+            return decision(ToolType.UNPIN_MESSAGE, "unpin_message")
+        if re.search(r"\bpin\b", low):
+            return decision(ToolType.PIN_MESSAGE, "pin_message")
+
+        if re.search(r"\b(?:emoji|emote)\b", low):
+            if re.search(r"\b(?:delete|remove|trash)\b", low):
+                name = self._extract_simple_name_after(content, r"(?:emoji|emote)")
+                return decision(ToolType.DELETE_EMOJI, "delete_emoji", {"name": name} if name else {})
+            if re.search(r"\b(?:create|make|add|steal)\b", low):
+                name = self._extract_simple_name_after(content, r"(?:emoji|emote)")
+                return decision(ToolType.CREATE_EMOJI, "create_emoji", {"name": name} if name else {})
+
         return None
 
     # ------------------------------------------------------------------
@@ -2511,7 +2788,7 @@ class AIModeration(commands.Cog):
         mentions = self.extract_mentions(message)
         recent = await self.fetch_recent_messages(message.channel, limit=settings.context_messages)
 
-        decision = self._quick_route(content)
+        decision = self._quick_route(content) or self._recover_tool_decision(content)
         if not decision:
             async with message.channel.typing():
                 try:
@@ -2529,6 +2806,11 @@ class AIModeration(commands.Cog):
                     if is_mentioned:
                         await self.reply(message, content=self._friendly_error_reply(content, "AI routing failed unexpectedly."))
                     return
+
+        if is_mentioned and decision.type in {DecisionType.CHAT, DecisionType.ERROR}:
+            recovered = self._recover_tool_decision(content)
+            if recovered:
+                decision = recovered
 
         decision = await self._enrich(message, decision, recent)
 

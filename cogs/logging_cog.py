@@ -1685,6 +1685,14 @@ class Logging(commands.Cog):
                         await self.safe_send_log(mod_channel, embed)
 
     # ==================== VOICE LOGGING ====================
+
+    def _voice_log_description(self, member: discord.Member, *details: str) -> str:
+        lines = [
+            f"**User:** {member.mention} ({member.name})",
+            *[detail for detail in details if detail],
+            f"**User ID:** `{member.id}`",
+        ]
+        return "\n".join(lines)
     
     @commands.Cog.listener()
     async def on_voice_state_update(
@@ -1708,13 +1716,10 @@ class Logging(commands.Cog):
                 timestamp=datetime.now(timezone.utc)
             )
             embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            
-            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
-            embed.add_field(name="Channel", value=after.channel.mention, inline=True)
-            embed.add_field(
-                name="Members",
-                value=f"{len(after.channel.members)}",
-                inline=True
+            embed.description = self._voice_log_description(
+                member,
+                f"**Channel:** {after.channel.mention}",
+                f"**Members:** `{len(after.channel.members)}`",
             )
         
         # ===== LEFT VOICE =====
@@ -1725,9 +1730,10 @@ class Logging(commands.Cog):
                 timestamp=datetime.now(timezone.utc)
             )
             embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            
-            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
-            embed.add_field(name="Channel", value=before.channel.mention, inline=True)
+            embed.description = self._voice_log_description(
+                member,
+                f"**Channel:** {before.channel.mention}",
+            )
         
         # ===== SWITCHED VOICE =====
         elif before.channel != after.channel and before.channel and after.channel:
@@ -1737,10 +1743,11 @@ class Logging(commands.Cog):
                 timestamp=datetime.now(timezone.utc)
             )
             embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            
-            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
-            embed.add_field(name="From", value=before.channel.mention, inline=True)
-            embed.add_field(name="To", value=after.channel.mention, inline=True)
+            embed.description = self._voice_log_description(
+                member,
+                f"**From:** {before.channel.mention}",
+                f"**To:** {after.channel.mention}",
+            )
         
         # ===== VOICE MUTE/UNMUTE =====
         elif before.self_mute != after.self_mute:
@@ -1751,10 +1758,10 @@ class Logging(commands.Cog):
                 timestamp=datetime.now(timezone.utc)
             )
             embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            
-            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
-            if after.channel:
-                embed.add_field(name="Channel", value=after.channel.mention, inline=True)
+            embed.description = self._voice_log_description(
+                member,
+                f"**Channel:** {after.channel.mention}" if after.channel else "",
+            )
         
         # ===== VOICE DEAFEN/UNDEAFEN =====
         elif before.self_deaf != after.self_deaf:
@@ -1765,10 +1772,10 @@ class Logging(commands.Cog):
                 timestamp=datetime.now(timezone.utc)
             )
             embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            
-            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
-            if after.channel:
-                embed.add_field(name="Channel", value=after.channel.mention, inline=True)
+            embed.description = self._voice_log_description(
+                member,
+                f"**Channel:** {after.channel.mention}" if after.channel else "",
+            )
 
         # ===== STREAMING START/STOP =====
         elif before.self_stream != after.self_stream:
@@ -1779,10 +1786,10 @@ class Logging(commands.Cog):
                 timestamp=datetime.now(timezone.utc)
             )
             embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            
-            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
-            if after.channel:
-                embed.add_field(name="Channel", value=after.channel.mention, inline=True)
+            embed.description = self._voice_log_description(
+                member,
+                f"**Channel:** {after.channel.mention}" if after.channel else "",
+            )
 
         # ===== VIDEO START/STOP =====
         elif before.self_video != after.self_video:
@@ -1793,13 +1800,12 @@ class Logging(commands.Cog):
                 timestamp=datetime.now(timezone.utc)
             )
             embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            
-            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
-            if after.channel:
-                embed.add_field(name="Channel", value=after.channel.mention, inline=True)
+            embed.description = self._voice_log_description(
+                member,
+                f"**Channel:** {after.channel.mention}" if after.channel else "",
+            )
 
         if embed:
-            embed.set_footer(text=f"User ID: {member.id}")
             await self.safe_send_log(channel, embed)
 
     # ==================== BAN/UNBAN LOGGING ====================

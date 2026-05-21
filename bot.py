@@ -468,6 +468,7 @@ class ModBot(commands.Bot):
         self.snipe_cache = SnipeCache(max_age_seconds=300, max_size=500)
         self.edit_snipe_cache = SnipeCache(max_age_seconds=300, max_size=500)
         self.prefix_cache = PrefixCache(ttl=600)
+        self.caches: dict[str, object] = {}
 
         # Statistics
         self.commands_used: int = 0
@@ -1607,6 +1608,17 @@ class ModBot(commands.Bot):
             self.snipe_cache = cache_cfg["snipe_cache"]
             self.edit_snipe_cache = cache_cfg["edit_snipe_cache"]
             self.prefix_cache = cache_cfg["prefix_cache"]
+            self.caches = {
+                key: value
+                for key, value in cache_cfg.items()
+                if key
+                not in {
+                    "backend",
+                    "snipe_cache",
+                    "edit_snipe_cache",
+                    "prefix_cache",
+                }
+            }
             logger.info(f"[CACHE] Backend: {self._cache_backend}")
         except Exception as exc:
             logger.warning(f"[CACHE] Failed to initialise Redis, using in-memory fallback: {exc}")

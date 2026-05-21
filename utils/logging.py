@@ -160,5 +160,6 @@ async def send_log_embed(
 
     normalized = normalize_log_embed(channel, embed, include_banner=include_banner)
 
+    kwargs.setdefault("use_v2", False)
     await channel.send(embed=normalized, **kwargs)
 

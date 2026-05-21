@@ -559,7 +559,7 @@ class AutoModEngine:
         self.stats = {"messages_checked": 0, "violations_detected": 0, "actions_taken": 0}
 
     async def get_user_history(self, guild_id: int, user_id: int) -> UserHistory:
-        cache = self.bot.caches.get("automod_history")
+        cache = getattr(self.bot, "caches", {}).get("automod_history")
         if cache:
             data = await cache.get(f"{guild_id}:{user_id}")
             if data:
@@ -567,7 +567,7 @@ class AutoModEngine:
         return UserHistory(user_id, guild_id)
 
     async def save_user_history(self, hist: UserHistory):
-        cache = self.bot.caches.get("automod_history")
+        cache = getattr(self.bot, "caches", {}).get("automod_history")
         if cache:
             await cache.set(f"{hist.guild_id}:{hist.user_id}", hist.to_dict())
 

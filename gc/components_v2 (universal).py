@@ -189,6 +189,14 @@ def _extract_embeds(kwargs: dict[str, Any]) -> list[discord.Embed]:
     return embeds
 
 
+def _extract_content(args: tuple[Any, ...], kwargs: dict[str, Any]) -> tuple[tuple[Any, ...], Any]:
+    content = kwargs.pop("content", MISSING)
+    if args:
+        content = args[0]
+        args = args[1:]
+    return args, content
+
+
 def _iter_action_items(view: discord.ui.View | discord.ui.LayoutView) -> Iterable[discord.ui.Item[Any]]:
     for child in list(getattr(view, "children", [])):
         if isinstance(child, discord.ui.ActionRow):
@@ -260,7 +268,14 @@ def _normalize_v2_payload(
             kwargs["view"] = ensure_layout_view_action_rows(view)
         return args, kwargs
 
+    if not edit:
+        args, content = _extract_content(args, kwargs)
+    else:
+        content = kwargs.get("content", MISSING)
+
     layout = discord.ui.LayoutView(timeout=getattr(view, "timeout", None) if not _is_missing(view) else None)
+    if not _is_missing(content) and content not in (None, ""):
+        layout.add_item(discord.ui.Container(discord.ui.TextDisplay(str(content))))
     for embed in embeds:
         layout.add_item(_embed_to_container(embed))
 
@@ -276,6 +291,7 @@ def _normalize_v2_payload(
             kwargs.pop("embed", None)
         if "embeds" in kwargs:
             kwargs.pop("embeds", None)
+        kwargs.pop("content", None)
 
     return args, kwargs
 

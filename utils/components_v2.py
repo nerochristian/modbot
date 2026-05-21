@@ -42,7 +42,14 @@ _TS_ONLY_RE = re.compile(
 
 def _is_log_style_channel(target: object) -> bool:
     """Whether this destination should use audit-log visual normalization."""
-    name = (getattr(target, "name", None) or "").strip().lower()
+    channel = getattr(target, "channel", None)
+    parent = getattr(target, "_parent", None)
+    name = (
+        getattr(target, "name", None)
+        or getattr(channel, "name", None)
+        or getattr(parent, "name", None)
+        or ""
+    ).strip().lower()
     if not name:
         return False
     return name.endswith("-logs") or name in _LOG_STYLE_CHANNEL_NAMES
@@ -805,6 +812,8 @@ def patch_components_v2() -> None:
 
     async def patched_webhook_send(self, *args, **kwargs):
         _strip_none_view_for_send(kwargs)
+        if _is_log_style_channel(self):
+            kwargs["use_v2"] = False
         existing_embed = kwargs.get("embed", MISSING)
         existing_embeds = kwargs.get("embeds", MISSING)
         if not _is_missing_like(existing_embed) or _has_embed_payload(existing_embeds):
@@ -868,6 +877,8 @@ def patch_components_v2() -> None:
 
     async def patched_messageable_send(self, *args, **kwargs):
         _strip_none_view_for_send(kwargs)
+        if _is_log_style_channel(self):
+            kwargs["use_v2"] = False
         has_embed_kw = "embed" in kwargs
         has_embeds_kw = "embeds" in kwargs
         maybe_embed = kwargs.get("embed", None)
