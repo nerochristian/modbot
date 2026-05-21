@@ -114,17 +114,22 @@ class AIConfig:
     provider: str = field(
         default_factory=lambda: os.getenv(
             "AI_PROVIDER",
-            "openrouter" if os.getenv("OPENROUTER_API_KEY") else "gemini",
+            "tokenmix" if os.getenv("TOKENMIX_API_KEY") else ("openrouter" if os.getenv("OPENROUTER_API_KEY") else "gemini"),
         ).strip().lower()
     )
     model: str = field(
         default_factory=lambda: (
             os.getenv("AI_MODEL")
+            or os.getenv("TOKENMIX_MODEL")
             or os.getenv("OPENROUTER_MODEL")
             or os.getenv("GEMINI_MODEL")
             or (
-                "google/gemma-4-31b-it"
-                if os.getenv("OPENROUTER_API_KEY") or os.getenv("AI_PROVIDER", "").strip().lower() == "openrouter"
+                "google/gemma-4-31b-it:free"
+                if (
+                    os.getenv("TOKENMIX_API_KEY")
+                    or os.getenv("OPENROUTER_API_KEY")
+                    or os.getenv("AI_PROVIDER", "").strip().lower() in {"tokenmix", "openrouter"}
+                )
                 else "gemini-2.5-flash"
             )
         )
@@ -688,8 +693,10 @@ class GeminiClient:
         self.config = config
         self.provider = (config.provider or "gemini").strip().lower()
         self._openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+        self._tokenmix_api_key = os.getenv("TOKENMIX_API_KEY", "").strip()
+        self._tokenmix_base_url = os.getenv("TOKENMIX_BASE_URL", "https://api.tokenmix.ai/v1").strip().rstrip("/")
         api_key = os.getenv("GEMINI_API_KEY")
-        self._client = genai.Client(api_key=api_key) if api_key and self.provider != "openrouter" else None
+        self._client = genai.Client(api_key=api_key) if api_key and self.provider not in {"openrouter", "tokenmix"} else None
         self._rate_limiter = RateLimiter(
             max_calls=config.rate_limit_calls,
             window_seconds=config.rate_limit_window,
@@ -701,6 +708,8 @@ class GeminiClient:
     def is_available(self) -> bool:
         if self.provider == "openrouter":
             return bool(self._openrouter_api_key)
+        if self.provider == "tokenmix":
+            return bool(self._tokenmix_api_key)
         return self._client is not None
 
     # ------------------------------------------------------------------
@@ -742,12 +751,31 @@ class GeminiClient:
         json_mode: bool = False,
     ) -> Optional[str]:
         if self.provider == "openrouter":
-            return await self._call_openrouter(
+            return await self._call_openai_compatible(
                 messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
                 model=model,
                 json_mode=json_mode,
+                provider_name="OpenRouter",
+                api_key=self._openrouter_api_key,
+                base_url="https://openrouter.ai/api/v1",
+                default_model="google/gemma-4-31b-it:free",
+                normalize_model=True,
+                extra_headers=self._openrouter_headers(),
+            )
+        if self.provider == "tokenmix":
+            return await self._call_openai_compatible(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                model=model,
+                json_mode=json_mode,
+                provider_name="TokenMix",
+                api_key=self._tokenmix_api_key,
+                base_url=self._tokenmix_base_url,
+                default_model="google/gemma-4-31b-it:free",
+                normalize_model=False,
             )
 
         assert self._client is not None
@@ -804,7 +832,14 @@ class GeminiClient:
             return None
         return response.text
 
-    async def _call_openrouter(
+    def _openrouter_headers(self) -> Dict[str, str]:
+        headers = {"X-Title": "ModBot AI Moderation"}
+        referer = os.getenv("OPENROUTER_SITE_URL", "").strip()
+        if referer:
+            headers["HTTP-Referer"] = referer
+        return headers
+
+    async def _call_openai_compatible(
         self,
         messages: List[Dict[str, str]],
         *,
@@ -812,10 +847,16 @@ class GeminiClient:
         max_tokens: int,
         model: Optional[str] = None,
         json_mode: bool = False,
+        provider_name: str,
+        api_key: str,
+        base_url: str,
+        default_model: str,
+        normalize_model: bool = False,
+        extra_headers: Optional[Dict[str, str]] = None,
     ) -> Optional[str]:
-        selected_model = (model or self.config.model or "google/gemma-4-31b-it").strip()
-        if selected_model.startswith("gemini-"):
-            selected_model = "google/gemma-4-31b-it"
+        selected_model = (model or self.config.model or default_model).strip()
+        if normalize_model and selected_model.startswith("gemini-"):
+            selected_model = default_model
 
         payload: Dict[str, Any] = {
             "model": selected_model,
@@ -827,13 +868,11 @@ class GeminiClient:
             payload["response_format"] = {"type": "json_object"}
 
         headers = {
-            "Authorization": f"Bearer {self._openrouter_api_key}",
+            "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
-            "X-Title": "ModBot AI Moderation",
         }
-        referer = os.getenv("OPENROUTER_SITE_URL", "").strip()
-        if referer:
-            headers["HTTP-Referer"] = referer
+        if extra_headers:
+            headers.update(extra_headers)
 
         session: Optional[aiohttp.ClientSession] = getattr(self.bot, "session", None)
         owned_session = False
@@ -843,7 +882,7 @@ class GeminiClient:
 
         try:
             async with session.post(
-                "https://openrouter.ai/api/v1/chat/completions",
+                f"{base_url}/chat/completions",
                 headers=headers,
                 json=payload,
             ) as resp:
@@ -852,10 +891,10 @@ class GeminiClient:
                     detail = data.get("error", data) if isinstance(data, dict) else data
                     detail_text = str(detail)
                     if resp.status in {401, 403}:
-                        self._set_block(seconds=900, reason="OpenRouter authentication or access failed.")
+                        self._set_block(seconds=900, reason=f"{provider_name} authentication or access failed.")
                     elif resp.status == 429:
-                        self._set_block(seconds=60, reason="OpenRouter rate limit / quota reached.")
-                    raise RuntimeError(f"OpenRouter HTTP {resp.status}: {detail_text[:500]}")
+                        self._set_block(seconds=60, reason=f"{provider_name} rate limit / quota reached.")
+                    raise RuntimeError(f"{provider_name} HTTP {resp.status}: {detail_text[:500]}")
         finally:
             if owned_session:
                 await session.close()

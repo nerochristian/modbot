@@ -71,6 +71,18 @@ class Logging(commands.Cog):
                 return channel_id
         return None
 
+    async def _is_message_log_destination(self, channel: discord.TextChannel) -> bool:
+        try:
+            settings = await self.bot.db.get_settings(channel.guild.id)
+            message_log_id = self._resolve_log_channel_id(settings, "message")
+            if message_log_id:
+                return channel.id == message_log_id
+        except Exception:
+            pass
+
+        name = getattr(channel, "name", "").strip().lower()
+        return name in {"message-log", "message-logs", "message_log", "message_logs"}
+
     def suppress_message_delete_log(self, channel_id: int, seconds: int = 6) -> None:
         self._suppress_message_delete_until[channel_id] = datetime.now(timezone.utc) + timedelta(seconds=seconds)
 
@@ -282,17 +294,12 @@ class Logging(commands.Cog):
         Args:
             channel: The channel to send to
             embed: The embed to send
-            use_v2: Whether to use Components v2 (default False for classic v1 embeds)
+            use_v2: Ignored for log styling; message logs use v2, all other logs use classic embeds.
             view: Optional view to Attach to the log message
             mirror_to_audit: Also send this log to the configured audit log channel
         """
         if not channel:
             return False
-
-        # Log channels should always use classic Discord embeds/components v1.
-        # This avoids Components v2 conversion and keeps transcript/download views
-        # as standard action rows.
-        use_v2 = False
 
         # Hard routing guard: if an audit/message card is about to be posted in the
         # wrong channel, reroute before sending.
@@ -328,7 +335,11 @@ class Logging(commands.Cog):
         sent_primary = False
         try:
             normalized = normalize_log_embed(routed_channel, embed)
-            await routed_channel.send(embed=normalized, use_v2=use_v2, view=view)
+            await routed_channel.send(
+                embed=normalized,
+                use_v2=await self._is_message_log_destination(routed_channel),
+                view=view,
+            )
             sent_primary = True
         except discord.Forbidden:
             logger.warning(f"Missing permissions to log in {routed_channel.guild.name} #{routed_channel.name}")
@@ -353,7 +364,7 @@ class Logging(commands.Cog):
                 try:
                     # Do not reuse the same View object across multiple messages.
                     normalized_audit = normalize_log_embed(audit_channel, embed)
-                    await audit_channel.send(embed=normalized_audit, use_v2=use_v2)
+                    await audit_channel.send(embed=normalized_audit, use_v2=False)
                     sent_audit = True
                 except discord.Forbidden:
                     logger.warning(f"Missing permissions to log in {audit_channel.guild.name} #{audit_channel.name}")
@@ -908,7 +919,7 @@ class Logging(commands.Cog):
             send_kwargs: dict[str, Any] = {"embeds": normalized_embeds}
             if message.content:
                 send_kwargs["content"] = message.content
-            send_kwargs["use_v2"] = False
+            send_kwargs["use_v2"] = destination_id == self._resolve_log_channel_id(settings, "message")
             await destination_channel.send(**send_kwargs)
             await message.delete()
         except discord.Forbidden:
@@ -1692,14 +1703,6 @@ class Logging(commands.Cog):
 
     # ==================== VOICE LOGGING ====================
 
-    def _voice_log_description(self, member: discord.Member, *details: str) -> str:
-        lines = [
-            f"**User:** {member.mention} ({member.name})",
-            *[detail for detail in details if detail],
-            f"**User ID:** `{member.id}`",
-        ]
-        return "\n".join(lines)
-    
     @commands.Cog.listener()
     async def on_voice_state_update(
         self, 
@@ -1722,10 +1725,13 @@ class Logging(commands.Cog):
                 timestamp=datetime.now(timezone.utc)
             )
             embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            embed.description = self._voice_log_description(
-                member,
-                f"**Channel:** {after.channel.mention}",
-                f"**Members:** `{len(after.channel.members)}`",
+            
+            embed.add_field(name="User", value=f"{member.mention}\n({member.name})", inline=True)
+            embed.add_field(name="Channel", value=after.channel.mention, inline=True)
+            embed.add_field(
+                name="Members",
+                value=f"{len(after.channel.members)}",
+                inline=True
             )
         
         # ===== LEFT VOICE =====
@@ -1736,10 +1742,9 @@ class Logging(commands.Cog):
                 timestamp=datetime.now(timezone.utc)
             )
             embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            embed.description = self._voice_log_description(
-                member,
-                f"**Channel:** {before.channel.mention}",
-            )
+            
+            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
+            embed.add_field(name="Channel", value=before.channel.mention, inline=True)
         
         # ===== SWITCHED VOICE =====
         elif before.channel != after.channel and before.channel and after.channel:
@@ -1749,11 +1754,10 @@ class Logging(commands.Cog):
                 timestamp=datetime.now(timezone.utc)
             )
             embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            embed.description = self._voice_log_description(
-                member,
-                f"**From:** {before.channel.mention}",
-                f"**To:** {after.channel.mention}",
-            )
+            
+            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
+            embed.add_field(name="From", value=before.channel.mention, inline=True)
+            embed.add_field(name="To", value=after.channel.mention, inline=True)
         
         # ===== VOICE MUTE/UNMUTE =====
         elif before.self_mute != after.self_mute:
@@ -1764,10 +1768,10 @@ class Logging(commands.Cog):
                 timestamp=datetime.now(timezone.utc)
             )
             embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            embed.description = self._voice_log_description(
-                member,
-                f"**Channel:** {after.channel.mention}" if after.channel else "",
-            )
+            
+            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
+            if after.channel:
+                embed.add_field(name="Channel", value=after.channel.mention, inline=True)
         
         # ===== VOICE DEAFEN/UNDEAFEN =====
         elif before.self_deaf != after.self_deaf:
@@ -1778,10 +1782,10 @@ class Logging(commands.Cog):
                 timestamp=datetime.now(timezone.utc)
             )
             embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            embed.description = self._voice_log_description(
-                member,
-                f"**Channel:** {after.channel.mention}" if after.channel else "",
-            )
+            
+            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
+            if after.channel:
+                embed.add_field(name="Channel", value=after.channel.mention, inline=True)
 
         # ===== STREAMING START/STOP =====
         elif before.self_stream != after.self_stream:
@@ -1792,10 +1796,10 @@ class Logging(commands.Cog):
                 timestamp=datetime.now(timezone.utc)
             )
             embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            embed.description = self._voice_log_description(
-                member,
-                f"**Channel:** {after.channel.mention}" if after.channel else "",
-            )
+            
+            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
+            if after.channel:
+                embed.add_field(name="Channel", value=after.channel.mention, inline=True)
 
         # ===== VIDEO START/STOP =====
         elif before.self_video != after.self_video:
@@ -1806,12 +1810,13 @@ class Logging(commands.Cog):
                 timestamp=datetime.now(timezone.utc)
             )
             embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            embed.description = self._voice_log_description(
-                member,
-                f"**Channel:** {after.channel.mention}" if after.channel else "",
-            )
+            
+            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
+            if after.channel:
+                embed.add_field(name="Channel", value=after.channel.mention, inline=True)
 
         if embed:
+            embed.set_footer(text=f"User ID: {member.id}")
             await self.safe_send_log(channel, embed)
 
     # ==================== BAN/UNBAN LOGGING ====================

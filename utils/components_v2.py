@@ -40,8 +40,22 @@ _TS_ONLY_RE = re.compile(
 )
 
 
+def _is_message_log_channel(target: object) -> bool:
+    channel = getattr(target, "channel", None)
+    parent = getattr(target, "_parent", None)
+    name = (
+        getattr(target, "name", None)
+        or getattr(channel, "name", None)
+        or getattr(parent, "name", None)
+        or ""
+    ).strip().lower()
+    return name in {"message-log", "message-logs", "message_log", "message_logs"}
+
+
 def _is_log_style_channel(target: object) -> bool:
     """Whether this destination should use audit-log visual normalization."""
+    if _is_message_log_channel(target):
+        return False
     channel = getattr(target, "channel", None)
     parent = getattr(target, "_parent", None)
     name = (

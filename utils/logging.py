@@ -19,6 +19,16 @@ def _trim(text: object, limit: int) -> str:
     return value[: max(0, limit - 3)].rstrip() + "..."
 
 
+def _is_message_log_channel(channel: object) -> bool:
+    name = (
+        getattr(channel, "name", None)
+        or getattr(getattr(channel, "channel", None), "name", None)
+        or getattr(getattr(channel, "_parent", None), "name", None)
+        or ""
+    ).strip().lower()
+    return name in {"message-log", "message-logs", "message_log", "message_logs"}
+
+
 def clone_embed(embed: discord.Embed) -> discord.Embed:
     try:
         return discord.Embed.from_dict(embed.to_dict())
@@ -100,35 +110,9 @@ def _get_url(obj: object, attr: str) -> Optional[str]:
         return None
 
 
-def _log_icon(title: str) -> str:
-    lowered = title.lower()
-    if any(word in lowered for word in ("delete", "deleted", "left", "ban", "kick", "removed")):
-        return "\U0001f6ab"
-    if any(word in lowered for word in ("warn", "timeout", "lock", "slowmode", "quarantine")):
-        return "\u26a0\ufe0f"
-    if any(word in lowered for word in ("join", "created", "added", "unban", "unlock", "unmuted", "updated")):
-        return "\u2705"
-    if any(word in lowered for word in ("message", "purge", "edit")):
-        return "\U0001f4dd"
-    if any(word in lowered for word in ("voice", "stream", "video", "deafen", "mute")):
-        return "\U0001f50a"
-    return "\U0001f6e1\ufe0f"
-
-
-def _looks_prefixed(title: str) -> bool:
-    if not title:
-        return False
-    first = title.strip()[0]
-    return not first.isascii() or first in {"[", "(", "{", "#"}
-
-
 def _normalize_title(title: object) -> Optional[str]:
     clean = _trim(title, 240)
-    if not clean:
-        return None
-    if _looks_prefixed(clean):
-        return clean
-    return f"{_log_icon(clean)} {clean}"
+    return clean or None
 
 
 def _normalize_fields(embed: discord.Embed) -> None:
@@ -137,6 +121,7 @@ def _normalize_fields(embed: discord.Embed) -> None:
         return
 
     embed.clear_fields()
+    compact_inline_names = {"User", "Channel", "Members", "From", "To", "Moderator"}
     for field in fields[:25]:
         name = str(getattr(field, "name", "") or "").strip()
         value = str(getattr(field, "value", "") or "").strip()
@@ -149,7 +134,7 @@ def _normalize_fields(embed: discord.Embed) -> None:
 
         name = _trim(name, 256)
         value = _trim(value, _MAX_FIELD_VALUE)
-        if "\n" in value or len(value) > 80:
+        if name not in compact_inline_names and ("\n" in value or len(value) > 80):
             inline = False
         embed.add_field(name=name, value=value, inline=inline)
 
@@ -246,8 +231,7 @@ async def send_log_embed(
 
     normalized = normalize_log_embed(channel, embed, include_banner=include_banner)
 
-    # Log channels stay on classic embeds/components v1 even if global v2
-    # conversion is enabled elsewhere.
-    kwargs["use_v2"] = False
+    # Log channels stay classic except message logs, which use Components v2.
+    kwargs["use_v2"] = _is_message_log_channel(channel)
     await channel.send(embed=normalized, **kwargs)
 
