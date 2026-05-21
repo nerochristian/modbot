@@ -111,7 +111,24 @@ _SNOWFLAKE_RE = re.compile(r"\b(\d{15,22})\b")
 @dataclass(frozen=True)
 class AIConfig:
     """Immutable configuration for AI moderation system."""
-    model: str = field(default_factory=lambda: os.getenv("GEMINI_MODEL", "gemini-2.5-flash"))
+    provider: str = field(
+        default_factory=lambda: os.getenv(
+            "AI_PROVIDER",
+            "openrouter" if os.getenv("OPENROUTER_API_KEY") else "gemini",
+        ).strip().lower()
+    )
+    model: str = field(
+        default_factory=lambda: (
+            os.getenv("AI_MODEL")
+            or os.getenv("OPENROUTER_MODEL")
+            or os.getenv("GEMINI_MODEL")
+            or (
+                "google/gemma-4-31b-it"
+                if os.getenv("OPENROUTER_API_KEY") or os.getenv("AI_PROVIDER", "").strip().lower() == "openrouter"
+                else "gemini-2.5-flash"
+            )
+        )
+    )
     temperature_routing: float = 0.2
     temperature_chat: float = 0.85
     max_tokens_routing: int = 512
@@ -661,7 +678,7 @@ class ToolRegistry:
 
 
 class GeminiClient:
-    """Async wrapper around the Google Gemini API with rate limiting and conversation memory."""
+    """Async wrapper around the configured AI provider with rate limiting and memory."""
 
     _CODE_FENCE_RE: ClassVar[re.Pattern] = re.compile(r"^```[a-zA-Z]*\s*|\s*```$", re.MULTILINE)
     _JSON_RE: ClassVar[re.Pattern] = re.compile(r"(\{.*\})", re.DOTALL)
@@ -669,8 +686,10 @@ class GeminiClient:
     def __init__(self, bot: commands.Bot, config: AIConfig) -> None:
         self.bot = bot
         self.config = config
+        self.provider = (config.provider or "gemini").strip().lower()
+        self._openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
         api_key = os.getenv("GEMINI_API_KEY")
-        self._client = genai.Client(api_key=api_key) if api_key else None
+        self._client = genai.Client(api_key=api_key) if api_key and self.provider != "openrouter" else None
         self._rate_limiter = RateLimiter(
             max_calls=config.rate_limit_calls,
             window_seconds=config.rate_limit_window,
@@ -680,6 +699,8 @@ class GeminiClient:
 
     @property
     def is_available(self) -> bool:
+        if self.provider == "openrouter":
+            return bool(self._openrouter_api_key)
         return self._client is not None
 
     # ------------------------------------------------------------------
@@ -689,7 +710,7 @@ class GeminiClient:
     def _set_block(self, *, seconds: int, reason: str) -> None:
         self._block_until = _now() + timedelta(seconds=max(1, seconds))
         self._block_reason = reason
-        logger.warning("Gemini service blocked for %ds: %s", seconds, reason)
+        logger.warning("AI service blocked for %ds: %s", seconds, reason)
 
     def _get_block_message(self) -> Optional[str]:
         if not self._block_until:
@@ -720,6 +741,15 @@ class GeminiClient:
         # FIX: explicit flag instead of brittle string-search heuristic
         json_mode: bool = False,
     ) -> Optional[str]:
+        if self.provider == "openrouter":
+            return await self._call_openrouter(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                model=model,
+                json_mode=json_mode,
+            )
+
         assert self._client is not None
 
         system_instruction: Optional[str] = None
@@ -774,6 +804,71 @@ class GeminiClient:
             return None
         return response.text
 
+    async def _call_openrouter(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        temperature: float,
+        max_tokens: int,
+        model: Optional[str] = None,
+        json_mode: bool = False,
+    ) -> Optional[str]:
+        selected_model = (model or self.config.model or "google/gemma-4-31b-it").strip()
+        if selected_model.startswith("gemini-"):
+            selected_model = "google/gemma-4-31b-it"
+
+        payload: Dict[str, Any] = {
+            "model": selected_model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+
+        headers = {
+            "Authorization": f"Bearer {self._openrouter_api_key}",
+            "Content-Type": "application/json",
+            "X-Title": "ModBot AI Moderation",
+        }
+        referer = os.getenv("OPENROUTER_SITE_URL", "").strip()
+        if referer:
+            headers["HTTP-Referer"] = referer
+
+        session: Optional[aiohttp.ClientSession] = getattr(self.bot, "session", None)
+        owned_session = False
+        if not session or getattr(session, "closed", False):
+            session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60))
+            owned_session = True
+
+        try:
+            async with session.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers=headers,
+                json=payload,
+            ) as resp:
+                data = await resp.json(content_type=None)
+                if resp.status >= 400:
+                    detail = data.get("error", data) if isinstance(data, dict) else data
+                    detail_text = str(detail)
+                    if resp.status in {401, 403}:
+                        self._set_block(seconds=900, reason="OpenRouter authentication or access failed.")
+                    elif resp.status == 429:
+                        self._set_block(seconds=60, reason="OpenRouter rate limit / quota reached.")
+                    raise RuntimeError(f"OpenRouter HTTP {resp.status}: {detail_text[:500]}")
+        finally:
+            if owned_session:
+                await session.close()
+
+        if not isinstance(data, dict):
+            return None
+        choices = data.get("choices") or []
+        if not choices:
+            return None
+        message = (choices[0] or {}).get("message") or {}
+        content = message.get("content")
+        return str(content) if content else None
+
     # ------------------------------------------------------------------
     # Pre-call checks (rate limit + service block)
     # ------------------------------------------------------------------
@@ -821,7 +916,8 @@ class GeminiClient:
             f"Context Variables for API Endpoints:\n"
             f"- {{guild_id}}: {guild.id}\n"
             f"- {{channel_id}}: {context_channel_id}\n"
-            f"- {{bot_id}}: {bot_id}\n\n"
+            f"- {{bot_id}}: {bot_id}\n"
+            f"- Current Time (EST): {_now().astimezone(timezone(timedelta(hours=-5))).isoformat()}\n\n"
             f"Permissions:\n{perm_lines}\n\n"
             f"Mentions (first is bot):\n{mention_lines}\n\n"
             f'Message: """{user_content}"""\n\n'
