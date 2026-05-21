@@ -289,6 +289,11 @@ class Logging(commands.Cog):
         if not channel:
             return False
 
+        # Log channels should always use classic Discord embeds/components v1.
+        # This avoids Components v2 conversion and keeps transcript/download views
+        # as standard action rows.
+        use_v2 = False
+
         # Hard routing guard: if an audit/message card is about to be posted in the
         # wrong channel, reroute before sending.
         routed_channel = channel
@@ -903,6 +908,7 @@ class Logging(commands.Cog):
             send_kwargs: dict[str, Any] = {"embeds": normalized_embeds}
             if message.content:
                 send_kwargs["content"] = message.content
+            send_kwargs["use_v2"] = False
             await destination_channel.send(**send_kwargs)
             await message.delete()
         except discord.Forbidden:
