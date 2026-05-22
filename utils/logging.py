@@ -6,6 +6,7 @@ from typing import Any, Optional
 import discord
 
 from config import Config
+from utils.classic_send import send_classic_message
 
 _ZWS = "\u200b"
 _MAX_FIELD_VALUE = 1024
@@ -17,16 +18,6 @@ def _trim(text: object, limit: int) -> str:
     if len(value) <= limit:
         return value
     return value[: max(0, limit - 3)].rstrip() + "..."
-
-
-def _is_message_log_channel(channel: object) -> bool:
-    name = (
-        getattr(channel, "name", None)
-        or getattr(getattr(channel, "channel", None), "name", None)
-        or getattr(getattr(channel, "_parent", None), "name", None)
-        or ""
-    ).strip().lower()
-    return name in {"message-log", "message-logs", "message_log", "message_logs"}
 
 
 def clone_embed(embed: discord.Embed) -> discord.Embed:
@@ -177,13 +168,6 @@ def normalize_log_embed(
         pass
 
     try:
-        # Keep log cards focused on content; thumbnails carry user identity better
-        # than an extra author row on narrow Discord clients.
-        normalized.remove_author()
-    except Exception:
-        pass
-
-    try:
         # Footer fallback helps logs still look complete when no footer was set.
         footer = getattr(normalized, "footer", None)
         footer_text = (getattr(footer, "text", "") or "").strip()
@@ -216,6 +200,25 @@ def normalize_log_embed(
     return normalized
 
 
+async def prepare_log_embed(
+    channel: Optional[discord.abc.Messageable],
+    embed: discord.Embed,
+    *,
+    include_banner: bool = False,
+) -> discord.Embed:
+    normalized = normalize_log_embed(channel, embed, include_banner=include_banner)
+    guild = getattr(channel, "guild", None) if channel else None
+    if guild is None:
+        return normalized
+
+    try:
+        from utils.status_emojis import apply_status_emoji_overrides
+
+        return await apply_status_emoji_overrides(normalized, guild)
+    except Exception:
+        return normalized
+
+
 async def send_log_embed(
     channel: Optional[discord.abc.Messageable],
     embed: discord.Embed,
@@ -229,9 +232,7 @@ async def send_log_embed(
     if channel is None:
         return
 
-    normalized = normalize_log_embed(channel, embed, include_banner=include_banner)
+    normalized = await prepare_log_embed(channel, embed, include_banner=include_banner)
 
-    # Log channels stay classic except message logs, which use Components v2.
-    kwargs["use_v2"] = _is_message_log_channel(channel)
-    await channel.send(embed=normalized, **kwargs)
-
+    kwargs.pop("use_v2", None)
+    await send_classic_message(channel, embed=normalized, **kwargs)

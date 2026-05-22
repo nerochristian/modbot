@@ -15,7 +15,8 @@ from utils.embeds import ModEmbed, Colors
 from utils.checks import is_admin
 from utils.cache import ChannelCache
 from utils.transcript import generate_html_transcript, EphemeralTranscriptView
-from utils.logging import normalize_log_embed
+from utils.logging import prepare_log_embed
+from utils.classic_send import send_classic_message
 
 logger = logging.getLogger(__name__)
 
@@ -70,18 +71,6 @@ class Logging(commands.Cog):
             if channel_id:
                 return channel_id
         return None
-
-    async def _is_message_log_destination(self, channel: discord.TextChannel) -> bool:
-        try:
-            settings = await self.bot.db.get_settings(channel.guild.id)
-            message_log_id = self._resolve_log_channel_id(settings, "message")
-            if message_log_id:
-                return channel.id == message_log_id
-        except Exception:
-            pass
-
-        name = getattr(channel, "name", "").strip().lower()
-        return name in {"message-log", "message-logs", "message_log", "message_logs"}
 
     def suppress_message_delete_log(self, channel_id: int, seconds: int = 6) -> None:
         self._suppress_message_delete_until[channel_id] = datetime.now(timezone.utc) + timedelta(seconds=seconds)
@@ -294,7 +283,7 @@ class Logging(commands.Cog):
         Args:
             channel: The channel to send to
             embed: The embed to send
-            use_v2: Ignored for log styling; message logs use v2, all other logs use classic embeds.
+            use_v2: Ignored for log styling; logs always use classic embeds.
             view: Optional view to Attach to the log message
             mirror_to_audit: Also send this log to the configured audit log channel
         """
@@ -334,12 +323,8 @@ class Logging(commands.Cog):
 
         sent_primary = False
         try:
-            normalized = normalize_log_embed(routed_channel, embed)
-            await routed_channel.send(
-                embed=normalized,
-                use_v2=await self._is_message_log_destination(routed_channel),
-                view=view,
-            )
+            normalized = await prepare_log_embed(routed_channel, embed)
+            await send_classic_message(routed_channel, embed=normalized, view=view)
             sent_primary = True
         except discord.Forbidden:
             logger.warning(f"Missing permissions to log in {routed_channel.guild.name} #{routed_channel.name}")
@@ -363,8 +348,8 @@ class Logging(commands.Cog):
             if audit_channel and audit_channel.id != routed_channel.id:
                 try:
                     # Do not reuse the same View object across multiple messages.
-                    normalized_audit = normalize_log_embed(audit_channel, embed)
-                    await audit_channel.send(embed=normalized_audit, use_v2=False)
+                    normalized_audit = await prepare_log_embed(audit_channel, embed)
+                    await send_classic_message(audit_channel, embed=normalized_audit)
                     sent_audit = True
                 except discord.Forbidden:
                     logger.warning(f"Missing permissions to log in {audit_channel.guild.name} #{audit_channel.name}")
@@ -913,14 +898,13 @@ class Logging(commands.Cog):
 
         try:
             normalized_embeds = [
-                normalize_log_embed(destination_channel, embed)
+                await prepare_log_embed(destination_channel, embed)
                 for embed in message.embeds[:10]
             ]
             send_kwargs: dict[str, Any] = {"embeds": normalized_embeds}
             if message.content:
                 send_kwargs["content"] = message.content
-            send_kwargs["use_v2"] = destination_id == self._resolve_log_channel_id(settings, "message")
-            await destination_channel.send(**send_kwargs)
+            await send_classic_message(destination_channel, **send_kwargs)
             await message.delete()
         except discord.Forbidden:
             logger.warning(
@@ -1352,6 +1336,7 @@ class Logging(commands.Cog):
         embed.add_field(name="After", value=after_content, inline=True)
 
         footer_name = before.author.global_name or before.author.name
+        embed.set_thumbnail(url=before.author.display_avatar.url)
         embed.set_footer(text=f"@{footer_name}", icon_url=before.author.display_avatar.url)
 
         await self.safe_send_log(channel, embed)

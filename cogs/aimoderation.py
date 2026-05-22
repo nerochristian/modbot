@@ -293,8 +293,12 @@ Raw API rules:
 3. Payload must match Discord API v10 for the endpoint.
 4. If the requested action is impossible in Discord's API, return chat and explain why.
 5. execute_raw_api is only for users with Administrator permission; non-admins should use normal permission-scoped tools only.
+6. For Scheduled Events (POST /guilds/{guild_id}/scheduled-events): payload MUST include "name", "privacy_level" (2), and "scheduled_start_time". If it is a Voice Event (entity_type 2), you MUST have a valid Voice Channel ID; DO NOT use the default {channel_id} context variable as it points to a text channel. If the user does not specify a specific Voice Channel, default to an External Event (entity_type 3) and include "entity_metadata": {"location": "Server"} and a "scheduled_end_time".
+7. For Minecraft/SMP/manhunt/IRL/non-Discord events, use entity_type 3 (External). Do NOT include channel_id. Use entity_metadata.location like "Supreme SMP" if no exact location is provided.
+8. For Scheduled Events, DO NOT ask the user for exact dates if they use relative terms like "tomorrow". Use the Current Time variable to calculate the exact ISO8601 timestamp automatically.
 
 ## Rules
+- CONTEXT IS KEY: If the user's message is short, a fragment, or a direct answer (e.g., "6pm", "yes", "this guy"), you MUST look at the 'Recent messages' history to understand what they are responding to. Execute the correct tool based on the combined intent of the history and the new message.
 - Prefer the closest tool_call when the user's intent maps to an available tool, even if their wording is slangy, casual, typo-heavy, or indirect.
 - Only return error when the request is impossible with the available tools, unsafe/abusive outside moderation, or lacks a required object that cannot be asked for by the tool handler.
 - If an action is clear but an argument is missing, still select the tool and include only the arguments you know. The handler will ask for missing details.
@@ -584,6 +588,41 @@ def _raw_api_safety_error(ctx: ToolContext, method: str, endpoint: str, payload:
         return "Payload cannot contain token or authorization fields."
 
     return None
+
+
+def _normalize_scheduled_event_payload(endpoint: str, method: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    normalized_endpoint = endpoint.lower().split("?", 1)[0].rstrip("/")
+    if method != "POST" or not re.fullmatch(r"/guilds/\d{15,22}/scheduled-events", normalized_endpoint):
+        return payload
+
+    fixed = dict(payload)
+    name_text = str(fixed.get("name") or "").lower()
+    metadata = fixed.get("entity_metadata")
+    metadata = dict(metadata) if isinstance(metadata, dict) else {}
+    location_text = str(metadata.get("location") or "").lower()
+    looks_external = any(
+        word in f"{name_text} {location_text}"
+        for word in ("smp", "minecraft", "manhunt", "server", "external", "irl")
+    )
+
+    if looks_external or fixed.get("entity_type") in (None, 3, "3", "external"):
+        fixed["entity_type"] = 3
+        fixed.pop("channel_id", None)
+        if not metadata.get("location"):
+            metadata["location"] = "Supreme SMP" if "smp" in name_text else "External"
+        fixed["entity_metadata"] = metadata
+
+        if not fixed.get("scheduled_end_time") and fixed.get("scheduled_start_time"):
+            try:
+                start = datetime.fromisoformat(str(fixed["scheduled_start_time"]).replace("Z", "+00:00"))
+                fixed["scheduled_end_time"] = (start + timedelta(hours=1)).isoformat()
+            except Exception:
+                pass
+    elif str(fixed.get("entity_type")).lower() == "voice":
+        fixed["entity_type"] = 2
+
+    fixed.setdefault("privacy_level", 2)
+    return fixed
 
 
 # =============================================================================
@@ -956,7 +995,7 @@ class GeminiClient:
             f"- {{guild_id}}: {guild.id}\n"
             f"- {{channel_id}}: {context_channel_id}\n"
             f"- {{bot_id}}: {bot_id}\n"
-            f"- Current Time (EST): {_now().astimezone(timezone(timedelta(hours=-5))).isoformat()}\n\n"
+            f"- Current Time (EST): {_now().astimezone().isoformat()}\n\n"
             f"Permissions:\n{perm_lines}\n\n"
             f"Mentions (first is bot):\n{mention_lines}\n\n"
             f'Message: """{user_content}"""\n\n'
@@ -1891,6 +1930,7 @@ async def handle_execute_raw_api(ctx: ToolContext) -> ToolResult:
     safety_error = _raw_api_safety_error(ctx, method, endpoint, payload)
     if safety_error:
         return ToolResult.fail(safety_error)
+    payload = _normalize_scheduled_event_payload(endpoint, method, payload)
 
     route = discord.http.Route(method, endpoint)
     kwargs: Dict[str, Any] = {"reason": f"AI raw API ({ctx.actor})"}
@@ -2183,8 +2223,17 @@ class AIModeration(commands.Cog):
             return f"I need the `{perm_name}` permission."
         return None
 
-    def requires_confirmation(self, tool: ToolType, settings: GuildSettings) -> bool:
+    def requires_confirmation(
+        self,
+        tool: ToolType,
+        settings: GuildSettings,
+        actor: Optional[Union[discord.Member, discord.User]] = None,
+    ) -> bool:
         if tool == ToolType.EXECUTE_RAW_API:
+            if is_bot_owner_id(getattr(actor, "id", 0)):
+                return False
+            if isinstance(actor, discord.Member) and actor.guild_permissions.administrator:
+                return False
             return True
         if not settings.confirm_enabled:
             return False
@@ -2965,7 +3014,7 @@ class AIModeration(commands.Cog):
                 )
                 return
 
-            if self.requires_confirmation(decision.tool, settings):
+            if self.requires_confirmation(decision.tool, settings, message.author):
                 await self.request_confirmation(
                     message, tool=decision.tool, args=decision.arguments,
                     decision=decision, settings=settings,

@@ -23,13 +23,6 @@ import discord
 
 # Component types that can appear at the top level of a LayoutView
 _V2_TOP_LEVEL_TYPES = {1, 9, 10, 12, 13, 14, 17}
-_LOG_STYLE_CHANNEL_NAMES = frozenset(
-    {
-        "forum-alerts",
-        "ai-confirmation",
-    }
-)
-
 # Regex to detect timestamp-only footer text (excluded from v2 cards)
 _TS_ONLY_RE = re.compile(
     r"^(?:"
@@ -38,35 +31,6 @@ _TS_ONLY_RE = re.compile(
     r"\d{4}-\d{2}-\d{2}(?:[ T]\d{2}:\d{2}:\d{2})?(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?"
     r")$"
 )
-
-
-def _is_message_log_channel(target: object) -> bool:
-    channel = getattr(target, "channel", None)
-    parent = getattr(target, "_parent", None)
-    name = (
-        getattr(target, "name", None)
-        or getattr(channel, "name", None)
-        or getattr(parent, "name", None)
-        or ""
-    ).strip().lower()
-    return name in {"message-log", "message-logs", "message_log", "message_logs"}
-
-
-def _is_log_style_channel(target: object) -> bool:
-    """Whether this destination should use audit-log visual normalization."""
-    if _is_message_log_channel(target):
-        return False
-    channel = getattr(target, "channel", None)
-    parent = getattr(target, "_parent", None)
-    name = (
-        getattr(target, "name", None)
-        or getattr(channel, "name", None)
-        or getattr(parent, "name", None)
-        or ""
-    ).strip().lower()
-    if not name:
-        return False
-    return name.endswith("-logs") or name in _LOG_STYLE_CHANNEL_NAMES
 
 
 def _is_missing_like(value: Any) -> bool:
@@ -95,45 +59,6 @@ def _embed_candidates(value: Any) -> list[Any]:
         return list(value)
     except TypeError:
         return [value]
-
-
-def _normalize_log_embeds_for_target(
-    target: object,
-    *,
-    embed: Any,
-    embeds: Any,
-) -> tuple[Any, Any]:
-    """Normalize embed visuals for log channels without touching non-log sends."""
-    if not _is_log_style_channel(target):
-        return embed, embeds
-    if not _has_embed_payload(embed) and not _has_embed_payload(embeds):
-        return embed, embeds
-
-    try:
-        from utils.logging import normalize_log_embed
-    except Exception:
-        return embed, embeds
-
-    normalized_embed = embed
-    normalized_embeds = embeds
-
-    if isinstance(embed, discord.Embed):
-        try:
-            normalized_embed = normalize_log_embed(target, embed)
-        except Exception:
-            normalized_embed = embed
-
-    if _has_embed_payload(embeds):
-        try:
-            normalized_embeds = [
-                normalize_log_embed(target, e)
-                for e in _embed_candidates(embeds)
-                if isinstance(e, discord.Embed)
-            ]
-        except Exception:
-            normalized_embeds = embeds
-
-    return normalized_embed, normalized_embeds
 
 
 def _resolve_guild_for_target(target: object) -> Optional[discord.Guild]:
@@ -671,6 +596,13 @@ def patch_components_v2() -> None:
     original_webhook_edit_message = discord.Webhook.edit_message
     original_webhook_message_edit = discord.WebhookMessage.edit
 
+    try:
+        from utils.classic_send import register_original_messageable_send
+
+        register_original_messageable_send(original_messageable_send)
+    except Exception:
+        pass
+
     def _parse_use_v2(value: Any) -> Optional[bool]:
         if value is None:
             return None
@@ -826,8 +758,6 @@ def patch_components_v2() -> None:
 
     async def patched_webhook_send(self, *args, **kwargs):
         _strip_none_view_for_send(kwargs)
-        if _is_log_style_channel(self):
-            kwargs["use_v2"] = False
         existing_embed = kwargs.get("embed", MISSING)
         existing_embeds = kwargs.get("embeds", MISSING)
         if not _is_missing_like(existing_embed) or _has_embed_payload(existing_embeds):
@@ -891,18 +821,11 @@ def patch_components_v2() -> None:
 
     async def patched_messageable_send(self, *args, **kwargs):
         _strip_none_view_for_send(kwargs)
-        if _is_log_style_channel(self):
-            kwargs["use_v2"] = False
         has_embed_kw = "embed" in kwargs
         has_embeds_kw = "embeds" in kwargs
         maybe_embed = kwargs.get("embed", None)
         maybe_embeds = kwargs.get("embeds", None)
         if maybe_embed is not None or _has_embed_payload(maybe_embeds):
-            maybe_embed, maybe_embeds = _normalize_log_embeds_for_target(
-                self,
-                embed=maybe_embed,
-                embeds=maybe_embeds,
-            )
             maybe_embed, maybe_embeds = await _apply_status_emojis_for_target(
                 self,
                 embed=maybe_embed,

@@ -22387,3 +22387,329 @@ aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host gatewa
 2026-05-20 19:54:15,662 | INFO | ModBot | [>>] Initializing bot systems...
 2026-05-20 19:54:15,673 | INFO | LifeSimBot | Initializing...
 2026-05-20 19:54:15,673 | INFO | bot.database | Initializing Database Schema...
+2026-05-20 20:55:36,176 | INFO | LifeSimBot | [1mLifeSimBot[0m starting up
+2026-05-20 20:55:36,176 | INFO | LifeSimBot | [2mPython[0m 3.14.0 | [2mdiscord.py[0m 2.7.1 | [2mOS[0m Windows 11
+2026-05-20 20:55:36,176 | INFO | LifeSimBot | [2mDB[0m C:\Users\Dell\mod\LifeSimBot\modbot.db | [2mLog[0m C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-05-20 20:55:36,176 | INFO | LifeSimBot | [2mDebug[0m False | [2mFeatures[0m 16 enabled
+2026-05-20 20:55:36,176 | INFO | LifeSimBot | Connecting LifeSimBot to Discord...
+2026-05-20 20:55:36,203 | INFO | group_bot | Connecting GroupBot to Discord...
+2026-05-20 20:55:36,205 | INFO | ModBot.Dashboard | Dashboard running on http://0.0.0.0:10547
+2026-05-20 20:55:36,205 | INFO | ModBot | [OK] Dashboard started (pre-connect)
+2026-05-20 20:55:36,205 | INFO | ModBot | [NET] Connecting ModBot to Discord...
+2026-05-20 20:55:36,604 | INFO | LifeSimBot | Initializing...
+2026-05-20 20:55:36,605 | INFO | bot.database | Initializing Database Schema...
+2026-05-20 20:55:36,651 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-05-20 20:55:36,652 | INFO | LifeSimBot | [OK] Database initialized
+2026-05-20 20:55:36,747 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-05-20 20:55:36,748 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-05-20 20:55:36,806 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-05-20 20:55:36,887 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-05-20 20:55:36,888 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-05-20 20:55:36,897 | INFO | LifeSimBot.Core | Core cog initialized
+2026-05-20 20:55:36,897 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-05-20 20:55:36,901 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-05-20 20:55:36,902 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-05-20 20:55:36,905 | INFO | LifeSimBot.Help | Help cog initialized
+2026-05-20 20:55:36,905 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-05-20 20:55:36,912 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-05-20 20:55:36,918 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-05-20 20:55:36,925 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-05-20 20:55:36,929 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-05-20 20:55:36,934 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-05-20 20:55:36,937 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-05-20 20:55:36,943 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-05-20 20:55:36,948 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-05-20 20:55:36,956 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-05-20 20:55:36,962 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-05-20 20:55:36,968 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-05-20 20:55:36,974 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-05-20 20:55:36,975 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-05-20 20:55:36,981 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-05-20 20:55:36,983 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-05-20 20:55:36,990 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-05-20 20:55:36,994 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-05-20 20:55:37,000 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-05-20 20:55:37,004 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-05-20 20:55:37,006 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-05-20 20:55:37,008 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-05-20 20:55:37,008 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
+2026-05-20 20:55:37,011 | INFO | ModBot | [>>] Initializing bot systems...
+2026-05-20 20:55:37,048 | INFO | ModBot.Database | ✅ Database connection pool initialized
+2026-05-20 20:55:37,049 | INFO | ModBot.RedisCache | Using in-memory caches (no REDIS_URL configured).
+2026-05-20 20:55:37,049 | INFO | ModBot | [CACHE] Backend: memory
+2026-05-20 20:55:38,916 | INFO | LifeSimBot | [OK] Synced 97 application commands
+2026-05-20 20:55:38,916 | INFO | LifeSimBot | Background tasks started
+2026-05-20 20:55:38,916 | INFO | LifeSimBot | [OK] Ready (startup 2.31s)
+2026-05-20 20:55:38,918 | INFO | ModBot |   [OK] Loaded: cogs.moderation
+2026-05-20 20:55:38,923 | INFO | ModBot |   [OK] Loaded: cogs.setup
+2026-05-20 20:55:38,932 | INFO | ModBot |   [OK] Loaded: cogs.verification
+2026-05-20 20:55:38,942 | INFO | ModBot |   [OK] Loaded: cogs.help
+2026-05-20 20:55:38,947 | INFO | ModBot |   [OK] Loaded: cogs.roles
+2026-05-20 20:55:38,951 | INFO | ModBot |   [OK] Loaded: cogs.logging_cog
+2026-05-20 20:55:38,956 | INFO | ModBot |   [OK] Loaded: cogs.pin
+2026-05-20 20:55:38,961 | INFO | ModBot |   [OK] Loaded: cogs.reports
+2026-05-20 20:55:38,963 | INFO | ModBot |   [OK] Loaded: cogs.blacklist
+2026-05-20 20:55:38,966 | INFO | ModBot |   [OK] Loaded: cogs.forum_moderation
+2026-05-20 20:55:38,978 | INFO | ModBot |   [OK] Loaded: cogs.prefix_commands
+2026-05-20 20:55:38,998 | INFO | ModBot |   [OK] Loaded: cogs.aimoderation
+2026-05-20 20:55:40,261 | INFO | ModBot |   [OK] Loaded: cogs.automod
+2026-05-20 20:55:41,163 | INFO | ModBot |   [OK] Loaded: cogs.antiraid
+2026-05-20 20:55:41,205 | INFO | ModBot |   [OK] Loaded: cogs.voice
+2026-05-20 20:55:41,209 | INFO | ModBot |   [OK] Loaded: cogs.settings
+2026-05-20 20:55:41,211 | INFO | ModBot |   [OK] Loaded: cogs.polls
+2026-05-20 20:55:41,217 | INFO | ModBot |   [OK] Loaded: cogs.tickets
+2026-05-20 20:55:41,220 | INFO | ModBot.Modmail | 📬 Loading modmail system...
+2026-05-20 20:55:41,220 | INFO | ModBot.Modmail | ✅ Modmail cog loaded - threads will restore when bot is ready
+2026-05-20 20:55:41,221 | INFO | ModBot |   [OK] Loaded: cogs.modmail
+2026-05-20 20:55:41,226 | INFO | ModBot |   [OK] Loaded: cogs.utility
+2026-05-20 20:55:41,231 | INFO | ModBot |   [OK] Loaded: cogs.admin
+2026-05-20 20:55:41,235 | INFO | ModBot |   [OK] Loaded: cogs.staff
+2026-05-20 20:55:41,239 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 68b7bcf89061188ca6681deba563da60).
+2026-05-20 20:55:41,260 | INFO | ModBot |   [OK] Loaded: cogs.court
+2026-05-20 20:55:41,264 | INFO | ModBot |   [OK] Loaded: cogs.whitelist
+2026-05-20 20:55:41,264 | INFO | ModBot | ============================================================
+2026-05-20 20:55:41,264 | INFO | ModBot | [COG] Cog Loading Summary:
+2026-05-20 20:55:41,265 | INFO | ModBot |   Loaded:  24
+2026-05-20 20:55:41,265 | INFO | ModBot |   Skipped: 0
+2026-05-20 20:55:41,265 | INFO | ModBot |   Failed:  0
+2026-05-20 20:55:41,265 | INFO | ModBot |   Commands: 120 prefix, 50 slash
+2026-05-20 20:55:41,265 | INFO | ModBot | ============================================================
+2026-05-20 20:55:41,265 | INFO | ModBot | [CMD] Syncing slash commands globally...
+2026-05-20 20:55:41,796 | INFO | ModBot | [CMD] Synced 50 slash commands globally
+2026-05-20 20:55:42,324 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: e8fbfbe001bff6a11119876449991d98).
+2026-05-20 20:55:42,889 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: d3a4dc9fdcf4c8e3337b5c878835a5ae).
+2026-05-20 20:55:43,249 | INFO | group_bot | Logged in as Group Creater#8732
+2026-05-20 20:55:44,342 | INFO | LifeSimBot | ====================================================
+2026-05-20 20:55:44,343 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-05-20 20:55:44,343 | INFO | LifeSimBot | Guilds: 1 | Users: 41 | Latency: 37ms
+2026-05-20 20:55:44,343 | INFO | LifeSimBot | ====================================================
+2026-05-20 20:55:44,359 | INFO | LifeSimBot | Database auto-backup completed
+2026-05-20 20:55:44,963 | INFO | ModBot | ============================================================
+2026-05-20 20:55:44,963 | INFO | ModBot | [BOT] Online: ass Moderation#1373 (ID: 1445812489840361656)
+2026-05-20 20:55:44,964 | INFO | ModBot | [BOT] Guilds: 3
+2026-05-20 20:55:44,964 | INFO | ModBot | [BOT] Users:  119
+2026-05-20 20:55:44,964 | INFO | ModBot | [BOT] Version: 3.4.0
+2026-05-20 20:55:44,965 | INFO | ModBot | [BOT] discord.py: 2.7.1
+2026-05-20 20:55:44,965 | INFO | ModBot | ============================================================
+2026-05-20 20:55:44,966 | INFO | ModBot | [DB] Initializing guild databases...
+2026-05-20 20:55:44,966 | INFO | ModBot.Modmail | 📬 Restoring modmail threads from database...
+2026-05-20 20:55:44,985 | INFO | ModBot.Database | ✅ Initialized database for guild 1388268039195201677
+2026-05-20 20:55:45,036 | INFO | ModBot | [DB] Initialized 3/3 guilds
+2026-05-20 20:55:45,046 | INFO | ModBot.Modmail | ✅ Loaded 0 active modmail threads from database
+2026-05-20 20:55:45,958 | WARNING | cogs.logging_cog | Removed invalid audit log channel for guild 1388268039195201677
+2026-05-20 20:55:51,726 | INFO | ModBot | [OK] Synced 11 status emoji assets to application
+2026-05-20 20:55:51,730 | INFO | ModBot | [OK] Loaded 0 blacklisted users
+2026-05-20 20:55:51,730 | INFO | ModBot | [START] Bot is fully operational!
+2026-05-20 21:00:59,054 | INFO | LifeSimBot | [1mLifeSimBot[0m starting up
+2026-05-20 21:00:59,054 | INFO | LifeSimBot | [2mPython[0m 3.14.0 | [2mdiscord.py[0m 2.7.1 | [2mOS[0m Windows 11
+2026-05-20 21:00:59,054 | INFO | LifeSimBot | [2mDB[0m C:\Users\Dell\mod\LifeSimBot\modbot.db | [2mLog[0m C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-05-20 21:00:59,054 | INFO | LifeSimBot | [2mDebug[0m False | [2mFeatures[0m 16 enabled
+2026-05-20 21:00:59,054 | INFO | LifeSimBot | Connecting LifeSimBot to Discord...
+2026-05-20 21:00:59,064 | INFO | group_bot | Connecting GroupBot to Discord...
+2026-05-20 21:00:59,065 | INFO | ModBot.Dashboard | Dashboard running on http://0.0.0.0:10547
+2026-05-20 21:00:59,065 | INFO | ModBot | [OK] Dashboard started (pre-connect)
+2026-05-20 21:00:59,066 | INFO | ModBot | [NET] Connecting ModBot to Discord...
+2026-05-20 21:00:59,462 | INFO | LifeSimBot | Initializing...
+2026-05-20 21:00:59,462 | INFO | bot.database | Initializing Database Schema...
+2026-05-20 21:00:59,475 | INFO | ModBot | [>>] Initializing bot systems...
+2026-05-20 21:00:59,480 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-05-20 21:00:59,482 | INFO | LifeSimBot | [OK] Database initialized
+2026-05-20 21:00:59,483 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-05-20 21:00:59,485 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-05-20 21:00:59,488 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-05-20 21:00:59,490 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-05-20 21:00:59,490 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-05-20 21:00:59,494 | INFO | LifeSimBot.Core | Core cog initialized
+2026-05-20 21:00:59,494 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-05-20 21:00:59,496 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-05-20 21:00:59,497 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-05-20 21:00:59,499 | INFO | LifeSimBot.Help | Help cog initialized
+2026-05-20 21:00:59,499 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-05-20 21:00:59,501 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-05-20 21:00:59,505 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-05-20 21:00:59,507 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-05-20 21:00:59,509 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-05-20 21:00:59,511 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-05-20 21:00:59,513 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-05-20 21:00:59,515 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-05-20 21:00:59,517 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-05-20 21:00:59,522 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-05-20 21:00:59,525 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-05-20 21:00:59,527 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-05-20 21:00:59,529 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-05-20 21:00:59,530 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-05-20 21:00:59,532 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-05-20 21:00:59,532 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-05-20 21:00:59,535 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-05-20 21:00:59,536 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-05-20 21:00:59,540 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-05-20 21:00:59,542 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-05-20 21:00:59,544 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-05-20 21:00:59,545 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-05-20 21:00:59,545 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
+2026-05-20 21:00:59,548 | INFO | ModBot.Database | ✅ Database connection pool initialized
+2026-05-20 21:00:59,548 | INFO | ModBot.RedisCache | Using in-memory caches (no REDIS_URL configured).
+2026-05-20 21:00:59,548 | INFO | ModBot | [CACHE] Backend: memory
+2026-05-20 21:01:00,968 | INFO | LifeSimBot | [OK] Synced 97 application commands
+2026-05-20 21:01:00,968 | INFO | LifeSimBot | Background tasks started
+2026-05-20 21:01:00,969 | INFO | LifeSimBot | [OK] Ready (startup 1.51s)
+2026-05-20 21:01:00,971 | INFO | ModBot |   [OK] Loaded: cogs.moderation
+2026-05-20 21:01:00,972 | INFO | ModBot |   [OK] Loaded: cogs.setup
+2026-05-20 21:01:00,976 | INFO | ModBot |   [OK] Loaded: cogs.verification
+2026-05-20 21:01:00,981 | INFO | ModBot |   [OK] Loaded: cogs.help
+2026-05-20 21:01:00,985 | INFO | ModBot |   [OK] Loaded: cogs.roles
+2026-05-20 21:01:00,989 | INFO | ModBot |   [OK] Loaded: cogs.logging_cog
+2026-05-20 21:01:00,992 | INFO | ModBot |   [OK] Loaded: cogs.pin
+2026-05-20 21:01:00,994 | INFO | ModBot |   [OK] Loaded: cogs.reports
+2026-05-20 21:01:00,996 | INFO | ModBot |   [OK] Loaded: cogs.blacklist
+2026-05-20 21:01:00,998 | INFO | ModBot |   [OK] Loaded: cogs.forum_moderation
+2026-05-20 21:01:01,009 | INFO | ModBot |   [OK] Loaded: cogs.prefix_commands
+2026-05-20 21:01:01,021 | INFO | ModBot |   [OK] Loaded: cogs.aimoderation
+2026-05-20 21:01:01,939 | INFO | ModBot |   [OK] Loaded: cogs.automod
+2026-05-20 21:01:02,769 | INFO | ModBot |   [OK] Loaded: cogs.antiraid
+2026-05-20 21:01:02,801 | INFO | ModBot |   [OK] Loaded: cogs.voice
+2026-05-20 21:01:02,804 | INFO | ModBot |   [OK] Loaded: cogs.settings
+2026-05-20 21:01:02,806 | INFO | ModBot |   [OK] Loaded: cogs.polls
+2026-05-20 21:01:02,812 | INFO | ModBot |   [OK] Loaded: cogs.tickets
+2026-05-20 21:01:02,816 | INFO | ModBot.Modmail | 📬 Loading modmail system...
+2026-05-20 21:01:02,817 | INFO | ModBot.Modmail | ✅ Modmail cog loaded - threads will restore when bot is ready
+2026-05-20 21:01:02,817 | INFO | ModBot |   [OK] Loaded: cogs.modmail
+2026-05-20 21:01:02,823 | INFO | ModBot |   [OK] Loaded: cogs.utility
+2026-05-20 21:01:02,829 | INFO | ModBot |   [OK] Loaded: cogs.admin
+2026-05-20 21:01:02,832 | INFO | ModBot |   [OK] Loaded: cogs.staff
+2026-05-20 21:01:02,855 | INFO | ModBot |   [OK] Loaded: cogs.court
+2026-05-20 21:01:02,858 | INFO | ModBot |   [OK] Loaded: cogs.whitelist
+2026-05-20 21:01:02,858 | INFO | ModBot | ============================================================
+2026-05-20 21:01:02,858 | INFO | ModBot | [COG] Cog Loading Summary:
+2026-05-20 21:01:02,858 | INFO | ModBot |   Loaded:  24
+2026-05-20 21:01:02,858 | INFO | ModBot |   Skipped: 0
+2026-05-20 21:01:02,858 | INFO | ModBot |   Failed:  0
+2026-05-20 21:01:02,859 | INFO | ModBot |   Commands: 120 prefix, 50 slash
+2026-05-20 21:01:02,859 | INFO | ModBot | ============================================================
+2026-05-20 21:01:02,859 | INFO | ModBot | [CMD] Syncing slash commands globally...
+2026-05-20 21:01:03,120 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 33b93450e73efea493b1c7ec6361fe7f).
+2026-05-20 21:01:03,124 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 7f19884e276c792749f2cbba1244d705).
+2026-05-20 21:01:03,321 | INFO | ModBot | [CMD] Synced 50 slash commands globally
+2026-05-20 21:01:03,950 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: a4f2d9346faea1f57686e83786e97f7d).
+2026-05-20 21:01:33,366 | INFO | LifeSimBot | [1mLifeSimBot[0m starting up
+2026-05-20 21:01:33,367 | INFO | LifeSimBot | [2mPython[0m 3.14.0 | [2mdiscord.py[0m 2.7.1 | [2mOS[0m Windows 11
+2026-05-20 21:01:33,367 | INFO | LifeSimBot | [2mDB[0m C:\Users\Dell\mod\LifeSimBot\modbot.db | [2mLog[0m C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-05-20 21:01:33,367 | INFO | LifeSimBot | [2mDebug[0m False | [2mFeatures[0m 16 enabled
+2026-05-20 21:01:33,367 | INFO | LifeSimBot | Connecting LifeSimBot to Discord...
+2026-05-20 21:01:33,380 | INFO | group_bot | Connecting GroupBot to Discord...
+2026-05-20 21:01:33,381 | INFO | ModBot.Dashboard | Dashboard running on http://0.0.0.0:10547
+2026-05-20 21:01:33,381 | INFO | ModBot | [OK] Dashboard started (pre-connect)
+2026-05-20 21:01:33,382 | INFO | ModBot | [NET] Connecting ModBot to Discord...
+2026-05-20 21:01:33,734 | INFO | ModBot | [>>] Initializing bot systems...
+2026-05-20 21:01:33,742 | INFO | ModBot.Database | ✅ Database connection pool initialized
+2026-05-20 21:01:33,742 | INFO | ModBot.RedisCache | Using in-memory caches (no REDIS_URL configured).
+2026-05-20 21:01:33,742 | INFO | ModBot | [CACHE] Backend: memory
+2026-05-20 21:01:34,876 | INFO | LifeSimBot | Initializing...
+2026-05-20 21:01:34,876 | INFO | bot.database | Initializing Database Schema...
+2026-05-20 21:01:34,879 | INFO | ModBot |   [OK] Loaded: cogs.moderation
+2026-05-20 21:01:34,881 | INFO | ModBot |   [OK] Loaded: cogs.setup
+2026-05-20 21:01:34,888 | INFO | ModBot |   [OK] Loaded: cogs.verification
+2026-05-20 21:01:34,892 | INFO | ModBot |   [OK] Loaded: cogs.help
+2026-05-20 21:01:34,895 | INFO | ModBot |   [OK] Loaded: cogs.roles
+2026-05-20 21:01:34,902 | INFO | ModBot |   [OK] Loaded: cogs.logging_cog
+2026-05-20 21:01:34,906 | INFO | ModBot |   [OK] Loaded: cogs.pin
+2026-05-20 21:01:34,908 | INFO | ModBot |   [OK] Loaded: cogs.reports
+2026-05-20 21:01:34,910 | INFO | ModBot |   [OK] Loaded: cogs.blacklist
+2026-05-20 21:01:34,912 | INFO | ModBot |   [OK] Loaded: cogs.forum_moderation
+2026-05-20 21:01:34,922 | INFO | ModBot |   [OK] Loaded: cogs.prefix_commands
+2026-05-20 21:01:34,935 | INFO | ModBot |   [OK] Loaded: cogs.aimoderation
+2026-05-20 21:01:35,992 | INFO | ModBot |   [OK] Loaded: cogs.automod
+2026-05-20 21:01:36,901 | INFO | ModBot |   [OK] Loaded: cogs.antiraid
+2026-05-20 21:01:36,930 | INFO | ModBot |   [OK] Loaded: cogs.voice
+2026-05-20 21:01:36,933 | INFO | ModBot |   [OK] Loaded: cogs.settings
+2026-05-20 21:01:36,935 | INFO | ModBot |   [OK] Loaded: cogs.polls
+2026-05-20 21:01:36,940 | INFO | ModBot |   [OK] Loaded: cogs.tickets
+2026-05-20 21:01:36,945 | INFO | ModBot.Modmail | 📬 Loading modmail system...
+2026-05-20 21:01:36,946 | INFO | ModBot.Modmail | ✅ Modmail cog loaded - threads will restore when bot is ready
+2026-05-20 21:01:36,946 | INFO | ModBot |   [OK] Loaded: cogs.modmail
+2026-05-20 21:01:36,950 | INFO | ModBot |   [OK] Loaded: cogs.utility
+2026-05-20 21:01:36,954 | INFO | ModBot |   [OK] Loaded: cogs.admin
+2026-05-20 21:01:36,958 | INFO | ModBot |   [OK] Loaded: cogs.staff
+2026-05-20 21:01:36,985 | INFO | ModBot |   [OK] Loaded: cogs.court
+2026-05-20 21:01:36,989 | INFO | ModBot |   [OK] Loaded: cogs.whitelist
+2026-05-20 21:01:36,989 | INFO | ModBot | ============================================================
+2026-05-20 21:01:36,989 | INFO | ModBot | [COG] Cog Loading Summary:
+2026-05-20 21:01:36,989 | INFO | ModBot |   Loaded:  24
+2026-05-20 21:01:36,990 | INFO | ModBot |   Skipped: 0
+2026-05-20 21:01:36,990 | INFO | ModBot |   Failed:  0
+2026-05-20 21:01:36,990 | INFO | ModBot |   Commands: 120 prefix, 50 slash
+2026-05-20 21:01:36,990 | INFO | ModBot | ============================================================
+2026-05-20 21:01:36,990 | INFO | ModBot | [CMD] Syncing slash commands globally...
+2026-05-20 21:01:36,993 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-05-20 21:01:36,994 | INFO | LifeSimBot | [OK] Database initialized
+2026-05-20 21:01:36,997 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-05-20 21:01:36,998 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-05-20 21:01:36,999 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-05-20 21:01:37,001 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-05-20 21:01:37,001 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-05-20 21:01:37,006 | INFO | LifeSimBot.Core | Core cog initialized
+2026-05-20 21:01:37,006 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-05-20 21:01:37,008 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-05-20 21:01:37,009 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-05-20 21:01:37,011 | INFO | LifeSimBot.Help | Help cog initialized
+2026-05-20 21:01:37,011 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-05-20 21:01:37,014 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-05-20 21:01:37,021 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-05-20 21:01:37,024 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-05-20 21:01:37,026 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-05-20 21:01:37,029 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-05-20 21:01:37,032 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-05-20 21:01:37,034 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-05-20 21:01:37,040 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-05-20 21:01:37,046 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-05-20 21:01:37,050 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-05-20 21:01:37,054 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-05-20 21:01:37,058 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-05-20 21:01:37,058 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-05-20 21:01:37,061 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-05-20 21:01:37,062 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-05-20 21:01:37,066 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-05-20 21:01:37,068 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-05-20 21:01:37,071 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-05-20 21:01:37,073 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-05-20 21:01:37,074 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-05-20 21:01:37,075 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-05-20 21:01:37,076 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
+2026-05-20 21:01:37,292 | INFO | LifeSimBot | [OK] Synced 97 application commands
+2026-05-20 21:01:37,293 | INFO | LifeSimBot | Background tasks started
+2026-05-20 21:01:37,293 | INFO | LifeSimBot | [OK] Ready (startup 2.42s)
+2026-05-20 21:01:37,314 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 398b1714057949ab84feb37da3140718).
+2026-05-20 21:01:37,434 | INFO | ModBot | [CMD] Synced 50 slash commands globally
+2026-05-20 21:01:37,601 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: a57aacd16c7944f98015dcbf95a86846).
+2026-05-20 21:01:37,715 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: c43087c3de52c0f77ace4459909b83f6).
+2026-05-20 21:01:39,340 | INFO | group_bot | Logged in as Group Creater#8732
+2026-05-20 21:01:39,619 | INFO | LifeSimBot | ====================================================
+2026-05-20 21:01:39,619 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-05-20 21:01:39,620 | INFO | LifeSimBot | Guilds: 1 | Users: 41 | Latency: 36ms
+2026-05-20 21:01:39,620 | INFO | LifeSimBot | ====================================================
+2026-05-20 21:01:39,633 | INFO | LifeSimBot | Database auto-backup completed
+2026-05-20 21:01:39,773 | INFO | ModBot | ============================================================
+2026-05-20 21:01:39,773 | INFO | ModBot | [BOT] Online: ass Moderation#1373 (ID: 1445812489840361656)
+2026-05-20 21:01:39,774 | INFO | ModBot | [BOT] Guilds: 3
+2026-05-20 21:01:39,774 | INFO | ModBot | [BOT] Users:  119
+2026-05-20 21:01:39,774 | INFO | ModBot | [BOT] Version: 3.4.0
+2026-05-20 21:01:39,774 | INFO | ModBot | [BOT] discord.py: 2.7.1
+2026-05-20 21:01:39,774 | INFO | ModBot | ============================================================
+2026-05-20 21:01:39,775 | INFO | ModBot | [DB] Initializing guild databases...
+2026-05-20 21:01:39,775 | INFO | ModBot.Modmail | 📬 Restoring modmail threads from database...
+2026-05-20 21:01:39,786 | INFO | ModBot.Database | ✅ Initialized database for guild 1388268039195201677
+2026-05-20 21:01:39,820 | INFO | ModBot | [DB] Initialized 3/3 guilds
+2026-05-20 21:01:39,829 | INFO | ModBot.Modmail | ✅ Loaded 0 active modmail threads from database
+2026-05-20 21:01:50,201 | INFO | ModBot | [OK] Synced 11 status emoji assets to application
+2026-05-20 21:01:50,203 | INFO | ModBot | [OK] Loaded 0 blacklisted users
+2026-05-20 21:01:50,203 | INFO | ModBot | [START] Bot is fully operational!
+2026-05-20 21:06:38,462 | WARNING | ModBot.AIModeration | AI service blocked for 60s: TokenMix rate limit / quota reached.
+2026-05-20 21:13:43,171 | WARNING | ModBot.AIModeration | AI service blocked for 60s: TokenMix rate limit / quota reached.
+2026-05-20 21:22:56,678 | WARNING | ModBot.AIModeration | AI service blocked for 60s: TokenMix rate limit / quota reached.
+2026-05-20 21:24:23,583 | WARNING | cogs.logging_cog | Dropping mod log in The Supreme People: destination channel is not configured.
+2026-05-20 21:25:28,690 | WARNING | ModBot.AIModeration | AI service blocked for 60s: TokenMix rate limit / quota reached.
+2026-05-20 21:41:41,936 | INFO | ModBot | [CMD] apflov2 used 'quarantine' in The Supreme People
+2026-05-20 21:42:04,797 | INFO | ModBot | [CMD] apflov2 used 'quarantine' in The Supreme People
+2026-05-20 21:42:12,087 | INFO | ModBot | [CMD] apflov2 used 'purge' in The Supreme People
+2026-05-20 21:42:16,169 | WARNING | cogs.logging_cog | Dropping mod log in The Supreme People: destination channel is not configured.
+2026-05-20 22:01:39,642 | INFO | LifeSimBot | Database auto-backup completed
