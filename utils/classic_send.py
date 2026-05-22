@@ -6,17 +6,18 @@ import discord
 
 
 _MessageableSend = Callable[..., Awaitable[Any]]
-_original_messageable_send: Optional[_MessageableSend] = None
 
 
 def register_original_messageable_send(send: _MessageableSend) -> None:
-    """Register discord.py's unpatched Messageable.send implementation."""
-    global _original_messageable_send
-    if _original_messageable_send is None:
-        _original_messageable_send = send
+    """Legacy stub — kept for backward compatibility with components_v2.py.
+
+    No-op now that the v2 monkeypatch is disabled.
+    """
+    pass
 
 
 def _strip_v2_only_kwargs(kwargs: dict[str, Any]) -> None:
+    """Remove any leftover v2-specific kwargs that discord.py doesn't understand."""
     kwargs.pop("use_v2", None)
     if kwargs.get("view", discord.utils.MISSING) is None:
         kwargs.pop("view", None)
@@ -24,20 +25,10 @@ def _strip_v2_only_kwargs(kwargs: dict[str, Any]) -> None:
 
 async def send_classic_message(target: discord.abc.Messageable, *args: Any, **kwargs: Any) -> Any:
     """
-    Send a message through the original discord.py send path.
+    Send a message using classic Discord embeds (no Components v2).
 
-    This is used for log embeds so they remain classic embeds even when the
-    Components v2 compatibility monkeypatch is installed globally.
+    Strips any v2-specific kwargs and sends through the standard discord.py path.
     """
     kwargs = dict(kwargs)
     _strip_v2_only_kwargs(kwargs)
-
-    if _original_messageable_send is not None:
-        return await _original_messageable_send(target, *args, **kwargs)
-
-    try:
-        return await target.send(*args, use_v2=False, **kwargs)
-    except TypeError as exc:
-        if "use_v2" not in str(exc):
-            raise
-        return await target.send(*args, **kwargs)
+    return await target.send(*args, **kwargs)

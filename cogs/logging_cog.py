@@ -283,8 +283,8 @@ class Logging(commands.Cog):
         Args:
             channel: The channel to send to
             embed: The embed to send
-            use_v2: Ignored for log styling; logs always use classic embeds.
-            view: Optional view to Attach to the log message
+            use_v2: Deprecated, ignored. Logs always use classic embeds.
+            view: Optional view to attach to the log message
             mirror_to_audit: Also send this log to the configured audit log channel
         """
         if not channel:

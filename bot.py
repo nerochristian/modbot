@@ -220,11 +220,7 @@ try:
     from database import Database
     from utils.cache import SnipeCache, PrefixCache
     from utils.redis_cache import create_cache_backend
-    from utils.components_v2 import (
-        ComponentsV2Config,
-        patch_components_v2,
-        layout_view_from_embeds,
-    )
+    pass
 except ImportError as e:
     logger.critical(f"[FATAL] Failed to import required modules: {e}")
     sys.exit(1)
@@ -237,9 +233,7 @@ try:
 except ImportError:
     _DASHBOARD_AVAILABLE = False
 
-# Install Components v2 patching, keep classic v1 embeds as default.
-patch_components_v2()
-ComponentsV2Config.disable()
+# Components v2 patching removed — all channels use classic Discord embeds.
 
 
 # ==================== TARGET RESOLVE PROMPT ====================
@@ -2031,25 +2025,6 @@ class ModBot(commands.Bot):
                     embed = await apply_status_emoji_overrides(embed, ctx.guild)
                 except Exception:
                     pass
-            if use_v2 and ctx.channel is not None:
-                send_kwargs: dict[str, Any] = {}
-                msg = getattr(ctx, "message", None)
-                if msg is not None:
-                    try:
-                        send_kwargs["reference"] = msg.to_reference(fail_if_not_exists=False)
-                    except Exception:
-                        send_kwargs["reference"] = msg
-                    send_kwargs["mention_author"] = False
-                try:
-                    layout = await layout_view_from_embeds(
-                        embed=embed,
-                        existing_view=view,
-                    )
-                    send_kwargs["view"] = layout
-                    return await ctx.channel.send(**send_kwargs)
-                except Exception:
-                    pass
-
             try:
                 return await ctx.reply(embed=embed, view=view, mention_author=False)
             except Exception:
