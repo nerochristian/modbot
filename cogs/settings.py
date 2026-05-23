@@ -413,8 +413,8 @@ class PunishmentSettingsModal(discord.ui.Modal, title="⚡ Punishment Settings")
 # ==============================================================================
 
 LOG_PAGES = [
-    [("mod_log_channel", "Mod Logs", "Mod"), ("message_log_channel", "Message Logs", "Message"), ("automod_log_channel", "AutoMod Logs", "AutoMod")],
-    [("voice_log_channel", "Voice Logs", "Voice"), ("verify_log_channel", "Verify Logs", "Verify"), ("ticket_log_channel", "Ticket/Modmail Logs", "Ticket")],
+    [("audit_log_channel", "Audit Logs", "Audit"), ("mod_log_channel", "Mod Logs", "Mod"), ("message_log_channel", "Message Logs", "Message")],
+    [("automod_log_channel", "AutoMod Logs", "AutoMod"), ("voice_log_channel", "Voice Logs", "Voice"), ("verify_log_channel", "Verify Logs", "Verify")],
 ]
 
 class LoggingSettingsView(BaseSettingsView):
@@ -457,7 +457,7 @@ class LoggingSettingsView(BaseSettingsView):
             title="📝 Logging Configuration",
             description=(
                 "Configure the standard `Moderation Logs` layout.\n"
-                "Setup syncs `#mod-logs`, `#message-logs`, `#automod-logs`, and `#voice-logs`."
+                "Setup syncs `#audit-logs`, `#mod-logs`, `#message-logs`, `#automod-logs`, and `#voice-logs`."
             ),
             color=Colors.INFO,
             timestamp=datetime.datetime.now(timezone.utc),
@@ -465,23 +465,24 @@ class LoggingSettingsView(BaseSettingsView):
 
         # ── All channels at a glance ──
         col1 = (
+            f"**Audit Logs:** {_c(g, s, 'audit_log_channel', '`Disabled`')}\n"
             f"**Mod Logs:** {_c(g, s, 'mod_log_channel', '`Disabled`')}\n"
-            f"**Message Logs:** {_c(g, s, 'message_log_channel', '`Disabled`')}\n"
-            f"**AutoMod Logs:** {_c(g, s, 'automod_log_channel', '`Disabled`')}"
+            f"**Message Logs:** {_c(g, s, 'message_log_channel', '`Disabled`')}"
         )
         embed.add_field(name="Main Channels", value=col1, inline=True)
 
         col2 = (
+            f"**AutoMod Logs:** {_c(g, s, 'automod_log_channel', '`Disabled`')}\n"
             f"**Voice Logs:** {_c(g, s, 'voice_log_channel', '`Disabled`')}\n"
-            f"**Verify Logs:** {_c(g, s, 'verify_log_channel', '`Disabled`')}\n"
-            f"**Tickets/Modmail:** {_c(g, s, 'ticket_log_channel', '`Uses Mod Logs`')}"
+            f"**Verify Logs:** {_c(g, s, 'verify_log_channel', '`Disabled`')}"
         )
         embed.add_field(name="Other Routing", value=col2, inline=True)
 
         embed.add_field(
             name="Routing Rules",
             value=(
-                "`mod-logs`: moderation, audit, reports, tickets, modmail, forum alerts\n"
+                "`audit-logs`: server audit and configuration changes\n"
+                "`mod-logs`: moderation, reports, tickets, modmail, forum alerts\n"
                 "`message-logs`: message edits/deletes and purge transcripts\n"
                 "`automod-logs`: automod and AI moderation events\n"
                 "`voice-logs`: voice state and voice moderation events\n"

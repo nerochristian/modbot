@@ -113,6 +113,7 @@ python bot.py
 Use the `/logging` command to configure where logs should be sent:
 
 ```
+/logging type:audit channel:#audit-logs
 /logging type:mod channel:#mod-logs
 /logging type:message channel:#message-logs
 /logging type:automod channel:#automod-logs
@@ -120,7 +121,7 @@ Use the `/logging` command to configure where logs should be sent:
 ```
 
 Running `/setup` creates or syncs these channels under `Moderation Logs`.
-Audit, report, ticket, modmail, and forum alert logs route through `#mod-logs`.
+Report, ticket, modmail, and forum alert logs route through `#mod-logs`.
 
 View current configuration:
 ```

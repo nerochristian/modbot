@@ -130,7 +130,7 @@ class Setup(commands.Cog):
                 embed.description = (
                     f"Missing baseline resources were created where possible for **{guild.name}**.\n\n"
                     f"**Progress:** `{summary['percent']}%` ({summary['complete']}/{summary['total']})\n"
-                    "Logging is synced under `Moderation Logs`: `#mod-logs`, `#message-logs`, `#automod-logs`, and `#voice-logs`."
+                    "Logging is synced under `Moderation Logs`: `#audit-logs`, `#mod-logs`, `#message-logs`, `#automod-logs`, and `#voice-logs`."
                 )
                 embed.add_field(
                     name="Created",

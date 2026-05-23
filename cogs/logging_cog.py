@@ -1259,7 +1259,6 @@ class Logging(commands.Cog):
             details_lines=details_lines,
             message_text=message_text,
             thumbnail_url=message.author.display_avatar.url,
-            footer_user=deleter,
         )
 
         if attachment_records:
@@ -1356,7 +1355,6 @@ class Logging(commands.Cog):
                 details_lines=details_lines,
                 message_text=message_text,
                 thumbnail_url=author_avatar_url,
-                footer_user=deleter,
             )
 
             if attachments:
@@ -2025,15 +2023,19 @@ class Logging(commands.Cog):
             f"**Webhook:** {webhook_name} (`{webhook_id}`)",
             f"**Channel:** {self._format_channel_reference(channel)}",
             f"**Type:** {webhook_type}",
-            f"**Reason:** {self._shorten(getattr(entry, 'reason', None), 250)}",
         ]
+        actor = getattr(entry, "user", None)
+        if actor:
+            details_lines.append(f"**Actor:** {self._format_user_reference(actor)}")
+        reason = getattr(entry, "reason", None)
+        if reason:
+            details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
 
         embed = self._build_sapphire_log_embed(
             title="Webhook created",
             color=Colors.SUCCESS,
             details_lines=details_lines,
             thumbnail_url=channel.guild.icon.url if channel.guild.icon else None,
-            footer_user=getattr(entry, "user", None),
         )
 
         await self.safe_send_log(log_channel, embed)
@@ -2066,6 +2068,10 @@ class Logging(commands.Cog):
         details_lines.extend(self._audit_extra_lines(entry))
         details_lines.extend(self._audit_change_lines(entry))
 
+        actor = getattr(entry, "user", None)
+        if actor:
+            details_lines.append(f"**Actor:** {self._format_user_reference(actor)}")
+
         reason = getattr(entry, "reason", None)
         if reason:
             details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
@@ -2075,7 +2081,6 @@ class Logging(commands.Cog):
             color=self._audit_action_color(action),
             details_lines=details_lines or ["**Details:** *No additional fields*"],
             thumbnail_url=self._audit_thumbnail_url(entry),
-            footer_user=getattr(entry, "user", None),
         )
 
         await self.safe_send_log(channel, embed)
@@ -2102,6 +2107,8 @@ class Logging(commands.Cog):
             f"**ID:** `{channel.id}`",
             f"**Created:** {f'<t:{int(created_at.timestamp())}:R>' if created_at else '*N/A*'}",
         ]
+        if actor:
+            details_lines.append(f"**Actor:** {self._format_user_reference(actor)}")
         details_lines.extend(self._channel_detail_lines(channel))
         if reason:
             details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
@@ -2111,7 +2118,6 @@ class Logging(commands.Cog):
             color=Colors.SUCCESS,
             details_lines=details_lines,
             thumbnail_url=channel.guild.icon.url if channel.guild.icon else None,
-            footer_user=actor,
         )
         await self.safe_send_log(log_channel, embed)
         return
@@ -2138,6 +2144,8 @@ class Logging(commands.Cog):
             f"**ID:** `{channel.id}`",
             f"**Created:** {f'<t:{int(created_at.timestamp())}:R>' if created_at else '*N/A*'}",
         ]
+        if actor:
+            details_lines.append(f"**Actor:** {self._format_user_reference(actor)}")
         details_lines.extend(self._channel_detail_lines(channel))
         if reason:
             details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
@@ -2147,7 +2155,6 @@ class Logging(commands.Cog):
             color=Colors.ERROR,
             details_lines=details_lines,
             thumbnail_url=channel.guild.icon.url if channel.guild.icon else None,
-            footer_user=actor,
         )
         await self.safe_send_log(log_channel, embed)
         return
@@ -2173,6 +2180,8 @@ class Logging(commands.Cog):
             f"**ID:** `{role.id}`",
             f"**Created:** {f'<t:{int(created_at.timestamp())}:R>' if created_at else '*N/A*'}",
         ]
+        if actor:
+            details_lines.append(f"**Actor:** {self._format_user_reference(actor)}")
         details_lines.extend(self._role_detail_lines(role, include_members=True))
         if reason:
             details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
@@ -2182,7 +2191,6 @@ class Logging(commands.Cog):
             color=role.color if role.color.value != 0 else Colors.SUCCESS,
             details_lines=details_lines,
             thumbnail_url=role.guild.icon.url if role.guild.icon else None,
-            footer_user=actor,
         )
         await self.safe_send_log(channel, embed)
         return
@@ -2209,6 +2217,8 @@ class Logging(commands.Cog):
             f"**Members at deletion:** {len(role.members)}",
             f"**Created:** {f'<t:{int(created_at.timestamp())}:R>' if created_at else '*N/A*'}",
         ]
+        if actor:
+            details_lines.append(f"**Actor:** {self._format_user_reference(actor)}")
         details_lines.extend(self._role_detail_lines(role, include_members=False))
         if reason:
             details_lines.append(f"**Reason:** {self._shorten(reason, 250)}")
@@ -2218,7 +2228,6 @@ class Logging(commands.Cog):
             color=Colors.ERROR,
             details_lines=details_lines,
             thumbnail_url=role.guild.icon.url if role.guild.icon else None,
-            footer_user=actor,
         )
         await self.safe_send_log(channel, embed)
         return

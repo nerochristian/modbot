@@ -36,6 +36,7 @@ from utils.checks import is_admin, is_mod, is_bot_owner_id
 from config import Config
 
 logger = logging.getLogger("AutoMod")
+ZWS = "\u200b"
 
 # =============================================================================
 # ENUMS & DATA CLASSES
@@ -734,19 +735,26 @@ class AutoModV3(commands.Cog):
         if not channel:
             return
         color_map = {Severity.INFO: 0x3B82F6, Severity.LOW: 0xF59E0B, Severity.MEDIUM: 0xF97316, Severity.HIGH: 0xEF4444, Severity.CRITICAL: 0x991B1B, Severity.EXTREME: 0x8B0000}
-        embed = discord.Embed(title="🛡️ AutoMod Action", color=color_map.get(result.severity, 0xF59E0B), timestamp=datetime.now(timezone.utc))
-        embed.set_author(name=f"{message.author} ({message.author.id})", icon_url=message.author.display_avatar.url)
-        embed.add_field(name="Violation", value=result.reason, inline=False)
-        embed.add_field(name="Severity", value=f"**{result.severity.name}** ({result.confidence:.0%})", inline=True)
-        embed.add_field(name="Action", value=action_log.get("details", action_log["action"]), inline=True)
-        embed.add_field(name="Channel", value=message.channel.mention, inline=True)
-        if result.matched_patterns:
-            embed.add_field(name="Matched", value=", ".join(f"||{p}||" for p in result.matched_patterns[:3]), inline=False)
+        embed = discord.Embed(title="AutoMod Action", color=color_map.get(result.severity, 0xF59E0B), timestamp=datetime.now(timezone.utc))
         hist = await self.engine.get_user_history(guild.id, message.author.id)
-        embed.add_field(name="User History", value=f"Violations: {len(hist.violations)} | Risk: {hist.get_risk_score():.0f}/100", inline=True)
-        preview = message.content[:500] + ("..." if len(message.content) > 500 else "")
-        embed.add_field(name="Message", value=f"```{preview}```", inline=False)
-        embed.set_footer(text=f"Category: {result.category.value}")
+        details = [
+            f"**Violation:** {result.reason}",
+            f"**Severity:** {result.severity.name} ({result.confidence:.0%})",
+            f"**Action:** {action_log.get('details', action_log['action'])}",
+            f"**Channel:** {message.channel.mention}",
+            f"**User:** {message.author.mention} (`@{message.author.name}`)",
+            f"**History:** Violations {len(hist.violations)} | Risk {hist.get_risk_score():.0f}/100",
+            f"**Category:** {result.category.value}",
+        ]
+        if result.matched_patterns:
+            matched = ", ".join(f"||{p}||" for p in result.matched_patterns[:3])
+            details.append(f"**Matched:** {matched}")
+        embed.add_field(name=ZWS, value="\n".join(f"> {line}" for line in details), inline=False)
+
+        preview = (message.content or "").strip()
+        if preview:
+            preview = preview[:500] + ("..." if len(preview) > 500 else "")
+            embed.add_field(name="Message", value=f"`{preview}`", inline=False)
         await send_log_embed(channel, embed)
 
     async def _notify_user(self, user: discord.User, guild: discord.Guild, result: FilterResult, action_log: Dict):

@@ -232,7 +232,8 @@ CHANNEL_SPECS: List[Dict[str, Any]] = [
     {"name": "welcome", "setting_key": "welcome_channel", "topic": "Welcome and onboarding messages."},
     {"name": "verify", "setting_key": "verify_channel", "category": "verification_category", "topic": "Verification instructions."},
     {"name": "verify-logs", "setting_key": "verify_log_channel", "category": "verification_category", "topic": "Verification logs."},
-    {"name": "mod-logs", "setting_key": "mod_log_channel", "category": "logs_category", "topic": "Moderation actions and server audit events.", "prefer_name": True},
+    {"name": "audit-logs", "setting_key": "audit_log_channel", "category": "logs_category", "topic": "Server audit events and configuration changes.", "prefer_name": True},
+    {"name": "mod-logs", "setting_key": "mod_log_channel", "category": "logs_category", "topic": "Moderation actions.", "prefer_name": True},
     {"name": "message-logs", "setting_key": "message_log_channel", "category": "logs_category", "topic": "Message edits, deletes, and purge logs.", "prefer_name": True},
     {"name": "automod-logs", "setting_key": "automod_log_channel", "category": "logs_category", "topic": "Automod and AI moderation events.", "prefer_name": True},
     {"name": "voice-logs", "setting_key": "voice_log_channel", "category": "logs_category", "topic": "Voice channel moderation and state changes.", "prefer_name": True},
@@ -358,7 +359,8 @@ def apply_compact_log_routing(settings: Dict[str, Any]) -> None:
     """
     Route logging into the standard Moderation Logs channel layout.
 
-    - mod/audit/report/ticket-style logs go to mod-logs
+    - audit/server events go to audit-logs
+    - mod/report/ticket-style logs go to mod-logs
     - message logs go to message-logs
     - automod logs go to automod-logs
     - voice logs go to voice-logs
@@ -366,6 +368,7 @@ def apply_compact_log_routing(settings: Dict[str, Any]) -> None:
     sync_setup_aliases(settings)
 
     mod_log_id = _coerce_int(settings.get("mod_log_channel")) or _coerce_int(settings.get("log_channel_mod"))
+    audit_log_id = _coerce_int(settings.get("audit_log_channel")) or _coerce_int(settings.get("log_channel_audit"))
     message_log_id = _coerce_int(settings.get("message_log_channel")) or _coerce_int(settings.get("log_channel_message"))
     automod_log_id = _coerce_int(settings.get("automod_log_channel")) or _coerce_int(settings.get("log_channel_automod"))
     voice_log_id = _coerce_int(settings.get("voice_log_channel")) or _coerce_int(settings.get("log_channel_voice"))
@@ -374,8 +377,6 @@ def apply_compact_log_routing(settings: Dict[str, Any]) -> None:
         for key in (
             "mod_log_channel",
             "log_channel_mod",
-            "audit_log_channel",
-            "log_channel_audit",
             "report_log_channel",
             "log_channel_report",
             "ticket_log_channel",
@@ -388,6 +389,10 @@ def apply_compact_log_routing(settings: Dict[str, Any]) -> None:
             "ai_confirmation_channel",
         ):
             settings[key] = mod_log_id
+
+    if audit_log_id:
+        settings["audit_log_channel"] = audit_log_id
+        settings["log_channel_audit"] = audit_log_id
 
     if message_log_id:
         settings["message_log_channel"] = message_log_id
@@ -416,7 +421,8 @@ def apply_compact_log_routing(settings: Dict[str, Any]) -> None:
 
     if mod_log_id:
         logging_settings["modChannel"] = mod_log_id
-        logging_settings["auditChannel"] = mod_log_id
+    if audit_log_id:
+        logging_settings["auditChannel"] = audit_log_id
     if message_log_id:
         logging_settings["messageChannel"] = message_log_id
     if automod_log_id:
@@ -498,6 +504,7 @@ def hydrate_setup_settings_from_guild(
             hydrated.pop(key, None)
             alias = {
                 "mod_log_channel": "log_channel_mod",
+                "audit_log_channel": "log_channel_audit",
                 "message_log_channel": "log_channel_message",
                 "automod_log_channel": "log_channel_automod",
                 "voice_log_channel": "log_channel_voice",
@@ -600,6 +607,7 @@ def build_setup_summary(
             "id": "routing",
             "label": "Routing",
             "items": [
+                module_channel_item("Audit Log Channel", "logging", "auditChannel", "audit_log_channel"),
                 module_channel_item("Mod Log Channel", "logging", "modChannel", "mod_log_channel"),
                 module_channel_item("Message Log Channel", "logging", "messageChannel", "message_log_channel"),
                 module_channel_item("AutoMod Log Channel", "logging", "automodChannel", "automod_log_channel"),
@@ -773,6 +781,44 @@ async def apply_verification_gate(
     }
 
 
+async def _sync_log_channel_order(
+    category: Optional[discord.CategoryChannel],
+    settings: Dict[str, Any],
+    errors: List[str],
+) -> None:
+    if category is None:
+        return
+
+    ordered_keys = (
+        "audit_log_channel",
+        "mod_log_channel",
+        "message_log_channel",
+        "automod_log_channel",
+        "voice_log_channel",
+    )
+    channels: list[discord.TextChannel] = []
+    for key in ordered_keys:
+        channel = category.guild.get_channel(_coerce_int(settings.get(key)) or 0)
+        if isinstance(channel, discord.TextChannel) and channel.category_id == category.id:
+            channels.append(channel)
+
+    if len(channels) < 2:
+        return
+
+    start_position = min(channel.position for channel in channels)
+    for offset, channel in enumerate(channels):
+        desired_position = start_position + offset
+        if channel.position == desired_position:
+            continue
+        try:
+            await channel.edit(
+                position=desired_position,
+                reason="ModBot setup log channel order sync",
+            )
+        except Exception as exc:
+            errors.append(f"Channel {channel.name} order sync: {exc}")
+
+
 async def quickstart_server(guild: discord.Guild, settings: Dict[str, Any]) -> Dict[str, Any]:
     updated = dict(settings)
     created_roles: List[str] = []
@@ -871,6 +917,8 @@ async def quickstart_server(guild: discord.Guild, settings: Dict[str, Any]) -> D
                 errors.append(f"Channel {spec['name']} sync: {exc}")
 
         updated[spec["setting_key"]] = channel.id
+
+    await _sync_log_channel_order(category_lookup.get("logs_category"), updated, errors)
 
     for key, default in FEATURE_DEFAULTS.items():
         updated.setdefault(key, default)
