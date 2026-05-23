@@ -11,6 +11,7 @@ from urllib.parse import urlparse
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_mod, is_admin, is_owner_only
+from utils.classic_send import send_classic_message
 from utils.welcome_card import WelcomeCardOptions, build_welcome_card_file
 from config import Config
 from .ui import EmojiApprovalView, AddEmojiTutorialView, _fetch_addemoji_tutorial_gif_file, ADD_EMOJI_TUTORIAL_GIF_FILENAME, ADD_EMOJI_TUTORIAL_GIF_URL, EMOJI_COMMAND_CHANNEL_ID
@@ -493,33 +494,28 @@ class MiscCommands:
             server_name=f"{system_name} - Moderation",
         )
 
-        def build_view(image_filename: Optional[str] = None) -> discord.ui.LayoutView:
-            items: list[discord.ui.Item[discord.ui.View]] = [
-                discord.ui.TextDisplay(f"# {system_name} - {server_name}"),
-                discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
-                discord.ui.TextDisplay(f"# \N{INVERTED EXCLAMATION MARK}Welcome to {server_name}!"),
-                discord.ui.TextDisplay(
-                    f"| User: {member.mention}\n"
-                    f"| Joined On: <t:{ts}:D> at <t:{ts}:t>"
+        def build_embed(image_filename: Optional[str] = None) -> discord.Embed:
+            embed = discord.Embed(
+                title=f"\N{INVERTED EXCLAMATION MARK}Welcome to {server_name}!",
+                description=(
+                    f"**User:** {member.mention}\n"
+                    f"**Joined On:** <t:{ts}:D> at <t:{ts}:t>"
                 ),
-                discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
-            ]
+                color=accent,
+                timestamp=datetime.now(timezone.utc),
+            )
+            embed.set_author(name=f"{system_name} - {server_name}")
             if image_filename:
-                items.append(
-                    discord.ui.MediaGallery(
-                        discord.MediaGalleryItem(f"attachment://{image_filename}")
-                    )
-                )
+                embed.set_image(url=f"attachment://{image_filename}")
             else:
-                items.append(
-                    discord.ui.TextDisplay(
-                        "*Welcome card image unavailable. Check channel attach-file permissions if this keeps happening.*"
-                    )
+                embed.add_field(
+                    name="Image",
+                    value="Welcome card image unavailable. Check channel attach-file permissions if this keeps happening.",
+                    inline=False,
                 )
-
-            view = discord.ui.LayoutView(timeout=60)
-            view.add_item(discord.ui.Container(*items, accent_color=accent))
-            return view
+            if member.guild.icon:
+                embed.set_thumbnail(url=member.guild.icon.url)
+            return embed
 
         card_file: Optional[discord.File] = None
         try:
@@ -538,9 +534,9 @@ class MiscCommands:
 
         try:
             if card_file is not None:
-                await channel.send(view=build_view(card_file.filename), file=card_file)
+                await send_classic_message(channel, embed=build_embed(card_file.filename), file=card_file)
             else:
-                await channel.send(view=build_view())
+                await send_classic_message(channel, embed=build_embed())
             return
         except Exception:
             if card_file is None:
@@ -552,7 +548,7 @@ class MiscCommands:
                 member.guild.id,
             )
 
-        await channel.send(view=build_view())
+        await send_classic_message(channel, embed=build_embed())
 
     # Slash command - registered dynamically in __init__.py
     async def testwelcome(
@@ -587,8 +583,13 @@ class MiscCommands:
         try:
             await self._send_welcome_message(member=target, channel=dest)
         except Exception as e:
+            logger.exception(
+                "Failed sending welcome preview for member %s in guild %s",
+                target.id,
+                interaction.guild.id,
+            )
             return await interaction.followup.send(
-                embed=ModEmbed.error("Failed", f"Could not send preview: `{type(e).__name__}`"),
+                embed=ModEmbed.error("Failed", f"Could not send preview: `{type(e).__name__}: {e}`"),
                 ephemeral=True,
             )
 

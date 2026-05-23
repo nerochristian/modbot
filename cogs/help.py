@@ -893,6 +893,17 @@ class AdminPanelView(discord.ui.View):
         if self.bot and hasattr(self.bot, 'db'):
             settings = await self.bot.db.get_settings(guild_id)
             settings[key] = value
+            if key in {"automod_enabled", "aimod_enabled"}:
+                module_id = "automod" if key == "automod_enabled" else "aimod"
+                modules = settings.get("modules")
+                if not isinstance(modules, dict):
+                    modules = {}
+                    settings["modules"] = modules
+                module = modules.get(module_id)
+                if not isinstance(module, dict):
+                    module = {}
+                    modules[module_id] = module
+                module["enabled"] = bool(value)
             await self.bot.db.update_settings(guild_id, settings)
 
     def _build_embed(self) -> discord.Embed:
@@ -935,7 +946,7 @@ class AdminPanelView(discord.ui.View):
     @discord.ui.button(label="AI Mod", style=discord.ButtonStyle.secondary, emoji="🧠", row=0)
     async def toggle_aimod(self, interaction: discord.Interaction, button: discord.ui.Button):
         settings = await self._get_settings(interaction.guild_id)
-        current = settings.get("aimod_enabled", True)
+        current = settings.get("aimod_enabled", False)
         new_value = not current
         await self._update_setting(interaction.guild_id, "aimod_enabled", new_value)
         
@@ -1032,7 +1043,7 @@ class AdminPanelView(discord.ui.View):
         
         embed = discord.Embed(title="📊 Current Settings", color=Config.COLOR_INFO)
         embed.add_field(name="🤖 AutoMod", value=status("automod_enabled"), inline=True)
-        embed.add_field(name="🧠 AI Mod", value=status("aimod_enabled", True), inline=True)
+        embed.add_field(name="🧠 AI Mod", value=status("aimod_enabled", False), inline=True)
         embed.add_field(name="📋 Logging", value=status("logging_enabled", True), inline=True)
         embed.add_field(name="🎫 Tickets", value=status("tickets_enabled"), inline=True)
         embed.add_field(name="🛡️ Anti-Raid", value=status("antiraid_enabled"), inline=True)

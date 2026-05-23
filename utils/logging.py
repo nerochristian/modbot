@@ -9,8 +9,14 @@ from config import Config
 from utils.classic_send import send_classic_message
 
 _ZWS = "\u200b"
+_WIDTH_ANCHOR = "\u2800"
 _MAX_FIELD_VALUE = 1024
 _MAX_DESCRIPTION = 4096
+_LOG_WIDTH_ANCHORS = {
+    "audit": 52,
+    "voice": 34,
+    "standard": 58,
+}
 
 
 def _trim(text: object, limit: int) -> str:
@@ -115,7 +121,7 @@ def _normalize_fields(embed: discord.Embed) -> None:
     compact_inline_names = {"User", "Channel", "Members", "From", "To", "Moderator"}
     for field in fields[:25]:
         name = str(getattr(field, "name", "") or "").strip()
-        value = str(getattr(field, "value", "") or "").strip()
+        value = _remove_width_anchor_lines(str(getattr(field, "value", "") or "")).strip()
         inline = bool(getattr(field, "inline", False))
 
         if not value:
@@ -168,6 +174,71 @@ def _append_relative_timestamp(embed: discord.Embed, timestamp: object) -> None:
     embed.add_field(name="Time", value=f"<t:{unix}:R>", inline=True)
 
 
+def _channel_width_profile(channel: Optional[discord.abc.Messageable]) -> str:
+    name = str(getattr(channel, "name", "") or "").lower()
+    if "audit" in name:
+        return "audit"
+    if "voice" in name:
+        return "voice"
+    return "standard"
+
+
+def _is_width_anchor_line(line: str) -> bool:
+    if _WIDTH_ANCHOR not in line:
+        return False
+    clean = line.replace(">", "").replace(_WIDTH_ANCHOR, "").replace(_ZWS, "").strip()
+    return clean == ""
+
+
+def _remove_width_anchor_lines(value: str) -> str:
+    return "\n".join(line for line in value.splitlines() if not _is_width_anchor_line(line))
+
+
+def _replace_fields(embed: discord.Embed, fields: list[tuple[str, str, bool]]) -> None:
+    embed.clear_fields()
+    for name, value, inline in fields[:25]:
+        embed.add_field(name=name, value=value, inline=inline)
+
+
+def _apply_width_anchor(
+    embed: discord.Embed,
+    channel: Optional[discord.abc.Messageable],
+) -> None:
+    profile = _channel_width_profile(channel)
+    width = _LOG_WIDTH_ANCHORS.get(profile, _LOG_WIDTH_ANCHORS["standard"])
+    if width <= 0:
+        return
+
+    anchor_line = f"> {_WIDTH_ANCHOR * width}"
+    fields = list(getattr(embed, "fields", []) or [])
+    normalized_fields: list[tuple[str, str, bool]] = []
+    for field in fields:
+        normalized_fields.append(
+            (
+                str(getattr(field, "name", "") or "Details"),
+                _remove_width_anchor_lines(str(getattr(field, "value", "") or "")).rstrip(),
+                bool(getattr(field, "inline", False)),
+            )
+        )
+
+    for index, (name, value, inline) in enumerate(normalized_fields):
+        if name not in {"Details", _ZWS} and index != 0:
+            continue
+        if len(value) + len(anchor_line) + 1 > _MAX_FIELD_VALUE:
+            continue
+        normalized_fields[index] = (name, f"{value}\n{anchor_line}".strip(), False if name == "Details" else inline)
+        _replace_fields(embed, normalized_fields)
+        return
+
+    description = _remove_width_anchor_lines(str(getattr(embed, "description", "") or "")).rstrip()
+    if description and len(description) + len(anchor_line) + 1 <= _MAX_DESCRIPTION:
+        embed.description = f"{description}\n{anchor_line}"
+        return
+
+    if len(normalized_fields) < 25:
+        embed.add_field(name=_ZWS, value=_WIDTH_ANCHOR * width, inline=False)
+
+
 def normalize_log_embed(
     channel: Optional[discord.abc.Messageable],
     embed: discord.Embed,
@@ -191,7 +262,7 @@ def normalize_log_embed(
 
     try:
         if normalized.description:
-            normalized.description = _trim(normalized.description, _MAX_DESCRIPTION)
+            normalized.description = _trim(_remove_width_anchor_lines(normalized.description), _MAX_DESCRIPTION)
     except Exception:
         pass
 
@@ -238,6 +309,11 @@ def normalize_log_embed(
                 normalized.set_image(url=banner_url)
             elif thumb_url:
                 normalized.set_image(url=thumb_url)
+    except Exception:
+        pass
+
+    try:
+        _apply_width_anchor(normalized, channel)
     except Exception:
         pass
 

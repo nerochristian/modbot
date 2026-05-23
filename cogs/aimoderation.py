@@ -156,8 +156,8 @@ class AIConfig:
 @dataclass
 class GuildSettings:
     """Per-guild AI moderation settings."""
-    enabled: bool = True
-    chat_enabled: bool = True
+    enabled: bool = False
+    chat_enabled: bool = False
     model: Optional[str] = None
     context_messages: int = 15
     confirm_enabled: bool = True
@@ -200,8 +200,8 @@ class GuildSettings:
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "GuildSettings":
         return cls(
-            enabled=cls._coerce_bool(data.get("aimod_enabled", True), True),
-            chat_enabled=cls._coerce_bool(data.get("aimod_chat_enabled", True), True),
+            enabled=cls._coerce_bool(data.get("aimod_enabled", False), False),
+            chat_enabled=cls._coerce_bool(data.get("aimod_chat_enabled", False), False),
             model=data.get("aimod_model"),
             context_messages=int(data.get("aimod_context_messages", 15)),
             confirm_enabled=cls._coerce_bool(data.get("aimod_confirm_enabled", True), True),
@@ -2060,9 +2060,34 @@ class AIModeration(commands.Cog):
         try:
             settings = await db.get_settings(guild_id)
             settings[key] = value
+            self._sync_module_setting(settings, key, value)
             await db.update_settings(guild_id, settings)
         except Exception:
             logger.exception("Failed to update setting %s for guild %d", key, guild_id)
+
+    @staticmethod
+    def _sync_module_setting(settings: Dict[str, Any], key: str, value: Any) -> None:
+        if key not in {"aimod_enabled", "aimod_chat_enabled"}:
+            return
+
+        modules = settings.get("modules")
+        if not isinstance(modules, dict):
+            modules = {}
+            settings["modules"] = modules
+        module = modules.get("aimod")
+        if not isinstance(module, dict):
+            module = {}
+            modules["aimod"] = module
+
+        if key == "aimod_enabled":
+            module["enabled"] = bool(value)
+            return
+
+        module_settings = module.get("settings")
+        if not isinstance(module_settings, dict):
+            module_settings = {}
+            module["settings"] = module_settings
+        module_settings["chatEnabled"] = bool(value)
 
     # ------------------------------------------------------------------
     # Message helpers

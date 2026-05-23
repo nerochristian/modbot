@@ -98,7 +98,7 @@ _COG_TO_MODULE_ID: Dict[str, str] = {
 }
 
 _MODULE_ENABLED_KEYS: Dict[str, tuple[str, bool]] = {
-    "aimod": ("aimod_enabled", True),
+    "aimod": ("aimod_enabled", False),
     "automod": ("automod_enabled", True),
     "antiraid": ("antiraid_enabled", False),
     "logging": ("logging_enabled", True),
@@ -212,6 +212,7 @@ _MODULE_CAPABILITY_OVERRIDES: Dict[str, Dict[str, Any]] = {
         "iconHint": "Shield",
         "supportsOverrides": True,
         "settingsSchema": [
+            {"key": "chatEnabled", "label": "AI Talking", "type": "boolean", "defaultValue": False, "section": "Core"},
             {"key": "model", "label": "Model", "type": "string", "defaultValue": "", "section": "Core"},
             {"key": "contextMessages", "label": "Context Messages", "type": "number", "defaultValue": 15, "constraints": {"min": 1, "max": 50}, "section": "Core"},
             {"key": "proactiveChance", "label": "Proactive Chance", "type": "number", "defaultValue": 0.02, "constraints": {"min": 0, "max": 1}, "section": "Core"},
@@ -1239,6 +1240,7 @@ def _build_dashboard_modules(settings: Dict[str, Any]) -> Dict[str, Any]:
     aimod_base_settings = _safe_module_settings(aimod_base)
     aimod_settings = {
         **aimod_base_settings,
+        "chatEnabled": _coerce_bool(settings.get("aimod_chat_enabled"), False),
         "model": str(settings.get("aimod_model", "") or ""),
         "contextMessages": max(1, _to_int(settings.get("aimod_context_messages", 15), 15)),
         "confirmEnabled": _coerce_bool(settings.get("aimod_confirm_enabled"), True),
@@ -1474,6 +1476,8 @@ def _apply_dashboard_modules_to_flat_settings(settings: Dict[str, Any], modules:
             ais = {}
         if "model" in ais:
             settings["aimod_model"] = str(ais.get("model") or "")
+        if "chatEnabled" in ais:
+            settings["aimod_chat_enabled"] = _coerce_bool(ais.get("chatEnabled"), False)
         if "contextMessages" in ais:
             settings["aimod_context_messages"] = max(1, _to_int(ais.get("contextMessages"), _to_int(settings.get("aimod_context_messages", 15), 15)))
         if "confirmEnabled" in ais:

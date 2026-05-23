@@ -219,6 +219,7 @@ logger = setup_logging()
 try:
     from database import Database
     from utils.cache import SnipeCache, PrefixCache
+    from utils.checks import is_bot_owner_id
     from utils.redis_cache import create_cache_backend
     pass
 except ImportError as e:
@@ -431,7 +432,7 @@ class ModBot(commands.Bot):
     }
 
     _MODULE_ENABLED_KEYS: Dict[str, tuple[str, bool]] = {
-        "aimod": ("aimod_enabled", True),
+        "aimod": ("aimod_enabled", False),
         "automod": ("automod_enabled", True),
         "antiraid": ("antiraid_enabled", False),
         "logging": ("logging_enabled", True),
@@ -586,6 +587,12 @@ class ModBot(commands.Bot):
         if not module_id:
             return True
         normalized = self._normalize_module_id(module_id)
+        enabled_key = self._MODULE_ENABLED_KEYS.get(normalized)
+        if enabled_key:
+            key, default = enabled_key
+            if key in settings:
+                return self._coerce_bool(settings.get(key), default)
+
         modules_blob = settings.get("modules", {})
         if isinstance(modules_blob, dict):
             for key, cfg in modules_blob.items():
@@ -593,7 +600,7 @@ class ModBot(commands.Bot):
                     continue
                 if isinstance(cfg, dict) and "enabled" in cfg:
                     return self._coerce_bool(cfg.get("enabled"), True)
-        enabled_key = self._MODULE_ENABLED_KEYS.get(normalized)
+
         if enabled_key:
             key, default = enabled_key
             return self._coerce_bool(settings.get(key), default)

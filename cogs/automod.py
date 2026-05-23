@@ -722,6 +722,18 @@ class AutoModV3(commands.Cog):
         # Memory and Redis TTL caches automatically handle cleanup.
         pass
 
+    @staticmethod
+    def _sync_module_enabled(settings: Dict[str, Any], enabled: bool) -> None:
+        modules = settings.get("modules")
+        if not isinstance(modules, dict):
+            modules = {}
+            settings["modules"] = modules
+        module = modules.get("automod")
+        if not isinstance(module, dict):
+            module = {}
+            modules["automod"] = module
+        module["enabled"] = bool(enabled)
+
     # ------------------------------------------------------------------
     # Logging
     # ------------------------------------------------------------------
@@ -980,6 +992,7 @@ class AutoModV3(commands.Cog):
     async def automod_enable(self, interaction: discord.Interaction):
         settings = await self.bot.db.get_settings(interaction.guild_id)
         settings["automod_enabled"] = True
+        self._sync_module_enabled(settings, True)
         await self.bot.db.update_settings(interaction.guild_id, settings)
         await interaction.response.send_message(
             embed=ModEmbed.success("AutoMod Enabled", self._settings_summary(settings, interaction.guild)),
@@ -991,6 +1004,7 @@ class AutoModV3(commands.Cog):
     async def automod_disable(self, interaction: discord.Interaction):
         settings = await self.bot.db.get_settings(interaction.guild_id)
         settings["automod_enabled"] = False
+        self._sync_module_enabled(settings, False)
         await self.bot.db.update_settings(interaction.guild_id, settings)
         await interaction.response.send_message(
             embed=ModEmbed.success("AutoMod Disabled", "AutoMod will stop checking new messages."),
@@ -1038,6 +1052,7 @@ class AutoModV3(commands.Cog):
         settings = await self.bot.db.get_settings(interaction.guild_id)
         preset_name = preset.value if preset else "standard"
         changed = self._apply_preset(settings, preset_name)
+        self._sync_module_enabled(settings, bool(settings.get("automod_enabled", True)))
 
         if log_channel:
             settings["automod_log_channel"] = log_channel.id
@@ -1097,6 +1112,8 @@ class AutoModV3(commands.Cog):
         current = bool(settings.get(setting.value, default))
         new = (not current) if state is None else bool(state)
         settings[setting.value] = new
+        if setting.value == "automod_enabled":
+            self._sync_module_enabled(settings, new)
         await self.bot.db.update_settings(interaction.guild_id, settings)
         await interaction.response.send_message(embed=ModEmbed.success("AutoMod Updated", f"**{label}** → **{self._bool_text(new)}**\n{help_text}"), ephemeral=True)
 
