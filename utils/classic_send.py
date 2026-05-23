@@ -50,6 +50,7 @@ def _strip_v2_view_items(view: Optional[discord.ui.BaseView]) -> Optional[discor
 def _strip_v2_only_kwargs(kwargs: dict[str, Any]) -> None:
     """Remove v2-specific kwargs/items that classic discord.py does not accept."""
     kwargs.pop("use_v2", None)
+    kwargs.setdefault("allowed_mentions", discord.AllowedMentions.none())
     kwargs["view"] = _strip_v2_view_items(kwargs.get("view"))
     if kwargs.get("view", discord.utils.MISSING) is None:
         kwargs.pop("view", None)

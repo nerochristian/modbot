@@ -413,7 +413,8 @@ class PunishmentSettingsModal(discord.ui.Modal, title="⚡ Punishment Settings")
 # ==============================================================================
 
 LOG_PAGES = [
-    [("mod_log_channel", "Mod Logs", "Mod"), ("audit_log_channel", "Audit Logs", "Audit"), ("verify_log_channel", "Verify Logs", "Verify")],
+    [("mod_log_channel", "Mod Logs", "Mod"), ("message_log_channel", "Message Logs", "Message"), ("automod_log_channel", "AutoMod Logs", "AutoMod")],
+    [("voice_log_channel", "Voice Logs", "Voice"), ("verify_log_channel", "Verify Logs", "Verify"), ("ticket_log_channel", "Ticket/Modmail Logs", "Ticket")],
 ]
 
 class LoggingSettingsView(BaseSettingsView):
@@ -429,6 +430,14 @@ class LoggingSettingsView(BaseSettingsView):
             self.settings["log_channel_mod"] = channel_id
         elif key == "audit_log_channel":
             self.settings["log_channel_audit"] = channel_id
+        elif key == "message_log_channel":
+            self.settings["log_channel_message"] = channel_id
+        elif key == "automod_log_channel":
+            self.settings["log_channel_automod"] = channel_id
+        elif key == "voice_log_channel":
+            self.settings["log_channel_voice"] = channel_id
+        elif key == "ticket_log_channel":
+            self.settings["log_channel_ticket"] = channel_id
         elif key == "verify_log_channel":
             self.settings["verification_log_channel"] = channel_id
         apply_compact_log_routing(self.settings)
@@ -438,8 +447,8 @@ class LoggingSettingsView(BaseSettingsView):
         self.ch_1.placeholder = f"{page[0][2]} Set {page[0][1]} Channel"
         self.ch_2.placeholder = f"{page[1][2]} Set {page[1][1]} Channel"
         self.ch_3.placeholder = f"{page[2][2]} Set {page[2][1]} Channel"
-        self.log_prev.disabled = True
-        self.log_next.disabled = True
+        self.log_prev.disabled = self.page <= 0
+        self.log_next.disabled = self.page >= len(LOG_PAGES) - 1
 
     def get_embed(self) -> discord.Embed:
         s = self.settings
@@ -447,9 +456,8 @@ class LoggingSettingsView(BaseSettingsView):
         embed = discord.Embed(
             title="📝 Logging Configuration",
             description=(
-                "Configure the three channels the bot actually needs.\n"
-                "`#mod-logs` gets manual and automated moderation actions, "
-                "`#verify-logs` gets verification logs, and everything else routes to `#audit-logs`."
+                "Configure the standard `Moderation Logs` layout.\n"
+                "Setup syncs `#mod-logs`, `#message-logs`, `#automod-logs`, and `#voice-logs`."
             ),
             color=Colors.INFO,
             timestamp=datetime.datetime.now(timezone.utc),
@@ -458,24 +466,25 @@ class LoggingSettingsView(BaseSettingsView):
         # ── All channels at a glance ──
         col1 = (
             f"**Mod Logs:** {_c(g, s, 'mod_log_channel', '`Disabled`')}\n"
-            f"**Audit Logs:** {_c(g, s, 'audit_log_channel', '`Disabled`')}\n"
-            f"**Verify Logs:** {_c(g, s, 'verify_log_channel', '`Disabled`')}"
+            f"**Message Logs:** {_c(g, s, 'message_log_channel', '`Disabled`')}\n"
+            f"**AutoMod Logs:** {_c(g, s, 'automod_log_channel', '`Disabled`')}"
         )
         embed.add_field(name="Main Channels", value=col1, inline=True)
 
         col2 = (
-            f"**AutoMod:** {_c(g, s, 'automod_log_channel', '`Uses Mod Logs`')}\n"
-            f"**Message Logs:** {_c(g, s, 'message_log_channel', '`Uses Audit Logs`')}\n"
-            f"**Voice Logs:** {_c(g, s, 'voice_log_channel', '`Uses Audit Logs`')}\n"
-            f"**Tickets/Modmail:** {_c(g, s, 'ticket_log_channel', '`Uses Audit Logs`')}"
+            f"**Voice Logs:** {_c(g, s, 'voice_log_channel', '`Disabled`')}\n"
+            f"**Verify Logs:** {_c(g, s, 'verify_log_channel', '`Disabled`')}\n"
+            f"**Tickets/Modmail:** {_c(g, s, 'ticket_log_channel', '`Uses Mod Logs`')}"
         )
-        embed.add_field(name="Fallback Routing", value=col2, inline=True)
+        embed.add_field(name="Other Routing", value=col2, inline=True)
 
         embed.add_field(
             name="Routing Rules",
             value=(
-                "`mod-logs`: moderation, automod, forum alerts, AI confirmations\n"
-                "`audit-logs`: message edits/deletes, voice, reports, tickets, modmail, audit events\n"
+                "`mod-logs`: moderation, audit, reports, tickets, modmail, forum alerts\n"
+                "`message-logs`: message edits/deletes and purge transcripts\n"
+                "`automod-logs`: automod and AI moderation events\n"
+                "`voice-logs`: voice state and voice moderation events\n"
                 "`verify-logs`: verification actions only"
             ),
             inline=False,

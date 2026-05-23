@@ -21,6 +21,45 @@ from utils.classic_send import send_classic_message
 logger = logging.getLogger(__name__)
 
 
+class DeletedMessageImageView(discord.ui.View):
+    def __init__(self, images: list[dict[str, str]]) -> None:
+        super().__init__(timeout=24 * 60 * 60)
+        self.images = images[:5]
+
+        for index, image in enumerate(self.images):
+            label = "View image" if len(self.images) == 1 else f"Image {index + 1}"
+            button = discord.ui.Button(
+                label=label,
+                style=discord.ButtonStyle.secondary,
+                custom_id=f"deleted_message_image:{index}",
+            )
+
+            async def _callback(interaction: discord.Interaction, image_index: int = index) -> None:
+                await self._send_image(interaction, image_index)
+
+            button.callback = _callback
+            self.add_item(button)
+
+    async def _send_image(self, interaction: discord.Interaction, image_index: int) -> None:
+        try:
+            image = self.images[image_index]
+        except IndexError:
+            await interaction.response.send_message("That image is no longer available.", ephemeral=True)
+            return
+
+        url = image.get("url")
+        if not url:
+            await interaction.response.send_message("That image URL is not available.", ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title=image.get("filename") or "Deleted message image",
+            color=Colors.INFO,
+        )
+        embed.set_image(url=url)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
 class Logging(commands.Cog):
     """Event logging system with configurable channels"""
     
@@ -147,6 +186,7 @@ class Logging(commands.Cog):
         if not message.guild:
             return
         avatar_url = getattr(getattr(message.author, "display_avatar", None), "url", None)
+        attachments = self._attachment_records(message.attachments or [])
         self._recent_message_snapshots[message.id] = {
             "stored_at": datetime.now(timezone.utc),
             "guild_id": message.guild.id,
@@ -157,8 +197,8 @@ class Logging(commands.Cog):
             "author_avatar_url": str(avatar_url) if avatar_url else None,
             "content": message.content or "",
             "created_ts": int(message.created_at.timestamp()) if getattr(message, "created_at", None) else None,
-            "attachments": [a.filename for a in (message.attachments or [])[:10]],
-            "attachment_count": len(message.attachments or []),
+            "attachments": attachments[:10],
+            "attachment_count": len(attachments),
         }
         if len(self._recent_message_snapshots) % 250 == 0:
             self._prune_recent_message_snapshots()
@@ -371,6 +411,56 @@ class Logging(commands.Cog):
         if len(text) <= limit:
             return text
         return text[: max(0, limit - 1)].rstrip() + "…"
+
+    def _attachment_records(self, attachments: list[discord.Attachment]) -> list[dict[str, str]]:
+        records: list[dict[str, str]] = []
+        for attachment in attachments:
+            filename = str(getattr(attachment, "filename", "") or "attachment")
+            url = str(getattr(attachment, "url", "") or getattr(attachment, "proxy_url", "") or "")
+            content_type = str(getattr(attachment, "content_type", "") or "")
+            records.append(
+                {
+                    "filename": filename,
+                    "url": url,
+                    "content_type": content_type,
+                }
+            )
+        return records
+
+    @staticmethod
+    def _attachment_name(attachment: object) -> str:
+        if isinstance(attachment, dict):
+            return str(attachment.get("filename") or "attachment")
+        return str(attachment or "attachment")
+
+    @staticmethod
+    def _is_image_attachment(attachment: object) -> bool:
+        if not isinstance(attachment, dict):
+            return False
+        filename = str(attachment.get("filename") or "").casefold()
+        content_type = str(attachment.get("content_type") or "").casefold()
+        return content_type.startswith("image/") or filename.endswith(
+            (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
+        )
+
+    def _image_attachments(self, attachments: list[object]) -> list[dict[str, str]]:
+        images: list[dict[str, str]] = []
+        for attachment in attachments:
+            if isinstance(attachment, dict) and self._is_image_attachment(attachment) and attachment.get("url"):
+                images.append(
+                    {
+                        "filename": str(attachment.get("filename") or "image"),
+                        "url": str(attachment.get("url")),
+                    }
+                )
+        return images
+
+    def _format_attachment_names(self, attachments: list[object], attachment_count: int) -> str:
+        names = [self._attachment_name(attachment) for attachment in attachments[:10]]
+        attachments_text = ", ".join(names)
+        if attachment_count > len(names):
+            attachments_text += f", +{attachment_count - len(names)} more"
+        return attachments_text or "*Unknown attachment*"
 
     def _yn(self, value: Optional[bool]) -> str:
         if value is None:
@@ -1168,20 +1258,21 @@ class Logging(commands.Cog):
             footer_user=deleter,
         )
 
-        if message.attachments:
-            attachment_names = [a.filename for a in message.attachments[:10]]
-            attachments_text = ", ".join(attachment_names)
-            if len(message.attachments) > 10:
-                attachments_text += f", +{len(message.attachments) - 10} more"
+        attachment_records = self._attachment_records(message.attachments or [])
+        image_attachments = self._image_attachments(attachment_records)
+
+        if attachment_records:
             embed.add_field(
-                name=f"Attachments ({len(message.attachments)})",
-                value=attachments_text,
+                name=f"Attachments ({len(attachment_records)})",
+                value=self._format_attachment_names(attachment_records, len(attachment_records)),
                 inline=False,
             )
 
-        # Single-message deletes should not include transcript downloads.
-        # Transcript views are reserved for purge/bulk-delete events.
-        await self.safe_send_log(channel, embed, use_v2=False, mirror_to_audit=False)
+        view = DeletedMessageImageView(image_attachments) if image_attachments else None
+
+        # Single-message deletes do not include transcript downloads. Image
+        # attachments are exposed through an ephemeral button instead.
+        await self.safe_send_log(channel, embed, use_v2=False, view=view, mirror_to_audit=False)
 
     @commands.Cog.listener()
     async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
@@ -1264,14 +1355,11 @@ class Logging(commands.Cog):
                 footer_user=deleter,
             )
 
-            attachments = [str(name) for name in (snapshot.get("attachments") or []) if str(name).strip()]
+            attachments = list(snapshot.get("attachments") or [])
             if attachments:
-                attachments_text = ", ".join(attachments)
-                if attachment_count > len(attachments):
-                    attachments_text += f", +{attachment_count - len(attachments)} more"
                 embed.add_field(
                     name=f"Attachments ({attachment_count})",
-                    value=attachments_text,
+                    value=self._format_attachment_names(attachments, attachment_count),
                     inline=False,
                 )
         else:
@@ -1288,7 +1376,9 @@ class Logging(commands.Cog):
                 message_text="*Content unavailable (message was not cached by the bot).*",
             )
 
-        await self.safe_send_log(log_channel, embed, use_v2=False, mirror_to_audit=False)
+        image_attachments = self._image_attachments(list(snapshot.get("attachments") or [])) if snapshot else []
+        view = DeletedMessageImageView(image_attachments) if image_attachments else None
+        await self.safe_send_log(log_channel, embed, use_v2=False, view=view, mirror_to_audit=False)
 
     @commands.Cog.listener()
     async def on_message_edit(self, before: discord.Message, after: discord.Message):
@@ -1688,6 +1778,27 @@ class Logging(commands.Cog):
 
     # ==================== VOICE LOGGING ====================
 
+    def _build_voice_log_embed(
+        self,
+        *,
+        title: str,
+        color: int,
+        member: discord.Member,
+        channel_line: str,
+        detail_line: str,
+    ) -> discord.Embed:
+        description = (
+            f"**User:** {member.mention}\n"
+            f"**Channel:** {channel_line}\n"
+            f"**Details:** {detail_line}"
+        )
+        return discord.Embed(
+            title=title,
+            description=description,
+            color=color,
+            timestamp=datetime.now(timezone.utc),
+        )
+
     @commands.Cog.listener()
     async def on_voice_state_update(
         self, 
@@ -1704,104 +1815,83 @@ class Logging(commands.Cog):
         
         # ===== JOINED VOICE =====
         if before.channel is None and after.channel is not None:
-            embed = discord.Embed(
+            embed = self._build_voice_log_embed(
                 title="Joined Voice Channel",
                 color=Colors.SUCCESS,
-                timestamp=datetime.now(timezone.utc)
-            )
-            embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            
-            embed.add_field(name="User", value=f"{member.mention}\n({member.name})", inline=True)
-            embed.add_field(name="Channel", value=after.channel.mention, inline=True)
-            embed.add_field(
-                name="Members",
-                value=f"{len(after.channel.members)}",
-                inline=True
+                member=member,
+                channel_line=after.channel.mention,
+                detail_line=f"{len(after.channel.members)} member(s)",
             )
         
         # ===== LEFT VOICE =====
         elif before.channel is not None and after.channel is None:
-            embed = discord.Embed(
+            embed = self._build_voice_log_embed(
                 title="Left Voice Channel",
                 color=Colors.ERROR,
-                timestamp=datetime.now(timezone.utc)
+                member=member,
+                channel_line=before.channel.mention,
+                detail_line=f"{len(before.channel.members)} member(s) remaining",
             )
-            embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            
-            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
-            embed.add_field(name="Channel", value=before.channel.mention, inline=True)
         
         # ===== SWITCHED VOICE =====
         elif before.channel != after.channel and before.channel and after.channel:
-            embed = discord.Embed(
+            embed = self._build_voice_log_embed(
                 title="Switched Voice Channel",
                 color=Colors.INFO,
-                timestamp=datetime.now(timezone.utc)
+                member=member,
+                channel_line=f"{before.channel.mention} -> {after.channel.mention}",
+                detail_line=f"{len(after.channel.members)} member(s) in destination",
             )
-            embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            
-            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
-            embed.add_field(name="From", value=before.channel.mention, inline=True)
-            embed.add_field(name="To", value=after.channel.mention, inline=True)
         
         # ===== VOICE MUTE/UNMUTE =====
         elif before.self_mute != after.self_mute:
             action = "Muted" if after.self_mute else "Unmuted"
-            embed = discord.Embed(
+            voice_channel = after.channel or before.channel
+            embed = self._build_voice_log_embed(
                 title=f"Self {action}",
                 color=Colors.INFO if after.self_mute else Colors.SUCCESS,
-                timestamp=datetime.now(timezone.utc)
+                member=member,
+                channel_line=voice_channel.mention if voice_channel else "*None*",
+                detail_line=f"Self mute {'enabled' if after.self_mute else 'disabled'}",
             )
-            embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            
-            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
-            if after.channel:
-                embed.add_field(name="Channel", value=after.channel.mention, inline=True)
         
         # ===== VOICE DEAFEN/UNDEAFEN =====
         elif before.self_deaf != after.self_deaf:
             action = "Deafened" if after.self_deaf else "Undeafened"
-            embed = discord.Embed(
+            voice_channel = after.channel or before.channel
+            embed = self._build_voice_log_embed(
                 title=f"Self {action}",
                 color=Colors.INFO if after.self_deaf else Colors.SUCCESS,
-                timestamp=datetime.now(timezone.utc)
+                member=member,
+                channel_line=voice_channel.mention if voice_channel else "*None*",
+                detail_line=f"Self deafen {'enabled' if after.self_deaf else 'disabled'}",
             )
-            embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            
-            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
-            if after.channel:
-                embed.add_field(name="Channel", value=after.channel.mention, inline=True)
 
         # ===== STREAMING START/STOP =====
         elif before.self_stream != after.self_stream:
             action = "Started Streaming" if after.self_stream else "Stopped Streaming"
-            embed = discord.Embed(
+            voice_channel = after.channel or before.channel
+            embed = self._build_voice_log_embed(
                 title=f"{action}",
                 color=Colors.INFO if after.self_stream else Colors.ERROR,
-                timestamp=datetime.now(timezone.utc)
+                member=member,
+                channel_line=voice_channel.mention if voice_channel else "*None*",
+                detail_line=f"Streaming {'started' if after.self_stream else 'stopped'}",
             )
-            embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            
-            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
-            if after.channel:
-                embed.add_field(name="Channel", value=after.channel.mention, inline=True)
 
         # ===== VIDEO START/STOP =====
         elif before.self_video != after.self_video:
             action = "Started Video" if after.self_video else "Stopped Video"
-            embed = discord.Embed(
+            voice_channel = after.channel or before.channel
+            embed = self._build_voice_log_embed(
                 title=f"{action}",
                 color=Colors.INFO if after.self_video else Colors.ERROR,
-                timestamp=datetime.now(timezone.utc)
+                member=member,
+                channel_line=voice_channel.mention if voice_channel else "*None*",
+                detail_line=f"Video {'started' if after.self_video else 'stopped'}",
             )
-            embed.set_author(name=f"{member.name}", icon_url=member.display_avatar.url)
-            
-            embed.add_field(name="User", value=f"{member.mention} ({member.name})", inline=True)
-            if after.channel:
-                embed.add_field(name="Channel", value=after.channel.mention, inline=True)
 
         if embed:
-            embed.set_footer(text=f"User ID: {member.id}")
             await self.safe_send_log(channel, embed)
 
     # ==================== BAN/UNBAN LOGGING ====================

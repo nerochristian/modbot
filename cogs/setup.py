@@ -120,13 +120,17 @@ class Setup(commands.Cog):
                 settings["_version"] = int(settings.get("_version", 1) or 1) + 1
                 settings["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
                 await self.bot.db.update_settings(guild.id, settings)
+                logging_cog = self.bot.get_cog("Logging")
+                channel_cache = getattr(logging_cog, "_channel_cache", None)
+                if channel_cache is not None:
+                    await channel_cache.clear_guild(guild.id)
 
                 summary = build_setup_summary(guild, settings)
                 embed = self._build_status_embed(guild, summary)
                 embed.description = (
                     f"Missing baseline resources were created where possible for **{guild.name}**.\n\n"
                     f"**Progress:** `{summary['percent']}%` ({summary['complete']}/{summary['total']})\n"
-                    "The default setup keeps logging compact: moderation goes to `#mod-logs`, verification to `#verify-logs`, and everything else to `#audit-logs`."
+                    "Logging is synced under `Moderation Logs`: `#mod-logs`, `#message-logs`, `#automod-logs`, and `#voice-logs`."
                 )
                 embed.add_field(
                     name="Created",

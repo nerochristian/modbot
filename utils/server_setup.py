@@ -221,7 +221,7 @@ QUICKSTART_ROLE_SPECS: List[Dict[str, Any]] = [
 ]
 
 CATEGORY_SPECS: List[Dict[str, Any]] = [
-    {"name": "ModBot Logs", "setting_key": "logs_category"},
+    {"name": "Moderation Logs", "setting_key": "logs_category", "prefer_name": True},
     {"name": "Staff Area", "setting_key": "staff_category"},
     {"name": "Support Tickets", "setting_key": "ticket_category"},
     {"name": "Modmail", "setting_key": "modmail_category_id"},
@@ -232,8 +232,10 @@ CHANNEL_SPECS: List[Dict[str, Any]] = [
     {"name": "welcome", "setting_key": "welcome_channel", "topic": "Welcome and onboarding messages."},
     {"name": "verify", "setting_key": "verify_channel", "category": "verification_category", "topic": "Verification instructions."},
     {"name": "verify-logs", "setting_key": "verify_log_channel", "category": "verification_category", "topic": "Verification logs."},
-    {"name": "mod-logs", "setting_key": "mod_log_channel", "category": "logs_category", "topic": "Moderation and automated actions."},
-    {"name": "audit-logs", "setting_key": "audit_log_channel", "category": "logs_category", "topic": "Server, message, voice, ticket, and audit events."},
+    {"name": "mod-logs", "setting_key": "mod_log_channel", "category": "logs_category", "topic": "Moderation actions and server audit events.", "prefer_name": True},
+    {"name": "message-logs", "setting_key": "message_log_channel", "category": "logs_category", "topic": "Message edits, deletes, and purge logs.", "prefer_name": True},
+    {"name": "automod-logs", "setting_key": "automod_log_channel", "category": "logs_category", "topic": "Automod and AI moderation events.", "prefer_name": True},
+    {"name": "voice-logs", "setting_key": "voice_log_channel", "category": "logs_category", "topic": "Voice channel moderation and state changes.", "prefer_name": True},
     {"name": "staff-chat", "setting_key": "staff_chat_channel", "category": "staff_category", "topic": "General staff discussion."},
     {"name": "staff-commands", "setting_key": "staff_commands_channel", "category": "staff_category", "topic": "Staff bot commands."},
     {"name": "staff-announcements", "setting_key": "staff_announcements_channel", "category": "staff_category", "topic": "Important staff announcements."},
@@ -354,37 +356,26 @@ def sync_setup_aliases(settings: Dict[str, Any]) -> None:
 
 def apply_compact_log_routing(settings: Dict[str, Any]) -> None:
     """
-    Collapse optional log channels into a compact setup.
+    Route logging into the standard Moderation Logs channel layout.
 
-    - verification logs stay in verify logs
-    - moderation + automated moderation stay in mod logs
-    - everything else defaults to audit logs
+    - mod/audit/report/ticket-style logs go to mod-logs
+    - message logs go to message-logs
+    - automod logs go to automod-logs
+    - voice logs go to voice-logs
     """
     sync_setup_aliases(settings)
 
     mod_log_id = _coerce_int(settings.get("mod_log_channel")) or _coerce_int(settings.get("log_channel_mod"))
-    audit_log_id = _coerce_int(settings.get("audit_log_channel")) or _coerce_int(settings.get("log_channel_audit"))
+    message_log_id = _coerce_int(settings.get("message_log_channel")) or _coerce_int(settings.get("log_channel_message"))
+    automod_log_id = _coerce_int(settings.get("automod_log_channel")) or _coerce_int(settings.get("log_channel_automod"))
+    voice_log_id = _coerce_int(settings.get("voice_log_channel")) or _coerce_int(settings.get("log_channel_voice"))
 
     if mod_log_id:
         for key in (
             "mod_log_channel",
             "log_channel_mod",
-            "automod_log_channel",
-            "log_channel_automod",
-            "forum_alerts_channel",
-            "forum_alert_channel",
-            "ai_confirmation_channel",
-        ):
-            settings[key] = mod_log_id
-
-    if audit_log_id:
-        for key in (
             "audit_log_channel",
             "log_channel_audit",
-            "message_log_channel",
-            "log_channel_message",
-            "voice_log_channel",
-            "log_channel_voice",
             "report_log_channel",
             "log_channel_report",
             "ticket_log_channel",
@@ -392,8 +383,46 @@ def apply_compact_log_routing(settings: Dict[str, Any]) -> None:
             "modmail_log_channel",
             "court_log_channel",
             "emoji_log_channel",
+            "forum_alerts_channel",
+            "forum_alert_channel",
+            "ai_confirmation_channel",
         ):
-            settings[key] = audit_log_id
+            settings[key] = mod_log_id
+
+    if message_log_id:
+        settings["message_log_channel"] = message_log_id
+        settings["log_channel_message"] = message_log_id
+
+    if automod_log_id:
+        settings["automod_log_channel"] = automod_log_id
+        settings["log_channel_automod"] = automod_log_id
+
+    if voice_log_id:
+        settings["voice_log_channel"] = voice_log_id
+        settings["log_channel_voice"] = voice_log_id
+
+    modules = settings.get("modules")
+    if not isinstance(modules, dict):
+        modules = {}
+        settings["modules"] = modules
+    logging_module = modules.get("logging")
+    if not isinstance(logging_module, dict):
+        logging_module = {}
+        modules["logging"] = logging_module
+    logging_settings = logging_module.get("settings")
+    if not isinstance(logging_settings, dict):
+        logging_settings = {}
+        logging_module["settings"] = logging_settings
+
+    if mod_log_id:
+        logging_settings["modChannel"] = mod_log_id
+        logging_settings["auditChannel"] = mod_log_id
+    if message_log_id:
+        logging_settings["messageChannel"] = message_log_id
+    if automod_log_id:
+        logging_settings["automodChannel"] = automod_log_id
+    if voice_log_id:
+        logging_settings["voiceChannel"] = voice_log_id
 
     sync_setup_aliases(settings)
 
@@ -440,19 +469,41 @@ def hydrate_setup_settings_from_guild(
 
     for spec in CATEGORY_SPECS:
         key = spec["setting_key"]
-        if _coerce_int(hydrated.get(key)):
+        if _coerce_int(hydrated.get(key)) and not spec.get("prefer_name"):
             continue
-        category = _find_category(guild, None, spec["name"])
+        category = _find_category(
+            guild,
+            hydrated.get(key),
+            spec["name"],
+            prefer_name=bool(spec.get("prefer_name")),
+        )
         if category is not None:
             hydrated[key] = category.id
+        elif spec.get("prefer_name"):
+            hydrated.pop(key, None)
 
     for spec in CHANNEL_SPECS:
         key = spec["setting_key"]
-        if _coerce_int(hydrated.get(key)):
+        if _coerce_int(hydrated.get(key)) and not spec.get("prefer_name"):
             continue
-        channel = _find_text_channel(guild, None, spec["name"])
+        channel = _find_text_channel(
+            guild,
+            hydrated.get(key),
+            spec["name"],
+            prefer_name=bool(spec.get("prefer_name")),
+        )
         if channel is not None:
             hydrated[key] = channel.id
+        elif spec.get("prefer_name"):
+            hydrated.pop(key, None)
+            alias = {
+                "mod_log_channel": "log_channel_mod",
+                "message_log_channel": "log_channel_message",
+                "automod_log_channel": "log_channel_automod",
+                "voice_log_channel": "log_channel_voice",
+            }.get(key)
+            if alias:
+                hydrated.pop(alias, None)
 
     apply_compact_log_routing(hydrated)
     sync_setup_aliases(hydrated)
@@ -550,9 +601,8 @@ def build_setup_summary(
             "label": "Routing",
             "items": [
                 module_channel_item("Mod Log Channel", "logging", "modChannel", "mod_log_channel"),
-                module_channel_item("Audit Log Channel", "logging", "auditChannel", "audit_log_channel"),
-                module_channel_item("AutoMod Log Channel", "logging", "automodChannel", "automod_log_channel"),
                 module_channel_item("Message Log Channel", "logging", "messageChannel", "message_log_channel"),
+                module_channel_item("AutoMod Log Channel", "logging", "automodChannel", "automod_log_channel"),
                 module_channel_item("Voice Log Channel", "logging", "voiceChannel", "voice_log_channel"),
                 category_item("Ticket Category", "ticket_category"),
                 category_item("Modmail Category", "modmail_category_id"),
@@ -608,26 +658,50 @@ def _find_role(guild: discord.Guild, setting_value: Any, name: str) -> Optional[
     return None
 
 
-def _find_category(guild: discord.Guild, setting_value: Any, name: str) -> Optional[discord.CategoryChannel]:
+def _find_category(
+    guild: discord.Guild,
+    setting_value: Any,
+    name: str,
+    *,
+    prefer_name: bool = False,
+) -> Optional[discord.CategoryChannel]:
+    lowered = name.casefold()
+    matching_category = next((category for category in guild.categories if category.name.casefold() == lowered), None)
+    if prefer_name and matching_category is not None:
+        return matching_category
+
     category_id = _coerce_int(setting_value)
     if category_id:
         category = guild.get_channel(category_id)
         if isinstance(category, discord.CategoryChannel):
             return category
-    lowered = name.casefold()
+
     for category in guild.categories:
         if category.name.casefold() == lowered:
             return category
     return None
 
 
-def _find_text_channel(guild: discord.Guild, setting_value: Any, name: str) -> Optional[discord.TextChannel]:
+def _find_text_channel(
+    guild: discord.Guild,
+    setting_value: Any,
+    name: str,
+    *,
+    prefer_name: bool = False,
+) -> Optional[discord.TextChannel]:
+    lowered = name.casefold()
+    matching_channel = next((channel for channel in guild.text_channels if channel.name.casefold() == lowered), None)
+    if prefer_name and matching_channel is not None:
+        return matching_channel
+
     channel_id = _coerce_int(setting_value)
     if channel_id:
         channel = guild.get_channel(channel_id)
         if isinstance(channel, discord.TextChannel):
+            if prefer_name and channel.name.casefold() != lowered:
+                return None
             return channel
-    lowered = name.casefold()
+
     for channel in guild.text_channels:
         if channel.name.casefold() == lowered:
             return channel
@@ -728,7 +802,12 @@ async def quickstart_server(guild: discord.Guild, settings: Dict[str, Any]) -> D
 
     category_lookup: Dict[str, discord.CategoryChannel] = {}
     for spec in CATEGORY_SPECS:
-        category = _find_category(guild, updated.get(spec["setting_key"]), spec["name"])
+        category = _find_category(
+            guild,
+            updated.get(spec["setting_key"]),
+            spec["name"],
+            prefer_name=bool(spec.get("prefer_name")),
+        )
         if category is None:
             try:
                 category = await guild.create_category(
@@ -742,20 +821,31 @@ async def quickstart_server(guild: discord.Guild, settings: Dict[str, Any]) -> D
         else:
             reused.append(f"category:{spec['name']}")
 
+        if spec.get("prefer_name") and category.name != spec["name"]:
+            try:
+                await category.edit(name=spec["name"], reason="ModBot setup log category sync")
+            except Exception as exc:
+                errors.append(f"Category {spec['name']} sync: {exc}")
+
         updated[spec["setting_key"]] = category.id
         category_lookup[spec["setting_key"]] = category
 
     for spec in CHANNEL_SPECS:
-        channel = _find_text_channel(guild, updated.get(spec["setting_key"]), spec["name"])
+        channel = _find_text_channel(
+            guild,
+            updated.get(spec["setting_key"]),
+            spec["name"],
+            prefer_name=bool(spec.get("prefer_name")),
+        )
+        category = None
+        category_key = spec.get("category")
+        if isinstance(category_key, str):
+            category = category_lookup.get(category_key)
+            if category is None:
+                found_category = guild.get_channel(_coerce_int(updated.get(category_key)) or 0)
+                if isinstance(found_category, discord.CategoryChannel):
+                    category = found_category
         if channel is None:
-            category = None
-            category_key = spec.get("category")
-            if isinstance(category_key, str):
-                category = category_lookup.get(category_key)
-                if category is None:
-                    found_category = guild.get_channel(_coerce_int(updated.get(category_key)) or 0)
-                    if isinstance(found_category, discord.CategoryChannel):
-                        category = found_category
             try:
                 channel = await guild.create_text_channel(
                     name=spec["name"],
@@ -769,6 +859,16 @@ async def quickstart_server(guild: discord.Guild, settings: Dict[str, Any]) -> D
                 continue
         else:
             reused.append(f"channel:{spec['name']}")
+
+        if category is not None and channel.category_id != category.id and spec.get("category") == "logs_category":
+            try:
+                await channel.edit(
+                    category=category,
+                    sync_permissions=True,
+                    reason="ModBot setup log channel sync",
+                )
+            except Exception as exc:
+                errors.append(f"Channel {spec['name']} sync: {exc}")
 
         updated[spec["setting_key"]] = channel.id
 
