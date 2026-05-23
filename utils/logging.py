@@ -130,6 +130,44 @@ def _normalize_fields(embed: discord.Embed) -> None:
         embed.add_field(name=name, value=value, inline=inline)
 
 
+def _timestamp_unix(value: object) -> Optional[int]:
+    if isinstance(value, datetime):
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return int(value.timestamp())
+    return None
+
+
+def _append_relative_timestamp(embed: discord.Embed, timestamp: object) -> None:
+    unix = _timestamp_unix(timestamp)
+    if unix is None:
+        return
+
+    line = f"**Logged:** <t:{unix}:R>"
+    fields = list(getattr(embed, "fields", []) or [])
+    if fields:
+        first = fields[0]
+        name = str(getattr(first, "name", "") or "")
+        value = str(getattr(first, "value", "") or "").strip()
+        inline = bool(getattr(first, "inline", False))
+        if name in {"Details", _ZWS} and len(value) + len(line) + 4 <= _MAX_FIELD_VALUE:
+            fields[0] = (name, f"{value}\n> {line}" if value.startswith(">") else f"{value}\n{line}", inline)
+            embed.clear_fields()
+            for field in fields[:25]:
+                if isinstance(field, tuple):
+                    field_name, field_value, field_inline = field
+                    embed.add_field(name=field_name, value=field_value, inline=field_inline)
+                else:
+                    embed.add_field(
+                        name=str(getattr(field, "name", "") or "Details"),
+                        value=str(getattr(field, "value", "") or ""),
+                        inline=bool(getattr(field, "inline", False)),
+                    )
+            return
+
+    embed.add_field(name="Time", value=f"<t:{unix}:R>", inline=True)
+
+
 def normalize_log_embed(
     channel: Optional[discord.abc.Messageable],
     embed: discord.Embed,
@@ -138,10 +176,11 @@ def normalize_log_embed(
 ) -> discord.Embed:
     """Normalize log embeds into a compact, consistent card style."""
     normalized = clone_embed(embed)
-    had_timestamp = normalized.timestamp is not None
+    timestamp = normalized.timestamp
 
-    if normalized.timestamp is None:
-        normalized.timestamp = datetime.now(timezone.utc)
+    if timestamp is None:
+        timestamp = datetime.now(timezone.utc)
+    normalized.timestamp = None
 
     guild = getattr(channel, "guild", None) if channel else None
 
@@ -158,6 +197,11 @@ def normalize_log_embed(
 
     try:
         _normalize_fields(normalized)
+    except Exception:
+        pass
+
+    try:
+        _append_relative_timestamp(normalized, timestamp)
     except Exception:
         pass
 
