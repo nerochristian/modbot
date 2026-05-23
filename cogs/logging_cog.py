@@ -24,40 +24,43 @@ logger = logging.getLogger(__name__)
 class DeletedMessageImageView(discord.ui.View):
     def __init__(self, images: list[dict[str, str]]) -> None:
         super().__init__(timeout=24 * 60 * 60)
-        self.images = images[:5]
+        self.images = images[:10]
 
-        for index, image in enumerate(self.images):
-            label = "View image" if len(self.images) == 1 else f"Image {index + 1}"
-            button = discord.ui.Button(
-                label=label,
-                style=discord.ButtonStyle.secondary,
-                custom_id=f"deleted_message_image:{index}",
-            )
-
-            async def _callback(interaction: discord.Interaction, image_index: int = index) -> None:
-                await self._send_image(interaction, image_index)
-
-            button.callback = _callback
-            self.add_item(button)
-
-    async def _send_image(self, interaction: discord.Interaction, image_index: int) -> None:
-        try:
-            image = self.images[image_index]
-        except IndexError:
-            await interaction.response.send_message("That image is no longer available.", ephemeral=True)
-            return
-
-        url = image.get("url")
-        if not url:
-            await interaction.response.send_message("That image URL is not available.", ephemeral=True)
-            return
-
-        embed = discord.Embed(
-            title=image.get("filename") or "Deleted message image",
-            color=Colors.INFO,
+        label = "View image" if len(self.images) == 1 else "View images"
+        button = discord.ui.Button(
+            label=label,
+            style=discord.ButtonStyle.secondary,
+            custom_id="deleted_message_images:view",
         )
-        embed.set_image(url=url)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+        async def _callback(interaction: discord.Interaction) -> None:
+            await self._send_images(interaction)
+
+        button.callback = _callback
+        self.add_item(button)
+
+    async def _send_images(self, interaction: discord.Interaction) -> None:
+        if not self.images:
+            await interaction.response.send_message("No image URLs are available.", ephemeral=True)
+            return
+
+        embeds: list[discord.Embed] = []
+        for image in self.images:
+            url = image.get("url")
+            if not url:
+                continue
+            embed = discord.Embed(
+                title=image.get("filename") or "Deleted message image",
+                color=Colors.INFO,
+            )
+            embed.set_image(url=url)
+            embeds.append(embed)
+
+        if not embeds:
+            await interaction.response.send_message("No image URLs are available.", ephemeral=True)
+            return
+
+        await interaction.response.send_message(embeds=embeds[:10], ephemeral=True)
 
 
 class Logging(commands.Cog):
@@ -1245,21 +1248,19 @@ class Logging(commands.Cog):
         if delete_reason:
             details_lines.append(f"**Reason:** {self._shorten(delete_reason, 250)}")
 
+        attachment_records = self._attachment_records(message.attachments or [])
+        image_attachments = self._image_attachments(attachment_records)
         content_value = (message.content or "").strip()
-        if not content_value:
-            content_value = "*No text content*" if (message.embeds or message.attachments) else "*No content*"
+        message_text = content_value or (None if attachment_records else "*No content*")
 
         embed = self._build_sapphire_log_embed(
             title="Message deleted",
             color=Colors.ERROR,
             details_lines=details_lines,
-            message_text=content_value,
+            message_text=message_text,
             thumbnail_url=message.author.display_avatar.url,
             footer_user=deleter,
         )
-
-        attachment_records = self._attachment_records(message.attachments or [])
-        image_attachments = self._image_attachments(attachment_records)
 
         if attachment_records:
             embed.add_field(
@@ -1269,6 +1270,9 @@ class Logging(commands.Cog):
             )
 
         view = DeletedMessageImageView(image_attachments) if image_attachments else None
+        if view is not None:
+            embed.timestamp = None
+            embed.set_footer(text=None)
 
         # Single-message deletes do not include transcript downloads. Image
         # attachments are exposed through an ephemeral button instead.
@@ -1323,8 +1327,8 @@ class Logging(commands.Cog):
             author_avatar_url = snapshot.get("author_avatar_url")
             content_text = str(snapshot.get("content", "") or "").strip()
             attachment_count = int(snapshot.get("attachment_count", 0) or 0)
-            if not content_text:
-                content_text = "*No text content*" if attachment_count > 0 else "*No content*"
+            attachments = list(snapshot.get("attachments") or [])
+            message_text = content_text or (None if attachments else "*No content*")
 
             delete_entry = await self._find_recent_message_delete_entry(
                 guild,
@@ -1350,12 +1354,11 @@ class Logging(commands.Cog):
                 title="Message deleted",
                 color=Colors.ERROR,
                 details_lines=details_lines,
-                message_text=content_text,
+                message_text=message_text,
                 thumbnail_url=author_avatar_url,
                 footer_user=deleter,
             )
 
-            attachments = list(snapshot.get("attachments") or [])
             if attachments:
                 embed.add_field(
                     name=f"Attachments ({attachment_count})",
@@ -1378,6 +1381,9 @@ class Logging(commands.Cog):
 
         image_attachments = self._image_attachments(list(snapshot.get("attachments") or [])) if snapshot else []
         view = DeletedMessageImageView(image_attachments) if image_attachments else None
+        if view is not None:
+            embed.timestamp = None
+            embed.set_footer(text=None)
         await self.safe_send_log(log_channel, embed, use_v2=False, view=view, mirror_to_audit=False)
 
     @commands.Cog.listener()
