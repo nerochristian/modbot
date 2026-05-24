@@ -491,7 +491,7 @@ class MiscCommands:
 
         options = WelcomeCardOptions(
             accent_color=card_accent,
-            server_name=f"{system_name} - Moderation",
+            welcome_label=f"{system_name} - Moderation",
         )
 
         def build_embed(image_filename: Optional[str] = None) -> discord.Embed:

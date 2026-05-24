@@ -720,6 +720,9 @@ class Moderation(
                         logger.warning(f"Failed to assign whitelist role to {member.id}: {e}")
         
         # Welcome Message
+        if not settings.get("welcome_enabled", False):
+            return
+
         channel_id = settings.get("welcome_channel") or getattr(Config, "WELCOME_CHANNEL_ID", 0)
         if channel_id:
             try:

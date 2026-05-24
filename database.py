@@ -34,6 +34,107 @@ except ImportError:
     QueryBuilder = None
 
 
+_MODULE_ID_ALIASES = {
+    "aimoderation": "aimod",
+    "ai_moderation": "aimod",
+    "ai_mod": "aimod",
+    "automodv3": "automod",
+    "auto_mod": "automod",
+    "auto_moderation": "automod",
+}
+
+_FEATURE_MODULE_KEYS = {
+    "automod": ("automod_enabled", True),
+    "aimod": ("aimod_enabled", False),
+}
+
+
+def _normalize_module_id(module_id: object) -> str:
+    raw = str(module_id or "").strip().lower().replace("-", "_").replace(" ", "_")
+    return _MODULE_ID_ALIASES.get(raw, raw)
+
+
+def _coerce_bool(value: object, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"1", "true", "yes", "on", "enabled"}:
+            return True
+        if lowered in {"0", "false", "no", "off", "disabled"}:
+            return False
+    return default
+
+
+def _canonical_modules(raw_modules: object) -> dict[str, Any]:
+    if not isinstance(raw_modules, dict):
+        return {}
+
+    canonical: dict[str, Any] = {}
+    for key, value in raw_modules.items():
+        module_id = _normalize_module_id(key)
+        if not isinstance(value, dict):
+            continue
+        existing = canonical.get(module_id, {})
+        merged = dict(existing) if isinstance(existing, dict) else {}
+        merged.update(value)
+        if isinstance(existing, dict) and isinstance(existing.get("settings"), dict) and isinstance(value.get("settings"), dict):
+            merged["settings"] = {**existing["settings"], **value["settings"]}
+        canonical[module_id] = merged
+    return canonical
+
+
+def _ensure_module(modules: dict[str, Any], module_id: str) -> dict[str, Any]:
+    module = modules.get(module_id)
+    if not isinstance(module, dict):
+        module = {}
+        modules[module_id] = module
+    return module
+
+
+def normalize_runtime_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Keep flat runtime toggles and dashboard module blobs from fighting.
+
+    Flat keys are what the cogs read on message/command events. When those keys
+    exist they must win, otherwise a stale dashboard `modules` blob can turn a
+    disabled feature back on after restart or a dashboard save.
+    """
+    normalized = dict(settings or {})
+    modules = _canonical_modules(normalized.get("modules"))
+
+    for module_id, (flat_key, default) in _FEATURE_MODULE_KEYS.items():
+        module = modules.get(module_id)
+        if flat_key in normalized:
+            enabled = _coerce_bool(normalized.get(flat_key), default)
+            normalized[flat_key] = enabled
+            _ensure_module(modules, module_id)["enabled"] = enabled
+        elif isinstance(module, dict) and "enabled" in module:
+            normalized[flat_key] = _coerce_bool(module.get("enabled"), default)
+
+    aimod = modules.get("aimod")
+    aimod_settings = aimod.get("settings") if isinstance(aimod, dict) else None
+    if "aimod_chat_enabled" in normalized:
+        chat_enabled = _coerce_bool(normalized.get("aimod_chat_enabled"), False)
+        normalized["aimod_chat_enabled"] = chat_enabled
+        module = _ensure_module(modules, "aimod")
+        module_settings = module.get("settings")
+        if not isinstance(module_settings, dict):
+            module_settings = {}
+            module["settings"] = module_settings
+        module_settings["chatEnabled"] = chat_enabled
+    elif isinstance(aimod_settings, dict) and "chatEnabled" in aimod_settings:
+        normalized["aimod_chat_enabled"] = _coerce_bool(aimod_settings.get("chatEnabled"), False)
+
+    if modules:
+        normalized["modules"] = modules
+    return normalized
+
+
 
 def _explicit_database_mode() -> Optional[str]:
     for env_key in ("DB_MODE", "DATABASE_MODE"):
@@ -1172,14 +1273,17 @@ class Database:
                 row = await cursor.fetchone()
                 settings = json.loads(row[0]) if row and row[0] else {}
                 
-        # Merge with defaults
+        # Merge with defaults, but resolve explicit module/flat toggle state
+        # before defaults can make a missing key look enabled.
+        settings = normalize_runtime_settings(settings)
         merged = AUTOMOD_SETTINGS.copy()
         merged.update(settings)
-        return merged
+        return normalize_runtime_settings(merged)
     
     async def update_settings(self, guild_id: int, settings: Dict[str, Any]) -> None:
         """Update guild settings"""
         self._validate_guild_id(guild_id)
+        settings = normalize_runtime_settings(settings)
         
         async with self._lock:
             async with self.get_connection() as db:
