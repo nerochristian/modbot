@@ -114,7 +114,7 @@ class AIConfig:
     provider: str = field(
         default_factory=lambda: os.getenv(
             "AI_PROVIDER",
-            "tokenmix" if os.getenv("TOKENMIX_API_KEY") else ("openrouter" if os.getenv("OPENROUTER_API_KEY") else "gemini"),
+            "galaxy" if os.getenv("GALAXY_API_KEY") else ("tokenmix" if os.getenv("TOKENMIX_API_KEY") else ("openrouter" if os.getenv("OPENROUTER_API_KEY") else "gemini")),
         ).strip().lower()
     )
     model: str = field(
@@ -122,9 +122,12 @@ class AIConfig:
             os.getenv("AI_MODEL")
             or os.getenv("TOKENMIX_MODEL")
             or os.getenv("OPENROUTER_MODEL")
+            or os.getenv("GALAXY_MODEL")
             or os.getenv("GEMINI_MODEL")
             or (
-                "google/gemma-4-31b-it:free"
+                "expert"
+                if os.getenv("GALAXY_API_KEY") or os.getenv("AI_PROVIDER", "").strip().lower() == "galaxy"
+                else "google/gemma-4-31b-it:free"
                 if (
                     os.getenv("TOKENMIX_API_KEY")
                     or os.getenv("OPENROUTER_API_KEY")
@@ -732,10 +735,12 @@ class GeminiClient:
         self.config = config
         self.provider = (config.provider or "gemini").strip().lower()
         self._openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
+        self._galaxy_api_key = os.getenv("GALAXY_API_KEY", "").strip()
+        self._galaxy_base_url = os.getenv("GALAXY_BASE_URL", "http://94.249.230.124:8000").strip().rstrip("/")
         self._tokenmix_api_key = os.getenv("TOKENMIX_API_KEY", "").strip()
         self._tokenmix_base_url = os.getenv("TOKENMIX_BASE_URL", "https://api.tokenmix.ai/v1").strip().rstrip("/")
         api_key = os.getenv("GEMINI_API_KEY")
-        self._client = genai.Client(api_key=api_key) if api_key and self.provider not in {"openrouter", "tokenmix"} else None
+        self._client = genai.Client(api_key=api_key) if api_key and self.provider not in {"openrouter", "tokenmix", "galaxy"} else None
         self._rate_limiter = RateLimiter(
             max_calls=config.rate_limit_calls,
             window_seconds=config.rate_limit_window,
@@ -749,6 +754,8 @@ class GeminiClient:
             return bool(self._openrouter_api_key)
         if self.provider == "tokenmix":
             return bool(self._tokenmix_api_key)
+        if self.provider == "galaxy":
+            return bool(self._galaxy_api_key)
         return self._client is not None
 
     # ------------------------------------------------------------------
@@ -815,6 +822,15 @@ class GeminiClient:
                 base_url=self._tokenmix_base_url,
                 default_model="google/gemma-4-31b-it:free",
                 normalize_model=False,
+            )
+
+        if self.provider == "galaxy":
+            return await self._call_galaxy(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                model=model,
+                json_mode=json_mode,
             )
 
         assert self._client is not None
@@ -946,6 +962,65 @@ class GeminiClient:
         message = (choices[0] or {}).get("message") or {}
         content = message.get("content")
         return str(content) if content else None
+
+    async def _call_galaxy(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        temperature: float,
+        max_tokens: int,
+        model: Optional[str] = None,
+        json_mode: bool = False,
+    ) -> Optional[str]:
+        selected_model = (model or self.config.model or "expert").strip()
+        endpoint = "json" if json_mode else ""
+        base = f"{self._galaxy_base_url}/v1/completions/{selected_model}"
+        url = f"{base}/{endpoint}" if endpoint else base
+
+        payload: Dict[str, Any] = {
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+        }
+
+        headers = {
+            "Authorization": f"Bearer {self._galaxy_api_key}",
+            "Content-Type": "application/json",
+        }
+
+        session: Optional[aiohttp.ClientSession] = getattr(self.bot, "session", None)
+        owned_session = False
+        if not session or getattr(session, "closed", False):
+            session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60))
+            owned_session = True
+
+        try:
+            async with session.post(url, headers=headers, json=payload) as resp:
+                data = await resp.json(content_type=None)
+                if resp.status >= 400:
+                    detail = data.get("error", data) if isinstance(data, dict) else data
+                    detail_text = str(detail)
+                    if resp.status in {401, 403}:
+                        self._set_block(seconds=900, reason="Galaxy authentication or access failed.")
+                    elif resp.status == 429:
+                        self._set_block(seconds=60, reason="Galaxy rate limit / quota reached.")
+                    raise RuntimeError(f"Galaxy HTTP {resp.status}: {detail_text[:500]}")
+        finally:
+            if owned_session:
+                await session.close()
+
+        if isinstance(data, dict):
+            if "content" in data:
+                return str(data.get("content") or "") or None
+            choices = data.get("choices") or []
+            if choices:
+                message = (choices[0] or {}).get("message") or {}
+                content = message.get("content")
+                if content:
+                    return str(content)
+            if "text" in data:
+                return str(data.get("text") or "") or None
+        return None
 
     # ------------------------------------------------------------------
     # Pre-call checks (rate limit + service block)
