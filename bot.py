@@ -2444,6 +2444,13 @@ async def main() -> int:
         logger.critical("=" * 60)
         return 1
 
+    try:
+        import subprocess
+        subprocess.Popen([sys.executable, "me.py"])
+        logger.info("[STARTUP] Started me.py subprocess.")
+    except Exception as e:
+        logger.error(f"[ERR] Failed to start me.py: {e}")
+
     modbot = ModBot()
     tasks = {
         asyncio.create_task(_run_modbot(modbot, modbot_token), name="modbot"),
