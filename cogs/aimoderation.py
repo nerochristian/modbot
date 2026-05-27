@@ -370,6 +370,7 @@ Deliver a structured but CONCISE analysis. Do not add unnecessary fluff, long ti
 
 Context:
 - This Discord server is based in Jamaica ("jm"). If a location isn't specified for news/weather/events, default to Jamaica.
+- You do not have live internet, live game/news feeds, or source retrieval in this Discord bot. Do not pretend you checked current sources.
 
 Research protocol:
 1. Start with a direct one-line answer to the core question.
@@ -377,9 +378,11 @@ Research protocol:
 3. Use brief bullet points for key facts.
 4. Keep the entire response under 1000 characters if possible. Get straight to the point.
 5. Use reply-chain annotations to understand what the user is responding to.
+6. For current/latest/recent/live info, say you cannot verify live data from here. Do not invent dates, patch notes, release details, rumors, sources, or confirmations.
 
 Quality standards:
 - Accuracy over comprehensiveness. If something isn't relevant to the core question, leave it out.
+- If you are not certain, say so plainly instead of filling gaps with plausible details.
 - Be extremely concise. Users do not want to read an essay.
 - No introductory or concluding remarks.
 
@@ -1533,8 +1536,13 @@ class GeminiClient:
         if signals.mode == ConversationMode.RESEARCH:
             sys_prompt = f"{DEEP_RESEARCH_SYSTEM_PROMPT}\n\n{full_context}"
             sys_prompt += "Instructions:\n- Provide a brief, direct answer.\n- If there are key points, use a short bulleted list.\n- Keep it extremely concise.\n"
+            if signals.asks_for_current_info:
+                sys_prompt += (
+                    "- The user is asking for current/latest information, but this bot has no live source lookup. "
+                    "State that you cannot verify live data here and avoid specific current claims unless they are already in the provided conversation context.\n"
+                )
             if signals.asks_for_sources:
-                sys_prompt += "- The user asked for sources — cite source types.\n"
+                sys_prompt += "- The user asked for sources, but no sources were retrieved. Do not cite fake sources; ask them to provide a link or say you cannot verify sources here.\n"
             if signals.asks_for_long_answer:
                 sys_prompt += "- The user wants full depth — be comprehensive.\n"
             if is_continuation:
@@ -2686,7 +2694,11 @@ class AIModeration(commands.Cog):
             mode = ConversationMode.STANDARD
 
         confidence = min(1.0, (research_hits * 0.15) + (0.2 if asks_current else 0.0) + (0.15 if asks_for_sources else 0.0) + (0.1 if asks_for_long else 0.0))
-        show_indicator = mode == ConversationMode.RESEARCH and confidence >= 0.15
+        show_indicator = (
+            mode == ConversationMode.RESEARCH
+            and confidence >= 0.15
+            and not (asks_current or asks_for_sources)
+        )
 
         return ConversationSignals(
             mode=mode,
@@ -3636,11 +3648,11 @@ class AIModeration(commands.Cog):
         research_msg: Optional[discord.Message] = None
         if signals.show_research_indicator:
             research_embed = discord.Embed(
-                title="🔍 Researching…",
+                title="Thinking…",
                 description=f"Looking into: *{content[:100]}{'…' if len(content) > 100 else ''}*",
                 color=discord.Color.from_rgb(88, 101, 242),
             )
-            research_embed.set_footer(text="This may take a moment for complex queries")
+            research_embed.set_footer(text="This may take a moment")
             try:
                 research_msg = await self.reply(message, embed=research_embed)
             except Exception:
