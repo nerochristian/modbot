@@ -8,6 +8,7 @@ and executes appropriate moderation actions while respecting user permissions.
 from __future__ import annotations
 
 import asyncio
+import collections
 import difflib
 import io
 import json
