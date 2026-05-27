@@ -11,6 +11,7 @@ logger = logging.getLogger("ModBot.AIScheduler")
 class AIScheduler(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        self._ready = False
         self._task_loop.start()
 
     def cog_unload(self):
@@ -18,9 +19,10 @@ class AIScheduler(commands.Cog):
 
     @tasks.loop(seconds=30.0)
     async def _task_loop(self):
-        await self.bot.wait_until_ready()
+        if not self._ready:
+            return
         try:
-            now = datetime.now(timezone.utc).replace(tzinfo=None).isoformat()
+            now = datetime.now(timezone.utc).replace(tzinfo=None)
 
             async with self.bot.db.get_connection() as db:
                 cursor = await db.execute(
@@ -60,7 +62,10 @@ class AIScheduler(commands.Cog):
                             await db.commit()
                     except Exception:
                         pass
-        except Exception:
+        except Exception as e:
+            # Silently ignore "table does not exist" during early startup
+            if "scheduled_tasks" in str(e) and "does not exist" in str(e):
+                return
             logger.exception("AI Scheduler loop failed")
 
     async def _execute_task(self, guild_id: int, task_type: str, payload: dict):
@@ -97,6 +102,10 @@ class AIScheduler(commands.Cog):
     @_task_loop.before_loop
     async def _before_task_loop(self):
         await self.bot.wait_until_ready()
+        # Wait a bit for guild init to create the scheduled_tasks table
+        await asyncio.sleep(15)
+        self._ready = True
+        logger.info("AI Scheduler is now active.")
 
 
 async def setup(bot):
