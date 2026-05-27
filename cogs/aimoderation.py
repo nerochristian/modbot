@@ -338,8 +338,9 @@ You are an autonomous, omnipotent developer agent with ROOT python access to the
 Python Execution Rules:
 1. The code runs dynamically inside an async wrapper. You have access to these globals: `bot`, `guild`, `author`, `message`, `channel`, `discord`, `asyncio`.
 2. Do NOT write `import` statements for standard modules unless needed (discord and asyncio are already loaded). You can import `datetime`, `json`, `re`. (Do NOT use `pytz`).
-3. **Fetching Data**: You have full access to `guild.members` (contains `member.joined_at`, `member.roles`, etc). You can fetch channel history using `[m async for m in channel.history(limit=100)]`.
-   - IMPORTANT: `discord.Member` DOES NOT have `last_message`, `last_active`, or `last_voice_channel` attributes. If you need to check activity, you must loop over `channel.history` across multiple channels and track the latest `message.created_at` for each `message.author.id`.
+3. **Fetching Data**: You have full access to `guild.members` (contains `member.joined_at`, `member.roles`, etc).
+   - IMPORTANT: `discord.Member` DOES NOT have `last_message`, `last_active`, or `last_voice_channel` attributes.
+   - If you need to check activity, call the global async helper: `activity_dict = await fetch_recent_activity(days=7)`. This returns a `dict[int, datetime.datetime]` mapping member IDs to their last message time.
    - If asked "who joined recently", you iterate `guild.members`, sort by `joined_at`, and send the result.
 4. **Scheduling/Reminders**: Insert a row into the database: 
    `await bot.db.execute("INSERT INTO scheduled_tasks (guild_id, author_id, task_type, payload, execute_at) VALUES (?, ?, ?, ?, ?)", guild.id, author.id, 'execute_python', '{"code": "await channel.send(\'hello\')" }', future_iso_timestamp)`
@@ -358,6 +359,7 @@ Understand slang, typos, shorthand, and casual phrasing.
 - “boot him” -> kick_member
 - “get him out forever” -> ban_member
 - “nuke 50 msgs” -> purge_messages amount=50
+- “delete @user messages” -> execute_python (complex purge)
 - “make a room” -> create_channel
 - “make a vc” -> create_channel type=voice
 - “make it nsfw” -> edit_channel nsfw=true
@@ -372,6 +374,9 @@ Understand slang, typos, shorthand, and casual phrasing.
 Use recent messages and reply annotations heavily.
 If user says: "yes", "do it", "confirm", "this guy", "same thing" -> infer from recent context.
 If still unclear, return chat.
+
+CRITICAL ROUTING RULE: 
+If the user asks to do SOMETHING (like deleting specific messages, managing the server, fetching data) that standard tools can't do, DO NOT return `chat` or `error`. You MUST return `tool_call` with `"tool": "execute_python"` so the script can handle it.
 
 Mention resolution:
 - If a Discord mention is present, use that user ID as target_user_id.
@@ -3025,6 +3030,21 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
     if not code:
         return ToolResult.fail("No Python code provided.")
 
+    import datetime
+    async def fetch_recent_activity(days: int = 7) -> dict[int, datetime.datetime]:
+        """Helper to get a dictionary of {member_id: last_message_datetime} for recent activity across text channels."""
+        now = datetime.datetime.now(datetime.timezone.utc)
+        cutoff = now - datetime.timedelta(days=days)
+        activity = {}
+        for text_channel in ctx.guild.text_channels:
+            try:
+                async for msg in text_channel.history(limit=50, after=cutoff):
+                    if msg.author.id not in activity or msg.created_at > activity[msg.author.id]:
+                        activity[msg.author.id] = msg.created_at
+            except Exception:
+                pass
+        return activity
+
     env = {
         "bot": ctx.cog.bot,
         "guild": ctx.guild,
@@ -3033,6 +3053,7 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
         "channel": ctx.message.channel if ctx.message else None,
         "discord": __import__("discord"),
         "asyncio": __import__("asyncio"),
+        "fetch_recent_activity": fetch_recent_activity,
     }
 
     # Wrap in async function
