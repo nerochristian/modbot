@@ -1890,6 +1890,9 @@ class GeminiClient:
         text = GeminiClient._strip_citation_tokens(text)
         text = GeminiClient._convert_simple_markdown_table(text)
 
+        # The user requested to stop using dash thingys (em-dashes) and use commas instead
+        text = text.replace(" — ", ", ").replace("—", ",")
+
         # Strip meta-commentary the model sometimes prepends
         meta_patterns = [
             r"^(?:Sure(?:,|!)?\s*)?(?:Here(?:'s| is)?\s*)?(?:my )?(?:response|answer|reply)\s*[:!]?\s*\n*",
