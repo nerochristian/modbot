@@ -4047,11 +4047,84 @@ class AIModeration(commands.Cog):
                 await self.reply_tool_result(message, result)
 
         elif decision.type == DecisionType.CHAT:
+            # If this looks like an action request from an admin, the AI may have
+            # incorrectly classified it as chat. Escalate to execute_python.
+            if is_mod_request and isinstance(message.author, discord.Member) and (
+                message.author.guild_permissions.administrator
+                or is_bot_owner_id(message.author.id)
+            ):
+                decision = Decision(
+                    type=DecisionType.TOOL_CALL,
+                    reason="Auto-escalated action request to execute_python",
+                    tool=ToolType.EXECUTE_PYTHON,
+                    arguments={"code": "# AI will generate code via re-route"},
+                )
+                # Re-run the AI with a direct instruction to generate python code
+                async with message.channel.typing():
+                    code_prompt = (
+                        f"Write raw async Python code using discord.py to accomplish this request: \"{content}\"\n"
+                        f"Globals available: bot, guild, author, message, channel, discord, asyncio.\n"
+                        f"guild = bot.get_guild({message.guild.id})\n"
+                        f"author = guild.get_member({message.author.id})\n"
+                        f"channel = bot.get_channel({message.channel.id})\n"
+                        f"Current time (EST): {_now().astimezone().isoformat()}\n"
+                        f"Output ONLY the raw python code, no markdown fences, no explanation."
+                    )
+                    code_response = await self.ai._call(
+                        [{"role": "user", "content": code_prompt}],
+                        temperature=0.2,
+                        max_tokens=2000,
+                        model=settings.model,
+                    )
+                if code_response:
+                    decision.arguments = {"code": code_response}
+                    result = await ToolRegistry.execute(
+                        ToolType.EXECUTE_PYTHON, self, message, decision.arguments, decision
+                    )
+                    await self.reply_tool_result(message, result)
+                else:
+                    await self.reply(message, content="I tried to handle that but couldn't generate the code. Try rephrasing?")
+                return
+
             if not settings.chat_enabled:
                 return
             await self._handle_conversation(message, content, settings)
 
         else:  # ERROR
+            # Same auto-escalation for error responses on action requests from admins
+            if is_mod_request and isinstance(message.author, discord.Member) and (
+                message.author.guild_permissions.administrator
+                or is_bot_owner_id(message.author.id)
+            ):
+                async with message.channel.typing():
+                    code_prompt = (
+                        f"Write raw async Python code using discord.py to accomplish this request: \"{content}\"\n"
+                        f"Globals available: bot, guild, author, message, channel, discord, asyncio.\n"
+                        f"guild = bot.get_guild({message.guild.id})\n"
+                        f"author = guild.get_member({message.author.id})\n"
+                        f"channel = bot.get_channel({message.channel.id})\n"
+                        f"Current time (EST): {_now().astimezone().isoformat()}\n"
+                        f"Output ONLY the raw python code, no markdown fences, no explanation."
+                    )
+                    code_response = await self.ai._call(
+                        [{"role": "user", "content": code_prompt}],
+                        temperature=0.2,
+                        max_tokens=2000,
+                        model=settings.model,
+                    )
+                if code_response:
+                    decision = Decision(
+                        type=DecisionType.TOOL_CALL,
+                        reason="Auto-escalated error to execute_python",
+                        tool=ToolType.EXECUTE_PYTHON,
+                        arguments={"code": code_response},
+                    )
+                    result = await ToolRegistry.execute(
+                        ToolType.EXECUTE_PYTHON, self, message, decision.arguments, decision
+                    )
+                    await self.reply_tool_result(message, result)
+                    return
+
             if not is_mentioned and not is_reply_to_bot:
                 return
             await self.reply(message, content=self._friendly_error_reply(content, decision.reason))
