@@ -4064,10 +4064,12 @@ class AIModeration(commands.Cog):
                     code_prompt = (
                         f"Write raw async Python code using discord.py to accomplish this request: \"{content}\"\n"
                         f"Globals available: bot, guild, author, message, channel, discord, asyncio.\n"
+                        f"You can import: datetime, json, re, random (stdlib only, no pytz). Use datetime.timezone.utc for timezone.\n"
+                        f"For scheduled events use: await guild.create_scheduled_event(name=..., start_time=..., end_time=..., privacy_level=discord.PrivacyLevel.guild_only, entity_type=discord.EntityType.external, location='Server')\n"
                         f"guild = bot.get_guild({message.guild.id})\n"
                         f"author = guild.get_member({message.author.id})\n"
                         f"channel = bot.get_channel({message.channel.id})\n"
-                        f"Current time (EST): {_now().astimezone().isoformat()}\n"
+                        f"Current time (EST/UTC-5): {_now().astimezone().isoformat()}\n"
                         f"Output ONLY the raw python code, no markdown fences, no explanation."
                     )
                     code_response = await self.ai._call(
@@ -4100,10 +4102,12 @@ class AIModeration(commands.Cog):
                     code_prompt = (
                         f"Write raw async Python code using discord.py to accomplish this request: \"{content}\"\n"
                         f"Globals available: bot, guild, author, message, channel, discord, asyncio.\n"
+                        f"You can import: datetime, json, re, random (stdlib only, no pytz). Use datetime.timezone.utc for timezone.\n"
+                        f"For scheduled events use: await guild.create_scheduled_event(name=..., start_time=..., end_time=..., privacy_level=discord.PrivacyLevel.guild_only, entity_type=discord.EntityType.external, location='Server')\n"
                         f"guild = bot.get_guild({message.guild.id})\n"
                         f"author = guild.get_member({message.author.id})\n"
                         f"channel = bot.get_channel({message.channel.id})\n"
-                        f"Current time (EST): {_now().astimezone().isoformat()}\n"
+                        f"Current time (EST/UTC-5): {_now().astimezone().isoformat()}\n"
                         f"Output ONLY the raw python code, no markdown fences, no explanation."
                     )
                     code_response = await self.ai._call(
