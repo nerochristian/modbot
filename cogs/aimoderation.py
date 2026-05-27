@@ -1411,13 +1411,14 @@ class GeminiClient:
         ]
         if is_continuation:
             context_parts.append("Context: This is a continuation of an active conversation.")
-        base_context = "\n".join(context_parts) + "\n\n"
+        
+        full_context = "### CURRENT STATE & CONTEXT ###\n"
+        full_context += "\n".join(context_parts) + "\n\n"
         
         if global_history:
-            base_context += f"Global Server Chat Activity (All Channels):\n{global_history}\n\n"
+            full_context += f"Global Server Chat Activity (All Channels):\n{global_history}\n\n"
 
         # Memory section
-        memory_section = ""
         if past_memory.strip():
             # Trim to last meaningful chunk
             trimmed = past_memory.strip()
@@ -1427,27 +1428,22 @@ class GeminiClient:
                 first_bracket = trimmed.find("\n[")
                 if first_bracket > 0:
                     trimmed = trimmed[first_bracket:]
-            memory_section = f"What you remember about this user:\n{trimmed}\n\n"
+            full_context += f"What you remember about this user:\n{trimmed}\n\n"
 
         # --- RESEARCH MODE ---
         if signals.mode == ConversationMode.RESEARCH:
-            user_prompt = (
-                f"{base_context}{memory_section}"
-                f"Research request from {display_name}:\n{user_content}\n\n"
-                "Instructions:\n"
-                "- Provide a brief, direct answer.\n"
-                "- If there are key points, use a short bulleted list.\n"
-                "- Keep it extremely concise.\n"
-            )
+            sys_prompt = f"{DEEP_RESEARCH_SYSTEM_PROMPT}\n\n{full_context}"
+            sys_prompt += "Instructions:\n- Provide a brief, direct answer.\n- If there are key points, use a short bulleted list.\n- Keep it extremely concise.\n"
             if signals.asks_for_sources:
-                user_prompt += "- The user asked for sources — cite source types (official reports, analysts, etc.).\n"
+                sys_prompt += "- The user asked for sources — cite source types.\n"
             if signals.asks_for_long_answer:
-                user_prompt += "- The user wants full depth — be comprehensive.\n"
+                sys_prompt += "- The user wants full depth — be comprehensive.\n"
             if is_continuation:
-                user_prompt += "- This continues a prior conversation — build on what was already discussed.\n"
+                sys_prompt += "- This continues a prior conversation — build on what was already discussed.\n"
+                
             return ConversationPlan(
-                system_prompt=DEEP_RESEARCH_SYSTEM_PROMPT,
-                user_prompt=user_prompt,
+                system_prompt=sys_prompt,
+                user_prompt=user_content,
                 temperature=0.35,
                 max_tokens=max(self.config.max_tokens_chat, 2048),
                 show_research_indicator=signals.show_research_indicator,
@@ -1456,16 +1452,14 @@ class GeminiClient:
         # --- MOD GUIDANCE MODE ---
         if signals.mode == ConversationMode.MOD_GUIDANCE:
             bot_mention = self.bot.user.mention if self.bot.user else "@bot"
-            user_prompt = (
-                f"{base_context}{memory_section}"
-                f"Question from {display_name}:\n{user_content}\n\n"
-                "Provide practical moderation guidance.\n"
-                f"Use `{bot_mention}` in command examples so they can copy-paste.\n"
-                "If the user is missing info (target, reason, duration), ask ONE question."
-            )
+            sys_prompt = f"{MOD_GUIDANCE_SYSTEM_PROMPT}\n\n{full_context}"
+            sys_prompt += "Provide practical moderation guidance.\n"
+            sys_prompt += f"Use `{bot_mention}` in command examples so they can copy-paste.\n"
+            sys_prompt += "If the user is missing info (target, reason, duration), ask ONE question.\n"
+            
             return ConversationPlan(
-                system_prompt=MOD_GUIDANCE_SYSTEM_PROMPT,
-                user_prompt=user_prompt,
+                system_prompt=sys_prompt,
+                user_prompt=user_content,
                 temperature=0.5,
                 max_tokens=self.config.max_tokens_chat,
                 show_research_indicator=False,
@@ -1479,14 +1473,11 @@ class GeminiClient:
                 "Pick up naturally from where you left off — don't re-introduce yourself."
             )
 
-        user_prompt = (
-            f"{base_context}{memory_section}"
-            f"Message from {display_name}:\n{user_content}\n\n"
-            f"{task_instruction}"
-        )
+        sys_prompt = f"{CONVERSATION_SYSTEM_PROMPT}\n\n{full_context}### INSTRUCTIONS ###\n{task_instruction}"
+        
         return ConversationPlan(
-            system_prompt=CONVERSATION_SYSTEM_PROMPT,
-            user_prompt=user_prompt,
+            system_prompt=sys_prompt,
+            user_prompt=user_content,
             temperature=self.config.temperature_chat,
             max_tokens=self.config.max_tokens_chat,
             show_research_indicator=False,
