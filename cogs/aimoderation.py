@@ -1223,6 +1223,7 @@ class GeminiClient:
         if error:
             return error
 
+        # --- Retrieve persistent memory ---
         past_memory = ""
         try:
             db = getattr(self.bot, "db", None)
@@ -1231,17 +1232,13 @@ class GeminiClient:
         except Exception:
             pass
 
-        display_name = author.display_name if isinstance(author, discord.Member) else str(author)
-        role_snippet = ""
-        if isinstance(author, discord.Member):
-            top = [r.name for r in author.roles[1:4]]
-            if top:
-                role_snippet = f" | Roles: {', '.join(top)}"
+        # --- Build rich conversation history ---
+        history = self._format_conversation_history(recent_messages)
 
-        history = "\n".join(
-            f"[{'bot' if m.author.bot else 'user'}] {m.author}: {m.content[:300]}"
-            for m in recent_messages[-self.config.memory_window:]
-        ) or "No recent messages"
+        # --- Detect conversation continuity ---
+        is_continuation = self._is_conversation_continuation(
+            author, recent_messages
+        )
 
         signals = signals or ConversationSignals(
             mode=ConversationMode.STANDARD,
@@ -1260,12 +1257,13 @@ class GeminiClient:
             author=author,
             past_memory=past_memory,
             history=history,
+            is_continuation=is_continuation,
         )
 
-        messages = [
-            {"role": "system", "content": plan.system_prompt},
-            {"role": "user", "content": plan.user_prompt},
-        ]
+        # --- Build message chain with multi-turn context ---
+        messages = self._build_conversation_messages(
+            plan, recent_messages, author
+        )
 
         try:
             await self._rate_limiter.record_call(author.id)
@@ -1279,7 +1277,11 @@ class GeminiClient:
             if not content:
                 return None
             content = self._postprocess_chat_response(content)
-            asyncio.create_task(self._update_memory(author.id, user_content, content, past_memory))
+
+            # Fire-and-forget memory update with summarization
+            asyncio.create_task(
+                self._update_memory_smart(author.id, user_content, content, past_memory)
+            )
             return content
         except Exception:
             block_msg = self._get_block_message()
@@ -1287,6 +1289,92 @@ class GeminiClient:
                 return block_msg
             logger.exception("Unexpected error in converse")
             return None
+
+    def _format_conversation_history(
+        self, recent_messages: List[discord.Message]
+    ) -> str:
+        """Format recent messages into a clean multi-turn conversation history."""
+        if not recent_messages:
+            return "No recent messages"
+
+        lines: List[str] = []
+        for m in recent_messages[-self.config.memory_window:]:
+            author_label = "bot" if m.author.bot else "user"
+            name = getattr(m.author, "display_name", None) or str(m.author)
+            content = (m.content or "").strip()
+
+            # Handle attachments and embeds
+            extras: List[str] = []
+            if m.attachments:
+                extras.append(f"[{len(m.attachments)} attachment(s)]")
+            if m.embeds:
+                extras.append(f"[{len(m.embeds)} embed(s)]")
+            if m.stickers:
+                extras.append(f"[sticker: {m.stickers[0].name}]")
+
+            display = content[:400]
+            if extras:
+                display = f"{display} {' '.join(extras)}".strip()
+            if not display:
+                display = " ".join(extras) if extras else "[empty message]"
+
+            lines.append(f"[{author_label}] {name}: {display}")
+
+        return "\n".join(lines)
+
+    def _is_conversation_continuation(
+        self,
+        author: Union[discord.Member, discord.User],
+        recent_messages: List[discord.Message],
+    ) -> bool:
+        """Detect if the user is continuing an active conversation with the bot."""
+        if not recent_messages or len(recent_messages) < 2:
+            return False
+
+        # Check if one of the last 3 messages is from the bot replying to this user
+        bot_id = self.bot.user.id if self.bot.user else None
+        if not bot_id:
+            return False
+
+        recent_slice = recent_messages[-4:]
+        for msg in recent_slice:
+            if msg.author.id == bot_id:
+                # Bot spoke recently — likely a continuation
+                return True
+        return False
+
+    def _build_conversation_messages(
+        self,
+        plan: "ConversationPlan",
+        recent_messages: List[discord.Message],
+        author: Union[discord.Member, discord.User],
+    ) -> List[Dict[str, str]]:
+        """Build multi-turn message chain instead of single system+user pair.
+
+        For richer context, we inject recent bot/user exchanges as
+        assistant/user turns so the model sees the actual conversation flow.
+        """
+        messages: List[Dict[str, str]] = [
+            {"role": "system", "content": plan.system_prompt},
+        ]
+
+        # Inject recent conversation turns for multi-turn context
+        bot_id = self.bot.user.id if self.bot.user else None
+        if bot_id and recent_messages:
+            # Take last few exchanges (up to 6 turns)
+            recent_slice = recent_messages[-(min(6, len(recent_messages))):]
+            for msg in recent_slice:
+                content = (msg.content or "").strip()
+                if not content or len(content) < 2:
+                    continue
+                if msg.author.id == bot_id:
+                    messages.append({"role": "assistant", "content": content[:500]})
+                elif msg.author.id == author.id:
+                    messages.append({"role": "user", "content": content[:500]})
+
+        # Final user prompt with full context
+        messages.append({"role": "user", "content": plan.user_prompt})
+        return messages
 
     def _build_conversation_plan(
         self,
@@ -1297,6 +1385,7 @@ class GeminiClient:
         author: Union[discord.Member, discord.User],
         past_memory: str,
         history: str,
+        is_continuation: bool = False,
     ) -> ConversationPlan:
         display_name = author.display_name if isinstance(author, discord.Member) else str(author)
         role_snippet = ""
@@ -1305,26 +1394,48 @@ class GeminiClient:
             if top:
                 role_snippet = f" | Roles: {', '.join(top)}"
 
-        base_context = (
-            f"Server: {guild.name} ({guild.member_count or '?'} members)\n"
-            f"Speaker: {display_name} (@{author.name}){role_snippet}\n\n"
-        )
+        # Build context header
+        context_parts = [
+            f"Server: {guild.name} ({guild.member_count or '?'} members)",
+            f"Speaker: {display_name} (@{author.name}){role_snippet}",
+            f"Time: {_now().astimezone().strftime('%Y-%m-%d %H:%M %Z')}",
+        ]
+        if is_continuation:
+            context_parts.append("Context: This is a continuation of an active conversation.")
+        base_context = "\n".join(context_parts) + "\n\n"
+
+        # Memory section
         memory_section = ""
         if past_memory.strip():
-            memory_section = f"Previous conversation context:\n{past_memory.strip()}\n\n"
+            # Trim to last meaningful chunk
+            trimmed = past_memory.strip()
+            if len(trimmed) > 800:
+                trimmed = trimmed[-800:]
+                # Don't start mid-entry
+                first_bracket = trimmed.find("\n[")
+                if first_bracket > 0:
+                    trimmed = trimmed[first_bracket:]
+            memory_section = f"What you remember about this user:\n{trimmed}\n\n"
+
         history_section = f"Recent channel messages (oldest → newest):\n{history}\n\n"
 
+        # --- RESEARCH MODE ---
         if signals.mode == ConversationMode.RESEARCH:
             user_prompt = (
                 f"{base_context}{memory_section}{history_section}"
                 f"Research request from {display_name}:\n{user_content}\n\n"
-                "Provide a thorough, structured research response. "
-                "Start with a direct answer, then expand with organized detail."
+                "Instructions:\n"
+                "- Start with a direct one-line answer.\n"
+                "- Then provide structured detail with bold headers and bullet points.\n"
+                "- Separate confirmed facts from uncertain/developing info.\n"
+                "- Include dates, key figures, and timelines where relevant.\n"
             )
             if signals.asks_for_sources:
-                user_prompt += "\nThe user specifically asked for sources — include source references."
+                user_prompt += "- The user asked for sources — cite source types (official reports, analysts, etc.).\n"
             if signals.asks_for_long_answer:
-                user_prompt += "\nThe user wants depth — provide a comprehensive response."
+                user_prompt += "- The user wants full depth — be comprehensive.\n"
+            if is_continuation:
+                user_prompt += "- This continues a prior conversation — build on what was already discussed.\n"
             return ConversationPlan(
                 system_prompt=DEEP_RESEARCH_SYSTEM_PROMPT,
                 user_prompt=user_prompt,
@@ -1333,11 +1444,15 @@ class GeminiClient:
                 show_research_indicator=signals.show_research_indicator,
             )
 
+        # --- MOD GUIDANCE MODE ---
         if signals.mode == ConversationMode.MOD_GUIDANCE:
+            bot_mention = self.bot.user.mention if self.bot.user else "@bot"
             user_prompt = (
                 f"{base_context}{memory_section}{history_section}"
                 f"Question from {display_name}:\n{user_content}\n\n"
-                "Provide practical moderation guidance with command examples."
+                "Provide practical moderation guidance.\n"
+                f"Use `{bot_mention}` in command examples so they can copy-paste.\n"
+                "If the user is missing info (target, reason, duration), ask ONE question."
             )
             return ConversationPlan(
                 system_prompt=MOD_GUIDANCE_SYSTEM_PROMPT,
@@ -1347,11 +1462,18 @@ class GeminiClient:
                 show_research_indicator=False,
             )
 
-        # Standard conversation
+        # --- STANDARD CONVERSATION ---
+        task_instruction = "Reply naturally. Be concise unless the question needs detail."
+        if is_continuation:
+            task_instruction = (
+                "This continues an active conversation. "
+                "Pick up naturally from where you left off — don't re-introduce yourself."
+            )
+
         user_prompt = (
             f"{base_context}{memory_section}{history_section}"
             f"Message from {display_name}:\n{user_content}\n\n"
-            "Reply naturally. Be concise unless the question needs detail."
+            f"{task_instruction}"
         )
         return ConversationPlan(
             system_prompt=CONVERSATION_SYSTEM_PROMPT,
@@ -1367,25 +1489,79 @@ class GeminiClient:
         text = (content or "").strip()
         if not text:
             return ""
+
+        # Strip wrapping code fences the model sometimes adds
         text = re.sub(r"^```(?:\w+)?\s*", "", text).strip()
         text = re.sub(r"\s*```$", "", text).strip()
+
+        # Collapse excessive whitespace
         text = re.sub(r"\n{3,}", "\n\n", text)
+
+        # Strip meta-commentary the model sometimes prepends
+        meta_patterns = [
+            r"^(?:Sure(?:,|!)?\s*)?(?:Here(?:'s| is)?\s*)?(?:my )?(?:response|answer|reply)\s*[:!]?\s*\n*",
+            r"^(?:Of course(?:,|!)?\s*)",
+            r"^(?:Absolutely(?:,|!)?\s*)",
+        ]
+        for pattern in meta_patterns:
+            text = re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
+
+        # Strip trailing "Let me know if..." type endings
+        trailing_patterns = [
+            r"\n+(?:Let me know|Feel free to ask|Hope (?:this|that) helps|Don't hesitate).*$",
+        ]
+        for pattern in trailing_patterns:
+            text = re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
+
+        # If the model wrapped the entire response in quotes, unwrap
+        if text.startswith('"') and text.endswith('"') and text.count('"') == 2:
+            text = text[1:-1].strip()
+
         return text
 
-    async def _update_memory(
+    async def _update_memory_smart(
         self, user_id: int, user_msg: str, bot_response: str, past_memory: str
     ) -> None:
+        """Update per-user conversation memory with smart truncation.
+
+        Keeps the most recent exchanges and trims at entry boundaries
+        to avoid cutting mid-thought.
+        """
         try:
             db = getattr(self.bot, "db", None)
             if not db:
                 return
-            entry = f"\n[user]: {user_msg[:200]}\n[bot]: {bot_response[:200]}"
+
+            # Build new entry
+            user_snippet = user_msg[:250].strip()
+            bot_snippet = bot_response[:250].strip()
+            entry = f"\n[user]: {user_snippet}\n[bot]: {bot_snippet}"
+
             new_memory = (past_memory + entry).strip()
-            if len(new_memory) > self.config.memory_max_chars:
-                new_memory = new_memory[-self.config.memory_max_chars:]
+
+            # Smart truncation: keep within limit but don't break mid-entry
+            max_chars = self.config.memory_max_chars
+            if len(new_memory) > max_chars:
+                # Find the first complete entry boundary after the cutoff point
+                cutoff = len(new_memory) - max_chars
+                # Search for the next "\n[user]:" or "\n[bot]:" after cutoff
+                next_entry = new_memory.find("\n[user]:", cutoff)
+                if next_entry == -1:
+                    next_entry = new_memory.find("\n[bot]:", cutoff)
+                if next_entry > 0:
+                    new_memory = new_memory[next_entry:].strip()
+                else:
+                    new_memory = new_memory[-max_chars:]
+
             await db.update_ai_memory(user_id, new_memory)
         except Exception:
             logger.debug("Failed to update AI memory for user %d", user_id, exc_info=True)
+
+    # Keep old method name as alias for compatibility
+    async def _update_memory(
+        self, user_id: int, user_msg: str, bot_response: str, past_memory: str
+    ) -> None:
+        await self._update_memory_smart(user_id, user_msg, bot_response, past_memory)
 
 
 # =============================================================================
@@ -2405,31 +2581,46 @@ class AIModeration(commands.Cog):
         )
 
     def _friendly_error_reply(self, content: str, reason: str) -> str:
+        """Generate a natural-sounding error reply based on context."""
         text = (reason or "I could not process that.").strip()
         low_reason = text.lower()
-        mention = self.bot.user.mention if self.bot.user else "@ModBot"
+        mention = self.bot.user.mention if self.bot.user else "@bot"
 
+        # Rate limit errors — pass through directly
         if "rate limit" in low_reason or "try again in" in low_reason:
             return text
 
+        # Service/API errors
         if any(key in low_reason for key in (
             "no api key", "service unavailable", "routing failed",
             "unexpected error", "authentication failed", "access denied",
         )):
+            service_errors = [
+                "my brain glitched for a sec — try that again in a moment.",
+                "hit a connection issue on my end. give it another shot.",
+                "something broke behind the scenes. try again in a few seconds.",
+            ]
+            reply = random.choice(service_errors)
             if self._looks_like_mod_request(content):
-                return (
-                    "i hit an AI hiccup, but you can still try a direct request like "
-                    f"`{mention} timeout @User 30m spamming`."
-                )
-            return "i hit an AI hiccup for that. try again in a moment, or use `/aihelp` for examples."
+                reply += f"\nfor mod actions, try the direct format: `{mention} timeout @User 30m reason`"
+            return reply
 
+        # Mod request but missing info
         if self._looks_like_mod_request(content):
-            return (
-                "i need a bit more detail for that action. include target + reason, for example: "
-                f"`{mention} warn @User spamming links`."
-            )
+            mod_errors = [
+                f"i need a target and reason for that. example: `{mention} warn @User spamming links`",
+                f"missing some details — try: `{mention} timeout @User 30m reason here`",
+                f"can you be more specific? format: `{mention} [action] @User [reason]`",
+            ]
+            return random.choice(mod_errors)
 
-        return "i couldn't parse that cleanly. rephrase it, or use `/aihelp` for examples."
+        # Generic parsing failure
+        generic_errors = [
+            "didn't quite catch that. could you rephrase?",
+            "not sure what you're asking — try again or check `/aihelp` for examples.",
+            "i couldn't figure out what to do with that. try rephrasing?",
+        ]
+        return random.choice(generic_errors)
 
     def extract_mentions(self, message: discord.Message) -> List[MentionInfo]:
         return [
@@ -3302,21 +3493,25 @@ class AIModeration(commands.Cog):
         content: str,
         settings: GuildSettings,
     ) -> None:
-        """Handle AI conversation with research indicator support."""
+        """Handle AI conversation with research indicator and smart response delivery."""
         recent = await self.fetch_recent_messages(message.channel, limit=settings.context_messages)
         signals = self._build_conversation_signals(content)
 
+        # --- Research indicator ---
         research_msg: Optional[discord.Message] = None
         if signals.show_research_indicator:
             research_embed = discord.Embed(
-                description="🔍 **Researching…**\nPulling together a detailed answer for you.",
+                title="🔍 Researching…",
+                description=f"Looking into: *{content[:100]}{'…' if len(content) > 100 else ''}*",
                 color=discord.Color.from_rgb(88, 101, 242),
             )
+            research_embed.set_footer(text="This may take a moment for complex queries")
             try:
                 research_msg = await self.reply(message, embed=research_embed)
             except Exception:
                 research_msg = None
 
+        # --- Get AI response ---
         async with message.channel.typing():
             response = await self.ai.converse(
                 user_content=content,
@@ -3327,21 +3522,127 @@ class AIModeration(commands.Cog):
                 signals=signals,
             )
 
-        # Clean up research indicator
-        if research_msg:
+        # --- Deliver response ---
+        if not response:
+            # Clean up research indicator on failure
+            if research_msg:
+                try:
+                    await research_msg.delete()
+                except Exception:
+                    pass
+            fail_messages = [
+                "something went wrong on my end. try again?",
+                "my brain froze for a sec. send that again?",
+                "got nothing back from the AI. try rephrasing?",
+            ]
+            await self.reply(message, content=random.choice(fail_messages))
+            return
+
+        # Research mode: edit the indicator message with the result
+        if research_msg and signals.mode == ConversationMode.RESEARCH:
+            try:
+                result_embed = self._build_research_embed(response, content)
+                await research_msg.edit(embed=result_embed)
+                return
+            except discord.HTTPException:
+                # Fall through to normal delivery if edit fails
+                try:
+                    await research_msg.delete()
+                except Exception:
+                    pass
+        elif research_msg:
+            # Non-research but had indicator — clean up
             try:
                 await research_msg.delete()
             except Exception:
                 pass
 
-        if response:
-            if len(response) > 1900:
-                embed = discord.Embed(description=response, color=discord.Color.blue())
-                await self.reply(message, embed=embed)
+        # Normal delivery
+        await self._deliver_response(message, response, signals)
+
+    def _build_research_embed(self, response: str, query: str) -> discord.Embed:
+        """Build a rich embed for research responses."""
+        # Truncate for embed limits (4096 description max)
+        if len(response) > 4000:
+            response = response[:3997] + "…"
+
+        embed = discord.Embed(
+            description=response,
+            color=discord.Color.from_rgb(88, 101, 242),
+            timestamp=_now(),
+        )
+        embed.set_footer(text=f"Research query: {query[:80]}")
+        return embed
+
+    async def _deliver_response(
+        self,
+        message: discord.Message,
+        response: str,
+        signals: ConversationSignals,
+    ) -> None:
+        """Deliver a conversation response with smart formatting."""
+
+        # Short responses: plain text
+        if len(response) <= 1900:
+            await self.reply(message, content=response)
+            return
+
+        # Medium responses (1900-4000): single embed
+        if len(response) <= 4000:
+            color = (
+                discord.Color.from_rgb(88, 101, 242)
+                if signals.mode == ConversationMode.RESEARCH
+                else discord.Color.blue()
+            )
+            embed = discord.Embed(description=response, color=color)
+            if signals.mode == ConversationMode.RESEARCH:
+                embed.set_footer(text="Research response")
+            await self.reply(message, embed=embed)
+            return
+
+        # Very long responses: split into chunks
+        chunks = self._split_response(response, max_len=1900)
+        for i, chunk in enumerate(chunks):
+            if i == 0:
+                await self.reply(message, content=chunk)
             else:
-                await self.reply(message, content=response)
-        else:
-            await self.reply(message, content="something went wrong on my end. try again?")
+                try:
+                    await message.channel.send(chunk)
+                except discord.HTTPException:
+                    break
+
+    @staticmethod
+    def _split_response(text: str, max_len: int = 1900) -> List[str]:
+        """Split a long response into chunks at natural boundaries."""
+        if len(text) <= max_len:
+            return [text]
+
+        chunks: List[str] = []
+        remaining = text
+
+        while remaining:
+            if len(remaining) <= max_len:
+                chunks.append(remaining)
+                break
+
+            # Try to split at paragraph boundary
+            split_at = remaining.rfind("\n\n", 0, max_len)
+            if split_at < max_len // 3:
+                # Try single newline
+                split_at = remaining.rfind("\n", 0, max_len)
+            if split_at < max_len // 3:
+                # Try sentence boundary
+                split_at = remaining.rfind(". ", 0, max_len)
+                if split_at > 0:
+                    split_at += 1  # Include the period
+            if split_at < max_len // 3:
+                # Force split at max_len
+                split_at = max_len
+
+            chunks.append(remaining[:split_at].rstrip())
+            remaining = remaining[split_at:].lstrip()
+
+        return chunks
 
     # ------------------------------------------------------------------
     # Slash commands
