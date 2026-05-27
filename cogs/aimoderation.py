@@ -2906,7 +2906,8 @@ class AIModeration(commands.Cog):
         r"make\s+(?:an?\s+)?event|create\s+(?:an?\s+)?event|schedule|remind|dm\s|announce|"
         r"poll|archive|signup|give\s+everyone|remove\s+everyone|mass\s|bulk\s|"
         r"make\s+(?:a\s+)?(?:private|project|category|group)|delete\s+(?:the\s+)?(?:group|category|project)|"
-        r"react|ping\s+everyone|ping\s+all)\b",
+        r"react|ping\s+everyone|ping\s+all|"
+        r"show|list|who|fetch|get|how\s+many|count|print|display)\b",
         re.IGNORECASE,
     )
     _GREETING_WORDS: ClassVar[frozenset] = frozenset({
