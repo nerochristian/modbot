@@ -1361,30 +1361,28 @@ class GeminiClient:
         recent_messages: List[discord.Message],
         author: Union[discord.Member, discord.User],
     ) -> List[Dict[str, str]]:
-        """Build multi-turn message chain instead of single system+user pair.
-
-        For richer context, we inject recent bot/user exchanges as
-        assistant/user turns so the model sees the actual conversation flow.
-        """
         messages: List[Dict[str, str]] = [
             {"role": "system", "content": plan.system_prompt},
         ]
 
-        # Inject recent conversation turns for multi-turn context
         bot_id = self.bot.user.id if self.bot.user else None
         if bot_id and recent_messages:
-            # Take last few exchanges (up to 6 turns, excluding the very last one which is the current message)
-            recent_slice = recent_messages[-7:-1]
+            # Take last few exchanges (up to 9 turns, excluding the very last one which is the current message)
+            recent_slice = recent_messages[-10:-1]
             for msg in recent_slice:
                 content = (msg.content or "").strip()
                 if not content or len(content) < 2:
                     continue
+                    
+                name = getattr(msg.author, "display_name", None) or str(msg.author)
                 if msg.author.id == bot_id:
                     messages.append({"role": "assistant", "content": content[:500]})
                 elif msg.author.id == author.id:
                     messages.append({"role": "user", "content": content[:500]})
+                else:
+                    # Inject other users' context as a user turn prefixed with their name
+                    messages.append({"role": "user", "content": f"[{name}]: {content[:500]}"})
 
-        # Final user prompt with full context
         messages.append({"role": "user", "content": plan.user_prompt})
         return messages
 
@@ -1429,12 +1427,10 @@ class GeminiClient:
                     trimmed = trimmed[first_bracket:]
             memory_section = f"What you remember about this user:\n{trimmed}\n\n"
 
-        history_section = f"Recent channel messages (oldest → newest):\n{history}\n\n"
-
         # --- RESEARCH MODE ---
         if signals.mode == ConversationMode.RESEARCH:
             user_prompt = (
-                f"{base_context}{memory_section}{history_section}"
+                f"{base_context}{memory_section}"
                 f"Research request from {display_name}:\n{user_content}\n\n"
                 "Instructions:\n"
                 "- Start with a direct one-line answer.\n"
@@ -1460,7 +1456,7 @@ class GeminiClient:
         if signals.mode == ConversationMode.MOD_GUIDANCE:
             bot_mention = self.bot.user.mention if self.bot.user else "@bot"
             user_prompt = (
-                f"{base_context}{memory_section}{history_section}"
+                f"{base_context}{memory_section}"
                 f"Question from {display_name}:\n{user_content}\n\n"
                 "Provide practical moderation guidance.\n"
                 f"Use `{bot_mention}` in command examples so they can copy-paste.\n"
@@ -1483,7 +1479,7 @@ class GeminiClient:
             )
 
         user_prompt = (
-            f"{base_context}{memory_section}{history_section}"
+            f"{base_context}{memory_section}"
             f"Message from {display_name}:\n{user_content}\n\n"
             f"{task_instruction}"
         )
