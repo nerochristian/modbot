@@ -1864,6 +1864,8 @@ class GeminiClient:
                 "Check CURRENT THREAD first and answer from it. If it is not there, say you don't see that detail."
             )
 
+        task_instruction += " NEVER use em-dashes (—) or en-dashes (–) to separate clauses. Use commas instead. Hyphens (-) within words like 'god-mode' are perfectly fine."
+
         sys_prompt = f"{CONVERSATION_SYSTEM_PROMPT}\n\n{full_context}### INSTRUCTIONS ###\n{task_instruction}"
         
         return ConversationPlan(
@@ -1891,7 +1893,10 @@ class GeminiClient:
         text = GeminiClient._convert_simple_markdown_table(text)
 
         # The user requested to stop using dash thingys (em-dashes) and use commas instead
-        text = text.replace(" — ", ", ").replace("—", ",")
+        text = text.replace(" — ", ", ").replace("—", ", ")
+        text = text.replace(" – ", ", ").replace("–", ", ")
+        text = text.replace(" - ", ", ")
+        text = text.replace(" -- ", ", ").replace("--", ", ")
 
         # Strip meta-commentary the model sometimes prepends
         meta_patterns = [
