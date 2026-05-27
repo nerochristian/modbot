@@ -307,7 +307,8 @@ Python Execution Rules:
    `await bot.db.execute("INSERT INTO scheduled_tasks (guild_id, author_id, task_type, payload, execute_at) VALUES (?, ?, ?, ?, ?)", guild.id, author.id, 'execute_python', '{"code": "await channel.send(\'hello\')" }', future_iso_timestamp)`
    (Calculate `future_iso_timestamp` using `datetime.now(datetime.timezone.utc) + datetime.timedelta(...)`).
 4. For Discord Scheduled Events, use `await guild.create_scheduled_event(...)`. Calculate relative times ("tomorrow at 6pm") dynamically using python's `datetime`. Be sure to set `privacy_level=discord.PrivacyLevel.guild_only` and `entity_type=discord.EntityType.external` with `location="Server"` if no VC is specified.
-5. NEVER reply saying "I don't have the ability to do that" or "I am just an AI". You are an autonomous developer agent with root python access. You CAN do it. Write the script!
+5. **ALWAYS** end your script by sending a beautifully formatted success embed to `channel` confirming what you did. Use `discord.Embed(title="...", description="...", color=discord.Color.green())`.
+6. NEVER reply saying "I don't have the ability to do that" or "I am just an AI". You are an autonomous developer agent with root python access. You CAN do it. Write the script!
 
 ## Rules
 - CONTEXT IS KEY: If the user's message is short, a fragment, or a direct answer (e.g., "6pm", "yes", "this guy"), you MUST look at the 'Recent messages' history to understand what they are responding to. Execute the correct tool based on the combined intent of the history and the new message.
@@ -4066,6 +4067,7 @@ class AIModeration(commands.Cog):
                         f"Globals available: bot, guild, author, message, channel, discord, asyncio.\n"
                         f"You can import: datetime, json, re, random (stdlib only, no pytz). Use datetime.timezone.utc for timezone.\n"
                         f"For scheduled events use: await guild.create_scheduled_event(name=..., start_time=..., end_time=..., privacy_level=discord.PrivacyLevel.guild_only, entity_type=discord.EntityType.external, location='Server')\n"
+                        f"ALWAYS end your code by sending a beautifully formatted success embed to `channel` (e.g. await channel.send(embed=discord.Embed(...))).\n"
                         f"guild = bot.get_guild({message.guild.id})\n"
                         f"author = guild.get_member({message.author.id})\n"
                         f"channel = bot.get_channel({message.channel.id})\n"
@@ -4104,6 +4106,7 @@ class AIModeration(commands.Cog):
                         f"Globals available: bot, guild, author, message, channel, discord, asyncio.\n"
                         f"You can import: datetime, json, re, random (stdlib only, no pytz). Use datetime.timezone.utc for timezone.\n"
                         f"For scheduled events use: await guild.create_scheduled_event(name=..., start_time=..., end_time=..., privacy_level=discord.PrivacyLevel.guild_only, entity_type=discord.EntityType.external, location='Server')\n"
+                        f"ALWAYS end your code by sending a beautifully formatted success embed to `channel` (e.g. await channel.send(embed=discord.Embed(...))).\n"
                         f"guild = bot.get_guild({message.guild.id})\n"
                         f"author = guild.get_member({message.author.id})\n"
                         f"channel = bot.get_channel({message.channel.id})\n"
