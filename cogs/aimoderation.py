@@ -81,6 +81,7 @@ class ToolType(str, Enum):
     PIN_MESSAGE = "pin_message"
     UNPIN_MESSAGE = "unpin_message"
     EXECUTE_RAW_API = "execute_raw_api"
+    EXECUTE_PYTHON = "execute_python"
     HELP = "show_help"
 
 
@@ -291,6 +292,7 @@ Return ONLY valid JSON (no markdown, no code fences):
 - unpin_message: message_id (int) -> Requires: can_manage_messages
 - lock_thread: thread_id (int, opt) -> Requires: can_manage_threads
 - execute_raw_api: method (str), endpoint (str), payload (object). Administrator-only fallback for valid Discord REST API actions not covered by standard tools.
+- execute_python: code (str). Write raw async python code using discord.py to achieve ANY request not covered by standard tools (e.g. iterate members, kick inactive, mass dm). Globals available: `bot`, `guild`, `author`, `message`, `channel`. Output the script text in `code`.
 
 ## UNIVERSAL FALLBACK TOOL (execute_raw_api)
 If the user's intent is a valid Discord server action but is NOT explicitly covered by the standard tools above, use execute_raw_api.
@@ -2827,6 +2829,59 @@ async def handle_execute_raw_api(ctx: ToolContext) -> ToolResult:
     return ToolResult.ok("Raw Discord API request executed.", embed=embed)
 
 
+
+@ToolRegistry.register(ToolType.EXECUTE_PYTHON, display_name="Execute Python", color=discord.Color.red(), emoji="🐍")
+async def handle_execute_python(ctx: ToolContext) -> ToolResult:
+    if not await ctx.cog.bot.is_owner(ctx.actor):
+        return ToolResult.fail("Execute Python is restricted to the bot owner.")
+
+    code = str(ctx.arg("code", "")).strip()
+    if code.startswith("```python"):
+        code = code[9:]
+    elif code.startswith("```py"):
+        code = code[5:]
+    if code.endswith("```"):
+        code = code[:-3]
+    code = code.strip()
+
+    if not code:
+        return ToolResult.fail("No Python code provided.")
+
+    env = {
+        "bot": ctx.cog.bot,
+        "guild": ctx.guild,
+        "author": ctx.actor,
+        "message": ctx.message,
+        "channel": ctx.message.channel if ctx.message else None,
+        "discord": __import__("discord"),
+        "asyncio": __import__("asyncio"),
+    }
+
+    # Wrap in async function
+    wrapped_code = f"async def __ai_exec_func():\n"
+    for line in code.splitlines():
+        wrapped_code += f"    {line}\n"
+
+    try:
+        exec(wrapped_code, env)
+        func = env["__ai_exec_func"]
+        result = await func()
+        
+        preview = str(result) if result is not None else "Execution completed successfully (no return value)."
+        if len(preview) > 900:
+            preview = preview[:897] + "..."
+
+        embed = discord.Embed(
+            title="Python Code Executed",
+            color=discord.Color.green(),
+            timestamp=_now(),
+        )
+        embed.add_field(name="Code", value=f"```py\n{code[:1000]}\n```", inline=False)
+        embed.add_field(name="Result", value=f"```\n{preview}\n```", inline=False)
+        return ToolResult.ok("Python code executed.", embed=embed)
+    except Exception as e:
+        return ToolResult.fail(f"Python execution failed: {type(e).__name__}: {str(e)}")
+
 # =============================================================================
 # MAIN COG
 # =============================================================================
@@ -3924,7 +3979,7 @@ class AIModeration(commands.Cog):
         mentions = self.extract_mentions(message)
         recent = await self.fetch_recent_messages(message.channel, limit=settings.context_messages)
 
-        decision = self._quick_route(content)
+        decision = None
         if not decision:
             async with message.channel.typing():
                 try:

@@ -1253,6 +1253,30 @@ class Database:
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
+
+
+                # ===== AI SCHEDULER & PROJECTS =====
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS scheduled_tasks (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        guild_id INTEGER NOT NULL,
+                        author_id INTEGER NOT NULL,
+                        task_type TEXT NOT NULL,
+                        payload TEXT DEFAULT '{}',
+                        execute_at TIMESTAMP NOT NULL,
+                        status TEXT DEFAULT 'pending',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS group_projects (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        guild_id INTEGER NOT NULL,
+                        category_id INTEGER NOT NULL,
+                        status TEXT DEFAULT 'active',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
                 
                 # Auto-migrate missing columns
                 await self._migrate_schema(db)
