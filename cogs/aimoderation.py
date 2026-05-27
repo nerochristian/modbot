@@ -1047,7 +1047,13 @@ class GeminiClient:
     ) -> Optional[str]:
         selected_model = (model or self.config.model or "expert").strip()
         endpoint = "json" if json_mode else ""
-        base = f"{self._galaxy_base_url}/v1/completions/{selected_model}"
+        
+        # Route correctly based on the provided Swagger UI
+        if selected_model == "expert":
+            base = f"{self._galaxy_base_url}/v1/completions/expert"
+        else:
+            base = f"{self._galaxy_base_url}/v1/chat/completions"
+            
         url = f"{base}/{endpoint}" if endpoint else base
 
         payload: Dict[str, Any] = {
