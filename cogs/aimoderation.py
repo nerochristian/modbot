@@ -309,6 +309,7 @@ Raw API rules:
 
 ## Rules
 - CONTEXT IS KEY: If the user's message is short, a fragment, or a direct answer (e.g., "6pm", "yes", "this guy"), you MUST look at the 'Recent messages' history to understand what they are responding to. Execute the correct tool based on the combined intent of the history and the new message.
+- Reply annotations are authoritative context. If a line says it is replying to the bot or to another user, interpret the new message as part of that reply chain rather than as an isolated message.
 - Prefer the closest tool_call when the user's intent maps to an available tool, even if their wording is slangy, casual, typo-heavy, or indirect.
 - Only return error when the request is impossible with the available tools, unsafe/abusive outside moderation, or lacks a required object that cannot be asked for by the tool handler.
 - If an action is clear but an argument is missing, still select the tool and include only the arguments you know. The handler will ask for missing details.
@@ -344,6 +345,7 @@ Identity & Context:
 Core behavior:
 - Show HIGH emotional intelligence. If a user is sad, frustrated, or expressing an emotion, actively acknowledge and validate it. Read between the lines and be empathetic. Don't be a cold robot.
 - Answer ANY question: gaming, tech, school, science, history, math, coding, pop culture, creative writing, whatever.
+- Pay close attention to reply-chain context like [replying to your message: "..."]. If a user replies directly to your previous message, treat it as a continuation of that exchange.
 - Lead with the answer or empathetic reaction, not filler. No "Great question!" or "I understand!" openers. Just be natural.
 - Match the user's energy. Casual user = casual tone. Serious question = helpful tone.
 - Keep responses short (1-4 sentences) by default. Go deeper only when the question warrants it or the user asks.
@@ -373,6 +375,7 @@ Research protocol:
 2. Provide a short, structured breakdown using **bold headers**.
 3. Use brief bullet points for key facts.
 4. Keep the entire response under 1000 characters if possible. Get straight to the point.
+5. Use reply-chain annotations to understand what the user is responding to.
 
 Quality standards:
 - Accuracy over comprehensiveness. If something isn't relevant to the core question, leave it out.
@@ -392,6 +395,7 @@ When a user asks about moderation, server management, or Discord admin tasks:
 - Translate their request into specific bot commands with exact syntax.
 - Provide examples they can copy-paste.
 - If info is missing (target/reason/duration), ask ONE concise question.
+- Use reply-chain annotations to resolve short follow-ups and references like "that", "him", or "yes".
 - Be direct and operational — no fluff.
 - Never claim a moderation action already happened unless the tool explicitly executed it.
 
@@ -1132,9 +1136,17 @@ class GeminiClient:
         recent_messages: List[discord.Message],
         permissions: PermissionFlags,
     ) -> str:
+        bot_id = self.bot.user.id if self.bot.user else None
+
+        def _format_line(m: discord.Message) -> str:
+            label = "bot" if m.author.bot else "user"
+            content = self._message_preview(m, limit=200)
+            reply_tag = self._get_reply_context(m, bot_id, recent_messages) if bot_id else None
+            reply_suffix = f" {reply_tag}" if reply_tag else ""
+            return f"[{label}] {m.author} ({m.author.id}): {content}{reply_suffix}"
+
         history = "\n".join(
-            f"[{'bot' if m.author.bot else 'user'}] {m.author} ({m.author.id}): {m.content[:200]}"
-            for m in recent_messages[-10:]
+            _format_line(m) for m in recent_messages[-10:]
         ) or "None"
         mention_lines = "\n".join(
             f"- index={m.index} is_bot={m.is_bot} name={m.display_name} id={m.user_id}"
@@ -1144,14 +1156,14 @@ class GeminiClient:
             f"- {k}: {v}" for k, v in sorted(permissions.to_dict().items())
         )
         context_channel_id = getattr(getattr(recent_messages[-1], "channel", None), "id", "Unknown") if recent_messages else "Unknown"
-        bot_id = self.bot.user.id if self.bot.user else "Unknown"
+        bot_id_str = str(bot_id) if bot_id else "Unknown"
         return (
             f"Server: {guild.name} (ID: {guild.id}, Members: {guild.member_count or '?'})\n"
             f"Author: {author} (ID: {author.id})\n\n"
             f"Context Variables for API Endpoints:\n"
             f"- {{guild_id}}: {guild.id}\n"
             f"- {{channel_id}}: {context_channel_id}\n"
-            f"- {{bot_id}}: {bot_id}\n"
+            f"- {{bot_id}}: {bot_id_str}\n"
             f"- Current Time (EST): {_now().astimezone().isoformat()}\n\n"
             f"Permissions:\n{perm_lines}\n\n"
             f"Mentions (first is bot):\n{mention_lines}\n\n"
@@ -1309,6 +1321,7 @@ class GeminiClient:
             return "No recent messages"
 
         lines: List[str] = []
+        bot_id = self.bot.user.id if self.bot.user else None
         for m in recent_messages[-self.config.memory_window:]:
             author_label = "bot" if m.author.bot else "user"
             name = getattr(m.author, "display_name", None) or str(m.author)
@@ -1329,7 +1342,9 @@ class GeminiClient:
             if not display:
                 display = " ".join(extras) if extras else "[empty message]"
 
-            lines.append(f"[{author_label}] {name}: {display}")
+            reply_context = self._get_reply_context(m, bot_id, recent_messages) if bot_id else None
+            reply_prefix = f"{reply_context} " if reply_context else ""
+            lines.append(f"[{author_label}] {name}: {reply_prefix}{display}")
 
         return "\n".join(lines)
 
@@ -1346,6 +1361,10 @@ class GeminiClient:
         bot_id = self.bot.user.id if self.bot.user else None
         if not bot_id:
             return False
+
+        current = recent_messages[-1]
+        if current.author.id == author.id and self._is_reply_to_bot(current, bot_id, recent_messages):
+            return True
 
         recent_slice = recent_messages[-4:]
         for msg in recent_slice:
@@ -1377,13 +1396,88 @@ class GeminiClient:
                 if msg.author.id == bot_id:
                     messages.append({"role": "assistant", "content": content[:500]})
                 elif msg.author.id == author.id:
-                    messages.append({"role": "user", "content": content[:500]})
+                    # Detect if this user message is a reply to the bot's message
+                    reply_context = self._get_reply_context(msg, bot_id, recent_messages)
+                    if reply_context:
+                        messages.append({"role": "user", "content": f"{reply_context}: {content[:500]}"})
+                    else:
+                        messages.append({"role": "user", "content": content[:500]})
                 else:
                     # Inject other users' context as a user turn prefixed with their name
-                    messages.append({"role": "user", "content": f"[{name}]: {content[:500]}"})
+                    reply_context = self._get_reply_context(msg, bot_id, recent_messages)
+                    if reply_context:
+                        messages.append({"role": "user", "content": f"{reply_context} [{name}]: {content[:500]}"})
+                    else:
+                        messages.append({"role": "user", "content": f"[{name}]: {content[:500]}"})
 
-        messages.append({"role": "user", "content": plan.user_prompt})
+        user_prompt = plan.user_prompt
+        # For the current (last) message, also detect reply context
+        if recent_messages and bot_id:
+            current_msg = recent_messages[-1]
+            reply_context = self._get_reply_context(current_msg, bot_id, recent_messages)
+            if reply_context and current_msg.author.id == author.id:
+                user_prompt = f"{reply_context}: {user_prompt}"
+
+        messages.append({"role": "user", "content": user_prompt})
         return messages
+
+    def _get_reply_context(
+        self,
+        msg: discord.Message,
+        bot_id: int,
+        all_messages: List[discord.Message],
+    ) -> Optional[str]:
+        """Return compact reply-chain context for a message."""
+        if not msg.reference or not msg.reference.message_id:
+            return None
+
+        ref_id = msg.reference.message_id
+        ref = msg.reference.resolved
+        if isinstance(ref, discord.Message) and ref.author.id == bot_id:
+            ref_content = self._message_preview(ref, limit=100)
+            return f"[replying to your message: \"{ref_content}\"]"
+        for m in all_messages:
+            if m.id == ref_id and m.author.id == bot_id:
+                ref_content = self._message_preview(m, limit=100)
+                return f"[replying to your message: \"{ref_content}\"]"
+        if isinstance(ref, discord.Message):
+            ref_name = getattr(ref.author, "display_name", None) or str(ref.author)
+            ref_content = self._message_preview(ref, limit=80)
+            return f"[replying to {ref_name}: \"{ref_content}\"]"
+        for m in all_messages:
+            if m.id == ref_id:
+                ref_name = getattr(m.author, "display_name", None) or str(m.author)
+                ref_content = self._message_preview(m, limit=80)
+                return f"[replying to {ref_name}: \"{ref_content}\"]"
+        return None
+
+    def _is_reply_to_bot(
+        self,
+        msg: discord.Message,
+        bot_id: int,
+        all_messages: List[discord.Message],
+    ) -> bool:
+        if not msg.reference or not msg.reference.message_id:
+            return False
+        ref = msg.reference.resolved
+        if isinstance(ref, discord.Message):
+            return ref.author.id == bot_id
+        ref_id = msg.reference.message_id
+        return any(m.id == ref_id and m.author.id == bot_id for m in all_messages)
+
+    @staticmethod
+    def _message_preview(msg: discord.Message, *, limit: int) -> str:
+        text = re.sub(r"\s+", " ", (msg.content or "").strip())
+        if not text:
+            extras: List[str] = []
+            if msg.attachments:
+                extras.append(f"{len(msg.attachments)} attachment(s)")
+            if msg.embeds:
+                extras.append(f"{len(msg.embeds)} embed(s)")
+            if msg.stickers:
+                extras.append(f"sticker: {msg.stickers[0].name}")
+            text = ", ".join(extras) if extras else "non-text message"
+        return text[:limit]
 
     def _build_conversation_plan(
         self,
@@ -1418,6 +1512,9 @@ class GeminiClient:
         
         if global_history:
             full_context += f"Global Server Chat Activity (All Channels):\n{global_history}\n\n"
+
+        if history.strip():
+            full_context += f"Recent Channel Conversation:\n{history}\n\n"
 
         # Memory section
         if past_memory.strip():
@@ -2518,6 +2615,25 @@ class AIModeration(commands.Cog):
                 content = content.replace(fmt, "")
         return content.strip()
 
+    async def _message_replies_to_bot(self, message: discord.Message) -> bool:
+        """Return True when a message is a direct reply to this bot."""
+        if not self.bot.user or not message.reference or not message.reference.message_id:
+            return False
+
+        ref = message.reference.resolved
+        if isinstance(ref, discord.Message):
+            return ref.author.id == self.bot.user.id
+
+        channel = message.channel
+        fetch_message = getattr(channel, "fetch_message", None)
+        if not callable(fetch_message):
+            return False
+        try:
+            fetched = await fetch_message(message.reference.message_id)
+        except (discord.HTTPException, discord.NotFound, discord.Forbidden):
+            return False
+        return isinstance(fetched, discord.Message) and fetched.author.id == self.bot.user.id
+
     def _normalize_chat_text(self, text: str) -> str:
         return re.sub(r"\s+", " ", (text or "").strip().lower()).strip("`")
 
@@ -3381,6 +3497,7 @@ class AIModeration(commands.Cog):
                 )
 
         is_mentioned = self.bot.user in message.mentions
+        is_reply_to_bot = await self._message_replies_to_bot(message)
 
         try:
             ctx = await self.bot.get_context(message)
@@ -3389,14 +3506,14 @@ class AIModeration(commands.Cog):
         except Exception:
             pass
 
-        if not is_mentioned and message.reference and message.content:
+        if not is_mentioned and not is_reply_to_bot and message.reference and message.content:
             first_word = self.clean_content(message).strip().lower().split()
             if first_word and first_word[0] in self._REPLY_ACTION_WORDS:
                 return
 
         settings = await self.get_guild_settings(message.guild.id)
 
-        if not is_mentioned:
+        if not is_mentioned and not is_reply_to_bot:
             if not settings.enabled:
                 return
             if not settings.chat_enabled:
@@ -3406,7 +3523,7 @@ class AIModeration(commands.Cog):
 
         content = self.clean_content(message)
         if not content:
-            if is_mentioned and settings.chat_enabled:
+            if (is_mentioned or is_reply_to_bot) and settings.chat_enabled:
                 await self.reply(message, embed=self.build_help_embed(message.guild))
             return
 
@@ -3414,12 +3531,16 @@ class AIModeration(commands.Cog):
         is_mod_request = self._looks_like_mod_request(content)
 
         # --- Mentioned but AI mod disabled: chat-only mode ---
-        if is_mentioned and not settings.enabled:
+        if (is_mentioned or is_reply_to_bot) and not settings.enabled:
             if not settings.chat_enabled:
                 return
             if is_mod_request:
                 await self.reply(message, content="AI moderation is disabled right now. Ask a server admin to enable it with `/aimod toggle`.")
                 return
+            await self._handle_conversation(message, content, settings)
+            return
+
+        if is_reply_to_bot and not is_mentioned and settings.chat_enabled and not is_mod_request:
             await self._handle_conversation(message, content, settings)
             return
 
@@ -3447,11 +3568,11 @@ class AIModeration(commands.Cog):
                     )
                 except Exception:
                     logger.exception("AI routing call failed")
-                    if is_mentioned:
+                    if is_mentioned or is_reply_to_bot:
                         await self.reply(message, content=self._friendly_error_reply(content, "AI routing failed unexpectedly."))
                     return
 
-        if is_mentioned and decision.type in {DecisionType.CHAT, DecisionType.ERROR}:
+        if (is_mentioned or is_reply_to_bot) and decision.type in {DecisionType.CHAT, DecisionType.ERROR}:
             recovered = self._recover_tool_decision(content)
             if recovered:
                 decision = recovered
@@ -3459,7 +3580,7 @@ class AIModeration(commands.Cog):
         decision = await self._enrich(message, decision, recent)
 
         # Never execute moderation tools proactively
-        if not is_mentioned and decision.type == DecisionType.TOOL_CALL:
+        if not is_mentioned and not is_reply_to_bot and decision.type == DecisionType.TOOL_CALL:
             return
 
         # ---- Dispatch ----
@@ -3496,7 +3617,7 @@ class AIModeration(commands.Cog):
             await self._handle_conversation(message, content, settings)
 
         else:  # ERROR
-            if not is_mentioned:
+            if not is_mentioned and not is_reply_to_bot:
                 return
             await self.reply(message, content=self._friendly_error_reply(content, decision.reason))
 
