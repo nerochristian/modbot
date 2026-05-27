@@ -1054,7 +1054,9 @@ class GeminiClient:
         else:
             base = f"{self._galaxy_base_url}/v1/chat/completions"
             
-        url = f"{base}/{endpoint}" if endpoint else base
+        # We MUST always use the /json endpoint. The base endpoints return SSE streams,
+        # which await resp.json() cannot parse.
+        url = f"{base}/json"
 
         payload: Dict[str, Any] = {
             "messages": messages,
