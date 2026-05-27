@@ -2829,8 +2829,11 @@ async def handle_execute_raw_api(ctx: ToolContext) -> ToolResult:
 
 @ToolRegistry.register(ToolType.EXECUTE_PYTHON, display_name="Execute Python", color=discord.Color.red(), emoji="🐍")
 async def handle_execute_python(ctx: ToolContext) -> ToolResult:
-    if not await ctx.cog.bot.is_owner(ctx.actor):
-        return ToolResult.fail("Execute Python is restricted to the bot owner.")
+    # Allow bot owner OR server administrators
+    is_owner = await ctx.cog.bot.is_owner(ctx.actor)
+    is_admin = isinstance(ctx.actor, discord.Member) and ctx.actor.guild_permissions.administrator
+    if not is_owner and not is_admin:
+        return ToolResult.fail("Execute Python is restricted to administrators.")
 
     code = str(ctx.arg("code", "")).strip()
     if code.startswith("```python"):
@@ -2898,7 +2901,11 @@ class AIModeration(commands.Cog):
         r"add\s+role|remove\s+role|give\s+role|take\s+role|create\s+role|make\s+role|delete\s+role|"
         r"create\s+channel|make\s+channel|add\s+channel|spin\s+up|make\s+room|create\s+room|"
         r"delete\s+channel|remove\s+channel|lock|unlock|lockdown|open\s+invite|invite|"
-        r"set\s*nick|nickname|move|drag|disconnect|pin|unpin|emoji)\b",
+        r"set\s*nick|nickname|move|drag|disconnect|pin|unpin|emoji|"
+        r"make\s+(?:an?\s+)?event|create\s+(?:an?\s+)?event|schedule|remind|dm\s|announce|"
+        r"poll|archive|signup|give\s+everyone|remove\s+everyone|mass\s|bulk\s|"
+        r"make\s+(?:a\s+)?(?:private|project|category|group)|delete\s+(?:the\s+)?(?:group|category|project)|"
+        r"react|ping\s+everyone|ping\s+all)\b",
         re.IGNORECASE,
     )
     _GREETING_WORDS: ClassVar[frozenset] = frozenset({
@@ -3957,11 +3964,21 @@ class AIModeration(commands.Cog):
         if (is_mentioned or is_reply_to_bot) and not settings.enabled:
             if not settings.chat_enabled:
                 return
-            if is_mod_request:
+            # If the user is an admin/owner mentioning the bot with what looks like
+            # an action request, still route to the AI tool router even if AI mod
+            # is "disabled" — the toggle is meant for auto-moderation, not for
+            # blocking the owner from using AI tools.
+            if is_mod_request and isinstance(message.author, discord.Member) and (
+                message.author.guild_permissions.administrator
+                or is_bot_owner_id(message.author.id)
+            ):
+                pass  # Fall through to the main routing below
+            elif is_mod_request:
                 await self.reply(message, content="AI moderation is disabled right now. Ask a server admin to enable it with `/aimod toggle`.")
                 return
-            await self._handle_conversation(message, content, settings)
-            return
+            else:
+                await self._handle_conversation(message, content, settings)
+                return
 
         if is_reply_to_bot and not is_mentioned and settings.chat_enabled and not is_mod_request:
             await self._handle_conversation(message, content, settings)

@@ -928,8 +928,17 @@ class Database:
         
         for table, column, col_type in migrations:
             try:
-                await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
-                logger.debug(f"✅ Added column '{column}' to '{table}'")
+                if getattr(self, "_is_postgres", False):
+                    await db.execute(f"SAVEPOINT mig_{table}_{column}")
+                    try:
+                        await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+                        await db.execute(f"RELEASE SAVEPOINT mig_{table}_{column}")
+                        logger.debug(f"✅ Added column '{column}' to '{table}'")
+                    except Exception:
+                        await db.execute(f"ROLLBACK TO SAVEPOINT mig_{table}_{column}")
+                else:
+                    await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+                    logger.debug(f"✅ Added column '{column}' to '{table}'")
             except Exception:
                 pass  # Column already exists
     

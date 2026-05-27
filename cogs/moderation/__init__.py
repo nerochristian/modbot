@@ -235,7 +235,7 @@ class Moderation(
     @tasks.loop(minutes=1)
     async def check_quarantine_expiry(self):
         """Check for expired quarantines and restore roles"""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         try:
             async with self.bot.db.get_connection() as conn:
                 cursor = await conn.execute(
