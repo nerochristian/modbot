@@ -3106,11 +3106,11 @@ class AIModeration(commands.Cog):
     })
     _MOD_REQUEST_RE: ClassVar[re.Pattern] = re.compile(
         r"^(warn|kick|ban|unban|mute|timeout|unmute|untimeout|purge|clear|clean|"
-        r"wipe|nuke|delete\s+messages?|shut\s+up|silence|bench|boot|banish|"
-        r"add\s+role|remove\s+role|give\s+role|take\s+role|create\s+role|make\s+role|delete\s+role|"
+        r"wipe|nuke|delete\b|remove\b|shut\s+up|silence|bench|boot|banish|"
+        r"add\s+role|give\s+role|take\s+role|create\s+role|make\s+role|"
         r"create\s+channel|make\s+channel|add\s+channel|spin\s+up|make\s+room|create\s+room|"
-        r"delete\s+channel|remove\s+channel|lock|unlock|lockdown|open\s+invite|invite|"
-        r"set\s*nick|nickname|move|drag|disconnect|pin|unpin|emoji|"
+        r"lock|unlock|lockdown|open\s+invite|invite|"
+        r"set\b|edit\b|update\b|nickname|move|drag|disconnect|pin|unpin|emoji|"
         r"make\s+(?:an?\s+)?event|create\s+(?:an?\s+)?event|schedule|remind|dm\s|announce|"
         r"poll|archive|signup|give\s+everyone|remove\s+everyone|mass\s|bulk\s|"
         r"make\s+(?:a\s+)?(?:private|project|category|group)|delete\s+(?:the\s+)?(?:group|category|project)|"
