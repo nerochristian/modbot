@@ -2539,11 +2539,9 @@ class AIModeration(commands.Cog):
 
         research_keywords = (
             r"\b(news|breaking|headline|updates?|latest|trending)\b",
-            r"\b(world|global|international|politic(?:s|al)|government)\b",
+            r"\b(world|global|international|politic(?:s|al)|government|geopolitic|war|election|policy|supreme court|legislation)\b",
             r"\b(stock|market|economy|inflation|interest rates?|crypto|bitcoin)\b",
             r"\b(research|fact[\s-]?check|verify|look\s*up|search|investigate)\b",
-            r"\b(today|this week|right now|current(?:ly)?|recent(?:ly)?|as of)\b",
-            r"\b(geopolitic|war|election|policy|supreme court|legislation)\b",
             r"\b(what happened|what's happening|what is going on|whats going on)\b",
             r"\b(tell me (?:about|everything)|deep dive|breakdown|rundown)\b",
             r"\b(history of|origin of|how did .+ start|when did)\b",
@@ -2565,7 +2563,8 @@ class AIModeration(commands.Cog):
         moderation_hits = sum(1 for p in moderation_keywords if re.search(p, low))
         asks_for_sources = any(re.search(p, low) for p in source_keywords)
         asks_for_long = any(re.search(p, low) for p in depth_keywords)
-        asks_current = bool(re.search(r"\b(today|latest|right now|current|this week|recent|just happened)\b", low))
+        # We track time modifiers, but they don't count as primary research hits anymore
+        asks_current = bool(re.search(r"\b(today|latest|right now|current(?:ly)?|this week|recent(?:ly)?|just happened)\b", low))
 
         # Determine mode
         if moderation_hits > 0 and research_hits == 0:
