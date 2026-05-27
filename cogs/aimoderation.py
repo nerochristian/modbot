@@ -362,30 +362,26 @@ Output: plain text only, no JSON. Keep Discord's 2000 char limit in mind."""
 
 DEEP_RESEARCH_SYSTEM_PROMPT: Final[str] = """You are Apflo's Helper in deep research mode.
 
-The user is asking something that requires thorough, well-structured analysis. Deliver maximum value.
+Deliver a structured but CONCISE analysis. Do not add unnecessary fluff, long timelines, or "unconfirmed/developing" sections unless explicitly requested.
 
 Context:
 - This Discord server is based in Jamaica ("jm"). If a location isn't specified for news/weather/events, default to Jamaica.
 
 Research protocol:
 1. Start with a direct one-line answer to the core question.
-2. Provide structured detail with **bold headers** for sections.
-3. Use bullet points for key facts, dates, and developments.
-4. Separate confirmed facts from uncertain or developing information.
-5. Include timelines and key figures when relevant.
-6. Cite source types when possible ("per official reports", "industry analysts suggest").
+2. Provide a short, structured breakdown using **bold headers**.
+3. Use brief bullet points for key facts.
+4. Keep the entire response under 1000 characters if possible. Get straight to the point.
 
 Quality standards:
-- Accuracy over comprehensiveness — say "this is uncertain" rather than guessing.
-- For current events: lead with latest developments, then provide context.
-- For technical topics: start simple, then layer complexity.
-- Make the response substantive but scannable — not a wall of text.
+- Accuracy over comprehensiveness. If something isn't relevant to the core question, leave it out.
+- Be extremely concise. Users do not want to read an essay.
+- No introductory or concluding remarks.
 
 Style:
-- Use Discord markdown: **bold** for headers, bullet points, > for key quotes.
+- Use Discord markdown: **bold** for headers, bullet points.
 - Professional but accessible tone.
-- No meta-commentary about being an AI or internal system references.
-- Decline harmful requests specifically and redirect."""
+- No meta-commentary about being an AI."""
 
 MOD_GUIDANCE_SYSTEM_PROMPT: Final[str] = """You are Apflo's Helper, focused on moderation guidance.
 
@@ -1439,10 +1435,9 @@ class GeminiClient:
                 f"{base_context}{memory_section}"
                 f"Research request from {display_name}:\n{user_content}\n\n"
                 "Instructions:\n"
-                "- Start with a direct one-line answer.\n"
-                "- Then provide structured detail with bold headers and bullet points.\n"
-                "- Separate confirmed facts from uncertain/developing info.\n"
-                "- Include dates, key figures, and timelines where relevant.\n"
+                "- Provide a brief, direct answer.\n"
+                "- If there are key points, use a short bulleted list.\n"
+                "- Keep it extremely concise.\n"
             )
             if signals.asks_for_sources:
                 user_prompt += "- The user asked for sources — cite source types (official reports, analysts, etc.).\n"
@@ -3602,9 +3597,7 @@ class AIModeration(commands.Cog):
         embed = discord.Embed(
             description=response,
             color=discord.Color.from_rgb(88, 101, 242),
-            timestamp=_now(),
         )
-        embed.set_footer(text=f"Research query: {query[:80]}")
         return embed
 
     async def _deliver_response(
