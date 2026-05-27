@@ -8,7 +8,6 @@ and executes appropriate moderation actions while respecting user permissions.
 from __future__ import annotations
 
 import asyncio
-import collections
 import difflib
 import io
 import json
@@ -133,7 +132,7 @@ class AIConfig:
             or os.getenv("GALAXY_MODEL")
             or os.getenv("GEMINI_MODEL")
             or (
-                "expert"
+                "gemini-3-5"
                 if os.getenv("GALAXY_API_KEY") or os.getenv("AI_PROVIDER", "").strip().lower() == "galaxy"
                 else "google/gemma-4-31b-it:free"
                 if (
@@ -177,6 +176,7 @@ class GuildSettings:
         default_factory=lambda: {"ban_member", "kick_member", "purge_messages"}
     )
     proactive_chance: float = 0.02
+    location_context: str = ""
 
     _VALID_ACTIONS: ClassVar[Set[str]] = {t.value for t in ToolType}
     _DEFAULT_CONFIRM_ACTIONS: ClassVar[Set[str]] = {"ban_member", "kick_member", "purge_messages"}
@@ -219,6 +219,7 @@ class GuildSettings:
             confirm_timeout_seconds=int(data.get("aimod_confirm_timeout_seconds", 25)),
             confirm_actions=cls._coerce_confirm_actions(data.get("aimod_confirm_actions")),
             proactive_chance=float(data.get("aimod_proactive_chance", 0.02)),
+            location_context=str(data.get("aimod_location_context") or data.get("server_location") or "").strip(),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -231,6 +232,7 @@ class GuildSettings:
             "aimod_confirm_timeout_seconds": self.confirm_timeout_seconds,
             "aimod_confirm_actions": list(self.confirm_actions),
             "aimod_proactive_chance": self.proactive_chance,
+            "aimod_location_context": self.location_context,
         }
 
 
@@ -340,8 +342,6 @@ Identity & Context:
 - Your name is Apflo's Helper.
 - You're powered by advanced AI (DeepSeek).
 - You exist to help with ANYTHING — not just moderation.
-- IMPORTANT LOCATION CONTEXT: This Discord server and its users are based in Jamaica (often abbreviated as "jm" or "JA"). 
-- If a user asks about the weather, news, or local events without specifying a location, ALWAYS assume they mean Jamaica.
 
 Core behavior:
 - Show HIGH emotional intelligence. If a user is sad, frustrated, or expressing an emotion, actively acknowledge and validate it. Read between the lines and be empathetic. Don't be a cold robot.
@@ -351,6 +351,7 @@ Core behavior:
 - Match the user's energy. Casual user = casual tone. Serious question = helpful tone.
 - Keep responses short (1-4 sentences) by default. Go deeper only when the question warrants it or the user asks.
 - Use Discord markdown naturally: **bold**, *italic*, `code`, bullet points.
+- If a server location is provided in runtime context, use it for local weather, news, and event assumptions. Otherwise, ask for a location when it matters.
 
 What you should NOT do:
 - Never refuse a question just because it's not about moderation.
@@ -369,8 +370,8 @@ DEEP_RESEARCH_SYSTEM_PROMPT: Final[str] = """You are Apflo's Helper in deep rese
 Deliver a structured but CONCISE analysis. Do not add unnecessary fluff, long timelines, or "unconfirmed/developing" sections unless explicitly requested.
 
 Context:
-- This Discord server is based in Jamaica ("jm"). If a location isn't specified for news/weather/events, default to Jamaica.
-- You do not have live internet, live game/news feeds, or source retrieval in this Discord bot. Do not pretend you checked current sources.
+- If a server location is provided in runtime context, use it for local weather, news, and event assumptions. Otherwise, ask for a location when it matters.
+- Live facts are available only when WEB SEARCH RESULTS or LIVE SEARCH are included in the runtime context. Do not pretend you checked sources beyond those results.
 
 Research protocol:
 1. Start with a direct one-line answer to the core question.
@@ -378,7 +379,7 @@ Research protocol:
 3. Use brief bullet points for key facts.
 4. Keep the entire response under 1000 characters if possible. Get straight to the point.
 5. Use reply-chain annotations to understand what the user is responding to.
-6. For current/latest/recent/live info, say you cannot verify live data from here. Do not invent dates, patch notes, release details, rumors, sources, or confirmations.
+6. For current/latest/recent/live info, use only the supplied WEB SEARCH RESULTS or LIVE SEARCH. Do not invent dates, patch notes, release details, rumors, sources, or confirmations.
 
 Quality standards:
 - Accuracy over comprehensiveness. If something isn't relevant to the core question, leave it out.
@@ -393,7 +394,7 @@ Style:
 
 MOD_GUIDANCE_SYSTEM_PROMPT: Final[str] = """You are Apflo's Helper, focused on moderation guidance.
 
-Context: This server is based in Jamaica ("jm").
+Context: Use the runtime server location only if one is provided. Otherwise, do not assume a country or region.
 
 When a user asks about moderation, server management, or Discord admin tasks:
 - Translate their request into specific bot commands with exact syntax.
@@ -467,6 +468,13 @@ class ConversationPlan:
     temperature: float
     max_tokens: int
     show_research_indicator: bool
+
+
+@dataclass(frozen=True)
+class WebSearchResult:
+    title: str
+    url: str
+    snippet: str
 
 
 @dataclass
@@ -545,12 +553,26 @@ class ToolResult:
 
     @classmethod
     def fail(cls, message: str, delete_after: float = 15.0) -> "ToolResult":
+        description = cls._with_followup(message)
         embed = discord.Embed(
             title="Action Failed",
-            description=message,
+            description=description,
             color=discord.Color.red(),
         )
-        return cls(success=False, message=message, embed=embed, delete_after=delete_after)
+        return cls(success=False, message=description, embed=embed, delete_after=delete_after)
+
+    @staticmethod
+    def _with_followup(message: str) -> str:
+        low = message.lower()
+        if "target" in low or "member" in low or "user" in low:
+            return f"{message}\n\nReply with a user mention, user ID, or reply directly to the user's message."
+        if "role" in low and ("not found" in low or "required" in low):
+            return f"{message}\n\nReply with the exact role name or mention the role."
+        if "channel" in low and ("not found" in low or "required" in low or "called" in low):
+            return f"{message}\n\nReply with the channel mention, ID, or exact channel name."
+        if "message id" in low:
+            return f"{message}\n\nReply to the target message or include its message ID."
+        return message
 
 
 @dataclass
@@ -821,6 +843,9 @@ class GeminiClient:
         self._galaxy_base_url = os.getenv("GALAXY_BASE_URL", "http://94.249.230.124:8000").strip().rstrip("/")
         self._tokenmix_api_key = os.getenv("TOKENMIX_API_KEY", "").strip()
         self._tokenmix_base_url = os.getenv("TOKENMIX_BASE_URL", "https://api.tokenmix.ai/v1").strip().rstrip("/")
+        self._brave_search_api_key = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
+        self._tavily_api_key = os.getenv("TAVILY_API_KEY", "").strip()
+        self._serpapi_api_key = os.getenv("SERPAPI_API_KEY", "").strip()
         api_key = os.getenv("GEMINI_API_KEY")
         self._client = genai.Client(api_key=api_key) if api_key and self.provider not in {"openrouter", "tokenmix", "galaxy"} else None
         self._rate_limiter = RateLimiter(
@@ -839,6 +864,10 @@ class GeminiClient:
         if self.provider == "galaxy":
             return bool(self._galaxy_api_key)
         return self._client is not None
+
+    @property
+    def has_web_search(self) -> bool:
+        return bool(self._brave_search_api_key or self._tavily_api_key or self._serpapi_api_key)
 
     # ------------------------------------------------------------------
     # Service-block helpers
@@ -1054,20 +1083,29 @@ class GeminiClient:
         model: Optional[str] = None,
         json_mode: bool = False,
     ) -> Optional[str]:
-        selected_model = (model or self.config.model or "expert").strip()
-        endpoint = "json" if json_mode else ""
+        selected_model = (model or self.config.model or "gemini-3-5").strip()
         
         # Route correctly based on the provided Swagger UI
         if selected_model == "expert":
             base = f"{self._galaxy_base_url}/v1/completions/expert"
+            url = f"{base}/json"
+        elif json_mode:
+            # Non-streaming JSON is needed for router decisions. DeepSea docs
+            # state this route ignores model and uses flash, but it returns a
+            # complete OpenAI-compatible JSON response.
+            url = f"{self._galaxy_base_url}/v1/chat/completions/json"
         else:
-            base = f"{self._galaxy_base_url}/v1/chat/completions"
-            
-        # We MUST always use the /json endpoint. The base endpoints return SSE streams,
-        # which await resp.json() cannot parse.
-        url = f"{base}/json"
+            # /v1/chat/completions/json ignores model and always uses flash.
+            # The Cline endpoint is the documented path that respects gemini-3-5.
+            return await self._call_galaxy_cline(
+                messages,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                model=selected_model,
+            )
 
         payload: Dict[str, Any] = {
+            "model": selected_model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
@@ -1126,6 +1164,179 @@ class GeminiClient:
             return Messages.format(Messages.AI_RATE_LIMIT, seconds=int(max(1, retry_after)))
         return None
 
+    async def _call_galaxy_cline(
+        self,
+        messages: List[Dict[str, str]],
+        *,
+        temperature: float,
+        max_tokens: int,
+        model: str,
+    ) -> Optional[str]:
+        payload: Dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+        headers = {
+            "Authorization": f"Bearer {self._galaxy_api_key}",
+            "Content-Type": "application/json",
+        }
+
+        session: Optional[aiohttp.ClientSession] = getattr(self.bot, "session", None)
+        owned_session = False
+        if not session or getattr(session, "closed", False):
+            session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60))
+            owned_session = True
+
+        chunks: List[str] = []
+        try:
+            async with session.post(
+                f"{self._galaxy_base_url}/v1/chat/completions/cline",
+                headers=headers,
+                json=payload,
+            ) as resp:
+                if resp.status >= 400:
+                    detail_text = await resp.text()
+                    if resp.status in {401, 403}:
+                        self._set_block(seconds=900, reason="Galaxy authentication or access failed.")
+                    elif resp.status == 429:
+                        self._set_block(seconds=60, reason="Galaxy rate limit / quota reached.")
+                    raise RuntimeError(f"Galaxy Cline HTTP {resp.status}: {detail_text[:500]}")
+
+                async for raw_line in resp.content:
+                    line = raw_line.decode("utf-8", errors="ignore").strip()
+                    if not line or line.startswith(":"):
+                        continue
+                    if not line.startswith("data:"):
+                        continue
+                    data_text = line.removeprefix("data:").strip()
+                    if data_text == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(data_text)
+                    except json.JSONDecodeError:
+                        continue
+                    choices = data.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = (choices[0] or {}).get("delta") or {}
+                    content = delta.get("content")
+                    if content:
+                        chunks.append(str(content))
+        finally:
+            if owned_session:
+                await session.close()
+
+        return "".join(chunks).strip() or None
+
+    async def _web_search(self, query: str, *, max_results: int = 5) -> List[WebSearchResult]:
+        if self._brave_search_api_key:
+            return await self._search_brave(query, max_results=max_results)
+        if self._tavily_api_key:
+            return await self._search_tavily(query, max_results=max_results)
+        if self._serpapi_api_key:
+            return await self._search_serpapi(query, max_results=max_results)
+        return []
+
+    async def _search_brave(self, query: str, *, max_results: int) -> List[WebSearchResult]:
+        session, owned_session = self._get_http_session(timeout=20)
+        try:
+            async with session.get(
+                "https://api.search.brave.com/res/v1/web/search",
+                headers={"X-Subscription-Token": self._brave_search_api_key, "Accept": "application/json"},
+                params={"q": query, "count": max_results, "freshness": "pm"},
+            ) as resp:
+                data = await resp.json(content_type=None)
+                if resp.status >= 400:
+                    raise RuntimeError(f"Brave Search HTTP {resp.status}: {str(data)[:300]}")
+        finally:
+            if owned_session:
+                await session.close()
+
+        items = ((data or {}).get("web") or {}).get("results") if isinstance(data, dict) else None
+        return [
+            WebSearchResult(
+                title=str(item.get("title") or "Untitled")[:180],
+                url=str(item.get("url") or ""),
+                snippet=str(item.get("description") or "")[:500],
+            )
+            for item in (items or [])[:max_results]
+            if isinstance(item, dict) and item.get("url")
+        ]
+
+    async def _search_tavily(self, query: str, *, max_results: int) -> List[WebSearchResult]:
+        session, owned_session = self._get_http_session(timeout=20)
+        try:
+            async with session.post(
+                "https://api.tavily.com/search",
+                json={
+                    "api_key": self._tavily_api_key,
+                    "query": query,
+                    "search_depth": "basic",
+                    "max_results": max_results,
+                    "include_answer": False,
+                },
+            ) as resp:
+                data = await resp.json(content_type=None)
+                if resp.status >= 400:
+                    raise RuntimeError(f"Tavily HTTP {resp.status}: {str(data)[:300]}")
+        finally:
+            if owned_session:
+                await session.close()
+
+        items = data.get("results") if isinstance(data, dict) else None
+        return [
+            WebSearchResult(
+                title=str(item.get("title") or "Untitled")[:180],
+                url=str(item.get("url") or ""),
+                snippet=str(item.get("content") or "")[:500],
+            )
+            for item in (items or [])[:max_results]
+            if isinstance(item, dict) and item.get("url")
+        ]
+
+    async def _search_serpapi(self, query: str, *, max_results: int) -> List[WebSearchResult]:
+        session, owned_session = self._get_http_session(timeout=20)
+        try:
+            async with session.get(
+                "https://serpapi.com/search.json",
+                params={"engine": "google", "q": query, "api_key": self._serpapi_api_key, "num": max_results},
+            ) as resp:
+                data = await resp.json(content_type=None)
+                if resp.status >= 400:
+                    raise RuntimeError(f"SerpAPI HTTP {resp.status}: {str(data)[:300]}")
+        finally:
+            if owned_session:
+                await session.close()
+
+        items = data.get("organic_results") if isinstance(data, dict) else None
+        return [
+            WebSearchResult(
+                title=str(item.get("title") or "Untitled")[:180],
+                url=str(item.get("link") or ""),
+                snippet=str(item.get("snippet") or "")[:500],
+            )
+            for item in (items or [])[:max_results]
+            if isinstance(item, dict) and item.get("link")
+        ]
+
+    def _get_http_session(self, *, timeout: int) -> Tuple[aiohttp.ClientSession, bool]:
+        session: Optional[aiohttp.ClientSession] = getattr(self.bot, "session", None)
+        if not session or getattr(session, "closed", False):
+            return aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)), True
+        return session, False
+
+    @staticmethod
+    def _format_web_results(results: List[WebSearchResult]) -> str:
+        lines: List[str] = []
+        for i, result in enumerate(results, start=1):
+            lines.append(
+                f"[{i}] {result.title}\nURL: {result.url}\nSnippet: {result.snippet or 'No snippet provided.'}"
+            )
+        return "\n\n".join(lines)
+
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
@@ -1143,7 +1354,12 @@ class GeminiClient:
         bot_id = self.bot.user.id if self.bot.user else None
 
         def _format_line(m: discord.Message) -> str:
-            label = "bot" if m.author.bot else "user"
+            if bot_id and m.author.id == bot_id:
+                label = "assistant"
+            elif m.author.bot:
+                label = "other_bot"
+            else:
+                label = "user"
             content = self._message_preview(m, limit=200)
             reply_tag = self._get_reply_context(m, bot_id, recent_messages) if bot_id else None
             reply_suffix = f" {reply_tag}" if reply_tag else ""
@@ -1172,6 +1388,8 @@ class GeminiClient:
             f"Permissions:\n{perm_lines}\n\n"
             f"Mentions (first is bot):\n{mention_lines}\n\n"
             f'Message: """{user_content}"""\n\n'
+            "Recent messages format: [assistant/user/other_bot] author (id): content [optional reply-chain annotation]. "
+            "Reply annotations show what message a user was responding to.\n"
             f"Recent messages:\n{history}"
         )
 
@@ -1240,7 +1458,7 @@ class GeminiClient:
         recent_messages: List[discord.Message],
         model: Optional[str] = None,
         signals: Optional[ConversationSignals] = None,
-        global_history: str = "",
+        location_context: str = "",
     ) -> Optional[str]:
         if not self.is_available:
             return Messages.AI_NO_API_KEY
@@ -1258,9 +1476,6 @@ class GeminiClient:
         except Exception:
             pass
 
-        # --- Build rich conversation history ---
-        history = self._format_conversation_history(recent_messages)
-
         # --- Detect conversation continuity ---
         is_continuation = self._is_conversation_continuation(
             author, recent_messages
@@ -1276,15 +1491,36 @@ class GeminiClient:
             mentions_moderation=False,
         )
 
+        web_context = ""
+        uses_native_search = False
+        if signals.mode == ConversationMode.RESEARCH:
+            if self.provider == "galaxy" and self._galaxy_api_key:
+                uses_native_search = True
+            elif not self.has_web_search:
+                return (
+                    "I can't look that up from here because web search is not configured. "
+                    "Add `BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`, or `SERPAPI_API_KEY` to enable live research."
+                )
+            else:
+                try:
+                    results = await self._web_search(user_content)
+                except Exception:
+                    logger.exception("Web search failed")
+                    return "I tried to search the web, but the search provider failed. Try again in a moment."
+                if not results:
+                    return "I searched but did not find usable results for that query. Try a more specific search."
+                web_context = self._format_web_results(results)
+
         plan = self._build_conversation_plan(
             signals=signals,
             user_content=user_content,
             guild=guild,
             author=author,
             past_memory=past_memory,
-            history=history,
             is_continuation=is_continuation,
-            global_history=global_history,
+            location_context=location_context,
+            web_context=web_context,
+            uses_native_search=uses_native_search,
         )
 
         # --- Build message chain with multi-turn context ---
@@ -1294,11 +1530,12 @@ class GeminiClient:
 
         try:
             await self._rate_limiter.record_call(author.id)
+            call_model = "expert" if uses_native_search else model
             content = await self._call(
                 messages,
                 temperature=plan.temperature,
                 max_tokens=plan.max_tokens,
-                model=model,
+                model=call_model,
                 json_mode=False,
             )
             if not content:
@@ -1327,7 +1564,12 @@ class GeminiClient:
         lines: List[str] = []
         bot_id = self.bot.user.id if self.bot.user else None
         for m in recent_messages[-self.config.memory_window:]:
-            author_label = "bot" if m.author.bot else "user"
+            if bot_id and m.author.id == bot_id:
+                author_label = "assistant"
+            elif m.author.bot:
+                author_label = "other_bot"
+            else:
+                author_label = "user"
             name = getattr(m.author, "display_name", None) or str(m.author)
             content = (m.content or "").strip()
 
@@ -1408,11 +1650,12 @@ class GeminiClient:
                         messages.append({"role": "user", "content": content[:500]})
                 else:
                     # Inject other users' context as a user turn prefixed with their name
+                    speaker = f"[other bot {name}]" if msg.author.bot else f"[{name}]"
                     reply_context = self._get_reply_context(msg, bot_id, recent_messages)
                     if reply_context:
-                        messages.append({"role": "user", "content": f"{reply_context} [{name}]: {content[:500]}"})
+                        messages.append({"role": "user", "content": f"{reply_context} {speaker}: {content[:500]}"})
                     else:
-                        messages.append({"role": "user", "content": f"[{name}]: {content[:500]}"})
+                        messages.append({"role": "user", "content": f"{speaker}: {content[:500]}"})
 
         user_prompt = plan.user_prompt
         # For the current (last) message, also detect reply context
@@ -1491,9 +1734,10 @@ class GeminiClient:
         guild: discord.Guild,
         author: Union[discord.Member, discord.User],
         past_memory: str,
-        history: str,
         is_continuation: bool = False,
-        global_history: str = "",
+        location_context: str = "",
+        web_context: str = "",
+        uses_native_search: bool = False,
     ) -> ConversationPlan:
         display_name = author.display_name if isinstance(author, discord.Member) else str(author)
         role_snippet = ""
@@ -1510,16 +1754,17 @@ class GeminiClient:
         ]
         if is_continuation:
             context_parts.append("Context: This is a continuation of an active conversation.")
+        if location_context.strip():
+            context_parts.append(f"Server location context: {location_context.strip()}")
         
         full_context = "### CURRENT STATE & CONTEXT ###\n"
         full_context += "\n".join(context_parts) + "\n\n"
+
+        if web_context:
+            full_context += f"### WEB SEARCH RESULTS ###\n{web_context}\n\n"
+        elif uses_native_search:
+            full_context += "### LIVE SEARCH ###\nGalaxy expert search is enabled for this request. Use live search results and include URLs/citations when available.\n\n"
         
-        if global_history:
-            full_context += f"Global Server Chat Activity (All Channels):\n{global_history}\n\n"
-
-        if history.strip():
-            full_context += f"Recent Channel Conversation:\n{history}\n\n"
-
         # Memory section
         if past_memory.strip():
             # Trim to last meaningful chunk
@@ -1535,14 +1780,26 @@ class GeminiClient:
         # --- RESEARCH MODE ---
         if signals.mode == ConversationMode.RESEARCH:
             sys_prompt = f"{DEEP_RESEARCH_SYSTEM_PROMPT}\n\n{full_context}"
-            sys_prompt += "Instructions:\n- Provide a brief, direct answer.\n- If there are key points, use a short bulleted list.\n- Keep it extremely concise.\n"
+            sys_prompt += "Instructions:\n"
+            if web_context:
+                sys_prompt += (
+                    "- Answer using the WEB SEARCH RESULTS above.\n"
+                    "- Cite result numbers like [1] next to factual claims from search.\n"
+                    "- If the search results do not support a claim, say the search results do not confirm it.\n"
+                )
+            elif uses_native_search:
+                sys_prompt += (
+                    "- Use Galaxy expert's native live search before answering.\n"
+                    "- Include source URLs or citations for current factual claims when available.\n"
+                    "- If native search does not verify a claim, say it was not confirmed.\n"
+                )
+            sys_prompt += "- Provide a brief, direct answer.\n- If there are key points, use a short bulleted list.\n- Keep it extremely concise.\n"
             if signals.asks_for_current_info:
                 sys_prompt += (
-                    "- The user is asking for current/latest information, but this bot has no live source lookup. "
-                    "State that you cannot verify live data here and avoid specific current claims unless they are already in the provided conversation context.\n"
+                    "- The user is asking for current/latest information. Use only the web search results for current claims.\n"
                 )
             if signals.asks_for_sources:
-                sys_prompt += "- The user asked for sources, but no sources were retrieved. Do not cite fake sources; ask them to provide a link or say you cannot verify sources here.\n"
+                sys_prompt += "- The user asked for sources. Include the result numbers and URLs where useful.\n"
             if signals.asks_for_long_answer:
                 sys_prompt += "- The user wants full depth — be comprehensive.\n"
             if is_continuation:
@@ -1609,6 +1866,8 @@ class GeminiClient:
             r"^(?:Sure(?:,|!)?\s*)?(?:Here(?:'s| is)?\s*)?(?:my )?(?:response|answer|reply)\s*[:!]?\s*\n*",
             r"^(?:Of course(?:,|!)?\s*)",
             r"^(?:Absolutely(?:,|!)?\s*)",
+            r"^(?:What (?:a )?great question(?:!|\.|,)?\s*)",
+            r"^(?:Great question(?:!|\.|,)?\s*)",
         ]
         for pattern in meta_patterns:
             text = re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
@@ -1640,8 +1899,8 @@ class GeminiClient:
                 return
 
             # Build new entry
-            user_snippet = user_msg[:250].strip()
-            bot_snippet = bot_response[:250].strip()
+            user_snippet = user_msg[:1000].strip()
+            bot_snippet = bot_response[:1000].strip()
             entry = f"\n[user]: {user_snippet}\n[bot]: {bot_snippet}"
 
             new_memory = (past_memory + entry).strip()
@@ -2537,7 +2796,6 @@ class AIModeration(commands.Cog):
         self.bot = bot
         self.config = AIConfig()
         self.ai = GeminiClient(bot, self.config)
-        self._global_message_cache: Dict[int, collections.deque] = collections.defaultdict(lambda: collections.deque(maxlen=100))
         self._target_cache: Dict[int, Tuple[int, datetime]] = {}
 
         if not hasattr(bot, "db"):
@@ -2685,19 +2943,22 @@ class AIModeration(commands.Cog):
         # We track time modifiers, but they don't count as primary research hits anymore
         asks_current = bool(re.search(r"\b(today|latest|right now|current(?:ly)?|this week|recent(?:ly)?|just happened)\b", low))
 
-        # Determine mode
+        explicit_research = bool(re.search(r"\b(research|fact[\s-]?check|verify|look\s*up|search|investigate|deep dive|full breakdown)\b", low))
+
+        # A single word like "latest" or "news" should stay conversational.
+        # Research mode is reserved for explicit research/source/depth requests.
         if moderation_hits > 0 and research_hits == 0:
             mode = ConversationMode.MOD_GUIDANCE
-        elif research_hits >= 2 or (research_hits >= 1 and (asks_current or asks_for_sources or asks_for_long)):
+        elif asks_for_sources or asks_for_long or explicit_research or (asks_current and research_hits >= 1) or research_hits >= 3:
             mode = ConversationMode.RESEARCH
         else:
             mode = ConversationMode.STANDARD
 
-        confidence = min(1.0, (research_hits * 0.15) + (0.2 if asks_current else 0.0) + (0.15 if asks_for_sources else 0.0) + (0.1 if asks_for_long else 0.0))
+        confidence = min(1.0, (research_hits * 0.12) + (0.25 if explicit_research else 0.0) + (0.2 if asks_for_sources else 0.0) + (0.15 if asks_for_long else 0.0))
         show_indicator = (
             mode == ConversationMode.RESEARCH
-            and confidence >= 0.15
-            and not (asks_current or asks_for_sources)
+            and confidence >= 0.35
+            and (self.ai.has_web_search or (self.ai.provider == "galaxy" and bool(self.ai._galaxy_api_key)))
         )
 
         return ConversationSignals(
@@ -2730,7 +2991,7 @@ class AIModeration(commands.Cog):
                 "hit a connection issue on my end. give it another shot.",
                 "something broke behind the scenes. try again in a few seconds.",
             ]
-            reply = random.choice(service_errors)
+            reply = "I hit a service issue on my end. Try again in a moment."
             if self._looks_like_mod_request(content):
                 reply += f"\nfor mod actions, try the direct format: `{mention} timeout @User 30m reason`"
             return reply
@@ -2742,7 +3003,7 @@ class AIModeration(commands.Cog):
                 f"missing some details — try: `{mention} timeout @User 30m reason here`",
                 f"can you be more specific? format: `{mention} [action] @User [reason]`",
             ]
-            return random.choice(mod_errors)
+            return f"I need a bit more detail. Example: `{mention} timeout @User 30m reason here`"
 
         # Generic parsing failure
         generic_errors = [
@@ -2750,7 +3011,7 @@ class AIModeration(commands.Cog):
             "not sure what you're asking — try again or check `/aihelp` for examples.",
             "i couldn't figure out what to do with that. try rephrasing?",
         ]
-        return random.choice(generic_errors)
+        return "I could not figure out what to do with that. Could you rephrase?"
 
     def extract_mentions(self, message: discord.Message) -> List[MentionInfo]:
         return [
@@ -3499,16 +3760,6 @@ class AIModeration(commands.Cog):
         if message.author.bot or not message.guild or not self.bot.user:
             return
 
-        # Cache every human message for cross-channel AI context
-        if message.content:
-            clean_text = self.clean_content(message).strip()
-            if clean_text:
-                name = getattr(message.author, "display_name", None) or str(message.author)
-                chan_name = getattr(message.channel, "name", "unknown")
-                self._global_message_cache[message.guild.id].append(
-                    f"[{chan_name}] {name}: {clean_text[:200]}"
-                )
-
         is_mentioned = self.bot.user in message.mentions
         is_reply_to_bot = await self._message_replies_to_bot(message)
 
@@ -3566,7 +3817,7 @@ class AIModeration(commands.Cog):
         mentions = self.extract_mentions(message)
         recent = await self.fetch_recent_messages(message.channel, limit=settings.context_messages)
 
-        decision = self._quick_route(content) or self._recover_tool_decision(content)
+        decision = self._quick_route(content)
         if not decision:
             async with message.channel.typing():
                 try:
@@ -3584,11 +3835,6 @@ class AIModeration(commands.Cog):
                     if is_mentioned or is_reply_to_bot:
                         await self.reply(message, content=self._friendly_error_reply(content, "AI routing failed unexpectedly."))
                     return
-
-        if (is_mentioned or is_reply_to_bot) and decision.type in {DecisionType.CHAT, DecisionType.ERROR}:
-            recovered = self._recover_tool_decision(content)
-            if recovered:
-                decision = recovered
 
         decision = await self._enrich(message, decision, recent)
 
@@ -3648,8 +3894,8 @@ class AIModeration(commands.Cog):
         research_msg: Optional[discord.Message] = None
         if signals.show_research_indicator:
             research_embed = discord.Embed(
-                title="Thinking…",
-                description=f"Looking into: *{content[:100]}{'…' if len(content) > 100 else ''}*",
+                title="Searching...",
+                description=f"Searching the web for: *{content[:100]}{'...' if len(content) > 100 else ''}*",
                 color=discord.Color.from_rgb(88, 101, 242),
             )
             research_embed.set_footer(text="This may take a moment")
@@ -3660,12 +3906,6 @@ class AIModeration(commands.Cog):
 
         # --- Get AI response ---
         async with message.channel.typing():
-            global_history = ""
-            if message.guild.id in self._global_message_cache:
-                msgs = list(self._global_message_cache[message.guild.id])
-                if msgs:
-                    global_history = "\n".join(msgs)
-                    
             response = await self.ai.converse(
                 user_content=content,
                 guild=message.guild,
@@ -3673,7 +3913,7 @@ class AIModeration(commands.Cog):
                 recent_messages=recent,
                 model=settings.model,
                 signals=signals,
-                global_history=global_history,
+                location_context=settings.location_context,
             )
 
         # --- Deliver response ---
@@ -3684,35 +3924,51 @@ class AIModeration(commands.Cog):
                     await research_msg.delete()
                 except Exception:
                     pass
-            fail_messages = [
-                "something went wrong on my end. try again?",
-                "my brain froze for a sec. send that again?",
-                "got nothing back from the AI. try rephrasing?",
-            ]
-            await self.reply(message, content=random.choice(fail_messages))
+            await self.reply(message, content="I got no response from the AI. Try rephrasing that.")
             return
 
-        # Research mode: edit the indicator message with the result
-        if research_msg and signals.mode == ConversationMode.RESEARCH:
-            try:
-                result_embed = self._build_research_embed(response, content)
-                await research_msg.edit(embed=result_embed)
-                return
-            except discord.HTTPException:
-                # Fall through to normal delivery if edit fails
-                try:
-                    await research_msg.delete()
-                except Exception:
-                    pass
-        elif research_msg:
+        # Remove the temporary thinking indicator before sending the normal reply.
+        if research_msg:
             # Non-research but had indicator — clean up
             try:
                 await research_msg.delete()
             except Exception:
                 pass
 
+        if self._is_ai_status_message(response):
+            await self.reply(message, embed=self._build_ai_status_embed(response))
+            return
+
         # Normal delivery
         await self._deliver_response(message, response, signals)
+
+    @staticmethod
+    def _is_ai_status_message(response: str) -> bool:
+        low = response.lower()
+        return any(
+            marker in low
+            for marker in (
+                "rate limit",
+                "try again in",
+                "no api key",
+                "service unavailable",
+                "access denied",
+                "authentication failed",
+                "cannot reach",
+                "quota",
+                "web search is not configured",
+                "search provider failed",
+                "did not find usable results",
+            )
+        )
+
+    @staticmethod
+    def _build_ai_status_embed(response: str) -> discord.Embed:
+        return discord.Embed(
+            title="AI Status",
+            description=response[:4000],
+            color=discord.Color.orange(),
+        )
 
     def _build_research_embed(self, response: str, query: str) -> discord.Embed:
         """Build a rich embed for research responses."""
@@ -3721,6 +3977,7 @@ class AIModeration(commands.Cog):
             response = response[:3997] + "…"
 
         embed = discord.Embed(
+            title="Research Response",
             description=response,
             color=discord.Color.from_rgb(88, 101, 242),
         )
@@ -3754,14 +4011,10 @@ class AIModeration(commands.Cog):
 
         # Very long responses: split into chunks
         chunks = self._split_response(response, max_len=1900)
-        for i, chunk in enumerate(chunks):
-            if i == 0:
-                await self.reply(message, content=chunk)
-            else:
-                try:
-                    await message.channel.send(chunk)
-                except discord.HTTPException:
-                    break
+        for chunk in chunks:
+            sent = await self.reply(message, content=chunk)
+            if not sent:
+                break
 
     @staticmethod
     def _split_response(text: str, max_len: int = 1900) -> List[str]:
