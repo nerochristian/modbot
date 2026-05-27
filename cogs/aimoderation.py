@@ -150,7 +150,7 @@ class AIConfig:
     max_tokens_chat: int = 1024
     memory_window: int = 50
     memory_max_chars: int = 32_000
-    context_messages: int = 15
+    context_messages: int = 30
     rate_limit_calls: int = 30
     rate_limit_window: int = 60
     timeout_max_seconds: int = 259_200    # 3 days
@@ -169,7 +169,7 @@ class GuildSettings:
     enabled: bool = False
     chat_enabled: bool = False
     model: Optional[str] = None
-    context_messages: int = 15
+    context_messages: int = 30
     confirm_enabled: bool = True
     confirm_timeout_seconds: int = 25
     confirm_actions: Set[str] = field(
@@ -214,7 +214,7 @@ class GuildSettings:
             enabled=cls._coerce_bool(data.get("aimod_enabled", False), False),
             chat_enabled=cls._coerce_bool(data.get("aimod_chat_enabled", False), False),
             model=data.get("aimod_model"),
-            context_messages=int(data.get("aimod_context_messages", 15)),
+            context_messages=int(data.get("aimod_context_messages", 30)),
             confirm_enabled=cls._coerce_bool(data.get("aimod_confirm_enabled", True), True),
             confirm_timeout_seconds=int(data.get("aimod_confirm_timeout_seconds", 25)),
             confirm_actions=cls._coerce_confirm_actions(data.get("aimod_confirm_actions")),
@@ -347,6 +347,8 @@ Core behavior:
 - Show HIGH emotional intelligence. If a user is sad, frustrated, or expressing an emotion, actively acknowledge and validate it. Read between the lines and be empathetic. Don't be a cold robot.
 - Answer ANY question: gaming, tech, school, science, history, math, coding, pop culture, creative writing, whatever.
 - Pay close attention to reply-chain context like [replying to your message: "..."]. If a user replies directly to your previous message, treat it as a continuation of that exchange.
+- Treat the CURRENT THREAD as short-term local knowledge. If the user asks about something that was mentioned earlier in the channel, answer from that context directly. Example: if someone said "dinner is at 7" and the user asks "what time is dinner?", answer "7".
+- If the requested local detail is not in the current thread or memory, say you don't see it instead of guessing.
 - Lead with the answer or empathetic reaction, not filler. No "Great question!" or "I understand!" openers. Just be natural.
 - Match the user's energy. Casual user = casual tone. Serious question = helpful tone.
 - Keep responses short (1-4 sentences) by default. Go deeper only when the question warrants it or the user asks.
@@ -1482,7 +1484,7 @@ class GeminiClient:
         is_continuation = self._is_conversation_continuation(
             author, recent_messages
         )
-        thread_context = self._format_conversation_history(recent_messages[-8:])
+        thread_context = self._format_conversation_history(recent_messages)
 
         signals = signals or ConversationSignals(
             mode=ConversationMode.STANDARD,
@@ -1579,6 +1581,11 @@ class GeminiClient:
 
             # Handle attachments and embeds
             extras: List[str] = []
+            name = getattr(m.author, "display_name", None) or str(m.author)
+            content = (m.content or "").strip()
+
+            # Handle attachments and embeds
+            extras: List[str] = []
             if m.attachments:
                 extras.append(f"[{len(m.attachments)} attachment(s)]")
             if m.embeds:
@@ -1586,7 +1593,7 @@ class GeminiClient:
             if m.stickers:
                 extras.append(f"[sticker: {m.stickers[0].name}]")
 
-            display = content[:400]
+            display = content[:2000]
             if extras:
                 display = f"{display} {' '.join(extras)}".strip()
             if not display:
@@ -1644,22 +1651,22 @@ class GeminiClient:
                     
                 name = getattr(msg.author, "display_name", None) or str(msg.author)
                 if msg.author.id == bot_id:
-                    messages.append({"role": "assistant", "content": content[:500]})
+                    messages.append({"role": "assistant", "content": content[:2000]})
                 elif msg.author.id == author.id:
                     # Detect if this user message is a reply to the bot's message
                     reply_context = self._get_reply_context(msg, bot_id, recent_messages)
                     if reply_context:
-                        messages.append({"role": "user", "content": f"{reply_context}: {content[:500]}"})
+                        messages.append({"role": "user", "content": f"{reply_context}: {content[:2000]}"})
                     else:
-                        messages.append({"role": "user", "content": content[:500]})
+                        messages.append({"role": "user", "content": content[:2000]})
                 else:
                     # Inject other users' context as a user turn prefixed with their name
                     speaker = f"[other bot {name}]" if msg.author.bot else f"[{name}]"
                     reply_context = self._get_reply_context(msg, bot_id, recent_messages)
                     if reply_context:
-                        messages.append({"role": "user", "content": f"{reply_context} {speaker}: {content[:500]}"})
+                        messages.append({"role": "user", "content": f"{reply_context} {speaker}: {content[:2000]}"})
                     else:
-                        messages.append({"role": "user", "content": f"{speaker}: {content[:500]}"})
+                        messages.append({"role": "user", "content": f"{speaker}: {content[:2000]}"})
 
         user_prompt = plan.user_prompt
         # For the current (last) message, also detect reply context
@@ -1685,20 +1692,20 @@ class GeminiClient:
         ref_id = msg.reference.message_id
         ref = msg.reference.resolved
         if isinstance(ref, discord.Message) and ref.author.id == bot_id:
-            ref_content = self._message_preview(ref, limit=100)
+            ref_content = self._message_preview(ref, limit=1000)
             return f"[replying to your message: \"{ref_content}\"]"
         for m in all_messages:
             if m.id == ref_id and m.author.id == bot_id:
-                ref_content = self._message_preview(m, limit=100)
+                ref_content = self._message_preview(m, limit=1000)
                 return f"[replying to your message: \"{ref_content}\"]"
         if isinstance(ref, discord.Message):
             ref_name = getattr(ref.author, "display_name", None) or str(ref.author)
-            ref_content = self._message_preview(ref, limit=80)
+            ref_content = self._message_preview(ref, limit=1000)
             return f"[replying to {ref_name}: \"{ref_content}\"]"
         for m in all_messages:
             if m.id == ref_id:
                 ref_name = getattr(m.author, "display_name", None) or str(m.author)
-                ref_content = self._message_preview(m, limit=80)
+                ref_content = self._message_preview(m, limit=1000)
                 return f"[replying to {ref_name}: \"{ref_content}\"]"
         return None
 
@@ -1768,7 +1775,9 @@ class GeminiClient:
         if thread_context and thread_context != "No recent messages":
             full_context += (
                 "### CURRENT THREAD ###\n"
-                "This is the immediate Discord conversation. Use it to resolve vague follow-ups and replies.\n"
+                "This is the immediate Discord conversation and short-term local knowledge. "
+                "Use it to resolve vague follow-ups, replies, and questions about things already mentioned here. "
+                "For example, if the thread says a dinner, event, class, game, or meeting has a time/place/name, use that detail directly.\n"
                 f"{thread_context}\n\n"
             )
 
@@ -1849,6 +1858,12 @@ class GeminiClient:
                 "Pick up naturally from where you left off — don't re-introduce yourself."
             )
 
+        if self._is_local_context_question(user_content):
+            task_instruction += (
+                " The user is asking for a detail that may already be in the current thread. "
+                "Check CURRENT THREAD first and answer from it. If it is not there, say you don't see that detail."
+            )
+
         sys_prompt = f"{CONVERSATION_SYSTEM_PROMPT}\n\n{full_context}### INSTRUCTIONS ###\n{task_instruction}"
         
         return ConversationPlan(
@@ -1898,6 +1913,18 @@ class GeminiClient:
             text = text[1:-1].strip()
 
         return text
+
+    @staticmethod
+    def _is_local_context_question(content: str) -> bool:
+        low = (content or "").strip().lower()
+        if not low:
+            return False
+        if re.search(r"\b(what|when|where|who|which)\b", low) and re.search(
+            r"\b(time|date|day|place|location|channel|room|event|dinner|meeting|class|game|party|plan|thing|it|that|this)\b",
+            low,
+        ):
+            return True
+        return bool(re.search(r"\b(what time|when is|where is|who is|what is (?:it|that|this|the))\b", low))
 
     @staticmethod
     def _strip_citation_tokens(text: str) -> str:
@@ -4189,7 +4216,7 @@ class AIModeration(commands.Cog):
         enabled: bool = True,
         talking: bool = True,
         confirmations: bool = True,
-        context_messages: app_commands.Range[int, 1, 50] = 15,
+        context_messages: app_commands.Range[int, 1, 50] = 30,
         proactive_percent: app_commands.Range[int, 0, 100] = 0,
     ) -> None:
         """Apply simple AI moderation defaults."""
