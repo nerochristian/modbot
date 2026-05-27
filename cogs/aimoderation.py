@@ -1373,8 +1373,8 @@ class GeminiClient:
         # Inject recent conversation turns for multi-turn context
         bot_id = self.bot.user.id if self.bot.user else None
         if bot_id and recent_messages:
-            # Take last few exchanges (up to 6 turns)
-            recent_slice = recent_messages[-(min(6, len(recent_messages))):]
+            # Take last few exchanges (up to 6 turns, excluding the very last one which is the current message)
+            recent_slice = recent_messages[-7:-1]
             for msg in recent_slice:
                 content = (msg.content or "").strip()
                 if not content or len(content) < 2:
@@ -2641,7 +2641,9 @@ class AIModeration(commands.Cog):
 
     async def fetch_recent_messages(self, channel: discord.abc.Messageable, limit: int = 15) -> List[discord.Message]:
         try:
-            return [m async for m in channel.history(limit=limit)]
+            messages = [m async for m in channel.history(limit=limit)]
+            messages.reverse()  # Oldest to newest
+            return messages
         except discord.HTTPException:
             return []
 
