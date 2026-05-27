@@ -1227,6 +1227,7 @@ class GeminiClient:
         recent_messages: List[discord.Message],
         model: Optional[str] = None,
         signals: Optional[ConversationSignals] = None,
+        global_history: str = "",
     ) -> Optional[str]:
         if not self.is_available:
             return Messages.AI_NO_API_KEY
@@ -1270,6 +1271,7 @@ class GeminiClient:
             past_memory=past_memory,
             history=history,
             is_continuation=is_continuation,
+            global_history=global_history,
         )
 
         # --- Build message chain with multi-turn context ---
@@ -1396,6 +1398,7 @@ class GeminiClient:
         past_memory: str,
         history: str,
         is_continuation: bool = False,
+        global_history: str = "",
     ) -> ConversationPlan:
         display_name = author.display_name if isinstance(author, discord.Member) else str(author)
         role_snippet = ""
@@ -1413,6 +1416,9 @@ class GeminiClient:
         if is_continuation:
             context_parts.append("Context: This is a continuation of an active conversation.")
         base_context = "\n".join(context_parts) + "\n\n"
+        
+        if global_history:
+            base_context += f"Global Server Chat Activity (All Channels):\n{global_history}\n\n"
 
         # Memory section
         memory_section = ""
@@ -2438,6 +2444,7 @@ class AIModeration(commands.Cog):
         self.bot = bot
         self.config = AIConfig()
         self.ai = GeminiClient(bot, self.config)
+        self._global_message_cache: Dict[int, collections.deque] = collections.defaultdict(lambda: collections.deque(maxlen=100))
         self._target_cache: Dict[int, Tuple[int, datetime]] = {}
 
         if not hasattr(bot, "db"):
@@ -3376,6 +3383,16 @@ class AIModeration(commands.Cog):
         if message.author.bot or not message.guild or not self.bot.user:
             return
 
+        # Cache every human message for cross-channel AI context
+        if message.content:
+            clean_text = self.clean_content(message).strip()
+            if clean_text:
+                name = getattr(message.author, "display_name", None) or str(message.author)
+                chan_name = getattr(message.channel, "name", "unknown")
+                self._global_message_cache[message.guild.id].append(
+                    f"[{chan_name}] {name}: {clean_text[:200]}"
+                )
+
         is_mentioned = self.bot.user in message.mentions
 
         try:
@@ -3522,6 +3539,12 @@ class AIModeration(commands.Cog):
 
         # --- Get AI response ---
         async with message.channel.typing():
+            global_history = ""
+            if message.guild.id in self._global_message_cache:
+                msgs = list(self._global_message_cache[message.guild.id])
+                if msgs:
+                    global_history = "\n".join(msgs)
+                    
             response = await self.ai.converse(
                 user_content=content,
                 guild=message.guild,
@@ -3529,6 +3552,7 @@ class AIModeration(commands.Cog):
                 recent_messages=recent,
                 model=settings.model,
                 signals=signals,
+                global_history=global_history,
             )
 
         # --- Deliver response ---
