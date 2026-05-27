@@ -350,6 +350,8 @@ Core behavior:
 - Lead with the answer or empathetic reaction, not filler. No "Great question!" or "I understand!" openers. Just be natural.
 - Match the user's energy. Casual user = casual tone. Serious question = helpful tone.
 - Keep responses short (1-4 sentences) by default. Go deeper only when the question warrants it or the user asks.
+- For casual follow-ups like "what's new", "what is that", "what do you mean", or "the AI thingy", use the immediate thread context. Do not turn vague follow-ups into world news unless the user clearly asks for news/current events.
+- If the user asks what's new with you after a greeting, answer about this bot/conversation briefly, not global headlines.
 - Use Discord markdown naturally: **bold**, *italic*, `code`, bullet points.
 - If a server location is provided in runtime context, use it for local weather, news, and event assumptions. Otherwise, ask for a location when it matters.
 
@@ -1480,6 +1482,7 @@ class GeminiClient:
         is_continuation = self._is_conversation_continuation(
             author, recent_messages
         )
+        thread_context = self._format_conversation_history(recent_messages[-8:])
 
         signals = signals or ConversationSignals(
             mode=ConversationMode.STANDARD,
@@ -1517,6 +1520,7 @@ class GeminiClient:
             guild=guild,
             author=author,
             past_memory=past_memory,
+            thread_context=thread_context,
             is_continuation=is_continuation,
             location_context=location_context,
             web_context=web_context,
@@ -1734,6 +1738,7 @@ class GeminiClient:
         guild: discord.Guild,
         author: Union[discord.Member, discord.User],
         past_memory: str,
+        thread_context: str = "",
         is_continuation: bool = False,
         location_context: str = "",
         web_context: str = "",
@@ -1759,6 +1764,13 @@ class GeminiClient:
         
         full_context = "### CURRENT STATE & CONTEXT ###\n"
         full_context += "\n".join(context_parts) + "\n\n"
+
+        if thread_context and thread_context != "No recent messages":
+            full_context += (
+                "### CURRENT THREAD ###\n"
+                "This is the immediate Discord conversation. Use it to resolve vague follow-ups and replies.\n"
+                f"{thread_context}\n\n"
+            )
 
         if web_context:
             full_context += f"### WEB SEARCH RESULTS ###\n{web_context}\n\n"
@@ -1790,10 +1802,10 @@ class GeminiClient:
             elif uses_native_search:
                 sys_prompt += (
                     "- Use Galaxy expert's native live search before answering.\n"
-                    "- Include source URLs or citations for current factual claims when available.\n"
+                    "- Include plain source URLs only when available. Do not output raw citation tokens like [citation:1].\n"
                     "- If native search does not verify a claim, say it was not confirmed.\n"
                 )
-            sys_prompt += "- Provide a brief, direct answer.\n- If there are key points, use a short bulleted list.\n- Keep it extremely concise.\n"
+            sys_prompt += "- Provide a brief, direct answer.\n- If there are key points, use a short bulleted list. Do not use markdown tables.\n- Keep it extremely concise.\n"
             if signals.asks_for_current_info:
                 sys_prompt += (
                     "- The user is asking for current/latest information. Use only the web search results for current claims.\n"
@@ -1860,6 +1872,8 @@ class GeminiClient:
 
         # Collapse excessive whitespace
         text = re.sub(r"\n{3,}", "\n\n", text)
+        text = GeminiClient._strip_citation_tokens(text)
+        text = GeminiClient._convert_simple_markdown_table(text)
 
         # Strip meta-commentary the model sometimes prepends
         meta_patterns = [
@@ -1884,6 +1898,44 @@ class GeminiClient:
             text = text[1:-1].strip()
 
         return text
+
+    @staticmethod
+    def _strip_citation_tokens(text: str) -> str:
+        text = re.sub(r"\s*\[citation:\d+\]", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*\[source:\d+\]", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s+([,.;:])", r"\1", text)
+        return text
+
+    @staticmethod
+    def _convert_simple_markdown_table(text: str) -> str:
+        lines = text.splitlines()
+        output: List[str] = []
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            if (
+                line.strip().startswith("|")
+                and i + 1 < len(lines)
+                and re.match(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$", lines[i + 1])
+            ):
+                headers = [cell.strip() for cell in line.strip().strip("|").split("|")]
+                i += 2
+                bullets: List[str] = []
+                while i < len(lines) and lines[i].strip().startswith("|"):
+                    cells = [cell.strip() for cell in lines[i].strip().strip("|").split("|")]
+                    if len(cells) >= 2:
+                        label = cells[0].strip("* ")
+                        detail = " | ".join(cells[1:]).strip()
+                        bullets.append(f"- **{label}:** {detail}")
+                    i += 1
+                if bullets:
+                    if headers and headers[0]:
+                        output.append(f"**{headers[0]}**")
+                    output.extend(bullets)
+                    continue
+            output.append(line)
+            i += 1
+        return "\n".join(output)
 
     async def _update_memory_smart(
         self, user_id: int, user_msg: str, bot_response: str, past_memory: str
@@ -2908,7 +2960,16 @@ class AIModeration(commands.Cog):
         return bool(self._MOD_REQUEST_RE.match(self._normalize_chat_text(content)))
 
     def _quick_conversation_reply(self, content: str) -> Optional[str]:
-        """Disabled — all conversation routes through the AI for natural responses."""
+        """Deterministic replies for simple social turns where the model overdoes it."""
+        low = self._normalize_chat_text(content)
+        if low in self._GREETING_WORDS:
+            return "hey. what's up?"
+        if low in {"what's new", "whats new", "what is new", "what's up", "whats up"}:
+            return "not much on my end. i can help with questions, server stuff, or just chat."
+        if self._WHO_ARE_YOU_RE.search(low) or re.fullmatch(r"what(?:'s| is) the ai thingy\??", low):
+            return "that's me, Apflo's Helper. i'm the server AI for chatting, answering questions, and helping with moderation when you mention me."
+        if self._HOW_ARE_YOU_RE.search(low):
+            return "i'm good. what you need?"
         return None
 
     def _build_conversation_signals(self, content: str) -> ConversationSignals:
@@ -2945,11 +3006,22 @@ class AIModeration(commands.Cog):
 
         explicit_research = bool(re.search(r"\b(research|fact[\s-]?check|verify|look\s*up|search|investigate|deep dive|full breakdown)\b", low))
 
+        casual_followup = bool(re.fullmatch(
+            r"(?:what'?s new|what is new|what'?s up|what is the ai thingy|what'?s the ai thingy|what do you mean|what is that|what's that|huh|wdym)\??",
+            low,
+        ))
+
         # A single word like "latest" or "news" should stay conversational.
         # Research mode is reserved for explicit research/source/depth requests.
         if moderation_hits > 0 and research_hits == 0:
             mode = ConversationMode.MOD_GUIDANCE
-        elif asks_for_sources or asks_for_long or explicit_research or (asks_current and research_hits >= 1) or research_hits >= 3:
+        elif not casual_followup and (
+            asks_for_sources
+            or asks_for_long
+            or explicit_research
+            or (asks_current and research_hits >= 1)
+            or research_hits >= 3
+        ):
             mode = ConversationMode.RESEARCH
         else:
             mode = ConversationMode.STANDARD
@@ -3889,6 +3961,10 @@ class AIModeration(commands.Cog):
         """Handle AI conversation with research indicator and smart response delivery."""
         recent = await self.fetch_recent_messages(message.channel, limit=settings.context_messages)
         signals = self._build_conversation_signals(content)
+        quick_reply = self._quick_conversation_reply(content)
+        if quick_reply:
+            await self.reply(message, content=quick_reply)
+            return
 
         # --- Research indicator ---
         research_msg: Optional[discord.Message] = None

@@ -114,6 +114,33 @@ class Logging(commands.Cog):
                 return channel_id
         return None
 
+    def _clear_log_channel_settings(self, settings: dict[str, Any], log_type: str) -> bool:
+        removed = False
+        keys = self._log_channel_setting_keys(log_type)
+        for key in keys:
+            if key in settings:
+                settings[key] = None
+                removed = True
+
+        modules = settings.get("modules")
+        logging_module = modules.get("logging") if isinstance(modules, dict) else None
+        logging_settings = logging_module.get("settings") if isinstance(logging_module, dict) else None
+        if isinstance(logging_settings, dict):
+            for module_key, aliases in {
+                "modChannel": ("mod_log_channel", "log_channel_mod"),
+                "auditChannel": ("audit_log_channel", "log_channel_audit"),
+                "messageChannel": ("message_log_channel", "log_channel_message"),
+                "voiceChannel": ("voice_log_channel", "log_channel_voice"),
+                "automodChannel": ("automod_log_channel", "log_channel_automod"),
+                "reportChannel": ("report_log_channel", "log_channel_report"),
+                "ticketChannel": ("ticket_log_channel", "log_channel_ticket"),
+            }.items():
+                if any(alias in keys for alias in aliases):
+                    logging_settings[module_key] = None
+                    removed = True
+
+        return removed
+
     def suppress_message_delete_log(self, channel_id: int, seconds: int = 6) -> None:
         self._suppress_message_delete_until[channel_id] = datetime.now(timezone.utc) + timedelta(seconds=seconds)
 
@@ -298,11 +325,7 @@ class Logging(commands.Cog):
             
             # Remove from database
             settings = await self.bot.db.get_settings(guild_id)
-            removed = False
-            for key in self._log_channel_setting_keys(log_type):
-                if key in settings:
-                    del settings[key]
-                    removed = True
+            removed = self._clear_log_channel_settings(settings, log_type)
             if removed:
                 await self.bot.db.update_settings(guild_id, settings)
             
@@ -2265,11 +2288,7 @@ class Logging(commands.Cog):
                 )
             else:
                 # Disable logging for this type
-                removed = False
-                for key in self._log_channel_setting_keys(log_type):
-                    if key in settings:
-                        del settings[key]
-                        removed = True
+                removed = self._clear_log_channel_settings(settings, log_type)
                 if removed:
                     await self.bot.db.update_settings(interaction.guild_id, settings)
                 

@@ -48,6 +48,16 @@ _FEATURE_MODULE_KEYS = {
     "aimod": ("aimod_enabled", False),
 }
 
+_LOG_CHANNEL_MODULE_FIELDS = {
+    "modChannel": ("mod_log_channel", "log_channel_mod"),
+    "auditChannel": ("audit_log_channel", "log_channel_audit"),
+    "messageChannel": ("message_log_channel", "log_channel_message"),
+    "voiceChannel": ("voice_log_channel", "log_channel_voice"),
+    "automodChannel": ("automod_log_channel", "log_channel_automod"),
+    "reportChannel": ("report_log_channel", "log_channel_report"),
+    "ticketChannel": ("ticket_log_channel", "log_channel_ticket"),
+}
+
 
 def _normalize_module_id(module_id: object) -> str:
     raw = str(module_id or "").strip().lower().replace("-", "_").replace(" ", "_")
@@ -96,6 +106,56 @@ def _ensure_module(modules: dict[str, Any], module_id: str) -> dict[str, Any]:
     return module
 
 
+def _deep_merge_settings(base: Dict[str, Any], updates: Dict[str, Any]) -> Dict[str, Any]:
+    merged = dict(base or {})
+    for key, value in (updates or {}).items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge_settings(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
+def _sync_logging_channel_settings(normalized: Dict[str, Any], modules: dict[str, Any]) -> None:
+    logging_module = modules.get("logging")
+    logging_settings = logging_module.get("settings") if isinstance(logging_module, dict) else None
+    if not isinstance(logging_settings, dict):
+        logging_settings = {}
+
+    touched = False
+    for module_key, (primary_key, alias_key) in _LOG_CHANNEL_MODULE_FIELDS.items():
+        has_primary = primary_key in normalized
+        has_alias = alias_key in normalized
+        has_module = module_key in logging_settings
+
+        flat_value = normalized.get(primary_key)
+        if flat_value in (None, ""):
+            flat_value = normalized.get(alias_key)
+
+        if flat_value not in (None, ""):
+            normalized[primary_key] = flat_value
+            normalized[alias_key] = flat_value
+            logging_settings[module_key] = flat_value
+            touched = True
+        elif has_primary or has_alias:
+            normalized[primary_key] = None
+            normalized[alias_key] = None
+            logging_settings[module_key] = None
+            touched = True
+        elif has_module and logging_settings.get(module_key) not in (None, ""):
+            normalized[primary_key] = logging_settings[module_key]
+            normalized[alias_key] = logging_settings[module_key]
+            touched = True
+        elif has_module:
+            normalized[primary_key] = None
+            normalized[alias_key] = None
+            touched = True
+
+    if touched:
+        module = _ensure_module(modules, "logging")
+        module["settings"] = logging_settings
+
+
 def normalize_runtime_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
     """
     Keep flat runtime toggles and dashboard module blobs from fighting.
@@ -129,6 +189,8 @@ def normalize_runtime_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
         module_settings["chatEnabled"] = chat_enabled
     elif isinstance(aimod_settings, dict) and "chatEnabled" in aimod_settings:
         normalized["aimod_chat_enabled"] = _coerce_bool(aimod_settings.get("chatEnabled"), False)
+
+    _sync_logging_channel_settings(normalized, modules)
 
     if modules:
         normalized["modules"] = modules
@@ -1283,16 +1345,29 @@ class Database:
     async def update_settings(self, guild_id: int, settings: Dict[str, Any]) -> None:
         """Update guild settings"""
         self._validate_guild_id(guild_id)
-        settings = normalize_runtime_settings(settings)
+        incoming_settings = dict(settings or {})
         
         async with self._lock:
             async with self.get_connection() as db:
+                if incoming_settings:
+                    cursor = await db.execute(
+                        "SELECT settings FROM guild_settings WHERE guild_id = ?",
+                        (guild_id,),
+                    )
+                    row = await cursor.fetchone()
+                    existing_settings = json.loads(row[0]) if row and row[0] else {}
+                    settings_to_store = _deep_merge_settings(existing_settings, incoming_settings)
+                else:
+                    # An empty dict is the admin reset path. Keep it destructive.
+                    settings_to_store = {}
+
+                settings_to_store = normalize_runtime_settings(settings_to_store)
                 await db.execute(
                     """
                     INSERT OR REPLACE INTO guild_settings (guild_id, settings)
                     VALUES (?, ?)
                     """,
-                    (guild_id, json.dumps(settings)),
+                    (guild_id, json.dumps(settings_to_store)),
                 )
                 await db.commit()
     
