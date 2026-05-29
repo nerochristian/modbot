@@ -8,6 +8,7 @@ and executes appropriate moderation actions while respecting user permissions.
 from __future__ import annotations
 
 import asyncio
+import base64
 import difflib
 import io
 import json
@@ -685,6 +686,19 @@ class WebSearchResult:
     snippet: str
 
 
+@dataclass(frozen=True)
+class ImageContext:
+    label: str
+    filename: str
+    mime_type: str
+    data: bytes
+
+    @property
+    def data_url(self) -> str:
+        encoded = base64.b64encode(self.data).decode("ascii")
+        return f"data:{self.mime_type};base64,{encoded}"
+
+
 @dataclass
 class PermissionFlags:
     """Guild permission flags for a user."""
@@ -1107,7 +1121,7 @@ class GeminiClient:
 
     async def _call(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         *,
         temperature: float,
         max_tokens: int,
@@ -1159,17 +1173,48 @@ class GeminiClient:
 
         for msg in messages:
             role = msg["role"]
-            text = msg["content"]
+            content = msg["content"]
             if role == "system":
-                system_instruction = text
-            elif role == "assistant":
-                contents.append(
-                    genai_types.Content(role="model", parts=[genai_types.Part(text=text)])
-                )
+                system_instruction = str(content)
+                continue
+
+            parts: List[genai_types.Part] = []
+            if isinstance(content, list):
+                for item in content:
+                    if not isinstance(item, dict):
+                        continue
+                    if item.get("type") == "text":
+                        text = str(item.get("text") or "")
+                        if text:
+                            parts.append(genai_types.Part(text=text))
+                    elif item.get("type") == "image_url":
+                        image_url = item.get("image_url")
+                        url = image_url.get("url") if isinstance(image_url, dict) else image_url
+                        if isinstance(url, str) and url.startswith("data:"):
+                            header, _, encoded = url.partition(",")
+                            mime_match = re.match(r"data:([^;]+);base64", header)
+                            if mime_match and encoded:
+                                try:
+                                    parts.append(
+                                        genai_types.Part.from_bytes(
+                                            data=base64.b64decode(encoded),
+                                            mime_type=mime_match.group(1),
+                                        )
+                                    )
+                                except Exception:
+                                    logger.debug("Skipping malformed image data URL for Gemini", exc_info=True)
             else:
-                contents.append(
-                    genai_types.Content(role="user", parts=[genai_types.Part(text=text)])
-                )
+                text = str(content)
+                if text:
+                    parts.append(genai_types.Part(text=text))
+
+            if not parts:
+                continue
+
+            if role == "assistant":
+                contents.append(genai_types.Content(role="model", parts=parts))
+            else:
+                contents.append(genai_types.Content(role="user", parts=parts))
 
         # FIX: only pass optional fields when they have actual values so we
         # don't trigger SDK validation errors on None.
@@ -1215,7 +1260,7 @@ class GeminiClient:
 
     async def _call_openai_compatible(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         *,
         temperature: float,
         max_tokens: int,
@@ -1284,7 +1329,7 @@ class GeminiClient:
 
     async def _call_galaxy(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         *,
         temperature: float,
         max_tokens: int,
@@ -1374,7 +1419,7 @@ class GeminiClient:
 
     async def _call_galaxy_cline(
         self,
-        messages: List[Dict[str, str]],
+        messages: List[Dict[str, Any]],
         *,
         temperature: float,
         max_tokens: int,
@@ -1734,8 +1779,9 @@ class GeminiClient:
         )
 
         # --- Build message chain with multi-turn context ---
+        image_context = await self._collect_image_context(recent_messages)
         messages = self._build_conversation_messages(
-            plan, recent_messages, author
+            plan, recent_messages, author, image_context=image_context
         )
 
         try:
@@ -1791,7 +1837,15 @@ class GeminiClient:
             # Handle attachments and embeds
             extras: List[str] = []
             if m.attachments:
-                extras.append(f"[{len(m.attachments)} attachment(s)]")
+                image_names = [
+                    a.filename
+                    for a in m.attachments
+                    if self._is_supported_image_attachment(a)
+                ]
+                if image_names:
+                    extras.append(f"[image attachment(s): {', '.join(image_names[:3])}]")
+                else:
+                    extras.append(f"[{len(m.attachments)} attachment(s)]")
             if m.embeds:
                 extras.append(f"[{len(m.embeds)} embed(s)]")
             if m.stickers:
@@ -1839,8 +1893,10 @@ class GeminiClient:
         plan: "ConversationPlan",
         recent_messages: List[discord.Message],
         author: Union[discord.Member, discord.User],
-    ) -> List[Dict[str, str]]:
-        messages: List[Dict[str, str]] = [
+        *,
+        image_context: Optional[List[ImageContext]] = None,
+    ) -> List[Dict[str, Any]]:
+        messages: List[Dict[str, Any]] = [
             {"role": "system", "content": plan.system_prompt},
         ]
 
@@ -1880,8 +1936,96 @@ class GeminiClient:
             if reply_context and current_msg.author.id == author.id:
                 user_prompt = f"{reply_context}: {user_prompt}"
 
+        images = image_context or []
+        if images:
+            parts: List[Dict[str, Any]] = [
+                {
+                    "type": "text",
+                    "text": (
+                        "Recent Discord image attachments are included below. "
+                        "Use the actual visual contents when answering image questions. "
+                        "Do not guess from nearby text if the image shows otherwise.\n\n"
+                        + "\n".join(
+                            f"Image {i}: {image.label} ({image.filename})"
+                            for i, image in enumerate(images, start=1)
+                        )
+                    ),
+                }
+            ]
+            for image in images:
+                parts.append(
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": image.data_url, "detail": "auto"},
+                    }
+                )
+            messages.append({"role": "user", "content": parts})
+
         messages.append({"role": "user", "content": user_prompt})
         return messages
+
+    async def _collect_image_context(
+        self,
+        recent_messages: List[discord.Message],
+        *,
+        max_images: int = 4,
+        max_bytes_each: int = 6_000_000,
+    ) -> List[ImageContext]:
+        """Download recent Discord image attachments for multimodal model calls."""
+        images: List[ImageContext] = []
+        for msg in reversed(recent_messages[-10:]):
+            for attachment in msg.attachments:
+                if len(images) >= max_images:
+                    return list(reversed(images))
+                if not self._is_supported_image_attachment(attachment):
+                    continue
+                if attachment.size and attachment.size > max_bytes_each:
+                    logger.debug(
+                        "Skipping large image attachment %s (%d bytes)",
+                        attachment.filename,
+                        attachment.size,
+                    )
+                    continue
+                try:
+                    raw = await attachment.read(use_cached=True)
+                except Exception:
+                    logger.debug("Could not read Discord image attachment %s", attachment.filename, exc_info=True)
+                    continue
+                if not raw or len(raw) > max_bytes_each:
+                    continue
+                author_name = getattr(msg.author, "display_name", None) or str(msg.author)
+                timestamp = msg.created_at.astimezone().strftime("%Y-%m-%d %H:%M")
+                images.append(
+                    ImageContext(
+                        label=f"from {author_name} at {timestamp}",
+                        filename=attachment.filename or "image",
+                        mime_type=self._attachment_mime_type(attachment),
+                        data=raw,
+                    )
+                )
+        return list(reversed(images))
+
+    @staticmethod
+    def _is_supported_image_attachment(attachment: discord.Attachment) -> bool:
+        content_type = (attachment.content_type or "").lower()
+        filename = (attachment.filename or "").lower()
+        if content_type in {"image/png", "image/jpeg", "image/webp", "image/gif"}:
+            return True
+        return filename.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif"))
+
+    @staticmethod
+    def _attachment_mime_type(attachment: discord.Attachment) -> str:
+        content_type = (attachment.content_type or "").lower()
+        if content_type in {"image/png", "image/jpeg", "image/webp", "image/gif"}:
+            return content_type
+        filename = (attachment.filename or "").lower()
+        if filename.endswith(".png"):
+            return "image/png"
+        if filename.endswith(".webp"):
+            return "image/webp"
+        if filename.endswith(".gif"):
+            return "image/gif"
+        return "image/jpeg"
 
     def _get_reply_context(
         self,
@@ -1933,7 +2077,15 @@ class GeminiClient:
         if not text:
             extras: List[str] = []
             if msg.attachments:
-                extras.append(f"{len(msg.attachments)} attachment(s)")
+                image_names = [
+                    a.filename
+                    for a in msg.attachments
+                    if GeminiClient._is_supported_image_attachment(a)
+                ]
+                if image_names:
+                    extras.append(f"image attachment(s): {', '.join(image_names[:3])}")
+                else:
+                    extras.append(f"{len(msg.attachments)} attachment(s)")
             if msg.embeds:
                 extras.append(f"{len(msg.embeds)} embed(s)")
             if msg.stickers:
@@ -4234,9 +4386,14 @@ class AIModeration(commands.Cog):
 
         content = self.clean_content(message)
         if not content:
-            if (is_mentioned or is_reply_to_bot) and settings.chat_enabled:
-                await self.reply(message, embed=self.build_help_embed(message.guild))
-            return
+            if (is_mentioned or is_reply_to_bot) and any(
+                self.ai._is_supported_image_attachment(a) for a in message.attachments
+            ):
+                content = "What is in this image?"
+            else:
+                if (is_mentioned or is_reply_to_bot) and settings.chat_enabled:
+                    await self.reply(message, embed=self.build_help_embed(message.guild))
+                return
 
         # --- Check if this looks like a moderation request ---
         is_mod_request = self._looks_like_mod_request(content) or self._looks_like_advanced_action_request(content)
