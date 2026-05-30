@@ -10,6 +10,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Literal, Any
 import logging
 import io
+import re
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_admin
@@ -22,15 +23,18 @@ logger = logging.getLogger(__name__)
 
 
 class DeletedMessageImageView(discord.ui.View):
-    def __init__(self, images: list[dict[str, str]]) -> None:
-        super().__init__(timeout=24 * 60 * 60)
-        self.images = images[:10]
+    CUSTOM_ID = "deleted_message_images:view"
 
-        label = "View image" if len(self.images) == 1 else "View images"
+    def __init__(self, bot: commands.Bot, fallback_images: Optional[list[dict[str, Any]]] = None) -> None:
+        super().__init__(timeout=None)
+        self.bot = bot
+        self.fallback_images = (fallback_images or [])[:10]
+
+        label = "View image" if len(self.fallback_images) <= 1 else "View images"
         button = discord.ui.Button(
             label=label,
             style=discord.ButtonStyle.secondary,
-            custom_id="deleted_message_images:view",
+            custom_id=self.CUSTOM_ID,
         )
 
         async def _callback(interaction: discord.Interaction) -> None:
@@ -39,28 +43,92 @@ class DeletedMessageImageView(discord.ui.View):
         button.callback = _callback
         self.add_item(button)
 
+    @staticmethod
+    def _extract_deleted_message_id(interaction: discord.Interaction) -> Optional[int]:
+        message = interaction.message
+        if not message:
+            return None
+
+        chunks: list[str] = []
+        for embed in message.embeds:
+            if embed.description:
+                chunks.append(embed.description)
+            for field in embed.fields:
+                chunks.append(str(field.name))
+                chunks.append(str(field.value))
+
+        text = "\n".join(chunks)
+        match = re.search(r"\*\*Message ID:\*\*\s*\[(\d{15,22})\]", text)
+        if not match:
+            match = re.search(r"/(\d{15,22})(?:\)|\s|$)", text)
+        if not match:
+            match = re.search(r"\b(\d{15,22})\b", text)
+        if not match:
+            return None
+        try:
+            return int(match.group(1))
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _safe_filename(raw: object, index: int) -> str:
+        filename = str(raw or f"image-{index}.png").strip() or f"image-{index}.png"
+        filename = filename.replace("\\", "_").replace("/", "_")
+        filename = re.sub(r"[^A-Za-z0-9._ -]", "_", filename)
+        if "." not in filename:
+            filename = f"{filename}.png"
+        return f"{index}-{filename}"[:96]
+
+    async def _load_persisted_images(self, interaction: discord.Interaction) -> list[dict[str, Any]]:
+        db = getattr(self.bot, "db", None)
+        guild_id = interaction.guild_id
+        message_id = self._extract_deleted_message_id(interaction)
+        if not db or not guild_id or not message_id:
+            return []
+        try:
+            return await db.get_deleted_message_attachments(int(guild_id), int(message_id))
+        except Exception:
+            logger.exception("Failed to load persisted deleted-message images")
+            return []
+
     async def _send_images(self, interaction: discord.Interaction) -> None:
-        if not self.images:
-            await interaction.response.send_message("No image URLs are available.", ephemeral=True)
+        images = await self._load_persisted_images(interaction)
+        if not images:
+            images = self.fallback_images
+
+        if not images:
+            await interaction.response.send_message("No stored image data is available for this deleted message.", ephemeral=True)
             return
 
         embeds: list[discord.Embed] = []
-        for image in self.images:
-            url = image.get("url")
-            if not url:
-                continue
+        files: list[discord.File] = []
+        for index, image in enumerate(images[:10], start=1):
+            data = image.get("data")
+            filename = self._safe_filename(image.get("filename"), index)
             embed = discord.Embed(
                 title=image.get("filename") or "Deleted message image",
                 color=Colors.INFO,
             )
-            embed.set_image(url=url)
+            if data:
+                if isinstance(data, memoryview):
+                    data = data.tobytes()
+                file = discord.File(io.BytesIO(bytes(data)), filename=filename)
+                files.append(file)
+                embed.set_image(url=f"attachment://{filename}")
+            elif image.get("url"):
+                embed.set_image(url=str(image.get("url")))
+            else:
+                continue
             embeds.append(embed)
 
         if not embeds:
-            await interaction.response.send_message("No image URLs are available.", ephemeral=True)
+            await interaction.response.send_message("No stored image data is available for this deleted message.", ephemeral=True)
             return
 
-        await interaction.response.send_message(embeds=embeds[:10], ephemeral=True)
+        kwargs: dict[str, Any] = {"embeds": embeds[:10], "ephemeral": True}
+        if files:
+            kwargs["files"] = files[:10]
+        await interaction.response.send_message(**kwargs)
 
 
 class Logging(commands.Cog):
@@ -92,6 +160,10 @@ class Logging(commands.Cog):
         self._recent_message_snapshots: dict[int, dict[str, Any]] = {}
         self._recent_message_snapshot_ttl = timedelta(hours=3)
         self._recent_message_snapshot_max = 20000
+        try:
+            self.bot.add_view(DeletedMessageImageView(self.bot))
+        except Exception:
+            logger.debug("Deleted-message image persistent view was already registered", exc_info=True)
 
     def _log_channel_setting_keys(self, log_type: str) -> tuple[str, ...]:
         aliases = self._LOG_CHANNEL_KEY_ALIASES.get(log_type)
@@ -452,6 +524,62 @@ class Logging(commands.Cog):
                 }
             )
         return records
+
+    async def _attachment_records_with_data(
+        self,
+        attachments: list[discord.Attachment],
+        *,
+        max_bytes_each: int = 8_000_000,
+    ) -> list[dict[str, Any]]:
+        records: list[dict[str, Any]] = []
+        for attachment in attachments:
+            filename = str(getattr(attachment, "filename", "") or "attachment")
+            url = str(getattr(attachment, "url", "") or getattr(attachment, "proxy_url", "") or "")
+            content_type = str(getattr(attachment, "content_type", "") or "")
+            record: dict[str, Any] = {
+                "filename": filename,
+                "url": url,
+                "content_type": content_type,
+            }
+            if self._is_image_attachment(record):
+                size = int(getattr(attachment, "size", 0) or 0)
+                if size <= max_bytes_each:
+                    try:
+                        data = await attachment.read(use_cached=True)
+                    except Exception:
+                        logger.debug("Failed to read deleted-message image attachment %s", filename, exc_info=True)
+                    else:
+                        if data and len(data) <= max_bytes_each:
+                            record["data"] = data
+            records.append(record)
+        return records
+
+    async def _persist_deleted_image_attachments(
+        self,
+        guild_id: int,
+        channel_id: int,
+        message_id: int,
+        attachment_records: list[dict[str, Any]],
+    ) -> None:
+        images = [
+            attachment
+            for attachment in attachment_records
+            if self._is_image_attachment(attachment) and attachment.get("data")
+        ]
+        if not images:
+            return
+        db = getattr(self.bot, "db", None)
+        if not db:
+            return
+        try:
+            await db.save_deleted_message_attachments(
+                guild_id=guild_id,
+                channel_id=channel_id,
+                message_id=message_id,
+                attachments=images,
+            )
+        except Exception:
+            logger.exception("Failed to persist deleted-message image attachments")
 
     @staticmethod
     def _attachment_name(attachment: object) -> str:
@@ -1271,7 +1399,13 @@ class Logging(commands.Cog):
         if delete_reason:
             details_lines.append(f"**Reason:** {self._shorten(delete_reason, 250)}")
 
-        attachment_records = self._attachment_records(message.attachments or [])
+        attachment_records = await self._attachment_records_with_data(message.attachments or [])
+        await self._persist_deleted_image_attachments(
+            message.guild.id,
+            message.channel.id,
+            message.id,
+            attachment_records,
+        )
         image_attachments = self._image_attachments(attachment_records)
         content_value = (message.content or "").strip()
         message_text = content_value or (None if attachment_records else "*No content*")
@@ -1291,7 +1425,7 @@ class Logging(commands.Cog):
                 inline=False,
             )
 
-        view = DeletedMessageImageView(image_attachments) if image_attachments else None
+        view = DeletedMessageImageView(self.bot, image_attachments) if image_attachments else None
         if view is not None:
             embed.timestamp = None
             embed.set_footer(text=None)
@@ -1401,7 +1535,14 @@ class Logging(commands.Cog):
             )
 
         image_attachments = self._image_attachments(list(snapshot.get("attachments") or [])) if snapshot else []
-        view = DeletedMessageImageView(image_attachments) if image_attachments else None
+        if snapshot:
+            await self._persist_deleted_image_attachments(
+                guild.id,
+                channel_id,
+                message_id,
+                list(snapshot.get("attachments") or []),
+            )
+        view = DeletedMessageImageView(self.bot, image_attachments) if image_attachments else None
         if view is not None:
             embed.timestamp = None
             embed.set_footer(text=None)

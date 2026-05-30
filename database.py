@@ -279,6 +279,7 @@ def _convert_sqlite_schema_sql(query: str) -> str:
     )
     converted = re.sub(r"\bBOOLEAN\b", "BIGINT", converted, flags=re.IGNORECASE)
     converted = re.sub(r"\bINTEGER\b", "BIGINT", converted, flags=re.IGNORECASE)
+    converted = re.sub(r"\bBLOB\b", "BYTEA", converted, flags=re.IGNORECASE)
     return converted
 
 
@@ -1234,6 +1235,21 @@ class Database:
                     )
                 """)
 
+                # ===== DELETED MESSAGE ATTACHMENTS =====
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS deleted_message_attachments (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        guild_id INTEGER NOT NULL,
+                        channel_id INTEGER NOT NULL,
+                        message_id INTEGER NOT NULL,
+                        filename TEXT NOT NULL,
+                        content_type TEXT,
+                        original_url TEXT,
+                        data BLOB NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
                 # ===== QUARANTINES =====
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS quarantines (
@@ -1319,6 +1335,10 @@ class Database:
                     """
                     CREATE INDEX IF NOT EXISTS idx_modmail_threads_guild_user
                     ON modmail_threads(guild_id, user_id, status)
+                    """,
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_deleted_message_attachments_message
+                    ON deleted_message_attachments(guild_id, message_id)
                     """,
                 ]
                 for sql in index_statements:
@@ -2329,6 +2349,77 @@ class Database:
                     "content": r[3],
                     "timestamp": r[4],
                     "is_staff": bool(r[5]),
+                }
+                for r in rows
+            ]
+
+    async def save_deleted_message_attachments(
+        self,
+        *,
+        guild_id: int,
+        channel_id: int,
+        message_id: int,
+        attachments: List[Dict[str, Any]],
+    ) -> None:
+        """Persist deleted-message attachment bytes for durable log retrieval."""
+        rows = [
+            (
+                guild_id,
+                channel_id,
+                message_id,
+                str(item.get("filename") or "attachment"),
+                str(item.get("content_type") or ""),
+                str(item.get("url") or ""),
+                item.get("data"),
+            )
+            for item in attachments
+            if item.get("data")
+        ]
+        if not rows:
+            return
+
+        async with self.get_connection() as db:
+            await db.execute(
+                """
+                DELETE FROM deleted_message_attachments
+                WHERE guild_id = ? AND message_id = ?
+                """,
+                (guild_id, message_id),
+            )
+            for row in rows:
+                await db.execute(
+                    """
+                    INSERT INTO deleted_message_attachments
+                    (guild_id, channel_id, message_id, filename, content_type, original_url, data)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    row,
+                )
+            await db.commit()
+
+    async def get_deleted_message_attachments(
+        self,
+        guild_id: int,
+        message_id: int,
+    ) -> List[Dict[str, Any]]:
+        """Return persisted deleted-message attachment bytes."""
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                """
+                SELECT filename, content_type, original_url, data
+                FROM deleted_message_attachments
+                WHERE guild_id = ? AND message_id = ?
+                ORDER BY id ASC
+                """,
+                (guild_id, message_id),
+            )
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "filename": r[0],
+                    "content_type": r[1],
+                    "url": r[2],
+                    "data": r[3],
                 }
                 for r in rows
             ]

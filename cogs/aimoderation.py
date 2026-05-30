@@ -3590,6 +3590,101 @@ class AIModeration(commands.Cog):
         except discord.HTTPException:
             return []
 
+    def _looks_like_user_message_lookup(self, content: str, message: discord.Message) -> bool:
+        low = self._normalize_chat_text(content)
+        if re.search(r"\bwhat\s+(?:did|does|was)\b.*\b(?:say|said|message|msg|msgs|send|sent)\b", low):
+            return True
+        if re.search(r"\b(?:what|which)\b.*\b(?:message|msg|msgs)\b", low):
+            return True
+
+        mentioned_users = [user for user in message.mentions if not getattr(user, "bot", False)]
+        if not mentioned_users:
+            return False
+        stripped = content
+        for user in message.mentions:
+            stripped = stripped.replace(f"<@{user.id}>", "").replace(f"<@!{user.id}>", "")
+        stripped = stripped.strip(" \t\r\n,.:;!?")
+        if stripped:
+            return False
+        return True
+
+    def _extract_lookup_name(self, content: str) -> Optional[str]:
+        patterns = (
+            r"\bwhat\s+(?:did|does|was)\s+(.+?)\s+(?:say|said|send|sent)\b",
+            r"\b(?:message|msg|msgs)\s+(?:from|by)\s+(.+?)(?:\?|$)",
+        )
+        for pattern in patterns:
+            match = re.search(pattern, content, flags=re.IGNORECASE)
+            if match:
+                name = match.group(1).strip().strip("@`'\" ")
+                name = re.sub(r"\s+(?:in|on|here|recently)$", "", name, flags=re.IGNORECASE).strip()
+                return name or None
+        return None
+
+    @staticmethod
+    def _format_lookup_message_content(message: discord.Message) -> str:
+        content = (message.content or "").strip()
+        extras: list[str] = []
+        if message.attachments:
+            names = [a.filename for a in message.attachments[:3]]
+            extras.append(f"[attachment(s): {', '.join(names)}]")
+        if message.stickers:
+            extras.append(f"[sticker: {message.stickers[0].name}]")
+        display = " ".join(part for part in [content, " ".join(extras)] if part).strip()
+        if not display:
+            display = "[no text content]"
+        display = re.sub(r"\s+", " ", display)
+        if len(display) > 900:
+            display = display[:897].rstrip() + "..."
+        return display
+
+    async def _answer_recent_user_message_lookup(
+        self,
+        message: discord.Message,
+        content: str,
+        settings: GuildSettings,
+    ) -> Optional[str]:
+        if not self._looks_like_user_message_lookup(content, message):
+            return None
+
+        targets: list[discord.Member | discord.User] = [
+            user for user in message.mentions if not getattr(user, "bot", False)
+        ]
+        if not targets and message.guild:
+            name = self._extract_lookup_name(content)
+            if name:
+                resolved = await self.resolve_member(message.guild, name)
+                if resolved:
+                    targets.append(resolved)
+        if not targets:
+            return None
+
+        target = targets[0]
+        limit = max(int(getattr(settings, "context_messages", 30) or 30), 300)
+        try:
+            history = [m async for m in message.channel.history(limit=limit)]
+        except discord.HTTPException:
+            return None
+
+        matches = [
+            m for m in history
+            if m.id != message.id and getattr(m.author, "id", None) == target.id
+        ]
+        if not matches:
+            name = getattr(target, "display_name", None) or getattr(target, "name", "that user")
+            return f"I don't see a recent message from {name} in this channel."
+
+        matches.sort(key=lambda m: m.created_at, reverse=True)
+        name = getattr(target, "display_name", None) or getattr(target, "name", "that user")
+        lines = []
+        for found in matches[:3]:
+            ts = int(found.created_at.timestamp()) if getattr(found, "created_at", None) else None
+            when = f" <t:{ts}:R>" if ts else ""
+            lines.append(f"{when}: \"{self._format_lookup_message_content(found)}\"")
+        if len(lines) == 1:
+            return f"Most recent message I see from {name}{lines[0]}"
+        return f"Recent messages I see from {name}:\n" + "\n".join(f"-{line}" for line in lines)
+
     # ------------------------------------------------------------------
     # Target-memory cache
     # ------------------------------------------------------------------
@@ -4574,6 +4669,10 @@ class AIModeration(commands.Cog):
         """Handle AI conversation with research indicator and smart response delivery."""
         recent = await self.fetch_recent_messages(message.channel, limit=settings.context_messages)
         signals = self._build_conversation_signals(content)
+        lookup_reply = await self._answer_recent_user_message_lookup(message, content, settings)
+        if lookup_reply:
+            await self.reply(message, content=lookup_reply)
+            return
         quick_reply = self._quick_conversation_reply(content)
         if quick_reply:
             await self.reply(message, content=quick_reply)
