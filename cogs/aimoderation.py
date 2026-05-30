@@ -3553,128 +3553,99 @@ async def handle_execute_raw_api(ctx: ToolContext) -> ToolResult:
 
 @ToolRegistry.register(ToolType.EXECUTE_PYTHON, display_name="Execute Python", color=discord.Color.red(), emoji="Python")
 async def handle_execute_python(ctx: ToolContext) -> ToolResult:
-    """
-    Sandboxed Python execution tool for AI-driven server automation.
+    """Execute AI-generated Python code for server automation.
 
-    Security layers:
-        1. Permission gate — bot owner or guild administrator only.
-        2. Static blocklist — reject code importing dangerous modules.
-        3. Channel proxy — intercepts public sends to prevent spam.
-        4. Timeout enforcement — kills runaway code after _EXEC_TIMEOUT_SECONDS.
-        5. Output size capping — prevents embed overflow.
+    Admins and bot owners have no restrictions — the code runs with full
+    access to the bot, guild, and Discord API.  Results are shown inline
+    to the invoking user and logged to automod.
     """
     import datetime
-    import traceback as _tb_mod
+    import traceback as _tb
 
-    _EXEC_TIMEOUT_SECONDS: int = 30
-    _MAX_PREVIEW_LENGTH: int = 900
+    _TIMEOUT: int = 60          # generous for mass ops
+    _MAX_PREVIEW: int = 900     # embed field limit safety
     _MAX_CODE_DISPLAY: int = 1000
-    _MAX_CAPTURED_SENDS: int = 10
-    _CAPTURED_SEND_LIMIT: int = 500
 
-    # ── Blocked modules that should never appear in generated code ──
-    _BLOCKED_MODULES: frozenset = frozenset({
-        "os", "subprocess", "shutil", "pathlib", "signal",
-        "ctypes", "importlib", "sys", "builtins", "__builtins__",
-        "socket", "http", "requests", "urllib", "aiohttp",
-        "eval", "exec", "compile", "globals", "locals",
-        "pickle", "shelve", "marshal",
-    })
-
-    # ── 1. Permission gate ──────────────────────────────────────────
+    # ── Permission gate ─────────────────────────────────────────────
     is_owner = await ctx.cog.bot.is_owner(ctx.actor)
     is_admin = isinstance(ctx.actor, discord.Member) and ctx.actor.guild_permissions.administrator
     if not is_owner and not is_admin:
         return ToolResult.fail("Execute Python is restricted to administrators.")
 
-    # ── 2. Extract and sanitize code ────────────────────────────────
+    # ── Extract code ────────────────────────────────────────────────
     code = _strip_code_fences(str(ctx.arg("code", "")))
     if not code:
         return ToolResult.fail("No Python code provided.")
 
-    # ── 3. Static blocklist scan (skipped for admins/owners) ────────
-    # Admins already passed the permission gate — no restrictions.
-    
-
-    # ── 4. Build sandboxed environment ──────────────────────────────
-    captured_sends: List[str] = []
-
-    channel_proxy = _ChannelSendProxy(
-        wrapped=ctx.message.channel if ctx.message else None,
-        captured=captured_sends,
-        limit=_CAPTURED_SEND_LIMIT,
-        max_captures=_MAX_CAPTURED_SENDS,
-    )
-    message_proxy = (
-        _MessageChannelProxy(ctx.message, channel_proxy)
-        if ctx.message else None
-    )
+    # ── Build execution environment (full access, no proxy) ────────
+    real_channel = ctx.message.channel if ctx.message else None
 
     env: Dict[str, Any] = {
         "bot": ctx.cog.bot,
         "guild": ctx.guild,
         "author": ctx.actor,
-        "message": message_proxy,
-        "channel": channel_proxy,
+        "message": ctx.message,
+        "channel": real_channel,
         "discord": __import__("discord"),
         "asyncio": __import__("asyncio"),
         "fetch_recent_activity": _make_activity_fetcher(ctx.guild),
     }
 
-    # ── 5. Compile, execute with timeout ────────────────────────────
-    wrapped_source = _wrap_async(code)
-
+    # ── Compile ─────────────────────────────────────────────────────
+    wrapped = _wrap_async(code)
     try:
-        compiled = compile(wrapped_source, "<ai_exec>", "exec")
+        compiled = compile(wrapped, "<ai_exec>", "exec")
     except SyntaxError as exc:
-        return ToolResult.fail(
-            f"Syntax error in generated code (line {exc.lineno}): {exc.msg}"
-        )
+        return ToolResult.fail(f"Syntax error (line {exc.lineno}): {exc.msg}")
 
+    # ── Execute with timeout ────────────────────────────────────────
     try:
         exec(compiled, env)
-        coro = env["__ai_exec_func"]()
-        raw_result = await asyncio.wait_for(coro, timeout=_EXEC_TIMEOUT_SECONDS)
+        raw_result = await asyncio.wait_for(
+            env["__ai_exec_func"](), timeout=_TIMEOUT
+        )
     except asyncio.TimeoutError:
         return ToolResult.fail(
-            f"Execution timed out after {_EXEC_TIMEOUT_SECONDS}s. "
-            "Try narrowing the scope or breaking into smaller steps."
+            f"Execution timed out after {_TIMEOUT}s. "
+            "Try a smaller scope or break into steps."
         )
     except Exception as exc:
-        tb_lines = _tb_mod.format_exception(type(exc), exc, exc.__traceback__)
-        # Only keep the last 5 frames to avoid leaking internal paths
-        short_tb = "".join(tb_lines[-5:])
-        if len(short_tb) > _MAX_PREVIEW_LENGTH:
-            short_tb = short_tb[:_MAX_PREVIEW_LENGTH - 3] + "..."
-        return ToolResult.fail(
-            f"Python execution failed:\n```\n{short_tb}\n```"
-        )
+        # Show only the last meaningful frame, not the wrapper internals
+        tb_lines = _tb.format_exception(type(exc), exc, exc.__traceback__)
+        short = "".join(tb_lines[-5:])
+        if len(short) > _MAX_PREVIEW:
+            short = short[:_MAX_PREVIEW - 3] + "..."
+        return ToolResult.fail(f"Execution failed:\n```\n{short}\n```")
 
-    # ── 6. Format result preview ────────────────────────────────────
-    preview = _build_result_preview(raw_result, captured_sends, _MAX_PREVIEW_LENGTH)
+    # ── Build result ────────────────────────────────────────────────
+    preview = str(raw_result) if raw_result is not None else "Done (no return value)."
+    if len(preview) > _MAX_PREVIEW:
+        preview = preview[:_MAX_PREVIEW - 3] + "..."
 
-    # ── 7. Log to automod ───────────────────────────────────────────
+    # Show result directly to the user via a nice embed
+    result_embed = discord.Embed(
+        title="✅ Code Executed",
+        color=discord.Color.green(),
+        timestamp=_now(),
+    )
+    result_embed.add_field(name="Result", value=f"```\n{preview[:1020]}\n```", inline=False)
+    result_embed.set_footer(text=f"Requested by {ctx.actor.display_name}")
+
+    # ── Log to automod (code + result for audit trail) ──────────────
     log_embed = discord.Embed(
         title="Python Code Executed",
         color=discord.Color.green(),
         timestamp=_now(),
     )
-    log_embed.add_field(
-        name="Code",
-        value=f"```py\n{code[:_MAX_CODE_DISPLAY]}\n```",
-        inline=False,
-    )
-    log_embed.add_field(
-        name="Result",
-        value=f"```\n{preview}\n```",
-        inline=False,
-    )
+    log_embed.add_field(name="Code", value=f"```py\n{code[:_MAX_CODE_DISPLAY]}\n```", inline=False)
+    log_embed.add_field(name="Result", value=f"```\n{preview}\n```", inline=False)
+    log_embed.add_field(name="Actor", value=f"{ctx.actor.mention} (`{ctx.actor.id}`)", inline=True)
 
     await _log_execution(ctx, preview, log_embed)
-    return ToolResult.ok("Done! I put the execution details in automod logs.")
+    return ToolResult.ok(preview, embed=result_embed)
 
 
-# ── execute_python helper functions ─────────────────────────────────────────
+# ── execute_python helpers ──────────────────────────────────────────────────
 
 
 def _strip_code_fences(raw: str) -> str:
@@ -3689,120 +3660,38 @@ def _strip_code_fences(raw: str) -> str:
     return code.strip()
 
 
-def _scan_for_blocked_imports(code: str, blocked: frozenset) -> Optional[str]:
-    """Return the first blocked module name found, or None if clean."""
-    _IMPORT_RE = re.compile(
-        r"(?:^|\s)(?:import|from)\s+([\w.]+)", re.MULTILINE
-    )
-    for match in _IMPORT_RE.finditer(code):
-        root_module = match.group(1).split(".")[0]
-        if root_module in blocked:
-            return root_module
-
-    # Also catch __import__("os") style
-    _DUNDER_IMPORT_RE = re.compile(r"__import__\s*\(\s*['\"](\w+)['\"]")
-    for match in _DUNDER_IMPORT_RE.finditer(code):
-        if match.group(1) in blocked:
-            return match.group(1)
-
-    return None
-
-
 def _wrap_async(code: str) -> str:
-    """Wrap raw code lines inside an async function body."""
+    """Wrap raw code inside an async function body."""
     lines = code.splitlines()
     indented = "\n".join(f"    {line}" for line in lines)
     return f"async def __ai_exec_func():\n{indented}\n"
 
 
-def _build_result_preview(
-    raw_result: Any,
-    captured_sends: List[str],
-    max_length: int,
-) -> str:
-    """Build a human-readable preview string from execution output."""
-    parts: List[str] = []
-
-    if raw_result is not None:
-        parts.append(str(raw_result))
-    elif not captured_sends:
-        parts.append("Execution completed successfully (no return value).")
-
-    if captured_sends:
-        header = f"Captured public send(s) ({len(captured_sends)}):"
-        send_lines = [f"  • {line}" for line in captured_sends]
-        parts.append(header + "\n" + "\n".join(send_lines))
-
-    preview = "\n\n".join(parts)
-    if len(preview) > max_length:
-        preview = preview[: max_length - 3] + "..."
-    return preview
-
-
-class _ChannelSendProxy:
-    """Intercepts channel.send() to capture output without posting publicly."""
-
-    __slots__ = ("_wrapped", "_captured", "_limit", "_max_captures")
-
-    def __init__(
-        self,
-        wrapped: Any,
-        captured: List[str],
-        limit: int = 500,
-        max_captures: int = 10,
-    ) -> None:
-        self._wrapped = wrapped
-        self._captured = captured
-        self._limit = limit
-        self._max_captures = max_captures
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._wrapped, name)
-
-    async def send(self, *args: Any, **kwargs: Any) -> None:
-        if len(self._captured) >= self._max_captures:
-            return None
-
-        content = str(args[0]) if args else str(kwargs.get("content") or "")
-        embed = kwargs.get("embed")
-        if embed is not None:
-            title = getattr(embed, "title", None) or "embed"
-            description = getattr(embed, "description", None) or ""
-            content = f"[embed: {title}] {description}".strip()
-
-        self._captured.append((content or "[empty send]")[: self._limit])
-        return None
-
-
-class _MessageChannelProxy:
-    """Proxy around discord.Message that replaces .channel with the send proxy."""
-
-    __slots__ = ("_wrapped", "channel")
-
-    def __init__(self, wrapped: discord.Message, channel_proxy: _ChannelSendProxy) -> None:
-        self._wrapped = wrapped
-        self.channel = channel_proxy
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._wrapped, name)
-
-
 def _make_activity_fetcher(guild: discord.Guild) -> Callable:
-    """Factory for the fetch_recent_activity helper injected into generated code."""
+    """Build the fetch_recent_activity helper for generated code."""
     import datetime as _dt
 
     async def fetch_recent_activity(days: int = 7) -> Dict[int, Any]:
         now = _dt.datetime.now(_dt.timezone.utc)
         cutoff = now - _dt.timedelta(days=max(1, min(days, 30)))
         activity: Dict[int, Any] = {}
-        for text_channel in guild.text_channels:
+
+        # Run channel scans concurrently for speed on large servers
+        async def _scan(ch: discord.TextChannel) -> None:
             try:
-                async for msg in text_channel.history(limit=50, after=cutoff):
-                    existing = activity.get(msg.author.id)
-                    if existing is None or msg.created_at > existing:
+                async for msg in ch.history(limit=50, after=cutoff):
+                    prev = activity.get(msg.author.id)
+                    if prev is None or msg.created_at > prev:
                         activity[msg.author.id] = msg.created_at
             except (discord.Forbidden, discord.HTTPException):
-                continue
+                pass
+
+        # Process in batches of 10 to avoid rate limits
+        channels = guild.text_channels
+        for i in range(0, len(channels), 10):
+            batch = channels[i:i + 10]
+            await asyncio.gather(*[_scan(ch) for ch in batch])
+
         return activity
 
     return fetch_recent_activity
@@ -5145,31 +5034,61 @@ class AIModeration(commands.Cog):
         message: discord.Message,
         settings: GuildSettings,
     ) -> Optional[str]:
-        """
-        Ask the AI to generate raw async Python code for a server automation request.
+        """Generate Python code for a server automation request.
 
-        Returns sanitized code string, or None if generation failed or the
-        response was empty / unsafe.
+        Feeds the AI a snapshot of the server's actual structure (channels,
+        roles, categories) so it writes code using real names and IDs
+        instead of guessing.
         """
-        guild_id = message.guild.id
+        guild = message.guild
+        guild_id = guild.id
         author_id = message.author.id
         channel_id = message.channel.id
         current_time = _now().astimezone().isoformat()
 
+        # ── Build server context snapshot ───────────────────────────
+        # Categories + channels (max 60 to keep prompt small)
+        channel_lines: List[str] = []
+        for cat in guild.categories[:20]:
+            channel_lines.append(f"  📁 {cat.name} (id={cat.id})")
+            for ch in cat.channels[:10]:
+                kind = "text" if isinstance(ch, discord.TextChannel) else (
+                    "voice" if isinstance(ch, discord.VoiceChannel) else "other"
+                )
+                channel_lines.append(f"    #{ch.name} ({kind}, id={ch.id})")
+        # Uncategorized channels
+        for ch in guild.channels:
+            if ch.category is None and not isinstance(ch, discord.CategoryChannel):
+                channel_lines.append(f"  #{ch.name} (id={ch.id})")
+        channel_ctx = "\n".join(channel_lines[:60]) or "  (none)"
+
+        # Roles (skip @everyone, max 30)
+        role_lines = [
+            f"  @{r.name} (id={r.id}, color={r.color}, members={len(r.members)})"
+            for r in sorted(guild.roles[1:], key=lambda r: r.position, reverse=True)[:30]
+        ]
+        role_ctx = "\n".join(role_lines) or "  (none)"
+
         code_prompt = (
-            f'Write raw async Python code using discord.py to accomplish this Discord server request: "{content}"\n'
+            f'Write raw async Python code using discord.py to accomplish this request: "{content}"\n'
             "\n"
             "== Runtime Globals ==\n"
             "bot, guild, author, message, channel, discord, asyncio, fetch_recent_activity\n"
+            "The code runs with FULL access — channel.send() actually posts, guild.create_role() actually creates, etc.\n"
             "\n"
             "== Allowed Imports ==\n"
             "Any stdlib module (datetime, json, re, random, io, csv, os, etc). Do not use pytz.\n"
             "\n"
-            "== Bootstrap Variables (set these first when useful) ==\n"
+            "== Bootstrap Variables ==\n"
             f"guild = bot.get_guild({guild_id})\n"
             f"author = guild.get_member({author_id})\n"
             f"channel = bot.get_channel({channel_id})\n"
             f"Current UTC time: {current_time}\n"
+            f"Server: {guild.name} | Members: {guild.member_count}\n"
+            "\n"
+            f"== Server Channels ==\n{channel_ctx}\n"
+            "\n"
+            f"== Server Roles (top→bottom) ==\n{role_ctx}\n"
             "\n"
             "== Scheduled Events ==\n"
             "guild.create_scheduled_event(..., privacy_level=discord.PrivacyLevel.guild_only, "
@@ -5184,7 +5103,9 @@ class AIModeration(commands.Cog):
             "Scheduled code must be self-contained (only has: bot, guild, discord, asyncio).\n"
             "\n"
             "== Rules ==\n"
-            "• Do NOT send public embeds or messages. Return a concise string result instead.\n"
+            "• Use real channel/role IDs from the snapshot above when possible.\n"
+            "• You CAN send messages — channel.send() works normally.\n"
+            "• Return a concise string summarizing what was done.\n"
             "• For mass/destructive actions, limit scope and return what was affected.\n"
             "• Output ONLY raw Python code. No markdown fences. No explanation.\n"
         )
@@ -5199,7 +5120,6 @@ class AIModeration(commands.Cog):
         if not raw_response:
             return None
 
-        # Sanitize: strip any markdown fences the model may have added
         code = _strip_code_fences(raw_response)
         return code or None
 
