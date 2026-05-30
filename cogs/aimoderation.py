@@ -172,10 +172,10 @@ class GuildSettings:
     chat_enabled: bool = False
     model: Optional[str] = None
     context_messages: int = 30
-    confirm_enabled: bool = True
+    confirm_enabled: bool = False
     confirm_timeout_seconds: int = 25
     confirm_actions: Set[str] = field(
-        default_factory=lambda: {"ban_member", "kick_member", "purge_messages"}
+        default_factory=set
     )
     proactive_chance: float = 0.02
     location_context: str = ""
@@ -217,9 +217,9 @@ class GuildSettings:
             chat_enabled=cls._coerce_bool(data.get("aimod_chat_enabled", False), False),
             model=data.get("aimod_model"),
             context_messages=int(data.get("aimod_context_messages", 30)),
-            confirm_enabled=cls._coerce_bool(data.get("aimod_confirm_enabled", True), True),
+            confirm_enabled=False,
             confirm_timeout_seconds=int(data.get("aimod_confirm_timeout_seconds", 25)),
-            confirm_actions=cls._coerce_confirm_actions(data.get("aimod_confirm_actions")),
+            confirm_actions=set(),
             proactive_chance=float(data.get("aimod_proactive_chance", 0.02)),
             location_context=str(data.get("aimod_location_context") or data.get("server_location") or "").strip(),
         )
@@ -230,9 +230,9 @@ class GuildSettings:
             "aimod_chat_enabled": self.chat_enabled,
             "aimod_model": self.model,
             "aimod_context_messages": self.context_messages,
-            "aimod_confirm_enabled": self.confirm_enabled,
+            "aimod_confirm_enabled": False,
             "aimod_confirm_timeout_seconds": self.confirm_timeout_seconds,
-            "aimod_confirm_actions": list(self.confirm_actions),
+            "aimod_confirm_actions": [],
             "aimod_proactive_chance": self.proactive_chance,
             "aimod_location_context": self.location_context,
         }
@@ -3178,13 +3178,45 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
 
     amount = max(1, min(ctx.int_arg("amount", 10), 500))
     reason = ctx.str_arg("reason", "AI Moderation purge")
+    target_user_id = ctx.arg("target_user_id")
+    try:
+        target_user_id = int(target_user_id) if target_user_id else None
+    except (TypeError, ValueError):
+        target_user_id = None
+
+    lookback_seconds = ctx.arg("lookback_seconds")
+    try:
+        lookback_seconds = int(lookback_seconds) if lookback_seconds else None
+    except (TypeError, ValueError):
+        lookback_seconds = None
+    if lookback_seconds is not None:
+        lookback_seconds = max(1, min(lookback_seconds, 14 * 24 * 60 * 60))
 
     logging_cog = ctx.cog.bot.get_cog("Logging")
     if logging_cog:
         logging_cog.suppress_message_delete_log(channel.id)
         logging_cog.suppress_bulk_delete_log(channel.id)
 
-    deleted = await channel.purge(limit=amount + 1)
+    cutoff = _now() - timedelta(seconds=lookback_seconds) if lookback_seconds else None
+
+    max_matches = amount
+    matched_count = 0
+
+    def should_delete(candidate: discord.Message) -> bool:
+        nonlocal matched_count
+        if candidate.id == ctx.message.id:
+            return False
+        if target_user_id is not None and candidate.author.id != target_user_id:
+            return False
+        if cutoff and candidate.created_at < cutoff:
+            return False
+        if matched_count >= max_matches:
+            return False
+        matched_count += 1
+        return True
+
+    purge_limit = amount + 1 if target_user_id is None and lookback_seconds is None else 500
+    deleted = await channel.purge(limit=purge_limit, check=should_delete)
     deleted_messages = [m for m in deleted if m.id != ctx.message.id]
     deleted_count = len(deleted_messages)
 
@@ -3269,6 +3301,10 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
         timestamp=_now(),
     )
     embed.add_field(name="Reason", value=reason, inline=False)
+    if target_user_id is not None:
+        embed.add_field(name="Target Author", value=f"<@{target_user_id}> (`{target_user_id}`)", inline=True)
+    if lookback_seconds is not None:
+        embed.add_field(name="Lookback", value=f"{lookback_seconds // 60 if lookback_seconds >= 60 else lookback_seconds} {'minute(s)' if lookback_seconds >= 60 else 'second(s)'}", inline=True)
     embed.set_footer(text=f"By {ctx.actor} via AI Moderation")
 
     await ctx.cog.log_action(
@@ -3544,11 +3580,15 @@ class AIModeration(commands.Cog):
     # ------------------------------------------------------------------
 
     def clean_content(self, message: discord.Message) -> str:
-        """Strip the bot's own mention(s) from message content."""
+        """Strip only the command-leading bot mention from message content."""
         content = message.content or ""
         if self.bot.user:
-            for fmt in (f"<@{self.bot.user.id}>", f"<@!{self.bot.user.id}>"):
-                content = content.replace(fmt, "")
+            content = re.sub(
+                rf"^\s*<@!?{self.bot.user.id}>\s*[:,]?\s*",
+                "",
+                content,
+                count=1,
+            )
         return content.strip()
 
     async def _message_replies_to_bot(self, message: discord.Message) -> bool:
@@ -3806,6 +3846,66 @@ class AIModeration(commands.Cog):
             display = display[:897].rstrip() + "..."
         return display
 
+    @staticmethod
+    def _describe_lookup_url(url: str) -> Optional[str]:
+        low = url.lower()
+        if "tenor.com" in low:
+            slug = url.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1]
+            slug = re.sub(r"-\d{6,}$", "", slug)
+            words = [part for part in slug.replace("_", "-").split("-") if part and part.lower() not in {"gif", "view"}]
+            title = " ".join(words[:5]).strip()
+            return f"a {title.title()} GIF" if title else "a GIF"
+        if low.endswith((".gif", ".gifv")):
+            return "a GIF"
+        if low.endswith((".png", ".jpg", ".jpeg", ".webp")):
+            return "an image"
+        if "youtube.com" in low or "youtu.be" in low:
+            return "a YouTube link"
+        if "tiktok.com" in low:
+            return "a TikTok link"
+        return None
+
+    def _summarize_lookup_messages(self, target_name: str, matches: list[discord.Message]) -> str:
+        text_bits: list[str] = []
+        media_bits: list[str] = []
+
+        for found in reversed(matches[:6]):
+            raw = re.sub(r"\s+", " ", (found.content or "").strip())
+            urls = re.findall(r"https?://\S+", raw)
+            for url in urls:
+                media = self._describe_lookup_url(url.rstrip(".,)>]"))
+                if media and media not in media_bits:
+                    media_bits.append(media)
+            text = re.sub(r"https?://\S+", "", raw).strip()
+            if text and text not in text_bits:
+                text_bits.append(text)
+
+            for attachment in found.attachments:
+                filename = (attachment.filename or "").lower()
+                content_type = (attachment.content_type or "").lower()
+                if content_type == "image/gif" or filename.endswith(".gif"):
+                    media = "a GIF"
+                elif content_type.startswith("image/") or filename.endswith((".png", ".jpg", ".jpeg", ".webp")):
+                    media = "an image"
+                else:
+                    media = f"an attachment named {attachment.filename or 'attachment'}"
+                if media not in media_bits:
+                    media_bits.append(media)
+
+        parts: list[str] = []
+        if text_bits:
+            quoted = ", ".join(f'"{bit}"' for bit in text_bits[:3])
+            if len(text_bits) > 3:
+                quoted += f", and {len(text_bits) - 3} more message(s)"
+            parts.append(f"said {quoted}")
+        if media_bits:
+            media_text = ", ".join(media_bits[:-1]) + (f" and {media_bits[-1]}" if len(media_bits) > 1 else media_bits[0])
+            parts.append(f"sent {media_text}")
+
+        if not parts:
+            return f"I found recent messages from {target_name}, but they did not have readable text or media."
+        return f"{target_name} " + " and ".join(parts) + "."
+
     async def _answer_recent_user_message_lookup(
         self,
         message: discord.Message,
@@ -3844,14 +3944,7 @@ class AIModeration(commands.Cog):
 
         matches.sort(key=lambda m: m.created_at, reverse=True)
         name = getattr(target, "display_name", None) or getattr(target, "name", "that user")
-        lines = []
-        for found in matches[:3]:
-            ts = int(found.created_at.timestamp()) if getattr(found, "created_at", None) else None
-            when = f" <t:{ts}:R>" if ts else ""
-            lines.append(f"{when}: \"{self._format_lookup_message_content(found)}\"")
-        if len(lines) == 1:
-            return f"Most recent message I see from {name}{lines[0]}"
-        return f"Recent messages I see from {name}:\n" + "\n".join(f"-{line}" for line in lines)
+        return self._summarize_lookup_messages(name, matches)
 
     # ------------------------------------------------------------------
     # Target-memory cache
@@ -3931,17 +4024,7 @@ class AIModeration(commands.Cog):
         settings: GuildSettings,
         actor: Optional[Union[discord.Member, discord.User]] = None,
     ) -> bool:
-        if tool == ToolType.EXECUTE_RAW_API:
-            if is_bot_owner_id(getattr(actor, "id", 0)):
-                return False
-            if isinstance(actor, discord.Member) and actor.guild_permissions.administrator:
-                return False
-            return True
-        if not settings.confirm_enabled:
-            return False
-        if tool in {ToolType.KICK, ToolType.BAN}:
-            return True
-        return tool.value in settings.confirm_actions
+        return False
 
     # ------------------------------------------------------------------
     # Text-parsing helpers
@@ -3958,6 +4041,72 @@ class AIModeration(commands.Cog):
             return total
         m = re.search(r"\bfor\s+(\d+)\b", text, re.IGNORECASE)
         return int(m.group(1)) * 60 if m else None
+
+    def _parse_lookback_seconds(self, text: str) -> Optional[int]:
+        if not text:
+            return None
+
+        normalized = re.sub(r"\b(hr|hrs)\b", "hour", text, flags=re.IGNORECASE)
+        m = re.search(
+            r"\b(?:last|past|previous|within)\s+(?:(\d+)\s*)?"
+            r"(s|sec|secs|second|seconds|m|min|mins|minute|minutes|h|hr|hrs|hour|hours|d|day|days|w|week|weeks)\b",
+            normalized,
+            re.IGNORECASE,
+        )
+        if not m:
+            return None
+        amount = int(m.group(1) or 1)
+        return amount * self._DURATION_UNITS[m.group(2).lower()]
+
+    @staticmethod
+    def _extract_purge_amount(text: str) -> Optional[int]:
+        m = re.search(r"\b(?:purge|clear|clean|delete|remove|wipe|nuke)\b(?:\s+(\d{1,4}))?", text, re.IGNORECASE)
+        if not m or not m.group(1):
+            return None
+        return int(m.group(1))
+
+    @staticmethod
+    def _extract_purge_target_id(text: str) -> Optional[int]:
+        m = re.search(r"\b(?:from|by|of)\s+<@!?(\d{15,22})>", text, re.IGNORECASE)
+        if not m:
+            return None
+        try:
+            return int(m.group(1))
+        except ValueError:
+            return None
+
+    def _extract_purge_target_from_mentions(self, message: discord.Message) -> Optional[int]:
+        if not self.bot.user:
+            return None
+
+        mentions = [int(match.group(1)) for match in re.finditer(r"<@!?(\d{15,22})>", message.content or "")]
+        bot_id = self.bot.user.id
+        if mentions and mentions[0] == bot_id:
+            mentions = mentions[1:]
+
+        content = self.clean_content(message)
+        explicit_target = self._extract_purge_target_id(content)
+        if explicit_target is not None:
+            return explicit_target
+
+        if re.search(r"\b(?:from|by|of)\s*$", content, re.IGNORECASE) and mentions:
+            return mentions[0]
+        if re.search(r"\b(?:from|by|of)\s+<@!?\d{15,22}>", content, re.IGNORECASE) and mentions:
+            return mentions[0]
+        return None
+
+    def _extract_purge_args(self, content: str) -> Dict[str, Any]:
+        args: Dict[str, Any] = {}
+        amount = self._extract_purge_amount(content)
+        if amount is not None:
+            args["amount"] = amount
+        target_id = self._extract_purge_target_id(content)
+        if target_id is not None:
+            args["target_user_id"] = target_id
+        lookback_seconds = self._parse_lookback_seconds(content)
+        if lookback_seconds:
+            args["lookback_seconds"] = lookback_seconds
+        return args
 
     def _extract_reason(self, text: str) -> Optional[str]:
         if not text:
@@ -4086,6 +4235,13 @@ class AIModeration(commands.Cog):
         if m:
             amount = int(m.group(2)) if m.group(2) else 10
             return Decision(type=DecisionType.TOOL_CALL, reason="rule: purge", tool=ToolType.PURGE, arguments={"amount": amount})
+        if re.match(r"^(delete|remove|wipe|nuke)\b.*\b(?:messages?|msgs?|chat)\b", low):
+            return Decision(
+                type=DecisionType.TOOL_CALL,
+                reason="rule: targeted purge",
+                tool=ToolType.PURGE,
+                arguments=self._extract_purge_args(content),
+            )
         if re.match(r"^warn\b", low):
             return Decision(type=DecisionType.TOOL_CALL, reason="rule: warn", tool=ToolType.WARN, arguments={})
         if re.match(r"^kick\b", low):
@@ -4114,9 +4270,7 @@ class AIModeration(commands.Cog):
             return decision(ToolType.HELP, "help")
 
         if re.search(r"\b(?:wipe|nuke|clean|clear|delete|purge)\b.*\b(?:chat|messages?|msgs?)\b", low):
-            amount_match = re.search(r"\b(\d{1,4})\b", low)
-            amount = int(amount_match.group(1)) if amount_match else 10
-            return decision(ToolType.PURGE, "purge_messages", {"amount": amount})
+            return decision(ToolType.PURGE, "purge_messages", self._extract_purge_args(content))
 
         if re.search(r"\b(?:unlock|open up|reopen)\b.*\b(?:channel|chat|here|this)?\b", low):
             return decision(ToolType.UNLOCK_CHANNEL, "unlock_channel")
@@ -4288,10 +4442,21 @@ class AIModeration(commands.Cog):
             args["seconds"] = secs if secs else self.config.timeout_default_seconds
 
         if tool == ToolType.PURGE:
+            if not args.get("target_user_id"):
+                target_id = self._extract_purge_target_id(content)
+                if target_id is None:
+                    target_id = self._extract_purge_target_from_mentions(message)
+                if target_id is not None:
+                    args["target_user_id"] = target_id
+            if not args.get("lookback_seconds"):
+                lookback_seconds = self._parse_lookback_seconds(content)
+                if lookback_seconds:
+                    args["lookback_seconds"] = lookback_seconds
             try:
-                args["amount"] = max(1, min(int(args.get("amount", 10)), 500))
+                default_amount = 500 if args.get("target_user_id") or args.get("lookback_seconds") else 10
+                args["amount"] = max(1, min(int(args.get("amount", default_amount)), 500))
             except (TypeError, ValueError):
-                args["amount"] = 10
+                args["amount"] = 500 if args.get("target_user_id") or args.get("lookback_seconds") else 10
 
         if tool == ToolType.BAN:
             try:
@@ -5028,8 +5193,7 @@ class AIModeration(commands.Cog):
             "- `/aimod status` - View current settings\n"
             "- `/aimod setup` - Apply simple defaults\n"
             "- `/aimod toggle` - Enable or disable AI moderation\n"
-            "- `/aimod talking` - Enable or disable casual AI replies\n"
-            "- `/aimod confirm` - Toggle confirmations"
+            "- `/aimod talking` - Enable or disable casual AI replies"
         )
         embed = discord.Embed(title="🤖 Apflo's Helper", description=desc, color=discord.Color.blurple())
         embed.set_footer(text="Powered by DeepSeek AI • Answers anything, moderates when needed")
@@ -5060,7 +5224,6 @@ class AIModeration(commands.Cog):
     @app_commands.describe(
         enabled="Enable AI moderation mention handling.",
         talking="Enable casual AI replies when no moderation action is needed.",
-        confirmations="Require confirmation for high-impact actions.",
         context_messages="Recent messages AI can use as context.",
         proactive_percent="Chance to reply without being mentioned. Recommended: 0.",
     )
@@ -5069,7 +5232,6 @@ class AIModeration(commands.Cog):
         interaction: discord.Interaction,
         enabled: bool = True,
         talking: bool = True,
-        confirmations: bool = True,
         context_messages: app_commands.Range[int, 1, 50] = 30,
         proactive_percent: app_commands.Range[int, 0, 100] = 0,
     ) -> None:
@@ -5080,14 +5242,13 @@ class AIModeration(commands.Cog):
         guild_id = interaction.guild.id
         await self.update_guild_setting(guild_id, "aimod_enabled", enabled)
         await self.update_guild_setting(guild_id, "aimod_chat_enabled", talking)
-        await self.update_guild_setting(guild_id, "aimod_confirm_enabled", confirmations)
+        await self.update_guild_setting(guild_id, "aimod_confirm_enabled", False)
         await self.update_guild_setting(guild_id, "aimod_context_messages", int(context_messages))
         await self.update_guild_setting(guild_id, "aimod_proactive_chance", float(proactive_percent) / 100)
 
         embed = discord.Embed(title="AI Moderation Setup", color=discord.Color.blurple())
         embed.add_field(name="Enabled", value="Yes" if enabled else "No", inline=True)
         embed.add_field(name="Talking", value="On" if talking else "Off", inline=True)
-        embed.add_field(name="Confirmations", value="On" if confirmations else "Off", inline=True)
         embed.add_field(name="Context", value=f"{int(context_messages)} messages", inline=True)
         embed.add_field(name="Proactive Replies", value=f"{int(proactive_percent)}%", inline=True)
         embed.add_field(
@@ -5148,13 +5309,15 @@ class AIModeration(commands.Cog):
         await interaction.response.send_message(f"AI talking is now **{status}**. {detail}", ephemeral=True)
 
     @aimod_group.command(name="confirm")
-    @app_commands.describe(enabled="Enable confirmation dialogs for high-impact actions.")
+    @app_commands.describe(enabled="Ignored. Confirmation dialogs have been removed.")
     async def aimod_confirm(self, interaction: discord.Interaction, enabled: bool) -> None:
-        """Toggle confirmation dialogs for dangerous actions."""
+        """Confirmation dialogs are removed."""
         if not await self._require_manage(interaction):
             return
 
-        await self.update_guild_setting(interaction.guild.id, "aimod_confirm_enabled", enabled)
+        await self.update_guild_setting(interaction.guild.id, "aimod_confirm_enabled", False)
+        await interaction.response.send_message("Confirmation dialogs have been removed and stay disabled.", ephemeral=True)
+        return
         status = "✅ enabled" if enabled else "❌ disabled"
         await interaction.response.send_message(f"Confirmation dialogs are now **{status}**.", ephemeral=True)
 
