@@ -117,35 +117,35 @@ _SNOWFLAKE_RE = re.compile(r"\b(\d{15,22})\b")
 # =============================================================================
 
 
+def _default_ai_provider() -> str:
+    return os.getenv(
+        "AI_PROVIDER",
+        "galaxy"
+        if os.getenv("GALAXY_API_KEY")
+        else ("tokenmix" if os.getenv("TOKENMIX_API_KEY") else ("openrouter" if os.getenv("OPENROUTER_API_KEY") else "gemini")),
+    ).strip().lower()
+
+
+def _default_ai_model() -> str:
+    explicit = (os.getenv("AI_MODEL") or "").strip()
+    if explicit:
+        return explicit
+
+    provider = _default_ai_provider()
+    if provider == "galaxy":
+        return (os.getenv("GALAXY_MODEL") or "gemini-3-5-flash").strip()
+    if provider == "tokenmix":
+        return (os.getenv("TOKENMIX_MODEL") or "google/gemma-4-31b-it:free").strip()
+    if provider == "openrouter":
+        return (os.getenv("OPENROUTER_MODEL") or "google/gemma-4-31b-it:free").strip()
+    return (os.getenv("GEMINI_MODEL") or "gemini-2.5-flash").strip()
+
+
 @dataclass(frozen=True)
 class AIConfig:
     """Immutable configuration for AI moderation system."""
-    provider: str = field(
-        default_factory=lambda: os.getenv(
-            "AI_PROVIDER",
-            "galaxy" if os.getenv("GALAXY_API_KEY") else ("tokenmix" if os.getenv("TOKENMIX_API_KEY") else ("openrouter" if os.getenv("OPENROUTER_API_KEY") else "gemini")),
-        ).strip().lower()
-    )
-    model: str = field(
-        default_factory=lambda: (
-            os.getenv("AI_MODEL")
-            or os.getenv("TOKENMIX_MODEL")
-            or os.getenv("OPENROUTER_MODEL")
-            or os.getenv("GALAXY_MODEL")
-            or os.getenv("GEMINI_MODEL")
-            or (
-                "gemini-3-5"
-                if os.getenv("GALAXY_API_KEY") or os.getenv("AI_PROVIDER", "").strip().lower() == "galaxy"
-                else "google/gemma-4-31b-it:free"
-                if (
-                    os.getenv("TOKENMIX_API_KEY")
-                    or os.getenv("OPENROUTER_API_KEY")
-                    or os.getenv("AI_PROVIDER", "").strip().lower() in {"tokenmix", "openrouter"}
-                )
-                else "gemini-2.5-flash"
-            )
-        )
-    )
+    provider: str = field(default_factory=_default_ai_provider)
+    model: str = field(default_factory=_default_ai_model)
     temperature_routing: float = 0.2
     temperature_chat: float = 0.85
     max_tokens_routing: int = 512
@@ -1062,7 +1062,7 @@ class GeminiClient:
         self.provider = (config.provider or "gemini").strip().lower()
         self._openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
         self._galaxy_api_key = os.getenv("GALAXY_API_KEY", "").strip()
-        self._galaxy_base_url = os.getenv("GALAXY_BASE_URL", "http://94.249.230.124:8000").strip().rstrip("/")
+        self._galaxy_base_url = os.getenv("GALAXY_BASE_URL", "https://llm.galaxyfounded.nl").strip().rstrip("/")
         self._tokenmix_api_key = os.getenv("TOKENMIX_API_KEY", "").strip()
         self._tokenmix_base_url = os.getenv("TOKENMIX_BASE_URL", "https://api.tokenmix.ai/v1").strip().rstrip("/")
         self._brave_search_api_key = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
@@ -1336,33 +1336,25 @@ class GeminiClient:
         model: Optional[str] = None,
         json_mode: bool = False,
     ) -> Optional[str]:
-        selected_model = (model or self.config.model or "gemini-3-5").strip()
+        selected_model = (model or self.config.model or "gemini-3-5-flash").strip()
+        if selected_model == "gemini-3-5":
+            selected_model = "gemini-3-5-flash"
         
-        # Route correctly based on the provided Swagger UI
         if selected_model == "expert":
             base = f"{self._galaxy_base_url}/v1/completions/expert"
             url = f"{base}/json"
-        elif json_mode:
-            # Non-streaming JSON is needed for router decisions. DeepSea docs
-            # state this route ignores model and uses flash, but it returns a
-            # complete OpenAI-compatible JSON response.
-            url = f"{self._galaxy_base_url}/v1/chat/completions/json"
         else:
-            # /v1/chat/completions/json ignores model and always uses flash.
-            # The Cline endpoint is the documented path that respects gemini-3-5.
-            return await self._call_galaxy_cline(
-                messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                model=selected_model,
-            )
+            url = f"{self._galaxy_base_url}/v1/chat/completions"
 
         payload: Dict[str, Any] = {
             "model": selected_model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
+            "stream": False,
         }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
 
         headers = {
             "Authorization": f"Bearer {self._galaxy_api_key}",
@@ -1780,8 +1772,18 @@ class GeminiClient:
 
         # --- Build message chain with multi-turn context ---
         image_context = await self._collect_image_context(recent_messages)
+        image_summary = ""
+        image_messages = image_context
+        if image_context and self.provider == "galaxy" and not uses_native_search:
+            image_summary = await self._summarize_images_with_galaxy_v4(user_content, image_context) or ""
+            if image_summary:
+                image_messages = []
         messages = self._build_conversation_messages(
-            plan, recent_messages, author, image_context=image_context
+            plan,
+            recent_messages,
+            author,
+            image_context=image_messages,
+            image_summary=image_summary,
         )
 
         try:
@@ -1895,6 +1897,7 @@ class GeminiClient:
         author: Union[discord.Member, discord.User],
         *,
         image_context: Optional[List[ImageContext]] = None,
+        image_summary: str = "",
     ) -> List[Dict[str, Any]]:
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": plan.system_prompt},
@@ -1961,8 +1964,76 @@ class GeminiClient:
                 )
             messages.append({"role": "user", "content": parts})
 
+        if image_summary.strip():
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "Visual analysis from deepseek-v4-flash. Use this as the source of truth "
+                        "for the image contents when answering the user's image question:\n"
+                        f"{image_summary.strip()}"
+                    ),
+                }
+            )
+
         messages.append({"role": "user", "content": user_prompt})
         return messages
+
+    async def _summarize_images_with_galaxy_v4(
+        self,
+        user_content: str,
+        images: List[ImageContext],
+    ) -> Optional[str]:
+        """Use Galaxy v4 flash as the vision pass before Gemini 3.5 final response."""
+        if not images:
+            return None
+
+        parts: List[Dict[str, Any]] = [
+            {
+                "type": "text",
+                "text": (
+                    "Analyze these Discord image(s) accurately for another model. "
+                    "Identify visible characters, objects, text, UI, and any notable context. "
+                    "If the user asks who/what something is, answer that directly when possible. "
+                    "Do not make a game, ask for guesses, or invent hidden information.\n\n"
+                    f"User question: {user_content}\n\n"
+                    + "\n".join(
+                        f"Image {i}: {image.label} ({image.filename})"
+                        for i, image in enumerate(images, start=1)
+                    )
+                ),
+            }
+        ]
+        for image in images[:4]:
+            parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": image.data_url, "detail": "auto"},
+                }
+            )
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a precise vision analysis pass. Return only factual visual observations "
+                    "and direct identifications. Keep it concise."
+                ),
+            },
+            {"role": "user", "content": parts},
+        ]
+
+        try:
+            return await self._call(
+                messages,
+                temperature=0.1,
+                max_tokens=700,
+                model="deepseek-v4-flash",
+                json_mode=False,
+            )
+        except Exception:
+            logger.exception("Galaxy v4 image analysis failed")
+            return None
 
     async def _collect_image_context(
         self,
@@ -1973,6 +2044,54 @@ class GeminiClient:
     ) -> List[ImageContext]:
         """Download recent Discord image attachments for multimodal model calls."""
         images: List[ImageContext] = []
+
+        async def add_image(
+            *,
+            msg: discord.Message,
+            filename: str,
+            mime_type: str,
+            data: bytes,
+        ) -> bool:
+            if not data or len(data) > max_bytes_each:
+                return False
+            author_name = getattr(msg.author, "display_name", None) or str(msg.author)
+            timestamp = msg.created_at.astimezone().strftime("%Y-%m-%d %H:%M")
+            images.append(
+                ImageContext(
+                    label=f"from {author_name} at {timestamp}",
+                    filename=filename or "image",
+                    mime_type=mime_type,
+                    data=data,
+                )
+            )
+            return len(images) >= max_images
+
+        async def read_image_url(url: str) -> Optional[bytes]:
+            if not url:
+                return None
+            session, owned_session = self._get_http_session(timeout=20)
+            try:
+                async with session.get(url) as resp:
+                    if resp.status >= 400:
+                        return None
+                    content_length = resp.headers.get("Content-Length")
+                    if content_length:
+                        try:
+                            if int(content_length) > max_bytes_each:
+                                return None
+                        except ValueError:
+                            pass
+                    data = await resp.read()
+                    if not data or len(data) > max_bytes_each:
+                        return None
+                    return data
+            except Exception:
+                logger.debug("Could not download Discord embed image %s", url, exc_info=True)
+                return None
+            finally:
+                if owned_session:
+                    await session.close()
+
         for msg in reversed(recent_messages[-10:]):
             for attachment in msg.attachments:
                 if len(images) >= max_images:
@@ -1991,18 +2110,29 @@ class GeminiClient:
                 except Exception:
                     logger.debug("Could not read Discord image attachment %s", attachment.filename, exc_info=True)
                     continue
-                if not raw or len(raw) > max_bytes_each:
-                    continue
-                author_name = getattr(msg.author, "display_name", None) or str(msg.author)
-                timestamp = msg.created_at.astimezone().strftime("%Y-%m-%d %H:%M")
-                images.append(
-                    ImageContext(
-                        label=f"from {author_name} at {timestamp}",
-                        filename=attachment.filename or "image",
-                        mime_type=self._attachment_mime_type(attachment),
-                        data=raw,
-                    )
-                )
+                if await add_image(
+                    msg=msg,
+                    filename=attachment.filename or "image",
+                    mime_type=self._attachment_mime_type(attachment),
+                    data=raw,
+                ):
+                    return list(reversed(images))
+
+            for embed in msg.embeds:
+                if len(images) >= max_images:
+                    return list(reversed(images))
+                for attr_name in ("image", "thumbnail"):
+                    media = getattr(embed, attr_name, None)
+                    url = str(getattr(media, "url", "") or "")
+                    if not url:
+                        continue
+                    data = await read_image_url(url)
+                    if not data:
+                        continue
+                    filename = url.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1] or f"{attr_name}.png"
+                    mime_type = self._mime_type_from_url(url)
+                    if await add_image(msg=msg, filename=filename, mime_type=mime_type, data=data):
+                        return list(reversed(images))
         return list(reversed(images))
 
     @staticmethod
@@ -2024,6 +2154,17 @@ class GeminiClient:
         if filename.endswith(".webp"):
             return "image/webp"
         if filename.endswith(".gif"):
+            return "image/gif"
+        return "image/jpeg"
+
+    @staticmethod
+    def _mime_type_from_url(url: str) -> str:
+        path = url.split("?", 1)[0].lower()
+        if path.endswith(".png"):
+            return "image/png"
+        if path.endswith(".webp"):
+            return "image/webp"
+        if path.endswith(".gif"):
             return "image/gif"
         return "image/jpeg"
 
@@ -3590,6 +3731,33 @@ class AIModeration(commands.Cog):
         except discord.HTTPException:
             return []
 
+    async def _include_referenced_message(
+        self,
+        message: discord.Message,
+        recent_messages: List[discord.Message],
+    ) -> List[discord.Message]:
+        if not message.reference or not message.reference.message_id:
+            return recent_messages
+
+        ref = message.reference.resolved
+        if not isinstance(ref, discord.Message):
+            fetch_message = getattr(message.channel, "fetch_message", None)
+            if not callable(fetch_message):
+                return recent_messages
+            try:
+                ref = await fetch_message(message.reference.message_id)
+            except (discord.HTTPException, discord.NotFound, discord.Forbidden):
+                return recent_messages
+
+        if not isinstance(ref, discord.Message):
+            return recent_messages
+        if any(existing.id == ref.id for existing in recent_messages):
+            return recent_messages
+
+        merged = [*recent_messages, ref]
+        merged.sort(key=lambda item: item.created_at)
+        return merged
+
     def _looks_like_user_message_lookup(self, content: str, message: discord.Message) -> bool:
         low = self._normalize_chat_text(content)
         if re.search(r"\bwhat\s+(?:did|does|was)\b.*\b(?:say|said|message|msg|msgs|send|sent)\b", low):
@@ -4668,6 +4836,7 @@ class AIModeration(commands.Cog):
     ) -> None:
         """Handle AI conversation with research indicator and smart response delivery."""
         recent = await self.fetch_recent_messages(message.channel, limit=settings.context_messages)
+        recent = await self._include_referenced_message(message, recent)
         signals = self._build_conversation_signals(content)
         lookup_reply = await self._answer_recent_user_message_lookup(message, content, settings)
         if lookup_reply:
