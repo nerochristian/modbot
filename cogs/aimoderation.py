@@ -3610,6 +3610,39 @@ class AIModeration(commands.Cog):
             return False
         return isinstance(fetched, discord.Message) and fetched.author.id == self.bot.user.id
 
+    async def _message_has_image_context(self, message: discord.Message) -> bool:
+        if any(self.ai._is_supported_image_attachment(attachment) for attachment in message.attachments):
+            return True
+        if any(getattr(embed, "image", None) or getattr(embed, "thumbnail", None) for embed in message.embeds):
+            return True
+
+        if not message.reference or not message.reference.message_id:
+            return False
+        ref = message.reference.resolved
+        if not isinstance(ref, discord.Message):
+            fetch_message = getattr(message.channel, "fetch_message", None)
+            if not callable(fetch_message):
+                return False
+            try:
+                ref = await fetch_message(message.reference.message_id)
+            except (discord.HTTPException, discord.NotFound, discord.Forbidden):
+                return False
+        if not isinstance(ref, discord.Message):
+            return False
+        if any(self.ai._is_supported_image_attachment(attachment) for attachment in ref.attachments):
+            return True
+        return any(getattr(embed, "image", None) or getattr(embed, "thumbnail", None) for embed in ref.embeds)
+
+    @staticmethod
+    def _looks_like_image_question(content: str) -> bool:
+        low = re.sub(r"\s+", " ", (content or "").strip().lower())
+        return bool(
+            re.search(r"\b(?:who|what)\s+(?:is|are)\s+(?:this|that|it|these|those)\b", low)
+            or re.search(r"\b(?:who|what)'s\s+(?:this|that|it)\b", low)
+            or re.search(r"\b(?:what|who)\s+(?:am i looking at|is in (?:this|that) image|is shown)\b", low)
+            or re.search(r"\b(?:identify|analyze|scan|read)\s+(?:this|that|the)?\s*(?:image|pic|picture|screenshot|photo)\b", low)
+        )
+
     def _normalize_chat_text(self, text: str) -> str:
         return re.sub(r"\s+", " ", (text or "").strip().lower()).strip("`")
 
@@ -4067,11 +4100,11 @@ class AIModeration(commands.Cog):
 
     @staticmethod
     def _extract_purge_target_id(text: str) -> Optional[int]:
-        m = re.search(r"\b(?:from|by|of)\s+<@!?(\d{15,22})>", text, re.IGNORECASE)
-        if not m:
+        matches = list(re.finditer(r"\b(?:from|by|of)\s+<@!?(\d{15,22})>", text, re.IGNORECASE))
+        if not matches:
             return None
         try:
-            return int(m.group(1))
+            return int(matches[-1].group(1))
         except ValueError:
             return None
 
@@ -4083,15 +4116,15 @@ class AIModeration(commands.Cog):
         bot_id = self.bot.user.id
         if mentions and mentions[0] == bot_id:
             mentions = mentions[1:]
+        if not mentions:
+            return None
 
         content = self.clean_content(message)
         explicit_target = self._extract_purge_target_id(content)
         if explicit_target is not None:
             return explicit_target
 
-        if re.search(r"\b(?:from|by|of)\s*$", content, re.IGNORECASE) and mentions:
-            return mentions[0]
-        if re.search(r"\b(?:from|by|of)\s+<@!?\d{15,22}>", content, re.IGNORECASE) and mentions:
+        if re.search(r"\b(?:from|by|of)\s*$", content, re.IGNORECASE):
             return mentions[0]
         return None
 
@@ -4715,6 +4748,8 @@ class AIModeration(commands.Cog):
             extra_lines = f"\n**Duration:** {secs // 60} minute(s)"
         elif tool == ToolType.PURGE:
             extra_lines = f"\n**Amount:** {args.get('amount', 10)} message(s)"
+            if args.get("lookback_seconds"):
+                extra_lines += f"\n**Lookback:** {int(args.get('lookback_seconds'))} second(s)"
         elif tool == ToolType.BAN:
             extra_lines = f"\n**Delete Messages:** {args.get('delete_message_days', 0)} day(s)"
 
@@ -4824,6 +4859,11 @@ class AIModeration(commands.Cog):
                 return
 
         # --- Check if this looks like a moderation request ---
+        if (is_mentioned or is_reply_to_bot) and settings.chat_enabled and self._looks_like_image_question(content):
+            if await self._message_has_image_context(message):
+                await self._handle_conversation(message, content, settings)
+                return
+
         is_mod_request = self._looks_like_mod_request(content) or self._looks_like_advanced_action_request(content)
 
         # --- Mentioned but AI mod disabled: chat-only mode ---
