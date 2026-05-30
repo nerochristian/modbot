@@ -1069,6 +1069,7 @@ class GeminiClient:
         self._tavily_api_key = os.getenv("TAVILY_API_KEY", "").strip()
         self._serpapi_api_key = os.getenv("SERPAPI_API_KEY", "").strip()
         api_key = os.getenv("GEMINI_API_KEY")
+        self._gemini_vision_client = genai.Client(api_key=api_key) if api_key else None
         self._client = genai.Client(api_key=api_key) if api_key and self.provider not in {"openrouter", "tokenmix", "galaxy"} else None
         self._rate_limiter = RateLimiter(
             max_calls=config.rate_limit_calls,
@@ -1327,6 +1328,51 @@ class GeminiClient:
         content = message.get("content")
         return str(content) if content else None
 
+    @classmethod
+    def _normalize_galaxy_messages(cls, messages: List[Dict[str, Any]]) -> List[Dict[str, str]]:
+        normalized: List[Dict[str, str]] = []
+        for msg in messages:
+            role = str(msg.get("role") or "user")
+            content = cls._stringify_message_content_for_galaxy(msg.get("content"))
+            if content:
+                normalized.append({"role": role, "content": content})
+        return normalized
+
+    @staticmethod
+    def _stringify_message_content_for_galaxy(content: Any) -> str:
+        if isinstance(content, list):
+            parts: List[str] = []
+            for item in content:
+                if not isinstance(item, dict):
+                    text = str(item).strip()
+                    if text:
+                        parts.append(text)
+                    continue
+
+                item_type = item.get("type")
+                if item_type == "text":
+                    text = str(item.get("text") or "").strip()
+                    if text:
+                        parts.append(text)
+                    continue
+
+                if item_type == "image_url":
+                    image_url = item.get("image_url")
+                    url = image_url.get("url") if isinstance(image_url, dict) else image_url
+                    if isinstance(url, str) and url.strip():
+                        if url.startswith("data:"):
+                            parts.append("[Image attached for the vision pass]")
+                        else:
+                            parts.append(f"[Image URL: {url.strip()}]")
+                    continue
+
+                text = str(item).strip()
+                if text:
+                    parts.append(text)
+            return "\n".join(parts).strip()
+
+        return str(content or "").strip()
+
     async def _call_galaxy(
         self,
         messages: List[Dict[str, Any]],
@@ -1335,10 +1381,14 @@ class GeminiClient:
         max_tokens: int,
         model: Optional[str] = None,
         json_mode: bool = False,
+        allow_multimodal: bool = False,
     ) -> Optional[str]:
         selected_model = (model or self.config.model or "gemini-3-5-flash").strip()
         if selected_model == "gemini-3-5":
             selected_model = "gemini-3-5-flash"
+        galaxy_messages = messages if allow_multimodal else self._normalize_galaxy_messages(messages)
+        if not galaxy_messages:
+            raise RuntimeError("Galaxy request has no text messages.")
         
         if selected_model == "expert":
             base = f"{self._galaxy_base_url}/v1/completions/expert"
@@ -1348,7 +1398,7 @@ class GeminiClient:
 
         payload: Dict[str, Any] = {
             "model": selected_model,
-            "messages": messages,
+            "messages": galaxy_messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
             "stream": False,
@@ -1776,8 +1826,12 @@ class GeminiClient:
         image_messages = image_context
         if image_context and self.provider == "galaxy" and not uses_native_search:
             image_summary = await self._summarize_images_with_galaxy_v4(user_content, image_context) or ""
-            if image_summary:
-                image_messages = []
+            image_messages = []
+            if not image_summary:
+                image_summary = (
+                    "Image analysis failed before visual details were returned. "
+                    "Do not guess what is in the image; tell the user the image could not be read right now."
+                )
         messages = self._build_conversation_messages(
             plan,
             recent_messages,
@@ -1987,6 +2041,9 @@ class GeminiClient:
         """Use Galaxy v4 flash as the vision pass before Gemini 3.5 final response."""
         if not images:
             return None
+        if os.getenv("GALAXY_VISION_MULTIMODAL", "").strip().lower() not in {"1", "true", "yes", "on"}:
+            logger.debug("Galaxy image payload schema is not enabled; using Gemini vision fallback")
+            return await self._summarize_images_with_gemini_vision(user_content, images)
 
         parts: List[Dict[str, Any]] = [
             {
@@ -2024,16 +2081,64 @@ class GeminiClient:
         ]
 
         try:
-            return await self._call(
+            return await self._call_galaxy(
                 messages,
                 temperature=0.1,
                 max_tokens=700,
                 model="deepseek-v4-flash",
                 json_mode=False,
+                allow_multimodal=True,
             )
-        except Exception:
-            logger.exception("Galaxy v4 image analysis failed")
+        except Exception as exc:
+            logger.warning("Galaxy v4 image analysis failed; trying Gemini vision fallback: %s", exc)
+            return await self._summarize_images_with_gemini_vision(user_content, images)
+
+    async def _summarize_images_with_gemini_vision(
+        self,
+        user_content: str,
+        images: List[ImageContext],
+    ) -> Optional[str]:
+        """Fallback vision pass when Galaxy rejects multimodal payloads."""
+        if not images or not self._gemini_vision_client:
             return None
+
+        parts: List[genai_types.Part] = [
+            genai_types.Part(
+                text=(
+                    "Analyze these Discord image(s) accurately for another model. "
+                    "Identify visible characters, objects, text, UI, and any notable context. "
+                    "If the user asks who/what something is, answer that directly when possible. "
+                    "Do not make a game, ask for guesses, or invent hidden information.\n\n"
+                    f"User question: {user_content}\n\n"
+                    + "\n".join(
+                        f"Image {i}: {image.label} ({image.filename})"
+                        for i, image in enumerate(images, start=1)
+                    )
+                )
+            )
+        ]
+        for image in images[:4]:
+            parts.append(genai_types.Part.from_bytes(data=image.data, mime_type=image.mime_type))
+
+        config = genai_types.GenerateContentConfig(
+            temperature=0.1,
+            max_output_tokens=700,
+        )
+        model = os.getenv("GEMINI_VISION_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+
+        try:
+            response = await self._gemini_vision_client.aio.models.generate_content(
+                model=model,
+                contents=[genai_types.Content(role="user", parts=parts)],
+                config=config,
+            )
+        except Exception as exc:
+            logger.warning("Gemini vision fallback failed: %s", exc)
+            return None
+
+        if not response or not response.text:
+            return None
+        return response.text
 
     async def _collect_image_context(
         self,
