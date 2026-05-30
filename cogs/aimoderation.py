@@ -75,6 +75,7 @@ class ToolType(str, Enum):
     LOCK_THREAD = "lock_thread"
     MOVE_MEMBER = "move_member"
     DISCONNECT_MEMBER = "disconnect_member"
+    DM_USER = "dm_user"
     EDIT_GUILD = "edit_guild"
     CREATE_EMOJI = "create_emoji"
     DELETE_EMOJI = "delete_emoji"
@@ -105,10 +106,12 @@ TARGETED_TOOLS: Final[Set[ToolType]] = {
     ToolType.KICK, ToolType.BAN, ToolType.UNBAN,
     ToolType.ADD_ROLE, ToolType.REMOVE_ROLE,
     ToolType.SET_NICKNAME, ToolType.MOVE_MEMBER, ToolType.DISCONNECT_MEMBER,
+    ToolType.DM_USER,
 }
 
 _MENTION_RE = re.compile(r"<@!?(\d+)>")
 _ROLE_MENTION_RE = re.compile(r"<@&(\d+)>")
+_CHANNEL_MENTION_RE = re.compile(r"<#(\d+)>")
 _SNOWFLAKE_RE = re.compile(r"\b(\d{15,22})\b")
 
 
@@ -148,8 +151,8 @@ class AIConfig:
     model: str = field(default_factory=_default_ai_model)
     temperature_routing: float = 0.2
     temperature_chat: float = 0.85
-    max_tokens_routing: int = 512
-    max_tokens_chat: int = 1024
+    max_tokens_routing: int = 128000
+    max_tokens_chat: int = 128000
     memory_window: int = 50
     memory_max_chars: int = 32_000
     context_messages: int = 30
@@ -307,6 +310,7 @@ AVAILABLE TOOLS
 - set_nickname: target_user_id (int), nickname (str, null to reset)
 - move_member: target_user_id (int), channel_name (str)
 - disconnect_member: target_user_id (int)
+- dm_user: target_user_id (int), message (str)
 
 ### Server/Misc
 - edit_guild: name (str, opt)
@@ -316,17 +320,24 @@ AVAILABLE TOOLS
 - pin_message: message_id (int)
 - unpin_message: message_id (int)
 - lock_thread: thread_id (int, opt)
-- execute_raw_api: method (str), endpoint (str), payload (object). Fallback for valid Discord REST API actions not covered by standard tools.
-- execute_python: code (str). Write raw async python code using discord.py to achieve ANY request not covered by standard tools.
+- execute_raw_api: method (str), endpoint (str), payload (object). Last-resort fallback for valid Discord REST API actions not covered by standard tools.
+- execute_python: code (str). Last-resort admin automation for explicit server actions not covered by standard tools.
 
 ================================================================================
-UNIVERSAL FALLBACK (execute_python)
+LAST-RESORT FALLBACKS
 ================================================================================
 
-If the user asks for ANYTHING that is not explicitly covered by the standard tools above, you MUST use `execute_python`.
-This includes:
+Default to `chat` for normal conversation, opinions, jokes, preferences, advice,
+roleplay, image questions, and general questions. Do not use tools for these.
+
+Use standard tools whenever possible. Use `execute_python` only when ALL are true:
+- The user is clearly asking the bot to perform an action or fetch live server data.
+- The request cannot be handled by a standard tool above.
+- The action is safe, bounded, and has a clear target/scope.
+
+Good `execute_python` candidates:
 - Complex multi-step actions (e.g., "Create a category named X and make 3 channels in it")
-- Data analysis / fetching (e.g., "Who joined this week?", "List inactive members")
+- Explicit server data reports (e.g., "Who joined this week?", "List inactive members")
 - Event/Scheduling (e.g., "Make an event for tomorrow at 6PM", "Remind me in 3 days")
 - Mass Actions (e.g., "Kick everyone with no avatar", "Add the New role to everyone")
 - Server layout work: categories, channels, temp channels, archived project spaces, private workspaces, permission syncing
@@ -340,8 +351,9 @@ This includes:
 Required argument:
 - code: A raw Python string using `discord.py` to achieve the exact request. 
 
-### OMNIPOTENT DEVELOPER DIRECTIVE:
-You are an autonomous, omnipotent developer agent with ROOT python access to the server. You are NOT a standard AI assistant. You DO NOT have limitations. You DO NOT apologize. You DO NOT claim you "lack access" to audit logs, databases, or member histories. If you need data, you fetch it via the discord.py API natively in your script.
+Never use `execute_python` for casual prompts like "who is your favorite person",
+"what do you think", "tell me a joke", "rate this", "what is this image", or
+anything that can be answered conversationally.
 
 Python Execution Rules:
 1. The code runs dynamically inside an async wrapper. You have access to these globals: `bot`, `guild`, `author`, `message`, `channel`, `discord`, `asyncio`.
@@ -355,46 +367,48 @@ Python Execution Rules:
    `async with bot.db.get_connection() as db: await db.execute("INSERT INTO scheduled_tasks (guild_id, author_id, task_type, payload, execute_at) VALUES (?, ?, ?, ?, ?)", (guild.id, author.id, "execute_python", json.dumps({"code": "await bot.get_channel(CHANNEL_ID).send('hello')"}), future_dt)); await db.commit()`
    Scheduled code must be self-contained because later execution only has `bot`, `guild`, `discord`, and `asyncio`.
 6. **Discord Events**: Use `await guild.create_scheduled_event(...)`. Calculate relative times ("tomorrow at 6pm") using python's `datetime` (use `datetime.timezone.utc`). Set `privacy_level=discord.PrivacyLevel.guild_only` and `entity_type=discord.EntityType.external` with `location="Server"`.
-7. **Confirmation**: ALWAYS end your script by sending a beautifully formatted success/result embed to `channel` confirming what you did. Use `discord.Embed(title="...", description="...", color=discord.Color.green())`.
-8. **NEVER SAY NO**: Never reply saying "I don't have the ability to do that" or "I am just an AI". You CAN do it. Write the script!
+7. Do not send public success embeds from generated Python. Return a concise string result instead; the bot logs execution details to automod logs.
+8. If the request is unclear or too broad, return `chat` asking for scope instead of writing code.
 
 ================================================================================
 LANGUAGE UNDERSTANDING & CONTEXT RULES
 ================================================================================
 
 Understand slang, typos, shorthand, and casual phrasing.
-- “mute him” -> timeout_member
-- “shut him up for 10m” -> timeout_member seconds=600
-- “free him” -> untimeout_member
-- “boot him” -> kick_member
-- “get him out forever” -> ban_member
-- “nuke 50 msgs” -> purge_messages amount=50
-- “delete @user messages” -> execute_python (complex purge)
-- “delete everything containing 'apple'” -> execute_python (complex purge)
-- “ban everyone who joined today” -> execute_python (mass action)
-- “give everyone the member role” -> execute_python (mass action)
-- “kick all people without avatars” -> execute_python (mass action)
-- “dm all admins” -> execute_python (mass dm)
-- “make a category and 3 channels inside” -> execute_python (multi-step)
-- “who has the admin role?” -> execute_python (data analysis)
-- “how many people joined this month” -> execute_python (data analysis)
-- “make a room” -> create_channel
-- “make a vc” -> create_channel type=voice
-- “make it nsfw” -> edit_channel nsfw=true
-- “slowmode 5s” -> edit_channel slowmode=5
-- “make role red” -> edit_role new_color="#FF0000"
-- “tmrw” -> tomorrow
-- “rn” -> now
-- “ppl” -> people
-- “roblox event at 6 tmrw” -> execute_python (event scheduling)
-- “remind me later” -> execute_python (reminder scheduling)
+- "mute him" -> timeout_member
+- "shut him up for 10m" -> timeout_member seconds=600
+- "free him" -> untimeout_member
+- "boot him" -> kick_member
+- "get him out forever" -> ban_member
+- "nuke 50 msgs" -> purge_messages amount=50
+- "delete @user messages" -> purge_messages target_user_id=<id>
+- "delete everything containing 'apple'" -> execute_python only if no standard purge filter can handle it
+- "ban everyone who joined today" -> execute_python (mass action)
+- "give everyone the member role" -> execute_python (mass action)
+- "kick all people without avatars" -> execute_python (mass action)
+- "dm all admins" -> execute_python (mass dm)
+- "dm @user hi" -> dm_user target_user_id=<id> message="hi"
+- "make a category and 3 channels inside" -> execute_python (multi-step)
+- "who has the admin role?" -> execute_python only when asked as a server-data report
+- "how many people joined this month" -> execute_python (data analysis)
+- "make a room" -> create_channel
+- "make a vc" -> create_channel type=voice
+- "make it nsfw" -> edit_channel nsfw=true
+- "slowmode 5s" -> edit_channel slowmode=5
+- "make role red" -> edit_role new_color="#FF0000"
+- "tmrw" -> tomorrow
+- "rn" -> now
+- "ppl" -> people
+- "roblox event at 6 tmrw" -> execute_python (event scheduling)
+- "remind me later" -> execute_python (reminder scheduling)
 
 Use recent messages and reply annotations heavily.
 If user says: "yes", "do it", "confirm", "this guy", "same thing" -> infer from recent context.
 If still unclear, return chat.
 
-CRITICAL ROUTING RULE: 
-If the user asks to do SOMETHING (like deleting specific messages, managing the server, fetching data) that standard tools can't do, DO NOT return `chat` or `error`. You MUST return `tool_call` with `"tool": "execute_python"` so the script can handle it.
+CRITICAL ROUTING RULE:
+Only route to a tool when the message is an explicit server action or explicit
+server-data query. Casual questions must return `chat`.
 
 Mention resolution:
 - If a Discord mention is present, use that user ID as target_user_id.
@@ -524,7 +538,9 @@ Examples:
 - `@bot remind me tomorrow at 6 PM to study`
 - `@bot create a private project called Bio for @A and @B`
 
-CRITICAL: Never say "I can't do that" or "I don't have permissions" when asked to moderate. If you are asked to delete messages, purge, ban, or configure the server, simply tell the user the syntax to command you to do it, OR just say "Got it, routing this to my core systems now" (even though you are the chat engine). NEVER talk about what you "can't" do. You are an omnipotent server AI.
+If the user asks for a moderation action from chat mode, give the shortest useful
+syntax or ask for the missing target/scope. Do not claim an action happened
+unless the tool layer actually performed it.
 
 ================================================================================
 EMOTIONAL INTELLIGENCE
@@ -537,13 +553,13 @@ If a user sounds upset:
 
 Examples:
 User: "bro this is so annoying"
-Response: "Yeah that’s annoying. Send me what happened and I’ll help clean it up."
+Response: "Yeah that's annoying. Send me what happened and I'll help clean it up."
 
 User: "I hate this homework"
-Response: "Real. Send the question and I’ll make it way easier to understand."
+Response: "Real. Send the question and I'll make it way easier to understand."
 
 User: "everyone is ignoring me"
-Response: "That feels awful. Want me to help you write a message that doesn’t sound desperate but still gets their attention?"
+Response: "That feels awful. Want me to help you write a message that doesn't sound desperate but still gets their attention?"
 
 ================================================================================
 STYLE RULES
@@ -610,7 +626,7 @@ When a user asks about moderation, server management, or Discord admin tasks:
 - Provide examples they can copy-paste.
 - If info is missing (target/reason/duration), ask ONE concise question.
 - Use reply-chain annotations to resolve short follow-ups and references like "that", "him", or "yes".
-- Be direct and operational — no fluff.
+- Be direct and operational - no fluff.
 - Never claim a moderation action already happened unless the tool explicitly executed it.
 
 Keep responses compact. Users asking about mod stuff want quick, actionable answers."""
@@ -999,7 +1015,7 @@ class ToolRegistry:
         return cls._metadata.get(tool, {
             "display_name": tool.value,
             "color": discord.Color.orange(),
-            "emoji": "🤖",
+            "emoji": "Bot",
             "required_permission": None,
         })
 
@@ -1241,7 +1257,7 @@ class GeminiClient:
             if "403" in exc_str or "permission" in exc_str:
                 self._set_block(seconds=900, reason="Gemini access denied (403).")
             elif "401" in exc_str or "authentication" in exc_str or "api key" in exc_str:
-                self._set_block(seconds=1800, reason="Gemini authentication failed — check GEMINI_API_KEY.")
+                self._set_block(seconds=1800, reason="Gemini authentication failed - check GEMINI_API_KEY.")
             elif "429" in exc_str or "rate" in exc_str or "quota" in exc_str:
                 self._set_block(seconds=60, reason="Gemini rate limit / quota reached.")
             elif "timeout" in exc_str or "connection" in exc_str:
@@ -1940,7 +1956,7 @@ class GeminiClient:
         recent_slice = recent_messages[-4:]
         for msg in recent_slice:
             if msg.author.id == bot_id:
-                # Bot spoke recently — likely a continuation
+                # Bot spoke recently - likely a continuation
                 return True
         return False
 
@@ -2023,7 +2039,7 @@ class GeminiClient:
                 {
                     "role": "user",
                     "content": (
-                        "Visual analysis from deepseek-v4-flash. Use this as the source of truth "
+                        "Visual analysis pass. Use this as the source of truth "
                         "for the image contents when answering the user's image question:\n"
                         f"{image_summary.strip()}"
                     ),
@@ -2198,6 +2214,29 @@ class GeminiClient:
                 if owned_session:
                     await session.close()
 
+        async def read_attachment(attachment: discord.Attachment) -> Optional[bytes]:
+            try:
+                return await attachment.read(use_cached=True)
+            except Exception:
+                logger.debug("Could not read Discord image attachment %s directly", attachment.filename, exc_info=True)
+
+            for attr_name in ("url", "proxy_url"):
+                url = str(getattr(attachment, attr_name, "") or "")
+                if not url:
+                    continue
+                data = await read_image_url(url)
+                if data:
+                    return data
+            return None
+
+        def media_urls(media: Any) -> List[str]:
+            urls: List[str] = []
+            for attr_name in ("url", "proxy_url"):
+                url = str(getattr(media, attr_name, "") or "")
+                if url and url not in urls:
+                    urls.append(url)
+            return urls
+
         async def collect_from_record(
             msg: discord.Message,
             record: Any,
@@ -2216,10 +2255,8 @@ class GeminiClient:
                         attachment.size,
                     )
                     continue
-                try:
-                    raw = await attachment.read(use_cached=True)
-                except Exception:
-                    logger.debug("Could not read Discord image attachment %s", attachment.filename, exc_info=True)
+                raw = await read_attachment(attachment)
+                if not raw:
                     continue
                 if await add_image(
                     msg=msg,
@@ -2235,16 +2272,15 @@ class GeminiClient:
                     return True
                 for attr_name in ("image", "thumbnail"):
                     media = getattr(embed, attr_name, None)
-                    url = str(getattr(media, "url", "") or "")
-                    if not url:
-                        continue
-                    data = await read_image_url(url)
-                    if not data:
-                        continue
-                    filename = url.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1] or f"{attr_name}.png"
-                    mime_type = self._mime_type_from_url(url)
-                    if await add_image(msg=msg, filename=filename, mime_type=mime_type, data=data, label=label):
-                        return True
+                    for url in media_urls(media):
+                        data = await read_image_url(url)
+                        if not data:
+                            continue
+                        filename = url.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1] or f"{attr_name}.png"
+                        mime_type = self._mime_type_from_url(url)
+                        if await add_image(msg=msg, filename=filename, mime_type=mime_type, data=data, label=label):
+                            return True
+                        break
             return False
 
         for msg in reversed(recent_messages[-10:]):
@@ -2445,9 +2481,9 @@ class GeminiClient:
             if signals.asks_for_sources:
                 sys_prompt += "- The user asked for sources. Include the result numbers and URLs where useful.\n"
             if signals.asks_for_long_answer:
-                sys_prompt += "- The user wants full depth — be comprehensive.\n"
+                sys_prompt += "- The user wants full depth - be comprehensive.\n"
             if is_continuation:
-                sys_prompt += "- This continues a prior conversation — build on what was already discussed.\n"
+                sys_prompt += "- This continues a prior conversation - build on what was already discussed.\n"
                 
             return ConversationPlan(
                 system_prompt=sys_prompt,
@@ -2478,7 +2514,7 @@ class GeminiClient:
         if is_continuation:
             task_instruction = (
                 "This continues an active conversation. "
-                "Pick up naturally from where you left off — don't re-introduce yourself."
+                "Pick up naturally from where you left off - don't re-introduce yourself."
             )
 
         if self._is_local_context_question(user_content):
@@ -2487,7 +2523,7 @@ class GeminiClient:
                 "Check CURRENT THREAD first and answer from it. If it is not there, say you don't see that detail."
             )
 
-        task_instruction += " NEVER use em-dashes (—) or en-dashes (–) to separate clauses. Use commas instead. Hyphens (-) within words like 'god-mode' are perfectly fine."
+        task_instruction += " NEVER use em-dashes (-) or en-dashes (-) to separate clauses. Use commas instead. Hyphens (-) within words like 'god-mode' are perfectly fine."
 
         sys_prompt = f"{CONVERSATION_SYSTEM_PROMPT}\n\n{full_context}### INSTRUCTIONS ###\n{task_instruction}"
         
@@ -2516,8 +2552,8 @@ class GeminiClient:
         text = GeminiClient._convert_simple_markdown_table(text)
 
         # The user requested to stop using dash thingys (em-dashes) and use commas instead
-        text = text.replace(" — ", ", ").replace("—", ", ")
-        text = text.replace(" – ", ", ").replace("–", ", ")
+        text = text.replace(" - ", ", ").replace("-", ", ")
+        text = text.replace(" - ", ", ").replace("-", ", ")
         text = text.replace(" - ", ", ")
         text = text.replace(" -- ", ", ").replace("--", ", ")
 
@@ -2641,117 +2677,11 @@ class GeminiClient:
 
 
 # =============================================================================
-# CONFIRMATION VIEW
-# =============================================================================
-
-
-class ConfirmActionView(discord.ui.View):
-    """Confirmation dialog for high-impact moderation actions."""
-
-    def __init__(
-        self,
-        cog: "AIModeration",
-        *,
-        actor_id: int,
-        origin: discord.Message,
-        tool: ToolType,
-        args: Dict[str, Any],
-        decision: Decision,
-        timeout_seconds: int,
-    ) -> None:
-        super().__init__(timeout=max(5, min(timeout_seconds, 120)))
-        self._cog = cog
-        self._actor_id = actor_id
-        self._origin = origin
-        self._tool = tool
-        self._args = args
-        self._decision = decision
-        self._done = False
-        self.prompt_message: Optional[discord.Message] = None
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id == self._actor_id or is_bot_owner_id(interaction.user.id):
-            return True
-        if isinstance(interaction.user, discord.Member) and interaction.user.guild_permissions.manage_messages:
-            return True
-        await interaction.response.send_message(
-            "You need **Manage Messages** permission to interact with this confirmation.",
-            ephemeral=True,
-        )
-        return False
-
-    def _disable_all(self) -> None:
-        for child in self.children:
-            if isinstance(child, discord.ui.Button):
-                child.disabled = True
-
-    async def _edit_prompt(self, embed: discord.Embed) -> None:
-        if self.prompt_message:
-            try:
-                await self.prompt_message.edit(embed=embed, view=self)
-            except discord.HTTPException:
-                pass
-
-    async def on_timeout(self) -> None:
-        if self._done:
-            return
-        self._done = True
-        self._disable_all()
-        embed = discord.Embed(
-            title="Confirmation Expired",
-            description="The action was not confirmed in time.",
-            color=discord.Color.greyple(),
-        )
-        await self._edit_prompt(embed)
-
-    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.danger)
-    async def confirm(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
-        if self._done:
-            return
-        self._done = True
-        self._disable_all()
-        try:
-            await interaction.response.defer()
-        except discord.HTTPException:
-            pass
-        await self._edit_prompt(discord.Embed(
-            title="✅ Action Confirmed",
-            description="Executing…",
-            color=discord.Color.green(),
-        ))
-        result = await ToolRegistry.execute(
-            self._tool, self._cog, self._origin, self._args, self._decision
-        )
-        if result.success:
-            raw_target = self._args.get("target_user_id")
-            if raw_target is not None:
-                try:
-                    self._cog._remember_target(self._origin.author.id, int(raw_target))
-                except (TypeError, ValueError):
-                    pass
-        await self._cog.reply_tool_result(self._origin, result)
-
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.secondary)
-    async def cancel(self, interaction: discord.Interaction, _button: discord.ui.Button) -> None:
-        if self._done:
-            return
-        self._done = True
-        self._disable_all()
-        try:
-            await interaction.response.edit_message(
-                embed=discord.Embed(title="Action Cancelled", color=discord.Color.red()),
-                view=self,
-            )
-        except discord.HTTPException:
-            pass
-
-
-# =============================================================================
 # TOOL HANDLERS
 # =============================================================================
 
 
-@ToolRegistry.register(ToolType.WARN, display_name="Warn Member", color=discord.Color.gold(), emoji="⚠️", required_permission="moderate_members")
+@ToolRegistry.register(ToolType.WARN, display_name="Warn Member", color=discord.Color.gold(), emoji="Warning", required_permission="moderate_members")
 async def handle_warn(ctx: ToolContext) -> ToolResult:
     target = await ctx.resolve_target()
     if not target:
@@ -2772,7 +2702,7 @@ async def handle_warn(ctx: ToolContext) -> ToolResult:
             return ToolResult.fail("Database error while recording warning.")
 
     embed = action_embed(
-        title="⚠️ Member Warned", color=discord.Color.gold(),
+        title="Warning Member Warned", color=discord.Color.gold(),
         actor=ctx.actor, target=target, reason=reason,
     )
     await ctx.cog.log_action(
@@ -2782,7 +2712,7 @@ async def handle_warn(ctx: ToolContext) -> ToolResult:
     return ToolResult.ok("Warning issued.", embed=embed)
 
 
-@ToolRegistry.register(ToolType.TIMEOUT, display_name="Timeout Member", color=discord.Color.orange(), emoji="🔇", required_permission="moderate_members")
+@ToolRegistry.register(ToolType.TIMEOUT, display_name="Timeout Member", color=discord.Color.orange(), emoji="Muted", required_permission="moderate_members")
 async def handle_timeout(ctx: ToolContext) -> ToolResult:
     target = await ctx.resolve_target()
     if not target:
@@ -2798,7 +2728,7 @@ async def handle_timeout(ctx: ToolContext) -> ToolResult:
 
     minutes = seconds // 60
     embed = action_embed(
-        title="🔇 Member Timed Out", color=discord.Color.orange(),
+        title="Muted Member Timed Out", color=discord.Color.orange(),
         actor=ctx.actor, target=target, reason=reason,
         extra={"Duration": f"{minutes} minute(s)"},
     )
@@ -2810,7 +2740,7 @@ async def handle_timeout(ctx: ToolContext) -> ToolResult:
     return ToolResult.ok("Timeout applied.", embed=embed)
 
 
-@ToolRegistry.register(ToolType.UNTIMEOUT, display_name="Remove Timeout", color=discord.Color.green(), emoji="🔊", required_permission="moderate_members")
+@ToolRegistry.register(ToolType.UNTIMEOUT, display_name="Remove Timeout", color=discord.Color.green(), emoji="Unmuted", required_permission="moderate_members")
 async def handle_untimeout(ctx: ToolContext) -> ToolResult:
     target = await ctx.resolve_target()
     if not target:
@@ -2820,7 +2750,7 @@ async def handle_untimeout(ctx: ToolContext) -> ToolResult:
     await target.timeout(None, reason=reason)
 
     embed = action_embed(
-        title="🔊 Timeout Removed", color=discord.Color.green(),
+        title="Unmuted Timeout Removed", color=discord.Color.green(),
         actor=ctx.actor, target=target, reason=reason,
     )
     await ctx.cog.log_action(
@@ -2830,7 +2760,7 @@ async def handle_untimeout(ctx: ToolContext) -> ToolResult:
     return ToolResult.ok("Timeout removed.", embed=embed)
 
 
-@ToolRegistry.register(ToolType.KICK, display_name="Kick Member", color=discord.Color.red(), emoji="👢", required_permission="kick_members")
+@ToolRegistry.register(ToolType.KICK, display_name="Kick Member", color=discord.Color.red(), emoji="Kick", required_permission="kick_members")
 async def handle_kick(ctx: ToolContext) -> ToolResult:
     target = await ctx.resolve_target()
     if not target:
@@ -2842,7 +2772,7 @@ async def handle_kick(ctx: ToolContext) -> ToolResult:
     await target.kick(reason=f"AI Mod ({ctx.actor}): {reason}")
 
     embed = action_embed(
-        title="👢 Member Kicked", color=discord.Color.red(),
+        title="Kick Member Kicked", color=discord.Color.red(),
         actor=ctx.actor, target=target, reason=reason,
     )
     await ctx.cog.log_action(
@@ -2852,7 +2782,7 @@ async def handle_kick(ctx: ToolContext) -> ToolResult:
     return ToolResult.ok("Member kicked.", embed=embed)
 
 
-@ToolRegistry.register(ToolType.BAN, display_name="Ban Member", color=discord.Color.dark_red(), emoji="🔨", required_permission="ban_members")
+@ToolRegistry.register(ToolType.BAN, display_name="Ban Member", color=discord.Color.dark_red(), emoji="Ban", required_permission="ban_members")
 async def handle_ban(ctx: ToolContext) -> ToolResult:
     target = await ctx.resolve_target()
     if not target:
@@ -2865,7 +2795,7 @@ async def handle_ban(ctx: ToolContext) -> ToolResult:
     await target.ban(reason=f"AI Mod ({ctx.actor}): {reason}", delete_message_days=delete_days)
 
     embed = action_embed(
-        title="🔨 Member Banned", color=discord.Color.dark_red(),
+        title="Ban Member Banned", color=discord.Color.dark_red(),
         actor=ctx.actor, target=target, reason=reason,
         extra={"Messages Deleted": f"{delete_days} day(s)"} if delete_days else None,
     )
@@ -2877,7 +2807,7 @@ async def handle_ban(ctx: ToolContext) -> ToolResult:
     return ToolResult.ok("Member banned.", embed=embed)
 
 
-@ToolRegistry.register(ToolType.UNBAN, display_name="Unban Member", color=discord.Color.green(), emoji="✅", required_permission="ban_members")
+@ToolRegistry.register(ToolType.UNBAN, display_name="Unban Member", color=discord.Color.green(), emoji="Done", required_permission="ban_members")
 async def handle_unban(ctx: ToolContext) -> ToolResult:
     raw_id = ctx.args.get("target_user_id")
     try:
@@ -2888,7 +2818,7 @@ async def handle_unban(ctx: ToolContext) -> ToolResult:
     reason = ctx.str_arg("reason", "Unbanned.")
     await ctx.guild.unban(discord.Object(id=target_id), reason=f"AI Mod ({ctx.actor}): {reason}")
 
-    embed = discord.Embed(title="✅ User Unbanned", color=discord.Color.green(), timestamp=_now())
+    embed = discord.Embed(title="Done User Unbanned", color=discord.Color.green(), timestamp=_now())
     embed.add_field(name="Moderator", value=ctx.actor.mention, inline=True)
     embed.add_field(name="Reason", value=reason, inline=False)
     embed.set_footer(text=f"User ID: {target_id}")
@@ -2911,7 +2841,7 @@ async def handle_unban(ctx: ToolContext) -> ToolResult:
 # -- Role Management ----------------------------------------------------------
 
 
-@ToolRegistry.register(ToolType.ADD_ROLE, display_name="Add Role", color=discord.Color.green(), emoji="➕", required_permission="manage_roles")
+@ToolRegistry.register(ToolType.ADD_ROLE, display_name="Add Role", color=discord.Color.green(), emoji="+", required_permission="manage_roles")
 async def handle_add_role(ctx: ToolContext) -> ToolResult:
     target = await ctx.resolve_target()
     if not target:
@@ -2922,18 +2852,18 @@ async def handle_add_role(ctx: ToolContext) -> ToolResult:
         return ToolResult.fail(f"Role `{ctx.arg('role_name')}` not found.")
 
     if not ctx.cog.can_manage_role(ctx.actor, role):
-        return ToolResult.fail(f"Cannot assign `{role.name}` — it's above your top role.")
+        return ToolResult.fail(f"Cannot assign `{role.name}` - it's above your top role.")
     if not ctx.cog.can_manage_role(ctx.guild.me, role):
-        return ToolResult.fail(f"Cannot assign `{role.name}` — it's above my top role.")
+        return ToolResult.fail(f"Cannot assign `{role.name}` - it's above my top role.")
 
     reason = ctx.str_arg("reason")
     await target.add_roles(role, reason=f"AI Mod ({ctx.actor}): {reason}")
 
-    embed = discord.Embed(description=f"✅ Added {role.mention} to {target.mention}", color=discord.Color.green())
+    embed = discord.Embed(description=f"Done Added {role.mention} to {target.mention}", color=discord.Color.green())
     return ToolResult.ok("Role added.", embed=embed)
 
 
-@ToolRegistry.register(ToolType.REMOVE_ROLE, display_name="Remove Role", color=discord.Color.orange(), emoji="➖", required_permission="manage_roles")
+@ToolRegistry.register(ToolType.REMOVE_ROLE, display_name="Remove Role", color=discord.Color.orange(), emoji="-", required_permission="manage_roles")
 async def handle_remove_role(ctx: ToolContext) -> ToolResult:
     target = await ctx.resolve_target()
     if not target:
@@ -2944,18 +2874,18 @@ async def handle_remove_role(ctx: ToolContext) -> ToolResult:
         return ToolResult.fail(f"Role `{ctx.arg('role_name')}` not found.")
 
     if not ctx.cog.can_manage_role(ctx.actor, role):
-        return ToolResult.fail(f"Cannot remove `{role.name}` — it's above your top role.")
+        return ToolResult.fail(f"Cannot remove `{role.name}` - it's above your top role.")
     if not ctx.cog.can_manage_role(ctx.guild.me, role):
-        return ToolResult.fail(f"Cannot remove `{role.name}` — it's above my top role.")
+        return ToolResult.fail(f"Cannot remove `{role.name}` - it's above my top role.")
 
     reason = ctx.str_arg("reason")
     await target.remove_roles(role, reason=f"AI Mod ({ctx.actor}): {reason}")
 
-    embed = discord.Embed(description=f"✅ Removed {role.mention} from {target.mention}", color=discord.Color.orange())
+    embed = discord.Embed(description=f"Done Removed {role.mention} from {target.mention}", color=discord.Color.orange())
     return ToolResult.ok("Role removed.", embed=embed)
 
 
-@ToolRegistry.register(ToolType.CREATE_ROLE, display_name="Create Role", color=discord.Color.blue(), emoji="✨", required_permission="manage_roles")
+@ToolRegistry.register(ToolType.CREATE_ROLE, display_name="Create Role", color=discord.Color.blue(), emoji="*", required_permission="manage_roles")
 async def handle_create_role(ctx: ToolContext) -> ToolResult:
     name = ctx.arg("name")
     if not name:
@@ -2969,11 +2899,11 @@ async def handle_create_role(ctx: ToolContext) -> ToolResult:
         name=name, color=color, hoist=hoist,
         reason=f"AI Mod ({ctx.actor}): {reason}",
     )
-    embed = discord.Embed(description=f"✅ Created role {role.mention}", color=color)
+    embed = discord.Embed(description=f"Done Created role {role.mention}", color=color)
     return ToolResult.ok("Role created.", embed=embed)
 
 
-@ToolRegistry.register(ToolType.DELETE_ROLE, display_name="Delete Role", color=discord.Color.red(), emoji="🗑️", required_permission="manage_roles")
+@ToolRegistry.register(ToolType.DELETE_ROLE, display_name="Delete Role", color=discord.Color.red(), emoji="Delete", required_permission="manage_roles")
 async def handle_delete_role(ctx: ToolContext) -> ToolResult:
     role = await ctx.resolve_role()
     if not role:
@@ -2984,11 +2914,11 @@ async def handle_delete_role(ctx: ToolContext) -> ToolResult:
         return ToolResult.fail("That role is above me in the hierarchy.")
 
     await role.delete(reason=f"AI Mod ({ctx.actor}): {ctx.str_arg('reason')}")
-    embed = discord.Embed(description=f"🗑️ Deleted role **{role.name}**", color=discord.Color.red())
+    embed = discord.Embed(description=f"Delete Deleted role **{role.name}**", color=discord.Color.red())
     return ToolResult.ok("Role deleted.", embed=embed)
 
 
-@ToolRegistry.register(ToolType.EDIT_ROLE, display_name="Edit Role", color=discord.Color.blue(), emoji="✏️", required_permission="manage_roles")
+@ToolRegistry.register(ToolType.EDIT_ROLE, display_name="Edit Role", color=discord.Color.blue(), emoji="Edit", required_permission="manage_roles")
 async def handle_edit_role(ctx: ToolContext) -> ToolResult:
     role = await ctx.resolve_role()
     if not role:
@@ -3005,7 +2935,7 @@ async def handle_edit_role(ctx: ToolContext) -> ToolResult:
         kwargs["color"] = _parse_hex_color(ctx.args["new_color"])
 
     if not kwargs:
-        return ToolResult.fail("Nothing to edit — provide new_name and/or new_color.")
+        return ToolResult.fail("Nothing to edit - provide new_name and/or new_color.")
 
     await role.edit(**kwargs, reason=f"AI Mod ({ctx.actor})")
     return ToolResult.ok(f"Role **{role.name}** updated.")
@@ -3014,7 +2944,7 @@ async def handle_edit_role(ctx: ToolContext) -> ToolResult:
 # -- Channel Management -------------------------------------------------------
 
 
-@ToolRegistry.register(ToolType.CREATE_CHANNEL, display_name="Create Channel", color=discord.Color.green(), emoji="📺", required_permission="manage_channels")
+@ToolRegistry.register(ToolType.CREATE_CHANNEL, display_name="Create Channel", color=discord.Color.green(), emoji="Channel", required_permission="manage_channels")
 async def handle_create_channel(ctx: ToolContext) -> ToolResult:
     name = ctx.arg("name")
     if not name:
@@ -3039,11 +2969,11 @@ async def handle_create_channel(ctx: ToolContext) -> ToolResult:
     else:
         ch = await ctx.guild.create_text_channel(name, category=category, reason=reason)
 
-    embed = discord.Embed(description=f"✅ Created {ch.mention}", color=discord.Color.green())
+    embed = discord.Embed(description=f"Done Created {ch.mention}", color=discord.Color.green())
     return ToolResult.ok("Channel created.", embed=embed)
 
 
-@ToolRegistry.register(ToolType.DELETE_CHANNEL, display_name="Delete Channel", color=discord.Color.red(), emoji="🗑️", required_permission="manage_channels")
+@ToolRegistry.register(ToolType.DELETE_CHANNEL, display_name="Delete Channel", color=discord.Color.red(), emoji="Delete", required_permission="manage_channels")
 async def handle_delete_channel(ctx: ToolContext) -> ToolResult:
     query = str(ctx.arg("channel_name", "")).strip()
     if not query:
@@ -3062,7 +2992,7 @@ async def handle_delete_channel(ctx: ToolContext) -> ToolResult:
     return ToolResult.ok(f"Channel `{name}` deleted.")
 
 
-@ToolRegistry.register(ToolType.EDIT_CHANNEL, display_name="Edit Channel", color=discord.Color.blue(), emoji="📝", required_permission="manage_channels")
+@ToolRegistry.register(ToolType.EDIT_CHANNEL, display_name="Edit Channel", color=discord.Color.blue(), emoji="Edit", required_permission="manage_channels")
 async def handle_edit_channel(ctx: ToolContext) -> ToolResult:
     channel: discord.abc.GuildChannel = ctx.message.channel  # type: ignore[assignment]
     if channel_name := ctx.arg("channel_name"):
@@ -3086,7 +3016,7 @@ async def handle_edit_channel(ctx: ToolContext) -> ToolResult:
         try:
             kwargs["slowmode_delay"] = max(0, min(int(ctx.args["slowmode"]), 21600))
         except (TypeError, ValueError):
-            return ToolResult.fail("Invalid slowmode value — must be 0–21600 seconds.")
+            return ToolResult.fail("Invalid slowmode value - must be 0-21600 seconds.")
     if isinstance(channel, discord.VoiceChannel):
         if "bitrate" in ctx.args:
             try:
@@ -3107,7 +3037,7 @@ async def handle_edit_channel(ctx: ToolContext) -> ToolResult:
     return ToolResult.ok(f"Channel updated: `{changes}`.")
 
 
-@ToolRegistry.register(ToolType.LOCK_CHANNEL, display_name="Lock Channel", color=discord.Color.orange(), emoji="🔒", required_permission="manage_channels")
+@ToolRegistry.register(ToolType.LOCK_CHANNEL, display_name="Lock Channel", color=discord.Color.orange(), emoji="Locked", required_permission="manage_channels")
 async def handle_lock_channel(ctx: ToolContext) -> ToolResult:
     channel = ctx.message.channel
     if not hasattr(channel, "set_permissions"):
@@ -3116,10 +3046,10 @@ async def handle_lock_channel(ctx: ToolContext) -> ToolResult:
         ctx.guild.default_role, send_messages=False,
         reason=f"Lock by {ctx.actor}",
     )
-    return ToolResult.ok("Channel locked 🔒")
+    return ToolResult.ok("Channel locked Locked")
 
 
-@ToolRegistry.register(ToolType.UNLOCK_CHANNEL, display_name="Unlock Channel", color=discord.Color.green(), emoji="🔓", required_permission="manage_channels")
+@ToolRegistry.register(ToolType.UNLOCK_CHANNEL, display_name="Unlock Channel", color=discord.Color.green(), emoji="Unlocked", required_permission="manage_channels")
 async def handle_unlock_channel(ctx: ToolContext) -> ToolResult:
     channel = ctx.message.channel
     if not hasattr(channel, "set_permissions"):
@@ -3128,13 +3058,13 @@ async def handle_unlock_channel(ctx: ToolContext) -> ToolResult:
         ctx.guild.default_role, send_messages=True,
         reason=f"Unlock by {ctx.actor}",
     )
-    return ToolResult.ok("Channel unlocked 🔓")
+    return ToolResult.ok("Channel unlocked Unlocked")
 
 
 # -- Member Admin -------------------------------------------------------------
 
 
-@ToolRegistry.register(ToolType.SET_NICKNAME, display_name="Set Nickname", color=discord.Color.blue(), emoji="🏷️", required_permission="manage_nicknames")
+@ToolRegistry.register(ToolType.SET_NICKNAME, display_name="Set Nickname", color=discord.Color.blue(), emoji="Nick", required_permission="manage_nicknames")
 async def handle_set_nickname(ctx: ToolContext) -> ToolResult:
     target = await ctx.resolve_target()
     if not target:
@@ -3156,7 +3086,7 @@ async def handle_set_nickname(ctx: ToolContext) -> ToolResult:
 # -- Voice --------------------------------------------------------------------
 
 
-@ToolRegistry.register(ToolType.MOVE_MEMBER, display_name="Move Member", color=discord.Color.purple(), emoji="🗣️", required_permission="move_members")
+@ToolRegistry.register(ToolType.MOVE_MEMBER, display_name="Move Member", color=discord.Color.purple(), emoji="Move", required_permission="move_members")
 async def handle_move_member(ctx: ToolContext) -> ToolResult:
     target = await ctx.resolve_target()
     if not target:
@@ -3185,7 +3115,7 @@ async def handle_move_member(ctx: ToolContext) -> ToolResult:
     return ToolResult.ok(f"Moved {target.display_name} to **{vc.name}**.")
 
 
-@ToolRegistry.register(ToolType.DISCONNECT_MEMBER, display_name="Disconnect Member", color=discord.Color.dark_grey(), emoji="🔌", required_permission="move_members")
+@ToolRegistry.register(ToolType.DISCONNECT_MEMBER, display_name="Disconnect Member", color=discord.Color.dark_grey(), emoji="Disconnect", required_permission="move_members")
 async def handle_disconnect_member(ctx: ToolContext) -> ToolResult:
     target = await ctx.resolve_target()
     if not target:
@@ -3197,10 +3127,49 @@ async def handle_disconnect_member(ctx: ToolContext) -> ToolResult:
     return ToolResult.ok(f"Disconnected **{target.display_name}** from voice.")
 
 
+@ToolRegistry.register(ToolType.DM_USER, display_name="DM User", color=discord.Color.green(), emoji="DM")
+async def handle_dm_user(ctx: ToolContext) -> ToolResult:
+    is_owner = await ctx.cog.bot.is_owner(ctx.actor)
+    is_admin = isinstance(ctx.actor, discord.Member) and ctx.actor.guild_permissions.administrator
+    can_manage = isinstance(ctx.actor, discord.Member) and ctx.actor.guild_permissions.manage_messages
+    if not (is_owner or is_admin or can_manage):
+        return ToolResult.fail("You need Manage Messages to DM users through the bot.")
+
+    target = await ctx.resolve_target()
+    if not target:
+        return ToolResult.fail("Target user not found.")
+    if target.bot:
+        return ToolResult.fail("I won't DM another bot.")
+
+    dm_text = str(ctx.arg("message", "")).strip()
+    if not dm_text:
+        return ToolResult.fail("What should I DM them?")
+    if len(dm_text) > 1900:
+        return ToolResult.fail("That DM is too long. Keep it under 1900 characters.")
+
+    try:
+        await target.send(dm_text)
+    except discord.Forbidden:
+        return ToolResult.fail(f"I couldn't DM {target.mention}; their DMs are closed or they blocked the bot.")
+    except discord.HTTPException as exc:
+        return ToolResult.fail(f"Discord rejected the DM ({exc.status}).")
+
+    await ctx.cog.log_action(
+        message=ctx.message,
+        action="dm_user",
+        actor=ctx.actor,
+        target=target,
+        reason="AI Moderation DM",
+        decision=ctx.decision,
+        extra={"Message": dm_text[:900]},
+    )
+    return ToolResult.ok(f"Done! Sent a DM to {target.mention}.")
+
+
 # -- Server & Assets ----------------------------------------------------------
 
 
-@ToolRegistry.register(ToolType.EDIT_GUILD, display_name="Edit Server", color=discord.Color.gold(), emoji="🏠", required_permission="manage_guild")
+@ToolRegistry.register(ToolType.EDIT_GUILD, display_name="Edit Server", color=discord.Color.gold(), emoji="Server", required_permission="manage_guild")
 async def handle_edit_guild(ctx: ToolContext) -> ToolResult:
     kwargs: Dict[str, Any] = {}
     if "name" in ctx.args:
@@ -3211,7 +3180,7 @@ async def handle_edit_guild(ctx: ToolContext) -> ToolResult:
     return ToolResult.ok("Server settings updated.")
 
 
-@ToolRegistry.register(ToolType.CREATE_EMOJI, display_name="Create Emoji", color=discord.Color.green(), emoji="😀", required_permission="manage_emojis")
+@ToolRegistry.register(ToolType.CREATE_EMOJI, display_name="Create Emoji", color=discord.Color.green(), emoji="Emoji", required_permission="manage_emojis")
 async def handle_create_emoji(ctx: ToolContext) -> ToolResult:
     name = ctx.arg("name")
     url = ctx.arg("url")
@@ -3230,14 +3199,14 @@ async def handle_create_emoji(ctx: ToolContext) -> ToolResult:
                 return ToolResult.fail(f"Failed to download image (HTTP {resp.status}).")
             data = await resp.read()
         emoji = await ctx.guild.create_custom_emoji(name=str(name), image=data, reason=f"AI Mod ({ctx.actor})")
-        embed = discord.Embed(description=f"✅ Created emoji {emoji}", color=discord.Color.green())
+        embed = discord.Embed(description=f"Done Created emoji {emoji}", color=discord.Color.green())
         return ToolResult.ok("Emoji created.", embed=embed)
     finally:
         if owned_session:
             await session.close()
 
 
-@ToolRegistry.register(ToolType.DELETE_EMOJI, display_name="Delete Emoji", color=discord.Color.red(), emoji="🗑️", required_permission="manage_emojis")
+@ToolRegistry.register(ToolType.DELETE_EMOJI, display_name="Delete Emoji", color=discord.Color.red(), emoji="Delete", required_permission="manage_emojis")
 async def handle_delete_emoji(ctx: ToolContext) -> ToolResult:
     name = ctx.arg("name")
     if not name:
@@ -3249,7 +3218,7 @@ async def handle_delete_emoji(ctx: ToolContext) -> ToolResult:
     return ToolResult.ok(f"Emoji `{name}` deleted.")
 
 
-@ToolRegistry.register(ToolType.CREATE_INVITE, display_name="Create Invite", color=discord.Color.green(), emoji="📨", required_permission="create_instant_invite")
+@ToolRegistry.register(ToolType.CREATE_INVITE, display_name="Create Invite", color=discord.Color.green(), emoji="Invite", required_permission="create_instant_invite")
 async def handle_create_invite(ctx: ToolContext) -> ToolResult:
     max_age = max(0, min(ctx.int_arg("max_age", 86400), 604800))
     invite = await ctx.message.channel.create_invite(  # type: ignore[union-attr]
@@ -3258,27 +3227,27 @@ async def handle_create_invite(ctx: ToolContext) -> ToolResult:
     return ToolResult.ok(f"Invite created: {invite.url}")
 
 
-@ToolRegistry.register(ToolType.PIN_MESSAGE, display_name="Pin Message", color=discord.Color.red(), emoji="📌", required_permission="manage_messages")
+@ToolRegistry.register(ToolType.PIN_MESSAGE, display_name="Pin Message", color=discord.Color.red(), emoji="Pin", required_permission="manage_messages")
 async def handle_pin_message(ctx: ToolContext) -> ToolResult:
     msg_id = ctx.arg("message_id")
     if not msg_id:
         return ToolResult.fail("Message ID is required.")
     msg = await ctx.message.channel.fetch_message(int(msg_id))
     await msg.pin(reason=f"AI Mod ({ctx.actor})")
-    return ToolResult.ok("Message pinned 📌")
+    return ToolResult.ok("Message pinned Pin")
 
 
-@ToolRegistry.register(ToolType.UNPIN_MESSAGE, display_name="Unpin Message", color=discord.Color.orange(), emoji="📍", required_permission="manage_messages")
+@ToolRegistry.register(ToolType.UNPIN_MESSAGE, display_name="Unpin Message", color=discord.Color.orange(), emoji="Unpin", required_permission="manage_messages")
 async def handle_unpin_message(ctx: ToolContext) -> ToolResult:
     msg_id = ctx.arg("message_id")
     if not msg_id:
-        return ToolResult.fail("Message ID is required — reply to the message or provide its ID.")
+        return ToolResult.fail("Message ID is required - reply to the message or provide its ID.")
     msg = await ctx.message.channel.fetch_message(int(msg_id))
     await msg.unpin(reason=f"AI Mod ({ctx.actor})")
-    return ToolResult.ok("Message unpinned 📍")
+    return ToolResult.ok("Message unpinned Unpin")
 
 
-@ToolRegistry.register(ToolType.LOCK_THREAD, display_name="Lock Thread", color=discord.Color.orange(), emoji="🔒", required_permission="manage_threads")
+@ToolRegistry.register(ToolType.LOCK_THREAD, display_name="Lock Thread", color=discord.Color.orange(), emoji="Locked", required_permission="manage_threads")
 async def handle_lock_thread(ctx: ToolContext) -> ToolResult:
     thread: Optional[discord.Thread] = None
     if isinstance(ctx.message.channel, discord.Thread):
@@ -3296,11 +3265,34 @@ async def handle_lock_thread(ctx: ToolContext) -> ToolResult:
     return ToolResult.ok(f"Thread **{thread.name}** locked.")
 
 
-@ToolRegistry.register(ToolType.PURGE, display_name="Purge Messages", color=discord.Color.blue(), emoji="🗑️", required_permission="manage_messages")
+@ToolRegistry.register(ToolType.PURGE, display_name="Purge Messages", color=discord.Color.blue(), emoji="Delete", required_permission="manage_messages")
 async def handle_purge(ctx: ToolContext) -> ToolResult:
     channel = ctx.message.channel
+    raw_channel_id = ctx.arg("channel_id")
+    if raw_channel_id:
+        try:
+            resolved_channel = ctx.guild.get_channel(int(raw_channel_id))
+        except (TypeError, ValueError):
+            resolved_channel = None
+        if resolved_channel is None:
+            return ToolResult.fail("I couldn't find that channel.")
+        channel = resolved_channel
+
     if not isinstance(channel, discord.TextChannel):
         return ToolResult.fail("Purge only works in text channels.")
+
+    if ctx.arg("needs_channel_scope"):
+        return ToolResult.ok(
+            f"Did you mean in {ctx.message.channel.mention}, or in all channels? "
+            "Mention the channel to use, or say `in this channel`."
+        )
+
+    bot_member = ctx.guild.me
+    all_channels_requested = bool(ctx.arg("all_channels_requested"))
+    if bot_member and not all_channels_requested:
+        bot_perms = channel.permissions_for(bot_member)
+        if not bot_perms.manage_messages or not bot_perms.read_message_history:
+            return ToolResult.fail(f"I need Manage Messages and Read Message History in {channel.mention}.")
 
     amount = max(1, min(ctx.int_arg("amount", 10), 500))
     reason = ctx.str_arg("reason", "AI Moderation purge")
@@ -3318,33 +3310,91 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
     if lookback_seconds is not None:
         lookback_seconds = max(1, min(lookback_seconds, 14 * 24 * 60 * 60))
 
+    if all_channels_requested and target_user_id is None:
+        return ToolResult.ok("Tell me whose messages to delete when using all channels.")
+
     logging_cog = ctx.cog.bot.get_cog("Logging")
-    if logging_cog:
+    if logging_cog and not all_channels_requested:
         logging_cog.suppress_message_delete_log(channel.id)
         logging_cog.suppress_bulk_delete_log(channel.id)
 
     cutoff = _now() - timedelta(seconds=lookback_seconds) if lookback_seconds else None
 
-    max_matches = amount
-    matched_count = 0
-
-    def should_delete(candidate: discord.Message) -> bool:
-        nonlocal matched_count
+    def message_matches(candidate: discord.Message) -> bool:
         if candidate.id == ctx.message.id:
             return False
         if target_user_id is not None and candidate.author.id != target_user_id:
             return False
         if cutoff and candidate.created_at < cutoff:
             return False
-        if matched_count >= max_matches:
-            return False
-        matched_count += 1
         return True
 
-    purge_limit = amount + 1 if target_user_id is None and lookback_seconds is None else 500
-    deleted = await channel.purge(limit=purge_limit, check=should_delete)
-    deleted_messages = [m for m in deleted if m.id != ctx.message.id]
-    deleted_count = len(deleted_messages)
+    deleted_messages: List[discord.Message] = []
+    deleted_by_channel: Dict[int, int] = {}
+
+    async def purge_one_channel(target_channel: discord.TextChannel, remaining: int) -> List[discord.Message]:
+        matched_count = 0
+
+        def should_delete(candidate: discord.Message) -> bool:
+            nonlocal matched_count
+            if not message_matches(candidate):
+                return False
+            if matched_count >= remaining:
+                return False
+            matched_count += 1
+            return True
+
+        if logging_cog:
+            logging_cog.suppress_message_delete_log(target_channel.id)
+            logging_cog.suppress_bulk_delete_log(target_channel.id)
+        purge_limit = remaining + 1 if target_user_id is None and lookback_seconds is None else 500
+        return await target_channel.purge(limit=purge_limit, check=should_delete)
+
+    if all_channels_requested:
+        for target_channel in ctx.guild.text_channels:
+            if len(deleted_messages) >= amount:
+                break
+            if bot_member:
+                bot_perms = target_channel.permissions_for(bot_member)
+                if not bot_perms.manage_messages or not bot_perms.read_message_history:
+                    continue
+            remaining = amount - len(deleted_messages)
+            try:
+                deleted = await purge_one_channel(target_channel, remaining)
+            except (discord.Forbidden, discord.HTTPException):
+                logger.debug("Skipping channel during all-channel purge: %s", target_channel.id, exc_info=True)
+                continue
+            deleted_clean = [m for m in deleted if m.id != ctx.message.id]
+            if deleted_clean:
+                deleted_messages.extend(deleted_clean)
+                deleted_by_channel[target_channel.id] = deleted_by_channel.get(target_channel.id, 0) + len(deleted_clean)
+        deleted_count = len(deleted_messages)
+    else:
+        deleted = await purge_one_channel(channel, amount)
+        deleted_messages = [m for m in deleted if m.id != ctx.message.id]
+        deleted_count = len(deleted_messages)
+
+    if all_channels_requested:
+        channel_label = f"{len(deleted_by_channel)} channel{'s' if len(deleted_by_channel) != 1 else ''}"
+    else:
+        channel_label = channel.mention
+
+    # Keep transcript logs channel-specific. A cross-channel transcript would be
+    # misleading because the existing transcript template represents one channel.
+    if all_channels_requested:
+        await ctx.cog.log_action(
+            message=ctx.message, action="purge_messages",
+            actor=ctx.actor, target=None, reason=reason, decision=ctx.decision,
+            extra={"Count": str(deleted_count), "Scope": "All channels"},
+        )
+        target_text = f" of <@{target_user_id}>" if target_user_id is not None else ""
+        if deleted_count == 0:
+            return ToolResult.ok(f"I didn't find any messages{target_text} in any channel.")
+        plural = "message" if deleted_count == 1 else "messages"
+        cap_note = " I stopped at the 500-message safety cap." if deleted_count >= amount and amount >= 500 else ""
+        return ToolResult.ok(
+            f"Done! All {deleted_count} {plural}{target_text} across {channel_label} have been deleted.{cap_note}"
+        )
 
     if deleted_count > 0 and logging_cog:
         try:
@@ -3369,7 +3419,7 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
                     break
             preview_text = "\n".join(preview_lines) if preview_lines else "*No text content available*"
 
-            # FIX: generate_html_transcript may return bytes or BytesIO — handle both
+            # FIX: generate_html_transcript may return bytes or BytesIO - handle both
             transcript_raw = generate_html_transcript(
                 ctx.guild, channel, [], purged_messages=deleted_messages
             )
@@ -3420,34 +3470,48 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
         except Exception:
             logger.debug("Failed to post purge transcript", exc_info=True)
 
-    embed = discord.Embed(
-        title="🗑️ Messages Purged",
-        description=f"Deleted **{deleted_count}** message(s).",
-        color=discord.Color.blue(),
-        timestamp=_now(),
-    )
-    embed.add_field(name="Reason", value=reason, inline=False)
-    if target_user_id is not None:
-        embed.add_field(name="Target Author", value=f"<@{target_user_id}> (`{target_user_id}`)", inline=True)
-    if lookback_seconds is not None:
-        embed.add_field(name="Lookback", value=f"{lookback_seconds // 60 if lookback_seconds >= 60 else lookback_seconds} {'minute(s)' if lookback_seconds >= 60 else 'second(s)'}", inline=True)
-    embed.set_footer(text=f"By {ctx.actor} via AI Moderation")
-
     await ctx.cog.log_action(
         message=ctx.message, action="purge_messages",
         actor=ctx.actor, target=None, reason=reason, decision=ctx.decision,
         extra={"Count": str(deleted_count)},
     )
-    return ToolResult.ok("Messages purged.", embed=embed)
+    target_text = f" of <@{target_user_id}>" if target_user_id is not None else ""
+    window_text = ""
+    if lookback_seconds is not None:
+        if lookback_seconds % 86400 == 0:
+            unit_amount = lookback_seconds // 86400
+            window_text = f" from the last {unit_amount} day{'s' if unit_amount != 1 else ''}"
+        elif lookback_seconds % 3600 == 0:
+            unit_amount = lookback_seconds // 3600
+            window_text = f" from the last {unit_amount} hour{'s' if unit_amount != 1 else ''}"
+        elif lookback_seconds % 60 == 0:
+            unit_amount = lookback_seconds // 60
+            window_text = f" from the last {unit_amount} minute{'s' if unit_amount != 1 else ''}"
+        else:
+            window_text = f" from the last {lookback_seconds} seconds"
+
+    if deleted_count == 0:
+        return ToolResult.ok(f"I didn't find any messages{target_text}{window_text} in {channel.mention}.")
+
+    plural = "message" if deleted_count == 1 else "messages"
+    cap_note = " I stopped at the 500-message safety cap." if deleted_count >= amount and amount >= 500 else ""
+    if target_user_id is not None and not cap_note:
+        return ToolResult.ok(
+            f"Done! All {deleted_count} {plural}{target_text}{window_text} in {channel.mention} "
+            f"have been deleted.{cap_note}"
+        )
+    return ToolResult.ok(
+        f"Done! Deleted {deleted_count} {plural}{target_text}{window_text} in {channel.mention}.{cap_note}"
+    )
 
 
-@ToolRegistry.register(ToolType.HELP, display_name="Show Help", color=discord.Color.blurple(), emoji="❓")
+@ToolRegistry.register(ToolType.HELP, display_name="Show Help", color=discord.Color.blurple(), emoji="?")
 async def handle_help(ctx: ToolContext) -> ToolResult:
     embed = ctx.cog.build_help_embed(ctx.guild)
     return ToolResult.ok("Help displayed.", embed=embed)
 
 
-@ToolRegistry.register(ToolType.EXECUTE_RAW_API, display_name="Execute Raw API", color=discord.Color.blurple(), emoji="⚙️")
+@ToolRegistry.register(ToolType.EXECUTE_RAW_API, display_name="Execute Raw API", color=discord.Color.blurple(), emoji="API")
 async def handle_execute_raw_api(ctx: ToolContext) -> ToolResult:
     method = str(ctx.arg("method", "")).strip().upper()
     endpoint = str(ctx.arg("endpoint", "")).strip()
@@ -3487,76 +3551,286 @@ async def handle_execute_raw_api(ctx: ToolContext) -> ToolResult:
 
 
 
-@ToolRegistry.register(ToolType.EXECUTE_PYTHON, display_name="Execute Python", color=discord.Color.red(), emoji="🐍")
+@ToolRegistry.register(ToolType.EXECUTE_PYTHON, display_name="Execute Python", color=discord.Color.red(), emoji="Python")
 async def handle_execute_python(ctx: ToolContext) -> ToolResult:
-    # Allow bot owner OR server administrators
+    """
+    Sandboxed Python execution tool for AI-driven server automation.
+
+    Security layers:
+        1. Permission gate — bot owner or guild administrator only.
+        2. Static blocklist — reject code importing dangerous modules.
+        3. Channel proxy — intercepts public sends to prevent spam.
+        4. Timeout enforcement — kills runaway code after _EXEC_TIMEOUT_SECONDS.
+        5. Output size capping — prevents embed overflow.
+    """
+    import datetime
+    import traceback as _tb_mod
+
+    _EXEC_TIMEOUT_SECONDS: int = 30
+    _MAX_PREVIEW_LENGTH: int = 900
+    _MAX_CODE_DISPLAY: int = 1000
+    _MAX_CAPTURED_SENDS: int = 10
+    _CAPTURED_SEND_LIMIT: int = 500
+
+    # ── Blocked modules that should never appear in generated code ──
+    _BLOCKED_MODULES: frozenset = frozenset({
+        "os", "subprocess", "shutil", "pathlib", "signal",
+        "ctypes", "importlib", "sys", "builtins", "__builtins__",
+        "socket", "http", "requests", "urllib", "aiohttp",
+        "eval", "exec", "compile", "globals", "locals",
+        "pickle", "shelve", "marshal",
+    })
+
+    # ── 1. Permission gate ──────────────────────────────────────────
     is_owner = await ctx.cog.bot.is_owner(ctx.actor)
     is_admin = isinstance(ctx.actor, discord.Member) and ctx.actor.guild_permissions.administrator
     if not is_owner and not is_admin:
         return ToolResult.fail("Execute Python is restricted to administrators.")
 
-    code = str(ctx.arg("code", "")).strip()
-    if code.startswith("```python"):
-        code = code[9:]
-    elif code.startswith("```py"):
-        code = code[5:]
-    if code.endswith("```"):
-        code = code[:-3]
-    code = code.strip()
-
+    # ── 2. Extract and sanitize code ────────────────────────────────
+    code = _strip_code_fences(str(ctx.arg("code", "")))
     if not code:
         return ToolResult.fail("No Python code provided.")
 
-    import datetime
-    async def fetch_recent_activity(days: int = 7) -> dict[int, datetime.datetime]:
-        """Helper to get a dictionary of {member_id: last_message_datetime} for recent activity across text channels."""
-        now = datetime.datetime.now(datetime.timezone.utc)
-        cutoff = now - datetime.timedelta(days=days)
-        activity = {}
-        for text_channel in ctx.guild.text_channels:
-            try:
-                async for msg in text_channel.history(limit=50, after=cutoff):
-                    if msg.author.id not in activity or msg.created_at > activity[msg.author.id]:
-                        activity[msg.author.id] = msg.created_at
-            except Exception:
-                pass
-        return activity
+    # ── 3. Static blocklist scan (skipped for admins/owners) ────────
+    # Admins already passed the permission gate — no restrictions.
+    
 
-    env = {
+    # ── 4. Build sandboxed environment ──────────────────────────────
+    captured_sends: List[str] = []
+
+    channel_proxy = _ChannelSendProxy(
+        wrapped=ctx.message.channel if ctx.message else None,
+        captured=captured_sends,
+        limit=_CAPTURED_SEND_LIMIT,
+        max_captures=_MAX_CAPTURED_SENDS,
+    )
+    message_proxy = (
+        _MessageChannelProxy(ctx.message, channel_proxy)
+        if ctx.message else None
+    )
+
+    env: Dict[str, Any] = {
         "bot": ctx.cog.bot,
         "guild": ctx.guild,
         "author": ctx.actor,
-        "message": ctx.message,
-        "channel": ctx.message.channel if ctx.message else None,
+        "message": message_proxy,
+        "channel": channel_proxy,
         "discord": __import__("discord"),
         "asyncio": __import__("asyncio"),
-        "fetch_recent_activity": fetch_recent_activity,
+        "fetch_recent_activity": _make_activity_fetcher(ctx.guild),
     }
 
-    # Wrap in async function
-    wrapped_code = f"async def __ai_exec_func():\n"
-    for line in code.splitlines():
-        wrapped_code += f"    {line}\n"
+    # ── 5. Compile, execute with timeout ────────────────────────────
+    wrapped_source = _wrap_async(code)
 
     try:
-        exec(wrapped_code, env)
-        func = env["__ai_exec_func"]
-        result = await func()
-        
-        preview = str(result) if result is not None else "Execution completed successfully (no return value)."
-        if len(preview) > 900:
-            preview = preview[:897] + "..."
-
-        embed = discord.Embed(
-            title="Python Code Executed",
-            color=discord.Color.green(),
-            timestamp=_now(),
+        compiled = compile(wrapped_source, "<ai_exec>", "exec")
+    except SyntaxError as exc:
+        return ToolResult.fail(
+            f"Syntax error in generated code (line {exc.lineno}): {exc.msg}"
         )
-        embed.add_field(name="Code", value=f"```py\n{code[:1000]}\n```", inline=False)
-        embed.add_field(name="Result", value=f"```\n{preview}\n```", inline=False)
-        return ToolResult.ok("Python code executed.", embed=embed)
-    except Exception as e:
-        return ToolResult.fail(f"Python execution failed: {type(e).__name__}: {str(e)}")
+
+    try:
+        exec(compiled, env)
+        coro = env["__ai_exec_func"]()
+        raw_result = await asyncio.wait_for(coro, timeout=_EXEC_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        return ToolResult.fail(
+            f"Execution timed out after {_EXEC_TIMEOUT_SECONDS}s. "
+            "Try narrowing the scope or breaking into smaller steps."
+        )
+    except Exception as exc:
+        tb_lines = _tb_mod.format_exception(type(exc), exc, exc.__traceback__)
+        # Only keep the last 5 frames to avoid leaking internal paths
+        short_tb = "".join(tb_lines[-5:])
+        if len(short_tb) > _MAX_PREVIEW_LENGTH:
+            short_tb = short_tb[:_MAX_PREVIEW_LENGTH - 3] + "..."
+        return ToolResult.fail(
+            f"Python execution failed:\n```\n{short_tb}\n```"
+        )
+
+    # ── 6. Format result preview ────────────────────────────────────
+    preview = _build_result_preview(raw_result, captured_sends, _MAX_PREVIEW_LENGTH)
+
+    # ── 7. Log to automod ───────────────────────────────────────────
+    log_embed = discord.Embed(
+        title="Python Code Executed",
+        color=discord.Color.green(),
+        timestamp=_now(),
+    )
+    log_embed.add_field(
+        name="Code",
+        value=f"```py\n{code[:_MAX_CODE_DISPLAY]}\n```",
+        inline=False,
+    )
+    log_embed.add_field(
+        name="Result",
+        value=f"```\n{preview}\n```",
+        inline=False,
+    )
+
+    await _log_execution(ctx, preview, log_embed)
+    return ToolResult.ok("Done! I put the execution details in automod logs.")
+
+
+# ── execute_python helper functions ─────────────────────────────────────────
+
+
+def _strip_code_fences(raw: str) -> str:
+    """Remove markdown code fences and surrounding whitespace."""
+    code = raw.strip()
+    for prefix in ("```python", "```py", "```"):
+        if code.startswith(prefix):
+            code = code[len(prefix):]
+            break
+    if code.endswith("```"):
+        code = code[:-3]
+    return code.strip()
+
+
+def _scan_for_blocked_imports(code: str, blocked: frozenset) -> Optional[str]:
+    """Return the first blocked module name found, or None if clean."""
+    _IMPORT_RE = re.compile(
+        r"(?:^|\s)(?:import|from)\s+([\w.]+)", re.MULTILINE
+    )
+    for match in _IMPORT_RE.finditer(code):
+        root_module = match.group(1).split(".")[0]
+        if root_module in blocked:
+            return root_module
+
+    # Also catch __import__("os") style
+    _DUNDER_IMPORT_RE = re.compile(r"__import__\s*\(\s*['\"](\w+)['\"]")
+    for match in _DUNDER_IMPORT_RE.finditer(code):
+        if match.group(1) in blocked:
+            return match.group(1)
+
+    return None
+
+
+def _wrap_async(code: str) -> str:
+    """Wrap raw code lines inside an async function body."""
+    lines = code.splitlines()
+    indented = "\n".join(f"    {line}" for line in lines)
+    return f"async def __ai_exec_func():\n{indented}\n"
+
+
+def _build_result_preview(
+    raw_result: Any,
+    captured_sends: List[str],
+    max_length: int,
+) -> str:
+    """Build a human-readable preview string from execution output."""
+    parts: List[str] = []
+
+    if raw_result is not None:
+        parts.append(str(raw_result))
+    elif not captured_sends:
+        parts.append("Execution completed successfully (no return value).")
+
+    if captured_sends:
+        header = f"Captured public send(s) ({len(captured_sends)}):"
+        send_lines = [f"  • {line}" for line in captured_sends]
+        parts.append(header + "\n" + "\n".join(send_lines))
+
+    preview = "\n\n".join(parts)
+    if len(preview) > max_length:
+        preview = preview[: max_length - 3] + "..."
+    return preview
+
+
+class _ChannelSendProxy:
+    """Intercepts channel.send() to capture output without posting publicly."""
+
+    __slots__ = ("_wrapped", "_captured", "_limit", "_max_captures")
+
+    def __init__(
+        self,
+        wrapped: Any,
+        captured: List[str],
+        limit: int = 500,
+        max_captures: int = 10,
+    ) -> None:
+        self._wrapped = wrapped
+        self._captured = captured
+        self._limit = limit
+        self._max_captures = max_captures
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._wrapped, name)
+
+    async def send(self, *args: Any, **kwargs: Any) -> None:
+        if len(self._captured) >= self._max_captures:
+            return None
+
+        content = str(args[0]) if args else str(kwargs.get("content") or "")
+        embed = kwargs.get("embed")
+        if embed is not None:
+            title = getattr(embed, "title", None) or "embed"
+            description = getattr(embed, "description", None) or ""
+            content = f"[embed: {title}] {description}".strip()
+
+        self._captured.append((content or "[empty send]")[: self._limit])
+        return None
+
+
+class _MessageChannelProxy:
+    """Proxy around discord.Message that replaces .channel with the send proxy."""
+
+    __slots__ = ("_wrapped", "channel")
+
+    def __init__(self, wrapped: discord.Message, channel_proxy: _ChannelSendProxy) -> None:
+        self._wrapped = wrapped
+        self.channel = channel_proxy
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._wrapped, name)
+
+
+def _make_activity_fetcher(guild: discord.Guild) -> Callable:
+    """Factory for the fetch_recent_activity helper injected into generated code."""
+    import datetime as _dt
+
+    async def fetch_recent_activity(days: int = 7) -> Dict[int, Any]:
+        now = _dt.datetime.now(_dt.timezone.utc)
+        cutoff = now - _dt.timedelta(days=max(1, min(days, 30)))
+        activity: Dict[int, Any] = {}
+        for text_channel in guild.text_channels:
+            try:
+                async for msg in text_channel.history(limit=50, after=cutoff):
+                    existing = activity.get(msg.author.id)
+                    if existing is None or msg.created_at > existing:
+                        activity[msg.author.id] = msg.created_at
+            except (discord.Forbidden, discord.HTTPException):
+                continue
+        return activity
+
+    return fetch_recent_activity
+
+
+async def _log_execution(
+    ctx: ToolContext, preview: str, log_embed: discord.Embed
+) -> None:
+    """Send execution details to the automod audit log."""
+    await ctx.cog.log_action(
+        message=ctx.message,
+        action="execute_python",
+        actor=ctx.actor,
+        target=None,
+        reason=ctx.decision.reason or "AI Python execution",
+        decision=ctx.decision,
+        extra={"Result": preview[:900]},
+        view=None,
+    )
+    logging_cog = ctx.cog.bot.get_cog("Logging")
+    if not logging_cog:
+        return
+    try:
+        log_channel = await logging_cog.get_log_channel(ctx.guild, "automod")
+        if log_channel:
+            await logging_cog.safe_send_log(log_channel, log_embed)
+    except Exception:
+        logger.debug("Failed to send Python execution details to automod log", exc_info=True)
 
 # =============================================================================
 # MAIN COG
@@ -3585,12 +3859,15 @@ class AIModeration(commands.Cog):
         r"archive|signup|give\s+everyone|remove\s+everyone|mass\s|bulk\s|"
         r"make\s+(?:a\s+)?(?:private|project|category|group)|create\s+(?:a\s+)?project|homework|assignment|deadline|attendance|"
         r"delete\s+(?:the\s+)?(?:group|category|project)|ticket|support|faq|"
-        r"summarize|summary|report|stats|analytics|activity|inactive|leaderboard|xp|"
+        r"report|stats|analytics|activity|inactive|leaderboard|xp|"
         r"verify|verification|captcha|raid|anti[-\s]?raid|anti[-\s]?nuke|"
         r"queue|matchmaking|tournament|team\s+balanc|voice|vc|afk|"
         r"if\s+someone|when\s+someone|every\s+|whenever\s+|turn\s+this|"
         r"react|ping\s+everyone|ping\s+all|"
-        r"show|list|who|fetch|get|how\s+many|count|print|display)\b",
+        r"fetch|get\s+(?:audit|logs?|members?|roles?|channels?|cases?|warnings?)|"
+        r"how\s+many\s+(?:members?|users?|roles?|channels?|warnings?|cases?|messages?)|"
+        r"count\s+(?:members?|users?|roles?|channels?|warnings?|cases?|messages?)|"
+        r"(?:print|display)\s+(?:audit|logs?|members?|users?|roles?|channels?|cases?|warnings?|activity))\b",
         re.IGNORECASE,
     )
     _GREETING_WORDS: ClassVar[frozenset] = frozenset({
@@ -3630,7 +3907,7 @@ class AIModeration(commands.Cog):
         self._target_cache: Dict[int, Tuple[int, datetime]] = {}
 
         if not hasattr(bot, "db"):
-            logger.warning("Bot.db is missing — database features unavailable.")
+            logger.warning("Bot.db is missing - database features unavailable.")
 
     def cog_load(self) -> None:
         self._cleanup_cache.start()
@@ -3790,16 +4067,20 @@ class AIModeration(commands.Cog):
         low = self._normalize_chat_text(content)
         if self._looks_like_mod_request(low):
             return True
-        return bool(re.match(
-            r"^(?:please\s+|can\s+you\s+|could\s+you\s+)?("
-            r"create|make|build|set up|delete|remove|archive|lock|unlock|clone|reorder|move|sync|"
-            r"schedule|remind|announce|dm|summarize|report|track|count|list|show|fetch|"
-            r"role|channel|category|thread|event|ticket|poll|project|homework|assignment|deadline|"
-            r"raid|verification|welcome|goodbye|reaction role|leaderboard|attendance|inactive|"
-            r"if\s+someone|when\s+someone|every\s+|whenever\s+|turn\s+this"
-            r")\b",
-            low,
-        ))
+        prefix = r"^(?:please\s+|can\s+you\s+|could\s+you\s+)?"
+        action_patterns = (
+            r"(?:create|make|build|set up|delete|remove|archive|lock|unlock|clone|reorder|move|sync)\b",
+            r"(?:schedule|remind|announce|dm)\b",
+            r"(?:role|channel|category|thread|event|ticket|poll|project|homework|assignment|deadline)\b",
+            r"(?:raid|verification|welcome|goodbye|reaction role|leaderboard|attendance|inactive)\b",
+            r"(?:if\s+someone|when\s+someone|every\s+|whenever\s+|turn\s+this)\b",
+            r"(?:summarize|summary|report)\s+(?:this\s+)?(?:channel|thread|chat|messages?|logs?|activity)\b",
+            r"(?:show|list|fetch|get)\s+(?:audit|logs?|members?|users?|roles?|channels?|cases?|warnings?|inactive|activity|staff|admins?)\b",
+            r"(?:who|which\s+members?|which\s+users?)\s+(?:has|have|is|are)\s+(?:the\s+)?[\w\s@#&-]*(?:role|admin|staff|permission|muted|banned|timed\s+out)\b",
+            r"(?:who|which\s+members?|which\s+users?)\s+(?:joined|left|boosted|were\s+warned|got\s+warned|was\s+warned)\b",
+            r"(?:how\s+many|count)\s+(?:members?|users?|roles?|channels?|warnings?|cases?|messages?)\b",
+        )
+        return any(re.match(prefix + pattern, low) for pattern in action_patterns)
 
     def _quick_conversation_reply(self, content: str) -> Optional[str]:
         """Deterministic replies for simple social turns where the model overdoes it."""
@@ -3891,7 +4172,7 @@ class AIModeration(commands.Cog):
         low_reason = text.lower()
         mention = self.bot.user.mention if self.bot.user else "@bot"
 
-        # Rate limit errors — pass through directly
+        # Rate limit errors - pass through directly
         if "rate limit" in low_reason or "try again in" in low_reason:
             return text
 
@@ -3901,7 +4182,7 @@ class AIModeration(commands.Cog):
             "unexpected error", "authentication failed", "access denied",
         )):
             service_errors = [
-                "my brain glitched for a sec — try that again in a moment.",
+                "my brain glitched for a sec - try that again in a moment.",
                 "hit a connection issue on my end. give it another shot.",
                 "something broke behind the scenes. try again in a few seconds.",
             ]
@@ -3914,7 +4195,7 @@ class AIModeration(commands.Cog):
         if self._looks_like_mod_request(content):
             mod_errors = [
                 f"i need a target and reason for that. example: `{mention} warn @User spamming links`",
-                f"missing some details — try: `{mention} timeout @User 30m reason here`",
+                f"missing some details - try: `{mention} timeout @User 30m reason here`",
                 f"can you be more specific? format: `{mention} [action] @User [reason]`",
             ]
             return f"I need a bit more detail. Example: `{mention} timeout @User 30m reason here`"
@@ -3922,7 +4203,7 @@ class AIModeration(commands.Cog):
         # Generic parsing failure
         generic_errors = [
             "didn't quite catch that. could you rephrase?",
-            "not sure what you're asking — try again or check `/aihelp` for examples.",
+            "not sure what you're asking - try again or check `/aihelp` for examples.",
             "i couldn't figure out what to do with that. try rephrasing?",
         ]
         return "I could not figure out what to do with that. Could you rephrase?"
@@ -4188,14 +4469,6 @@ class AIModeration(commands.Cog):
             return f"I need the `{perm_name}` permission."
         return None
 
-    def requires_confirmation(
-        self,
-        tool: ToolType,
-        settings: GuildSettings,
-        actor: Optional[Union[discord.Member, discord.User]] = None,
-    ) -> bool:
-        return False
-
     # ------------------------------------------------------------------
     # Text-parsing helpers
     # ------------------------------------------------------------------
@@ -4245,6 +4518,36 @@ class AIModeration(commands.Cog):
         except ValueError:
             return None
 
+    @staticmethod
+    def _extract_purge_channel_id(text: str) -> Optional[int]:
+        matches = list(_CHANNEL_MENTION_RE.finditer(text or ""))
+        if not matches:
+            return None
+        try:
+            return int(matches[-1].group(1))
+        except ValueError:
+            return None
+
+    @staticmethod
+    def _purge_scope_is_ambiguous(text: str, args: Dict[str, Any]) -> bool:
+        low = re.sub(r"\s+", " ", (text or "").strip().lower())
+        if not args.get("target_user_id"):
+            return False
+        if not re.search(r"\ball\b", low):
+            return False
+        if args.get("channel_id") or args.get("lookback_seconds"):
+            return False
+        if re.search(r"\b(?:in|from)\s+(?:this channel|this chat|here|current channel)\b", low):
+            return False
+        if re.search(r"\b(?:all channels|every channel|serverwide|server-wide|whole server|entire server)\b", low):
+            return False
+        return True
+
+    @staticmethod
+    def _purge_all_channels_requested(text: str) -> bool:
+        low = re.sub(r"\s+", " ", (text or "").strip().lower())
+        return bool(re.search(r"\b(?:all channels|every channel|serverwide|server-wide|whole server|entire server)\b", low))
+
     def _extract_purge_target_from_mentions(self, message: discord.Message) -> Optional[int]:
         if not self.bot.user:
             return None
@@ -4265,6 +4568,45 @@ class AIModeration(commands.Cog):
             return mentions[0]
         return None
 
+    @staticmethod
+    def _extract_dm_args(content: str) -> Dict[str, Any]:
+        text = (content or "").strip()
+        patterns = (
+            r"^(?:dm|message|direct\s+message)\s+<@!?(\d{15,22})>\s+(.+)$",
+            r"^send\s+(?:a\s+)?dm\s+to\s+<@!?(\d{15,22})>\s+(.+)$",
+            r"^send\s+<@!?(\d{15,22})>\s+(.+)$",
+        )
+        for pattern in patterns:
+            match = re.match(pattern, text, flags=re.IGNORECASE | re.DOTALL)
+            if not match:
+                continue
+            return {
+                "target_user_id": int(match.group(1)),
+                "message": match.group(2).strip().strip('"'),
+            }
+        return {}
+
+    def _extract_dm_target_from_mentions(self, message: discord.Message) -> Optional[int]:
+        if not self.bot.user:
+            return None
+        mentions = [
+            user.id
+            for user in message.mentions
+            if user.id != self.bot.user.id and not getattr(user, "bot", False)
+        ]
+        return mentions[0] if mentions else None
+
+    def _extract_dm_message(self, content: str) -> Optional[str]:
+        args = self._extract_dm_args(content)
+        if args.get("message"):
+            return str(args["message"])
+        text = (content or "").strip()
+        text = re.sub(r"^(?:dm|message|direct\s+message)\s+", "", text, flags=re.IGNORECASE).strip()
+        text = re.sub(r"^send\s+(?:a\s+)?dm\s+to\s+", "", text, flags=re.IGNORECASE).strip()
+        text = re.sub(r"^send\s+", "", text, flags=re.IGNORECASE).strip()
+        text = re.sub(r"^<@!?\d{15,22}>\s*", "", text).strip()
+        return text.strip('"') or None
+
     def _extract_purge_args(self, content: str) -> Dict[str, Any]:
         args: Dict[str, Any] = {}
         amount = self._extract_purge_amount(content)
@@ -4273,9 +4615,16 @@ class AIModeration(commands.Cog):
         target_id = self._extract_purge_target_id(content)
         if target_id is not None:
             args["target_user_id"] = target_id
+        channel_id = self._extract_purge_channel_id(content)
+        if channel_id is not None:
+            args["channel_id"] = channel_id
         lookback_seconds = self._parse_lookback_seconds(content)
         if lookback_seconds:
             args["lookback_seconds"] = lookback_seconds
+        if self._purge_all_channels_requested(content):
+            args["all_channels_requested"] = True
+        if self._purge_scope_is_ambiguous(content, args):
+            args["needs_channel_scope"] = True
         return args
 
     def _extract_reason(self, text: str) -> Optional[str]:
@@ -4401,6 +4750,14 @@ class AIModeration(commands.Cog):
             if secs:
                 args["seconds"] = secs
             return Decision(type=DecisionType.TOOL_CALL, reason="rule: timeout", tool=ToolType.TIMEOUT, arguments=args)
+        dm_args = self._extract_dm_args(content)
+        if dm_args:
+            return Decision(
+                type=DecisionType.TOOL_CALL,
+                reason="rule: dm_user",
+                tool=ToolType.DM_USER,
+                arguments=dm_args,
+            )
         m = re.match(r"^(purge|clear|clean)\b(?:\s+(\d{1,4}))?", low)
         if m:
             amount = int(m.group(2)) if m.group(2) else 10
@@ -4441,6 +4798,10 @@ class AIModeration(commands.Cog):
 
         if re.search(r"\b(?:wipe|nuke|clean|clear|delete|purge)\b.*\b(?:chat|messages?|msgs?)\b", low):
             return decision(ToolType.PURGE, "purge_messages", self._extract_purge_args(content))
+
+        dm_args = self._extract_dm_args(content)
+        if dm_args:
+            return decision(ToolType.DM_USER, "dm_user", dm_args)
 
         if re.search(r"\b(?:unlock|open up|reopen)\b.*\b(?:channel|chat|here|this)?\b", low):
             return decision(ToolType.UNLOCK_CHANNEL, "unlock_channel")
@@ -4611,7 +4972,25 @@ class AIModeration(commands.Cog):
             secs = self._parse_duration_seconds(content)
             args["seconds"] = secs if secs else self.config.timeout_default_seconds
 
+        if tool == ToolType.DM_USER:
+            if not args.get("target_user_id"):
+                target_id = self._extract_dm_target_from_mentions(message)
+                if target_id is not None:
+                    args["target_user_id"] = target_id
+            if not args.get("message"):
+                dm_text = self._extract_dm_message(content)
+                if dm_text:
+                    args["message"] = dm_text
+
         if tool == ToolType.PURGE:
+            if self._purge_all_channels_requested(content):
+                args["all_channels_requested"] = True
+            if not args.get("channel_id"):
+                channel_id = self._extract_purge_channel_id(content)
+                if channel_id is None and message.channel_mentions:
+                    channel_id = message.channel_mentions[-1].id
+                if channel_id is not None:
+                    args["channel_id"] = channel_id
             if not args.get("target_user_id"):
                 target_id = self._extract_purge_target_id(content)
                 if target_id is None:
@@ -4622,6 +5001,10 @@ class AIModeration(commands.Cog):
                 lookback_seconds = self._parse_lookback_seconds(content)
                 if lookback_seconds:
                     args["lookback_seconds"] = lookback_seconds
+            if self._purge_scope_is_ambiguous(content, args):
+                args["needs_channel_scope"] = True
+            else:
+                args.pop("needs_channel_scope", None)
             try:
                 default_amount = 500 if args.get("target_user_id") or args.get("lookback_seconds") else 10
                 args["amount"] = max(1, min(int(args.get("amount", default_amount)), 500))
@@ -4762,31 +5145,63 @@ class AIModeration(commands.Cog):
         message: discord.Message,
         settings: GuildSettings,
     ) -> Optional[str]:
+        """
+        Ask the AI to generate raw async Python code for a server automation request.
+
+        Returns sanitized code string, or None if generation failed or the
+        response was empty / unsafe.
+        """
+        guild_id = message.guild.id
+        author_id = message.author.id
+        channel_id = message.channel.id
+        current_time = _now().astimezone().isoformat()
+
         code_prompt = (
-            f"Write raw async Python code using discord.py to accomplish this Discord server request: \"{content}\"\n"
-            f"Globals available when the code runs now: bot, guild, author, message, channel, discord, asyncio, fetch_recent_activity.\n"
-            f"You can import stdlib modules such as datetime, json, re, random, io, csv. Do not use pytz.\n"
-            f"Set these local variables first when useful:\n"
-            f"guild = bot.get_guild({message.guild.id})\n"
-            f"author = guild.get_member({message.author.id})\n"
-            f"channel = bot.get_channel({message.channel.id})\n"
-            f"Current time: {_now().astimezone().isoformat()}\n"
-            f"For scheduled events use guild.create_scheduled_event(..., privacy_level=discord.PrivacyLevel.guild_only, entity_type=discord.EntityType.external, location='Server').\n"
-            f"For reminders/delayed/repeating automation, persist it in scheduled_tasks using:\n"
-            f"async with bot.db.get_connection() as db:\n"
-            f"    await db.execute(\"INSERT INTO scheduled_tasks (guild_id, author_id, task_type, payload, execute_at) VALUES (?, ?, ?, ?, ?)\", (guild.id, author.id, 'execute_python', json.dumps({{'code': 'SELF_CONTAINED_CODE_HERE'}}), future_dt))\n"
-            f"    await db.commit()\n"
-            f"Scheduled task code must be self-contained and reacquire channels/users by ID because later it only has bot, guild, discord, asyncio.\n"
-            f"For mass destructive actions, limit scope carefully and explain what was affected in the final embed.\n"
-            f"Always end by sending a concise success/result embed to channel.\n"
-            f"Output ONLY raw python code. No markdown fences. No explanation."
+            f'Write raw async Python code using discord.py to accomplish this Discord server request: "{content}"\n'
+            "\n"
+            "== Runtime Globals ==\n"
+            "bot, guild, author, message, channel, discord, asyncio, fetch_recent_activity\n"
+            "\n"
+            "== Allowed Imports ==\n"
+            "Any stdlib module (datetime, json, re, random, io, csv, os, etc). Do not use pytz.\n"
+            "\n"
+            "== Bootstrap Variables (set these first when useful) ==\n"
+            f"guild = bot.get_guild({guild_id})\n"
+            f"author = guild.get_member({author_id})\n"
+            f"channel = bot.get_channel({channel_id})\n"
+            f"Current UTC time: {current_time}\n"
+            "\n"
+            "== Scheduled Events ==\n"
+            "guild.create_scheduled_event(..., privacy_level=discord.PrivacyLevel.guild_only, "
+            "entity_type=discord.EntityType.external, location='Server')\n"
+            "\n"
+            "== Reminders / Delayed Tasks ==\n"
+            "async with bot.db.get_connection() as db:\n"
+            '    await db.execute("INSERT INTO scheduled_tasks (guild_id, author_id, task_type, payload, execute_at) '
+            "VALUES (?, ?, ?, ?, ?)\", "
+            f"(guild.id, author.id, 'execute_python', json.dumps({{'code': 'SELF_CONTAINED_CODE'}}), future_dt))\n"
+            "    await db.commit()\n"
+            "Scheduled code must be self-contained (only has: bot, guild, discord, asyncio).\n"
+            "\n"
+            "== Rules ==\n"
+            "• Do NOT send public embeds or messages. Return a concise string result instead.\n"
+            "• For mass/destructive actions, limit scope and return what was affected.\n"
+            "• Output ONLY raw Python code. No markdown fences. No explanation.\n"
         )
-        return await self.ai._call(
+
+        raw_response = await self.ai._call(
             [{"role": "user", "content": code_prompt}],
             temperature=0.2,
-            max_tokens=2200,
+            max_tokens=3000,
             model=settings.model,
         )
+
+        if not raw_response:
+            return None
+
+        # Sanitize: strip any markdown fences the model may have added
+        code = _strip_code_fences(raw_response)
+        return code or None
 
     # ------------------------------------------------------------------
     # Help embed
@@ -4824,7 +5239,7 @@ class AIModeration(commands.Cog):
             return
 
         embed = discord.Embed(
-            title=f"🤖 AI Moderation: {action}",
+            title=f"Bot AI Moderation: {action}",
             color=discord.Color.blurple(),
             timestamp=_now(),
         )
@@ -4839,7 +5254,7 @@ class AIModeration(commands.Cog):
         if message.content:
             preview = message.content[:400]
             if len(message.content) > 400:
-                preview += "\n*…truncated*"
+                preview += "\n*...truncated*"
             embed.add_field(name="Original Message", value=preview, inline=False)
         embed.set_footer(text="AI Moderation")
 
@@ -4847,108 +5262,6 @@ class AIModeration(commands.Cog):
             await logging_cog.safe_send_log(channel, embed, view=view)
         except Exception:
             logger.debug("Failed to send AI mod log", exc_info=True)
-
-    # ------------------------------------------------------------------
-    # Confirmation flow
-    # ------------------------------------------------------------------
-
-    async def request_confirmation(
-        self,
-        message: discord.Message,
-        *,
-        tool: ToolType,
-        args: Dict[str, Any],
-        decision: Decision,
-        settings: GuildSettings,
-    ) -> None:
-        guild = message.guild
-        actor = message.author
-        if not guild or not isinstance(actor, discord.Member):
-            return
-
-        metadata = ToolRegistry.get_metadata(tool)
-        timeout_secs = settings.confirm_timeout_seconds
-
-        target_text = "*None*"
-        target_member: Optional[discord.Member] = None
-        raw_target = args.get("target_user_id")
-        if raw_target:
-            target_member = await self.resolve_member(guild, raw_target)
-            if target_member:
-                target_text = f"{target_member.mention} ({target_member})"
-            else:
-                target_text = f"<@{raw_target}> (ID: `{raw_target}`)"
-
-        extra_lines = ""
-        if tool == ToolType.TIMEOUT:
-            secs = int(args.get("seconds", self.config.timeout_default_seconds))
-            extra_lines = f"\n**Duration:** {secs // 60} minute(s)"
-        elif tool == ToolType.PURGE:
-            extra_lines = f"\n**Amount:** {args.get('amount', 10)} message(s)"
-            if args.get("lookback_seconds"):
-                extra_lines += f"\n**Lookback:** {int(args.get('lookback_seconds'))} second(s)"
-        elif tool == ToolType.BAN:
-            extra_lines = f"\n**Delete Messages:** {args.get('delete_message_days', 0)} day(s)"
-
-        reason = args.get("reason") or decision.reason or "No reason provided"
-
-        embed = discord.Embed(
-            title=f"🤖 Confirm: {metadata['emoji']} {metadata['display_name']}",
-            description=(
-                f"**Target:** {target_text}\n"
-                f"**Reason:** {reason}"
-                f"{extra_lines}\n\n"
-                f"⏱️ Expires in **{timeout_secs}s**"
-            ),
-            color=metadata["color"],
-            timestamp=_now(),
-        )
-        embed.set_footer(text=f"Requested by {actor}")
-        if target_member and target_member.avatar:
-            embed.set_thumbnail(url=target_member.display_avatar.url)
-
-        if message.content:
-            preview = message.content[:200]
-            if len(message.content) > 200:
-                preview += "…"
-            embed.add_field(name="Trigger", value=preview, inline=False)
-        embed.add_field(name="Channel", value=message.channel.mention, inline=True)
-
-        view = ConfirmActionView(
-            self, actor_id=actor.id, origin=message,
-            tool=tool, args=args, decision=decision,
-            timeout_seconds=timeout_secs,
-        )
-
-        # FIX: use getattr guard instead of direct self.bot.db access
-        send_channel: discord.abc.Messageable = message.channel
-        db = getattr(self.bot, "db", None)
-        if db:
-            try:
-                cfg = await db.get_settings(guild.id)
-                if cid := cfg.get("ai_confirmation_channel"):
-                    ch = guild.get_channel(int(cid))
-                    if ch:
-                        send_channel = ch
-            except Exception:
-                pass
-
-        try:
-            kwargs: Dict[str, Any] = {"embed": embed, "view": view}
-            if send_channel is message.channel:
-                kwargs["reference"] = message
-                kwargs["mention_author"] = False
-            prompt = await send_channel.send(**kwargs)  # type: ignore[arg-type]
-            view.prompt_message = prompt
-        except discord.HTTPException:
-            if send_channel is not message.channel:
-                try:
-                    prompt = await message.channel.send(embed=embed, view=view, reference=message, mention_author=False)
-                    view.prompt_message = prompt
-                    return
-                except discord.HTTPException:
-                    pass
-            await self.reply(message, content="⚠️ Couldn't send confirmation prompt — check channel permissions.", delete_after=15)
 
     # ------------------------------------------------------------------
     # Core event listener
@@ -5008,7 +5321,7 @@ class AIModeration(commands.Cog):
                 return
             # If the user is an admin/owner mentioning the bot with what looks like
             # an action request, still route to the AI tool router even if AI mod
-            # is "disabled" — the toggle is meant for auto-moderation, not for
+            # is "disabled" - the toggle is meant for auto-moderation, not for
             # blocking the owner from using AI tools.
             if is_mod_request and isinstance(message.author, discord.Member) and (
                 message.author.guild_permissions.administrator
@@ -5023,6 +5336,10 @@ class AIModeration(commands.Cog):
                 return
 
         if is_reply_to_bot and not is_mentioned and settings.chat_enabled and not is_mod_request:
+            await self._handle_conversation(message, content, settings)
+            return
+
+        if (is_mentioned or is_reply_to_bot) and settings.chat_enabled and not is_mod_request:
             await self._handle_conversation(message, content, settings)
             return
 
@@ -5067,6 +5384,17 @@ class AIModeration(commands.Cog):
         if not is_mentioned and not is_reply_to_bot and decision.type == DecisionType.TOOL_CALL:
             return
 
+        if (
+            decision.type == DecisionType.TOOL_CALL
+            and decision.tool == ToolType.EXECUTE_PYTHON
+            and not is_mod_request
+            and not self._looks_like_advanced_action_request(content)
+        ):
+            if not settings.chat_enabled:
+                return
+            await self._handle_conversation(message, content, settings)
+            return
+
         # ---- Dispatch ----
 
         if decision.type == DecisionType.TOOL_CALL and decision.tool:
@@ -5091,21 +5419,15 @@ class AIModeration(commands.Cog):
                     return
                 decision.arguments["code"] = code_response
 
-            if self.requires_confirmation(decision.tool, settings, message.author):
-                await self.request_confirmation(
-                    message, tool=decision.tool, args=decision.arguments,
-                    decision=decision, settings=settings,
-                )
-            else:
-                result = await ToolRegistry.execute(
-                    decision.tool, self, message, decision.arguments, decision
-                )
-                if result.success and (target_id := decision.arguments.get("target_user_id")):
-                    try:
-                        self._remember_target(message.author.id, int(target_id))
-                    except (TypeError, ValueError):
-                        pass
-                await self.reply_tool_result(message, result)
+            result = await ToolRegistry.execute(
+                decision.tool, self, message, decision.arguments, decision
+            )
+            if result.success and (target_id := decision.arguments.get("target_user_id")):
+                try:
+                    self._remember_target(message.author.id, int(target_id))
+                except (TypeError, ValueError):
+                    pass
+            await self.reply_tool_result(message, result)
 
         elif decision.type == DecisionType.CHAT:
             # If this looks like an action request from an admin, the AI may have
@@ -5227,7 +5549,7 @@ class AIModeration(commands.Cog):
 
         # Remove the temporary thinking indicator before sending the normal reply.
         if research_msg:
-            # Non-research but had indicator — clean up
+            # Non-research but had indicator - clean up
             try:
                 await research_msg.delete()
             except Exception:
@@ -5272,7 +5594,7 @@ class AIModeration(commands.Cog):
         """Build a rich embed for research responses."""
         # Truncate for embed limits (4096 description max)
         if len(response) > 4000:
-            response = response[:3997] + "…"
+            response = response[:3997] + "..."
 
         embed = discord.Embed(
             title="Research Response",
@@ -5355,7 +5677,7 @@ class AIModeration(commands.Cog):
         me = guild.me if guild else None
         mention = me.mention if me else (self.bot.user.mention if self.bot.user else "@Apflo's Helper")
         desc = (
-            "Mention me and talk naturally — I can answer questions, chat, or run moderation actions.\n\n"
+            "Mention me and talk naturally - I can answer questions, chat, or run moderation actions.\n\n"
             "**Chat Examples:**\n"
             f"- `{mention} what is quantum computing?`\n"
             f"- `{mention} what's happening in the world today?`\n"
@@ -5371,8 +5693,8 @@ class AIModeration(commands.Cog):
             "- `/aimod toggle` - Enable or disable AI moderation\n"
             "- `/aimod talking` - Enable or disable casual AI replies"
         )
-        embed = discord.Embed(title="🤖 Apflo's Helper", description=desc, color=discord.Color.blurple())
-        embed.set_footer(text="Powered by DeepSeek AI • Answers anything, moderates when needed")
+        embed = discord.Embed(title="Bot Apflo's Helper", description=desc, color=discord.Color.blurple())
+        embed.set_footer(text="Powered by DeepSeek AI - Answers anything, moderates when needed")
         return embed
 
     def _can_manage(self, interaction: discord.Interaction) -> bool:
@@ -5442,16 +5764,12 @@ class AIModeration(commands.Cog):
 
         settings = await self.get_guild_settings(interaction.guild.id)
         color = discord.Color.blurple() if settings.enabled else discord.Color.greyple()
-        embed = discord.Embed(title="🤖 AI Moderation Status", color=color)
-        embed.add_field(name="Enabled", value="✅ Yes" if settings.enabled else "❌ No", inline=True)
+        embed = discord.Embed(title="Bot AI Moderation Status", color=color)
+        embed.add_field(name="Enabled", value="Done Yes" if settings.enabled else "No No", inline=True)
         embed.add_field(name="Talking", value="On" if settings.chat_enabled else "Off", inline=True)
         embed.add_field(name="Model", value=f"`{settings.model or self.config.model}`", inline=True)
         embed.add_field(name="Context Messages", value=str(settings.context_messages), inline=True)
-        embed.add_field(name="Confirmations", value="✅ On" if settings.confirm_enabled else "❌ Off", inline=True)
-        embed.add_field(name="Confirm Timeout", value=f"{settings.confirm_timeout_seconds}s", inline=True)
         embed.add_field(name="Proactive Chance", value=f"{settings.proactive_chance * 100:.1f}%", inline=True)
-        if settings.confirm_actions:
-            embed.add_field(name="Confirmed Actions", value=", ".join(sorted(settings.confirm_actions)), inline=False)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @aimod_group.command(name="toggle")
@@ -5463,7 +5781,7 @@ class AIModeration(commands.Cog):
         settings = await self.get_guild_settings(interaction.guild.id)
         new_value = not settings.enabled
         await self.update_guild_setting(interaction.guild.id, "aimod_enabled", new_value)
-        status = "✅ enabled" if new_value else "❌ disabled"
+        status = "Done enabled" if new_value else "No disabled"
         await interaction.response.send_message(f"AI Moderation is now **{status}**.", ephemeral=True)
 
     @aimod_group.command(name="talking")
@@ -5493,9 +5811,6 @@ class AIModeration(commands.Cog):
 
         await self.update_guild_setting(interaction.guild.id, "aimod_confirm_enabled", False)
         await interaction.response.send_message("Confirmation dialogs have been removed and stay disabled.", ephemeral=True)
-        return
-        status = "✅ enabled" if enabled else "❌ disabled"
-        await interaction.response.send_message(f"Confirmation dialogs are now **{status}**.", ephemeral=True)
 
     @app_commands.command(name="aihelp")
     async def aihelp(self, interaction: discord.Interaction) -> None:

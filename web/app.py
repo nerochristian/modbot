@@ -29,6 +29,7 @@ from utils.server_setup import (
     sync_setup_aliases,
     sync_staff_role_groups,
 )
+from utils.transcript import TRANSCRIPT_STORAGE_DIR
 
 try:
     from google import genai
@@ -2798,6 +2799,8 @@ async def cors_middleware(request: web.Request, handler):
 def _setup_static(app: web.Application):
     """Serve Vite dist/ as static files with SPA fallback."""
     dist_dir = Path(__file__).parent.parent / "website" / "dist"
+    TRANSCRIPT_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+    app.router.add_static("/transcripts/", TRANSCRIPT_STORAGE_DIR, name="transcripts", show_index=False)
     
     if not dist_dir.exists():
         logger.warning(f"Static files directory not found: {dist_dir}")
