@@ -2156,6 +2156,7 @@ class GeminiClient:
             filename: str,
             mime_type: str,
             data: bytes,
+            label: Optional[str] = None,
         ) -> bool:
             if not data or len(data) > max_bytes_each:
                 return False
@@ -2163,7 +2164,7 @@ class GeminiClient:
             timestamp = msg.created_at.astimezone().strftime("%Y-%m-%d %H:%M")
             images.append(
                 ImageContext(
-                    label=f"from {author_name} at {timestamp}",
+                    label=label or f"from {author_name} at {timestamp}",
                     filename=filename or "image",
                     mime_type=mime_type,
                     data=data,
@@ -2197,10 +2198,15 @@ class GeminiClient:
                 if owned_session:
                     await session.close()
 
-        for msg in reversed(recent_messages[-10:]):
-            for attachment in msg.attachments:
+        async def collect_from_record(
+            msg: discord.Message,
+            record: Any,
+            *,
+            label: Optional[str] = None,
+        ) -> bool:
+            for attachment in getattr(record, "attachments", []) or []:
                 if len(images) >= max_images:
-                    return list(reversed(images))
+                    return True
                 if not self._is_supported_image_attachment(attachment):
                     continue
                 if attachment.size and attachment.size > max_bytes_each:
@@ -2220,12 +2226,13 @@ class GeminiClient:
                     filename=attachment.filename or "image",
                     mime_type=self._attachment_mime_type(attachment),
                     data=raw,
+                    label=label,
                 ):
-                    return list(reversed(images))
+                    return True
 
-            for embed in msg.embeds:
+            for embed in getattr(record, "embeds", []) or []:
                 if len(images) >= max_images:
-                    return list(reversed(images))
+                    return True
                 for attr_name in ("image", "thumbnail"):
                     media = getattr(embed, attr_name, None)
                     url = str(getattr(media, "url", "") or "")
@@ -2236,8 +2243,22 @@ class GeminiClient:
                         continue
                     filename = url.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1] or f"{attr_name}.png"
                     mime_type = self._mime_type_from_url(url)
-                    if await add_image(msg=msg, filename=filename, mime_type=mime_type, data=data):
-                        return list(reversed(images))
+                    if await add_image(msg=msg, filename=filename, mime_type=mime_type, data=data, label=label):
+                        return True
+            return False
+
+        for msg in reversed(recent_messages[-10:]):
+            if await collect_from_record(msg, msg):
+                return list(reversed(images))
+            author_name = getattr(msg.author, "display_name", None) or str(msg.author)
+            timestamp = msg.created_at.astimezone().strftime("%Y-%m-%d %H:%M")
+            for snapshot in getattr(msg, "message_snapshots", []) or []:
+                if await collect_from_record(
+                    msg,
+                    snapshot,
+                    label=f"forwarded image in message from {author_name} at {timestamp}",
+                ):
+                    return list(reversed(images))
         return list(reversed(images))
 
     @staticmethod
@@ -3716,10 +3737,11 @@ class AIModeration(commands.Cog):
         return isinstance(fetched, discord.Message) and fetched.author.id == self.bot.user.id
 
     async def _message_has_image_context(self, message: discord.Message) -> bool:
-        if any(self.ai._is_supported_image_attachment(attachment) for attachment in message.attachments):
+        if self._message_record_has_image_context(message):
             return True
-        if any(getattr(embed, "image", None) or getattr(embed, "thumbnail", None) for embed in message.embeds):
-            return True
+        for snapshot in getattr(message, "message_snapshots", []) or []:
+            if self._message_record_has_image_context(snapshot):
+                return True
 
         if not message.reference or not message.reference.message_id:
             return False
@@ -3734,9 +3756,19 @@ class AIModeration(commands.Cog):
                 return False
         if not isinstance(ref, discord.Message):
             return False
-        if any(self.ai._is_supported_image_attachment(attachment) for attachment in ref.attachments):
+        if self._message_record_has_image_context(ref):
             return True
-        return any(getattr(embed, "image", None) or getattr(embed, "thumbnail", None) for embed in ref.embeds)
+        return any(
+            self._message_record_has_image_context(snapshot)
+            for snapshot in (getattr(ref, "message_snapshots", []) or [])
+        )
+
+    def _message_record_has_image_context(self, record: Any) -> bool:
+        attachments = getattr(record, "attachments", []) or []
+        if any(self.ai._is_supported_image_attachment(attachment) for attachment in attachments):
+            return True
+        embeds = getattr(record, "embeds", []) or []
+        return any(getattr(embed, "image", None) or getattr(embed, "thumbnail", None) for embed in embeds)
 
     @staticmethod
     def _looks_like_image_question(content: str) -> bool:
@@ -4965,9 +4997,8 @@ class AIModeration(commands.Cog):
 
         # --- Check if this looks like a moderation request ---
         if (is_mentioned or is_reply_to_bot) and settings.chat_enabled and self._looks_like_image_question(content):
-            if await self._message_has_image_context(message):
-                await self._handle_conversation(message, content, settings)
-                return
+            await self._handle_conversation(message, content, settings)
+            return
 
         is_mod_request = self._looks_like_mod_request(content) or self._looks_like_advanced_action_request(content)
 
