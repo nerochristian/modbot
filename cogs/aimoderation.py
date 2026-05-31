@@ -115,6 +115,18 @@ _CHANNEL_MENTION_RE = re.compile(r"<#(\d+)>")
 _SNOWFLAKE_RE = re.compile(r"\b(\d{15,22})\b")
 
 
+def _looks_like_image_question_text(content: str) -> bool:
+    low = re.sub(r"\s+", " ", (content or "").strip().lower())
+    return bool(
+        re.search(r"\b(?:who|what)\s+(?:is|are)\s+(?:this|that|it|these|those)\b", low)
+        or re.search(r"\b(?:who|what)'s\s+(?:this|that|it)\b", low)
+        or re.search(r"\b(?:what|which)\s+(?:game|pokemon|character|anime|show|movie|app|site|website)\s+(?:is|are)\s+(?:this|that|it|these|those)\b", low)
+        or re.search(r"\b(?:who|what)\s+(?:is|are)\s+(?:this|that|it|these|those)\s+(?:pokemon|character|person|game)\b", low)
+        or re.search(r"\b(?:what|who)\s+(?:am i looking at|is in (?:this|that) image|is shown)\b", low)
+        or re.search(r"\b(?:identify|analyze|scan|read)\s+(?:this|that|the)?\s*(?:image|pic|picture|screenshot|photo)\b", low)
+    )
+
+
 # =============================================================================
 # CONFIGURATION
 # =============================================================================
@@ -151,8 +163,8 @@ class AIConfig:
     model: str = field(default_factory=_default_ai_model)
     temperature_routing: float = 0.2
     temperature_chat: float = 0.85
-    max_tokens_routing: int = 128000
-    max_tokens_chat: int = 128000
+    max_tokens_routing: int = 1500
+    max_tokens_chat: int = 1800
     memory_window: int = 50
     memory_max_chars: int = 32_000
     context_messages: int = 30
@@ -213,17 +225,41 @@ class GuildSettings:
             return raw.strip().lower() in {"1", "true", "yes", "on", "enabled"}
         return default
 
+    @staticmethod
+    def _coerce_int(raw: Any, default: int, *, minimum: Optional[int] = None, maximum: Optional[int] = None) -> int:
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            value = default
+        if minimum is not None:
+            value = max(minimum, value)
+        if maximum is not None:
+            value = min(maximum, value)
+        return value
+
+    @staticmethod
+    def _coerce_float(raw: Any, default: float, *, minimum: Optional[float] = None, maximum: Optional[float] = None) -> float:
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            value = default
+        if minimum is not None:
+            value = max(minimum, value)
+        if maximum is not None:
+            value = min(maximum, value)
+        return value
+
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "GuildSettings":
         return cls(
             enabled=cls._coerce_bool(data.get("aimod_enabled", False), False),
             chat_enabled=cls._coerce_bool(data.get("aimod_chat_enabled", False), False),
             model=data.get("aimod_model"),
-            context_messages=int(data.get("aimod_context_messages", 30)),
+            context_messages=cls._coerce_int(data.get("aimod_context_messages", 30), 30, minimum=1, maximum=50),
             confirm_enabled=False,
-            confirm_timeout_seconds=int(data.get("aimod_confirm_timeout_seconds", 25)),
+            confirm_timeout_seconds=cls._coerce_int(data.get("aimod_confirm_timeout_seconds", 25), 25, minimum=1, maximum=300),
             confirm_actions=set(),
-            proactive_chance=float(data.get("aimod_proactive_chance", 0.02)),
+            proactive_chance=cls._coerce_float(data.get("aimod_proactive_chance", 0.02), 0.02, minimum=0.0, maximum=1.0),
             location_context=str(data.get("aimod_location_context") or data.get("server_location") or "").strip(),
         )
 
@@ -259,7 +295,7 @@ CORE GOAL
 
 When the bot is mentioned, analyze the user's message, recent context, reply-chain context, and mentions.
 Then decide ONE of these:
-1. Call a safe structured tool.
+1. Call a structured tool.
 2. Respond conversationally (if no action is requested).
 3. Return an error when the request is impossible.
 
@@ -333,7 +369,7 @@ roleplay, image questions, and general questions. Do not use tools for these.
 Use standard tools whenever possible. Use `execute_python` only when ALL are true:
 - The user is clearly asking the bot to perform an action or fetch live server data.
 - The request cannot be handled by a standard tool above.
-- The action is safe, bounded, and has a clear target/scope.
+- The request has a clear target or scope.
 
 Good `execute_python` candidates:
 - Complex multi-step actions (e.g., "Create a category named X and make 3 channels in it")
@@ -346,7 +382,7 @@ Good `execute_python` candidates:
 - Automation rules: "if/when/every" workflows such as spam escalation, weekly reports, delayed cleanup, reminder chains
 - School/project systems: project channels, homework reminders, assignment tracking, deadline alerts, attendance lists
 - Support/community systems: tickets, reports, polls, reaction-role setup, welcome/onboarding flows, FAQ responses
-- Analytics/security: activity reports, inactive-member lists, raid lockdowns, verification queues, audit/log summaries
+- Analytics/admin: activity reports, inactive-member lists, raid lockdowns, verification queues, audit/log summaries
 
 Required argument:
 - code: A raw Python string using `discord.py` to achieve the exact request. 
@@ -525,6 +561,9 @@ If the needed detail is not in context, say:
 
 Do not guess local server facts.
 Do not claim an action happened unless the bot actually executed it through a tool.
+Do not tell users to enable Gemini Apps Activity, Google app activity, or any
+consumer Google/Gemini setting. This Discord bot cannot change those settings,
+and those footers are not useful in chat.
 
 ================================================================================
 MODERATION AWARENESS
@@ -659,11 +698,15 @@ class Decision:
             except ValueError:
                 decision_type = DecisionType.ERROR
 
+        arguments = data.get("arguments")
+        if not isinstance(arguments, dict):
+            arguments = {}
+
         return cls(
             type=decision_type,
             reason=data.get("reason", "No reason provided"),
             tool=tool,
-            arguments=data.get("arguments") or {},
+            arguments=arguments,
         )
 
     @classmethod
@@ -749,7 +792,7 @@ class PermissionFlags:
             manage_channels=p.manage_channels,
             manage_nicknames=p.manage_nicknames,
             manage_threads=p.manage_threads,
-            manage_emojis=getattr(p, "manage_emojis_and_stickers", p.manage_emojis),
+            manage_emojis=getattr(p, "manage_emojis_and_stickers", getattr(p, "manage_emojis", False)),
             manage_webhooks=p.manage_webhooks,
             move_members=p.move_members,
             mute_members=p.mute_members,
@@ -802,7 +845,14 @@ class ToolResult:
     @staticmethod
     def _with_followup(message: str) -> str:
         low = message.lower()
-        if "target" in low or "member" in low or "user" in low:
+        target_missing = (
+            "not found" in low
+            or "could not resolve" in low
+            or "couldn't resolve" in low
+            or "required" in low
+            or "who" in low
+        )
+        if target_missing and ("target" in low or "member" in low or "user" in low):
             return f"{message}\n\nReply with a user mention, user ID, or reply directly to the user's message."
         if "role" in low and ("not found" in low or "required" in low):
             return f"{message}\n\nReply with the exact role name or mention the role."
@@ -841,7 +891,20 @@ class ToolContext:
 
     def bool_arg(self, key: str, default: bool = False) -> bool:
         val = self.args.get(key)
-        return bool(val) if val is not None else default
+        if val is None:
+            return default
+        if isinstance(val, bool):
+            return val
+        if isinstance(val, (int, float)):
+            return bool(val)
+        if isinstance(val, str):
+            normalized = val.strip().lower()
+            if normalized in {"1", "true", "yes", "on", "enable", "enabled"}:
+                return True
+            if normalized in {"0", "false", "no", "off", "disable", "disabled", "none", "null"}:
+                return False
+            return default
+        return bool(val)
 
     async def resolve_target(self) -> Optional[discord.Member]:
         return await self.cog.resolve_member(self.guild, self.args.get("target_user_id"))
@@ -1093,6 +1156,7 @@ class GeminiClient:
         )
         self._block_until: Optional[datetime] = None
         self._block_reason: Optional[str] = None
+        self._galaxy_vision_rejected = False
 
     @property
     def is_available(self) -> bool:
@@ -1695,7 +1759,7 @@ class GeminiClient:
             f"- {{guild_id}}: {guild.id}\n"
             f"- {{channel_id}}: {context_channel_id}\n"
             f"- {{bot_id}}: {bot_id_str}\n"
-            f"- Current Time (EST): {_now().astimezone().isoformat()}\n\n"
+            f"- Current Time: {_now().astimezone().isoformat()}\n\n"
             f"Permissions:\n{perm_lines}\n\n"
             f"Mentions (first is bot):\n{mention_lines}\n\n"
             f'Message: """{user_content}"""\n\n'
@@ -1837,13 +1901,21 @@ class GeminiClient:
         )
 
         # --- Build message chain with multi-turn context ---
+        is_image_question = _looks_like_image_question_text(user_content)
         image_context = await self._collect_image_context(recent_messages)
+        if is_image_question and not image_context:
+            return "I don't see an image attachment or embed in the replied/recent messages."
         image_summary = ""
         image_messages = image_context
         if image_context and self.provider == "galaxy" and not uses_native_search:
             image_summary = await self._summarize_images_with_galaxy_v4(user_content, image_context) or ""
             image_messages = []
             if not image_summary:
+                if is_image_question:
+                    return (
+                        "I found the image, but vision is not available on this deployment right now. "
+                        "Set `GEMINI_API_KEY` for the vision pass, or use a Galaxy endpoint that accepts multimodal image payloads."
+                    )
                 image_summary = (
                     "Image analysis failed before visual details were returned. "
                     "Do not guess what is in the image; tell the user the image could not be read right now."
@@ -1891,6 +1963,11 @@ class GeminiClient:
 
         lines: List[str] = []
         bot_id = self.bot.user.id if self.bot.user else None
+        def record_field(record: Any, name: str, default: Any = None) -> Any:
+            if isinstance(record, dict):
+                return record.get(name, default)
+            return getattr(record, name, default)
+
         for m in recent_messages[-self.config.memory_window:]:
             if bot_id and m.author.id == bot_id:
                 author_label = "assistant"
@@ -1903,14 +1980,9 @@ class GeminiClient:
 
             # Handle attachments and embeds
             extras: List[str] = []
-            name = getattr(m.author, "display_name", None) or str(m.author)
-            content = (m.content or "").strip()
-
-            # Handle attachments and embeds
-            extras: List[str] = []
             if m.attachments:
                 image_names = [
-                    a.filename
+                    str(record_field(a, "filename", "image") or "image")
                     for a in m.attachments
                     if self._is_supported_image_attachment(a)
                 ]
@@ -1922,6 +1994,19 @@ class GeminiClient:
                 extras.append(f"[{len(m.embeds)} embed(s)]")
             if m.stickers:
                 extras.append(f"[sticker: {m.stickers[0].name}]")
+            for snapshot in getattr(m, "message_snapshots", []) or []:
+                snapshot_attachments = record_field(snapshot, "attachments", []) or []
+                snapshot_images = [
+                    str(record_field(a, "filename", "image") or "image")
+                    for a in snapshot_attachments
+                    if self._is_supported_image_attachment(a)
+                ]
+                if snapshot_images:
+                    extras.append(f"[forwarded image attachment(s): {', '.join(snapshot_images[:3])}]")
+                    continue
+                snapshot_embeds = record_field(snapshot, "embeds", []) or []
+                if any(record_field(embed, "image") or record_field(embed, "thumbnail") for embed in snapshot_embeds):
+                    extras.append("[forwarded embed image]")
 
             display = content[:2000]
             if extras:
@@ -2057,8 +2142,7 @@ class GeminiClient:
         """Use Galaxy v4 flash as the vision pass before Gemini 3.5 final response."""
         if not images:
             return None
-        if os.getenv("GALAXY_VISION_MULTIMODAL", "").strip().lower() not in {"1", "true", "yes", "on"}:
-            logger.debug("Galaxy image payload schema is not enabled; using Gemini vision fallback")
+        if self._galaxy_vision_rejected or not self._galaxy_api_key:
             return await self._summarize_images_with_gemini_vision(user_content, images)
 
         parts: List[Dict[str, Any]] = [
@@ -2106,6 +2190,8 @@ class GeminiClient:
                 allow_multimodal=True,
             )
         except Exception as exc:
+            if "missing or invalid 'messages' array" in str(exc).lower():
+                self._galaxy_vision_rejected = True
             logger.warning("Galaxy v4 image analysis failed; trying Gemini vision fallback: %s", exc)
             return await self._summarize_images_with_gemini_vision(user_content, images)
 
@@ -2214,14 +2300,22 @@ class GeminiClient:
                 if owned_session:
                     await session.close()
 
-        async def read_attachment(attachment: discord.Attachment) -> Optional[bytes]:
+        def field(obj: Any, name: str, default: Any = None) -> Any:
+            if isinstance(obj, dict):
+                return obj.get(name, default)
+            return getattr(obj, name, default)
+
+        async def read_attachment(attachment: Any) -> Optional[bytes]:
+            filename = str(field(attachment, "filename", "image") or "image")
+            read_method = field(attachment, "read")
             try:
-                return await attachment.read(use_cached=True)
+                if callable(read_method):
+                    return await read_method(use_cached=True)
             except Exception:
-                logger.debug("Could not read Discord image attachment %s directly", attachment.filename, exc_info=True)
+                logger.debug("Could not read Discord image attachment %s directly", filename, exc_info=True)
 
             for attr_name in ("url", "proxy_url"):
-                url = str(getattr(attachment, attr_name, "") or "")
+                url = str(field(attachment, attr_name, "") or "")
                 if not url:
                     continue
                 data = await read_image_url(url)
@@ -2232,7 +2326,7 @@ class GeminiClient:
         def media_urls(media: Any) -> List[str]:
             urls: List[str] = []
             for attr_name in ("url", "proxy_url"):
-                url = str(getattr(media, attr_name, "") or "")
+                url = str(field(media, attr_name, "") or "")
                 if url and url not in urls:
                     urls.append(url)
             return urls
@@ -2243,16 +2337,18 @@ class GeminiClient:
             *,
             label: Optional[str] = None,
         ) -> bool:
-            for attachment in getattr(record, "attachments", []) or []:
+            for attachment in field(record, "attachments", []) or []:
                 if len(images) >= max_images:
                     return True
                 if not self._is_supported_image_attachment(attachment):
                     continue
-                if attachment.size and attachment.size > max_bytes_each:
+                size = field(attachment, "size", 0) or 0
+                filename = str(field(attachment, "filename", "image") or "image")
+                if size and size > max_bytes_each:
                     logger.debug(
                         "Skipping large image attachment %s (%d bytes)",
-                        attachment.filename,
-                        attachment.size,
+                        filename,
+                        size,
                     )
                     continue
                 raw = await read_attachment(attachment)
@@ -2260,18 +2356,18 @@ class GeminiClient:
                     continue
                 if await add_image(
                     msg=msg,
-                    filename=attachment.filename or "image",
+                    filename=filename,
                     mime_type=self._attachment_mime_type(attachment),
                     data=raw,
                     label=label,
                 ):
                     return True
 
-            for embed in getattr(record, "embeds", []) or []:
+            for embed in field(record, "embeds", []) or []:
                 if len(images) >= max_images:
                     return True
                 for attr_name in ("image", "thumbnail"):
-                    media = getattr(embed, attr_name, None)
+                    media = field(embed, attr_name)
                     for url in media_urls(media):
                         data = await read_image_url(url)
                         if not data:
@@ -2298,19 +2394,39 @@ class GeminiClient:
         return list(reversed(images))
 
     @staticmethod
-    def _is_supported_image_attachment(attachment: discord.Attachment) -> bool:
-        content_type = (attachment.content_type or "").lower()
-        filename = (attachment.filename or "").lower()
+    def _is_supported_image_attachment(attachment: Any) -> bool:
+        content_type = (
+            attachment.get("content_type")
+            if isinstance(attachment, dict)
+            else getattr(attachment, "content_type", None)
+        )
+        filename = (
+            attachment.get("filename")
+            if isinstance(attachment, dict)
+            else getattr(attachment, "filename", None)
+        )
+        content_type = str(content_type or "").lower()
+        filename = str(filename or "").lower()
         if content_type in {"image/png", "image/jpeg", "image/webp", "image/gif"}:
             return True
         return filename.endswith((".png", ".jpg", ".jpeg", ".webp", ".gif"))
 
     @staticmethod
-    def _attachment_mime_type(attachment: discord.Attachment) -> str:
-        content_type = (attachment.content_type or "").lower()
+    def _attachment_mime_type(attachment: Any) -> str:
+        content_type = (
+            attachment.get("content_type")
+            if isinstance(attachment, dict)
+            else getattr(attachment, "content_type", None)
+        )
+        filename = (
+            attachment.get("filename")
+            if isinstance(attachment, dict)
+            else getattr(attachment, "filename", None)
+        )
+        content_type = str(content_type or "").lower()
         if content_type in {"image/png", "image/jpeg", "image/webp", "image/gif"}:
             return content_type
-        filename = (attachment.filename or "").lower()
+        filename = str(filename or "").lower()
         if filename.endswith(".png"):
             return "image/png"
         if filename.endswith(".webp"):
@@ -2376,6 +2492,11 @@ class GeminiClient:
 
     @staticmethod
     def _message_preview(msg: discord.Message, *, limit: int) -> str:
+        def record_field(record: Any, name: str, default: Any = None) -> Any:
+            if isinstance(record, dict):
+                return record.get(name, default)
+            return getattr(record, name, default)
+
         text = re.sub(r"\s+", " ", (msg.content or "").strip())
         if not text:
             extras: List[str] = []
@@ -2393,6 +2514,19 @@ class GeminiClient:
                 extras.append(f"{len(msg.embeds)} embed(s)")
             if msg.stickers:
                 extras.append(f"sticker: {msg.stickers[0].name}")
+            for snapshot in getattr(msg, "message_snapshots", []) or []:
+                snapshot_attachments = record_field(snapshot, "attachments", []) or []
+                snapshot_images = [
+                    str(record_field(a, "filename", "image") or "image")
+                    for a in snapshot_attachments
+                    if GeminiClient._is_supported_image_attachment(a)
+                ]
+                if snapshot_images:
+                    extras.append(f"forwarded image attachment(s): {', '.join(snapshot_images[:3])}")
+                    continue
+                snapshot_embeds = record_field(snapshot, "embeds", []) or []
+                if any(record_field(embed, "image") or record_field(embed, "thumbnail") for embed in snapshot_embeds):
+                    extras.append("forwarded embed image")
             text = ", ".join(extras) if extras else "non-text message"
         return text[:limit]
 
@@ -2523,7 +2657,7 @@ class GeminiClient:
                 "Check CURRENT THREAD first and answer from it. If it is not there, say you don't see that detail."
             )
 
-        task_instruction += " NEVER use em-dashes (-) or en-dashes (-) to separate clauses. Use commas instead. Hyphens (-) within words like 'god-mode' are perfectly fine."
+        task_instruction += " NEVER use long dash characters to separate clauses. Use commas instead. Normal hyphens within words like 'god-mode' are fine."
 
         sys_prompt = f"{CONVERSATION_SYSTEM_PROMPT}\n\n{full_context}### INSTRUCTIONS ###\n{task_instruction}"
         
@@ -2550,16 +2684,16 @@ class GeminiClient:
         text = re.sub(r"\n{3,}", "\n\n", text)
         text = GeminiClient._strip_citation_tokens(text)
         text = GeminiClient._convert_simple_markdown_table(text)
+        text = GeminiClient._strip_consumer_app_footers(text)
 
-        # The user requested to stop using dash thingys (em-dashes) and use commas instead
-        text = text.replace(" - ", ", ").replace("-", ", ")
-        text = text.replace(" - ", ", ").replace("-", ", ")
-        text = text.replace(" - ", ", ")
+        # The user requested to stop using long dash separators and use commas instead.
+        text = text.replace(" \u2014 ", ", ").replace("\u2014", ", ")
+        text = text.replace(" \u2013 ", ", ").replace("\u2013", ", ")
         text = text.replace(" -- ", ", ").replace("--", ", ")
 
         # Strip meta-commentary the model sometimes prepends
         meta_patterns = [
-            r"^(?:Sure(?:,|!)?\s*)?(?:Here(?:'s| is)?\s*)?(?:my )?(?:response|answer|reply)\s*[:!]?\s*\n*",
+            r"^(?:Sure(?:,|!)?\s*)?(?:Here(?:'s| is)?\s*)?(?:my )?(?:response|answer|reply)\s*[:!]\s*\n*",
             r"^(?:Of course(?:,|!)?\s*)",
             r"^(?:Absolutely(?:,|!)?\s*)",
             r"^(?:What (?:a )?great question(?:!|\.|,)?\s*)",
@@ -2579,6 +2713,21 @@ class GeminiClient:
         if text.startswith('"') and text.endswith('"') and text.count('"') == 2:
             text = text[1:-1].strip()
 
+        return text
+
+    @staticmethod
+    def _strip_consumer_app_footers(content: str) -> str:
+        """Remove Gemini/Google consumer-app enablement footers from API replies."""
+        text = content or ""
+        patterns = (
+            r"(?:^|\n)\s*(?:By the way,\s*)?to unlock the full functionality of all apps,?\s*enable\s+Gemini Apps Activity\.?\s*$",
+            r"(?:^|\n)\s*(?:By the way,\s*)?(?:please\s+)?enable\s+Gemini Apps Activity\b.*$",
+            r"(?:^|\n)\s*(?:By the way,\s*)?.*\bGemini Apps Activity\b.*$",
+            r"(?:^|\n)\s*(?:By the way,\s*)?.*\bGoogle Apps Activity\b.*$",
+            r"(?:^|\n)\s*(?:By the way,\s*)?.*\bGoogle app activity\b.*$",
+        )
+        for pattern in patterns:
+            text = re.sub(pattern, "", text, flags=re.IGNORECASE | re.MULTILINE).strip()
         return text
 
     @staticmethod
@@ -2818,7 +2967,7 @@ async def handle_unban(ctx: ToolContext) -> ToolResult:
     reason = ctx.str_arg("reason", "Unbanned.")
     await ctx.guild.unban(discord.Object(id=target_id), reason=f"AI Mod ({ctx.actor}): {reason}")
 
-    embed = discord.Embed(title="Done User Unbanned", color=discord.Color.green(), timestamp=_now())
+    embed = discord.Embed(title="User Unbanned", color=discord.Color.green(), timestamp=_now())
     embed.add_field(name="Moderator", value=ctx.actor.mention, inline=True)
     embed.add_field(name="Reason", value=reason, inline=False)
     embed.set_footer(text=f"User ID: {target_id}")
@@ -2853,13 +3002,14 @@ async def handle_add_role(ctx: ToolContext) -> ToolResult:
 
     if not ctx.cog.can_manage_role(ctx.actor, role):
         return ToolResult.fail(f"Cannot assign `{role.name}` - it's above your top role.")
-    if not ctx.cog.can_manage_role(ctx.guild.me, role):
+    bot_member = ctx.guild.me
+    if not bot_member or not ctx.cog.can_manage_role(bot_member, role):
         return ToolResult.fail(f"Cannot assign `{role.name}` - it's above my top role.")
 
     reason = ctx.str_arg("reason")
     await target.add_roles(role, reason=f"AI Mod ({ctx.actor}): {reason}")
 
-    embed = discord.Embed(description=f"Done Added {role.mention} to {target.mention}", color=discord.Color.green())
+    embed = discord.Embed(description=f"Added {role.mention} to {target.mention}", color=discord.Color.green())
     return ToolResult.ok("Role added.", embed=embed)
 
 
@@ -2875,13 +3025,14 @@ async def handle_remove_role(ctx: ToolContext) -> ToolResult:
 
     if not ctx.cog.can_manage_role(ctx.actor, role):
         return ToolResult.fail(f"Cannot remove `{role.name}` - it's above your top role.")
-    if not ctx.cog.can_manage_role(ctx.guild.me, role):
+    bot_member = ctx.guild.me
+    if not bot_member or not ctx.cog.can_manage_role(bot_member, role):
         return ToolResult.fail(f"Cannot remove `{role.name}` - it's above my top role.")
 
     reason = ctx.str_arg("reason")
     await target.remove_roles(role, reason=f"AI Mod ({ctx.actor}): {reason}")
 
-    embed = discord.Embed(description=f"Done Removed {role.mention} from {target.mention}", color=discord.Color.orange())
+    embed = discord.Embed(description=f"Removed {role.mention} from {target.mention}", color=discord.Color.orange())
     return ToolResult.ok("Role removed.", embed=embed)
 
 
@@ -2899,7 +3050,7 @@ async def handle_create_role(ctx: ToolContext) -> ToolResult:
         name=name, color=color, hoist=hoist,
         reason=f"AI Mod ({ctx.actor}): {reason}",
     )
-    embed = discord.Embed(description=f"Done Created role {role.mention}", color=color)
+    embed = discord.Embed(description=f"Created role {role.mention}", color=color)
     return ToolResult.ok("Role created.", embed=embed)
 
 
@@ -2910,11 +3061,12 @@ async def handle_delete_role(ctx: ToolContext) -> ToolResult:
         return ToolResult.fail(f"Role `{ctx.arg('role_name')}` not found.")
     if not ctx.cog.can_manage_role(ctx.actor, role):
         return ToolResult.fail("That role is above you in the hierarchy.")
-    if not ctx.cog.can_manage_role(ctx.guild.me, role):
+    bot_member = ctx.guild.me
+    if not bot_member or not ctx.cog.can_manage_role(bot_member, role):
         return ToolResult.fail("That role is above me in the hierarchy.")
 
     await role.delete(reason=f"AI Mod ({ctx.actor}): {ctx.str_arg('reason')}")
-    embed = discord.Embed(description=f"Delete Deleted role **{role.name}**", color=discord.Color.red())
+    embed = discord.Embed(description=f"Deleted role **{role.name}**", color=discord.Color.red())
     return ToolResult.ok("Role deleted.", embed=embed)
 
 
@@ -2925,7 +3077,8 @@ async def handle_edit_role(ctx: ToolContext) -> ToolResult:
         return ToolResult.fail(f"Role `{ctx.arg('role_name')}` not found.")
     if not ctx.cog.can_manage_role(ctx.actor, role):
         return ToolResult.fail("That role is above you in the hierarchy.")
-    if not ctx.cog.can_manage_role(ctx.guild.me, role):
+    bot_member = ctx.guild.me
+    if not bot_member or not ctx.cog.can_manage_role(bot_member, role):
         return ToolResult.fail("That role is above me in the hierarchy.")
 
     kwargs: Dict[str, Any] = {}
@@ -2969,7 +3122,7 @@ async def handle_create_channel(ctx: ToolContext) -> ToolResult:
     else:
         ch = await ctx.guild.create_text_channel(name, category=category, reason=reason)
 
-    embed = discord.Embed(description=f"Done Created {ch.mention}", color=discord.Color.green())
+    embed = discord.Embed(description=f"Created {ch.mention}", color=discord.Color.green())
     return ToolResult.ok("Channel created.", embed=embed)
 
 
@@ -3011,7 +3164,7 @@ async def handle_edit_channel(ctx: ToolContext) -> ToolResult:
     if "topic" in ctx.args and isinstance(channel, (discord.TextChannel, discord.ForumChannel)):
         kwargs["topic"] = ctx.args["topic"]
     if "nsfw" in ctx.args:
-        kwargs["nsfw"] = bool(ctx.args["nsfw"])
+        kwargs["nsfw"] = ctx.bool_arg("nsfw")
     if "slowmode" in ctx.args:
         try:
             kwargs["slowmode_delay"] = max(0, min(int(ctx.args["slowmode"]), 21600))
@@ -3046,7 +3199,7 @@ async def handle_lock_channel(ctx: ToolContext) -> ToolResult:
         ctx.guild.default_role, send_messages=False,
         reason=f"Lock by {ctx.actor}",
     )
-    return ToolResult.ok("Channel locked Locked")
+    return ToolResult.ok("Channel locked.")
 
 
 @ToolRegistry.register(ToolType.UNLOCK_CHANNEL, display_name="Unlock Channel", color=discord.Color.green(), emoji="Unlocked", required_permission="manage_channels")
@@ -3058,7 +3211,7 @@ async def handle_unlock_channel(ctx: ToolContext) -> ToolResult:
         ctx.guild.default_role, send_messages=True,
         reason=f"Unlock by {ctx.actor}",
     )
-    return ToolResult.ok("Channel unlocked Unlocked")
+    return ToolResult.ok("Channel unlocked.")
 
 
 # -- Member Admin -------------------------------------------------------------
@@ -3071,7 +3224,8 @@ async def handle_set_nickname(ctx: ToolContext) -> ToolResult:
         return ToolResult.fail("Target not found.")
     if not ctx.cog.can_moderate(ctx.actor, target):
         return ToolResult.fail("Target's role is above yours.")
-    if not ctx.cog.can_moderate(ctx.guild.me, target):
+    bot_member = ctx.guild.me
+    if not bot_member or not ctx.cog.can_moderate(bot_member, target):
         return ToolResult.fail("Target's role is above mine.")
 
     new_nick: Optional[str] = ctx.arg("nickname")
@@ -3199,7 +3353,7 @@ async def handle_create_emoji(ctx: ToolContext) -> ToolResult:
                 return ToolResult.fail(f"Failed to download image (HTTP {resp.status}).")
             data = await resp.read()
         emoji = await ctx.guild.create_custom_emoji(name=str(name), image=data, reason=f"AI Mod ({ctx.actor})")
-        embed = discord.Embed(description=f"Done Created emoji {emoji}", color=discord.Color.green())
+        embed = discord.Embed(description=f"Created emoji {emoji}", color=discord.Color.green())
         return ToolResult.ok("Emoji created.", embed=embed)
     finally:
         if owned_session:
@@ -3221,9 +3375,10 @@ async def handle_delete_emoji(ctx: ToolContext) -> ToolResult:
 @ToolRegistry.register(ToolType.CREATE_INVITE, display_name="Create Invite", color=discord.Color.green(), emoji="Invite", required_permission="create_instant_invite")
 async def handle_create_invite(ctx: ToolContext) -> ToolResult:
     max_age = max(0, min(ctx.int_arg("max_age", 86400), 604800))
-    invite = await ctx.message.channel.create_invite(  # type: ignore[union-attr]
-        max_age=max_age, reason=f"AI Mod ({ctx.actor})"
-    )
+    create_invite = getattr(ctx.message.channel, "create_invite", None)
+    if not callable(create_invite):
+        return ToolResult.fail("I can't create an invite from this channel type.")
+    invite = await create_invite(max_age=max_age, reason=f"AI Mod ({ctx.actor})")
     return ToolResult.ok(f"Invite created: {invite.url}")
 
 
@@ -3232,9 +3387,12 @@ async def handle_pin_message(ctx: ToolContext) -> ToolResult:
     msg_id = ctx.arg("message_id")
     if not msg_id:
         return ToolResult.fail("Message ID is required.")
-    msg = await ctx.message.channel.fetch_message(int(msg_id))
+    fetch_message = getattr(ctx.message.channel, "fetch_message", None)
+    if not callable(fetch_message):
+        return ToolResult.fail("I can't fetch messages in this channel type.")
+    msg = await fetch_message(int(msg_id))
     await msg.pin(reason=f"AI Mod ({ctx.actor})")
-    return ToolResult.ok("Message pinned Pin")
+    return ToolResult.ok("Message pinned.")
 
 
 @ToolRegistry.register(ToolType.UNPIN_MESSAGE, display_name="Unpin Message", color=discord.Color.orange(), emoji="Unpin", required_permission="manage_messages")
@@ -3242,9 +3400,12 @@ async def handle_unpin_message(ctx: ToolContext) -> ToolResult:
     msg_id = ctx.arg("message_id")
     if not msg_id:
         return ToolResult.fail("Message ID is required - reply to the message or provide its ID.")
-    msg = await ctx.message.channel.fetch_message(int(msg_id))
+    fetch_message = getattr(ctx.message.channel, "fetch_message", None)
+    if not callable(fetch_message):
+        return ToolResult.fail("I can't fetch messages in this channel type.")
+    msg = await fetch_message(int(msg_id))
     await msg.unpin(reason=f"AI Mod ({ctx.actor})")
-    return ToolResult.ok("Message unpinned Unpin")
+    return ToolResult.ok("Message unpinned.")
 
 
 @ToolRegistry.register(ToolType.LOCK_THREAD, display_name="Lock Thread", color=discord.Color.orange(), emoji="Locked", required_permission="manage_threads")
@@ -3288,7 +3449,7 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
         )
 
     bot_member = ctx.guild.me
-    all_channels_requested = bool(ctx.arg("all_channels_requested"))
+    all_channels_requested = ctx.bool_arg("all_channels_requested")
     if bot_member and not all_channels_requested:
         bot_perms = channel.permissions_for(bot_member)
         if not bot_perms.manage_messages or not bot_perms.read_message_history:
@@ -3391,7 +3552,7 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
         if deleted_count == 0:
             return ToolResult.ok(f"I didn't find any messages{target_text} in any channel.")
         plural = "message" if deleted_count == 1 else "messages"
-        cap_note = " I stopped at the 500-message safety cap." if deleted_count >= amount and amount >= 500 else ""
+        cap_note = " I stopped at the 500-message limit." if deleted_count >= amount and amount >= 500 else ""
         return ToolResult.ok(
             f"Done! All {deleted_count} {plural}{target_text} across {channel_label} have been deleted.{cap_note}"
         )
@@ -3494,7 +3655,7 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
         return ToolResult.ok(f"I didn't find any messages{target_text}{window_text} in {channel.mention}.")
 
     plural = "message" if deleted_count == 1 else "messages"
-    cap_note = " I stopped at the 500-message safety cap." if deleted_count >= amount and amount >= 500 else ""
+    cap_note = " I stopped at the 500-message limit." if deleted_count >= amount and amount >= 500 else ""
     if target_user_id is not None and not cap_note:
         return ToolResult.ok(
             f"Done! All {deleted_count} {plural}{target_text}{window_text} in {channel.mention} "
@@ -3553,33 +3714,26 @@ async def handle_execute_raw_api(ctx: ToolContext) -> ToolResult:
 
 @ToolRegistry.register(ToolType.EXECUTE_PYTHON, display_name="Execute Python", color=discord.Color.red(), emoji="Python")
 async def handle_execute_python(ctx: ToolContext) -> ToolResult:
-    """Execute AI-generated Python code for server automation.
-
-    Admins and bot owners have no restrictions — the code runs with full
-    access to the bot, guild, and Discord API.  Results are shown inline
-    to the invoking user and logged to automod.
-    """
+    """Execute AI-generated Python code and log details to automod."""
+    import csv
     import datetime
+    import os as _os
     import traceback as _tb
 
-    _TIMEOUT: int = 60          # generous for mass ops
-    _MAX_PREVIEW: int = 900     # embed field limit safety
+    _TIMEOUT: int = 60
+    _MAX_PREVIEW: int = 900
     _MAX_CODE_DISPLAY: int = 1000
 
-    # ── Permission gate ─────────────────────────────────────────────
     is_owner = await ctx.cog.bot.is_owner(ctx.actor)
     is_admin = isinstance(ctx.actor, discord.Member) and ctx.actor.guild_permissions.administrator
     if not is_owner and not is_admin:
         return ToolResult.fail("Execute Python is restricted to administrators.")
 
-    # ── Extract code ────────────────────────────────────────────────
     code = _strip_code_fences(str(ctx.arg("code", "")))
     if not code:
         return ToolResult.fail("No Python code provided.")
 
-    # ── Build execution environment (full access, no proxy) ────────
     real_channel = ctx.message.channel if ctx.message else None
-
     env: Dict[str, Any] = {
         "bot": ctx.cog.bot,
         "guild": ctx.guild,
@@ -3588,50 +3742,40 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
         "channel": real_channel,
         "discord": __import__("discord"),
         "asyncio": __import__("asyncio"),
+        "csv": csv,
+        "datetime": datetime,
+        "io": io,
+        "json": json,
+        "os": _os,
+        "random": random,
+        "re": re,
         "fetch_recent_activity": _make_activity_fetcher(ctx.guild),
     }
 
-    # ── Compile ─────────────────────────────────────────────────────
     wrapped = _wrap_async(code)
     try:
         compiled = compile(wrapped, "<ai_exec>", "exec")
     except SyntaxError as exc:
         return ToolResult.fail(f"Syntax error (line {exc.lineno}): {exc.msg}")
 
-    # ── Execute with timeout ────────────────────────────────────────
     try:
         exec(compiled, env)
-        raw_result = await asyncio.wait_for(
-            env["__ai_exec_func"](), timeout=_TIMEOUT
-        )
+        raw_result = await asyncio.wait_for(env["__ai_exec_func"](), timeout=_TIMEOUT)
     except asyncio.TimeoutError:
         return ToolResult.fail(
-            f"Execution timed out after {_TIMEOUT}s. "
-            "Try a smaller scope or break into steps."
+            f"Execution timed out after {_TIMEOUT}s. Try a smaller scope or break into steps."
         )
     except Exception as exc:
-        # Show only the last meaningful frame, not the wrapper internals
         tb_lines = _tb.format_exception(type(exc), exc, exc.__traceback__)
         short = "".join(tb_lines[-5:])
         if len(short) > _MAX_PREVIEW:
             short = short[:_MAX_PREVIEW - 3] + "..."
-        return ToolResult.fail(f"Execution failed:\n```\n{short}\n```")
+        return ToolResult.fail(f"Python execution failed:\n```\n{short}\n```")
 
-    # ── Build result ────────────────────────────────────────────────
-    preview = str(raw_result) if raw_result is not None else "Done (no return value)."
+    preview = str(raw_result) if raw_result is not None else "Execution completed successfully (no return value)."
     if len(preview) > _MAX_PREVIEW:
         preview = preview[:_MAX_PREVIEW - 3] + "..."
 
-    # Show result directly to the user via a nice embed
-    result_embed = discord.Embed(
-        title="✅ Code Executed",
-        color=discord.Color.green(),
-        timestamp=_now(),
-    )
-    result_embed.add_field(name="Result", value=f"```\n{preview[:1020]}\n```", inline=False)
-    result_embed.set_footer(text=f"Requested by {ctx.actor.display_name}")
-
-    # ── Log to automod (code + result for audit trail) ──────────────
     log_embed = discord.Embed(
         title="Python Code Executed",
         color=discord.Color.green(),
@@ -3642,11 +3786,10 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
     log_embed.add_field(name="Actor", value=f"{ctx.actor.mention} (`{ctx.actor.id}`)", inline=True)
 
     await _log_execution(ctx, preview, log_embed)
-    return ToolResult.ok(preview, embed=result_embed)
+    return ToolResult.ok("Done! I put the execution details in automod logs.")
 
 
-# ── execute_python helpers ──────────────────────────────────────────────────
-
+# execute_python helpers
 
 def _strip_code_fences(raw: str) -> str:
     """Remove markdown code fences and surrounding whitespace."""
@@ -3930,21 +4073,18 @@ class AIModeration(commands.Cog):
         )
 
     def _message_record_has_image_context(self, record: Any) -> bool:
-        attachments = getattr(record, "attachments", []) or []
+        attachments = (record.get("attachments") if isinstance(record, dict) else getattr(record, "attachments", [])) or []
         if any(self.ai._is_supported_image_attachment(attachment) for attachment in attachments):
             return True
-        embeds = getattr(record, "embeds", []) or []
-        return any(getattr(embed, "image", None) or getattr(embed, "thumbnail", None) for embed in embeds)
+        embeds = (record.get("embeds") if isinstance(record, dict) else getattr(record, "embeds", [])) or []
+        return any(
+            (embed.get("image") or embed.get("thumbnail")) if isinstance(embed, dict) else (getattr(embed, "image", None) or getattr(embed, "thumbnail", None))
+            for embed in embeds
+        )
 
     @staticmethod
     def _looks_like_image_question(content: str) -> bool:
-        low = re.sub(r"\s+", " ", (content or "").strip().lower())
-        return bool(
-            re.search(r"\b(?:who|what)\s+(?:is|are)\s+(?:this|that|it|these|those)\b", low)
-            or re.search(r"\b(?:who|what)'s\s+(?:this|that|it)\b", low)
-            or re.search(r"\b(?:what|who)\s+(?:am i looking at|is in (?:this|that) image|is shown)\b", low)
-            or re.search(r"\b(?:identify|analyze|scan|read)\s+(?:this|that|the)?\s*(?:image|pic|picture|screenshot|photo)\b", low)
-        )
+        return _looks_like_image_question_text(content)
 
     def _normalize_chat_text(self, text: str) -> str:
         return re.sub(r"\s+", " ", (text or "").strip().lower()).strip("`")
@@ -3954,15 +4094,23 @@ class AIModeration(commands.Cog):
 
     def _looks_like_advanced_action_request(self, content: str) -> bool:
         low = self._normalize_chat_text(content)
+        if self._HELP_RE.search(low):
+            return True
         if self._looks_like_mod_request(low):
+            return True
+        if self._extract_dm_args(content):
             return True
         prefix = r"^(?:please\s+|can\s+you\s+|could\s+you\s+)?"
         action_patterns = (
             r"(?:create|make|build|set up|delete|remove|archive|lock|unlock|clone|reorder|move|sync)\b",
             r"(?:schedule|remind|announce|dm)\b",
-            r"(?:role|channel|category|thread|event|ticket|poll|project|homework|assignment|deadline)\b",
+            r"(?:role|channel|category|thread|event|ticket|poll|project|homework|assignment|deadline|emoji|emote)\b",
             r"(?:raid|verification|welcome|goodbye|reaction role|leaderboard|attendance|inactive)\b",
             r"(?:if\s+someone|when\s+someone|every\s+|whenever\s+|turn\s+this)\b",
+            r"(?:open\s+up|reopen)\s+(?:this\s+)?(?:channel|chat|here)\b",
+            r"(?:slowmode|slow\s+mode)\b",
+            r"(?:send|move|drag)\b.*\b(?:vc|voice|voice\s+channel|channel|room)\b",
+            r"(?:disconnect|dc)\b.*\b(?:vc|voice|voice\s+channel)\b",
             r"(?:summarize|summary|report)\s+(?:this\s+)?(?:channel|thread|chat|messages?|logs?|activity)\b",
             r"(?:show|list|fetch|get)\s+(?:audit|logs?|members?|users?|roles?|channels?|cases?|warnings?|inactive|activity|staff|admins?)\b",
             r"(?:who|which\s+members?|which\s+users?)\s+(?:has|have|is|are)\s+(?:the\s+)?[\w\s@#&-]*(?:role|admin|staff|permission|muted|banned|timed\s+out)\b",
@@ -4174,8 +4322,10 @@ class AIModeration(commands.Cog):
         content = (message.content or "").strip()
         extras: list[str] = []
         if message.attachments:
-            names = [a.filename for a in message.attachments[:3]]
+            names = [str(getattr(a, "filename", "attachment") or "attachment") for a in message.attachments[:3]]
             extras.append(f"[attachment(s): {', '.join(names)}]")
+        if message.embeds:
+            extras.append(f"[{len(message.embeds)} embed(s)]")
         if message.stickers:
             extras.append(f"[sticker: {message.stickers[0].name}]")
         display = " ".join(part for part in [content, " ".join(extras)] if part).strip()
@@ -4209,28 +4359,51 @@ class AIModeration(commands.Cog):
         text_bits: list[str] = []
         media_bits: list[str] = []
 
+        def field(obj: Any, name: str, default: Any = None) -> Any:
+            if isinstance(obj, dict):
+                return obj.get(name, default)
+            return getattr(obj, name, default)
+
+        def add_media(media: str) -> None:
+            if media and media not in media_bits:
+                media_bits.append(media)
+
+        def describe_attachment(attachment: Any) -> str:
+            filename = str(field(attachment, "filename", "attachment") or "attachment")
+            filename_low = filename.lower()
+            content_type = str(field(attachment, "content_type", "") or "").lower()
+            if content_type == "image/gif" or filename_low.endswith(".gif"):
+                return "a GIF"
+            if content_type.startswith("image/") or filename_low.endswith((".png", ".jpg", ".jpeg", ".webp")):
+                return "an image"
+            return f"an attachment named {filename}"
+
+        def collect_record_media(record: Any) -> None:
+            for attachment in field(record, "attachments", []) or []:
+                add_media(describe_attachment(attachment))
+            for embed in field(record, "embeds", []) or []:
+                image = field(embed, "image")
+                thumbnail = field(embed, "thumbnail")
+                url = str(field(image, "url", "") or field(thumbnail, "url", "") or "")
+                if url:
+                    add_media(self._describe_lookup_url(url) or "an embed image")
+                elif field(embed, "title") or field(embed, "description"):
+                    add_media("an embed")
+
         for found in reversed(matches[:6]):
             raw = re.sub(r"\s+", " ", (found.content or "").strip())
             urls = re.findall(r"https?://\S+", raw)
             for url in urls:
                 media = self._describe_lookup_url(url.rstrip(".,)>]"))
-                if media and media not in media_bits:
-                    media_bits.append(media)
+                if media:
+                    add_media(media)
             text = re.sub(r"https?://\S+", "", raw).strip()
             if text and text not in text_bits:
                 text_bits.append(text)
 
-            for attachment in found.attachments:
-                filename = (attachment.filename or "").lower()
-                content_type = (attachment.content_type or "").lower()
-                if content_type == "image/gif" or filename.endswith(".gif"):
-                    media = "a GIF"
-                elif content_type.startswith("image/") or filename.endswith((".png", ".jpg", ".jpeg", ".webp")):
-                    media = "an image"
-                else:
-                    media = f"an attachment named {attachment.filename or 'attachment'}"
-                if media not in media_bits:
-                    media_bits.append(media)
+            collect_record_media(found)
+            for snapshot in getattr(found, "message_snapshots", []) or []:
+                collect_record_media(snapshot)
 
         parts: list[str] = []
         if text_bits:
@@ -4352,9 +4525,17 @@ class AIModeration(commands.Cog):
             return None
 
         perm_name = required.replace("_", " ").title()
-        if not getattr(actor.guild_permissions, required, False):
+        def has_perm(member: discord.Member, name: str) -> bool:
+            if name == "manage_emojis":
+                return bool(
+                    getattr(member.guild_permissions, "manage_emojis_and_stickers", False)
+                    or getattr(member.guild_permissions, "manage_emojis", False)
+                )
+            return bool(getattr(member.guild_permissions, name, False))
+
+        if not has_perm(actor, required):
             return f"You need the `{perm_name}` permission."
-        if guild and guild.me and not getattr(guild.me.guild_permissions, required, False):
+        if guild and guild.me and not has_perm(guild.me, required):
             return f"I need the `{perm_name}` permission."
         return None
 
@@ -4455,15 +4636,21 @@ class AIModeration(commands.Cog):
 
         if re.search(r"\b(?:from|by|of)\s*$", content, re.IGNORECASE):
             return mentions[0]
+        if re.match(r"^\s*(?:purge|clear|clean)\b", content, re.IGNORECASE):
+            return mentions[0]
+        if re.search(r"\b(?:purge|clear|clean|delete|remove|wipe|nuke)\b", content, re.IGNORECASE) and re.search(
+            r"\b(?:messages?|msgs?|chat)\b", content, re.IGNORECASE
+        ):
+            return mentions[0]
         return None
 
     @staticmethod
     def _extract_dm_args(content: str) -> Dict[str, Any]:
         text = (content or "").strip()
         patterns = (
-            r"^(?:dm|message|direct\s+message)\s+<@!?(\d{15,22})>\s+(.+)$",
-            r"^send\s+(?:a\s+)?dm\s+to\s+<@!?(\d{15,22})>\s+(.+)$",
-            r"^send\s+<@!?(\d{15,22})>\s+(.+)$",
+            r"^(?:dm|message|direct\s+message)\s+<@!?(\d{15,22})>\s*[,;:]?\s+(.+)$",
+            r"^send\s+(?:a\s+)?dm\s+to\s+<@!?(\d{15,22})>\s*[,;:]?\s+(.+)$",
+            r"^send\s+<@!?(\d{15,22})>\s*[,;:]?\s+(?!to\b|into\b|in\b|vc\b|voice\b)(.+)$",
         )
         for pattern in patterns:
             match = re.match(pattern, text, flags=re.IGNORECASE | re.DOTALL)
@@ -4493,7 +4680,7 @@ class AIModeration(commands.Cog):
         text = re.sub(r"^(?:dm|message|direct\s+message)\s+", "", text, flags=re.IGNORECASE).strip()
         text = re.sub(r"^send\s+(?:a\s+)?dm\s+to\s+", "", text, flags=re.IGNORECASE).strip()
         text = re.sub(r"^send\s+", "", text, flags=re.IGNORECASE).strip()
-        text = re.sub(r"^<@!?\d{15,22}>\s*", "", text).strip()
+        text = re.sub(r"^<@!?\d{15,22}>\s*[,;:]?\s*", "", text).strip()
         return text.strip('"') or None
 
     def _extract_purge_args(self, content: str) -> Dict[str, Any]:
@@ -4502,6 +4689,19 @@ class AIModeration(commands.Cog):
         if amount is not None:
             args["amount"] = amount
         target_id = self._extract_purge_target_id(content)
+        if target_id is None and (
+            re.match(r"^\s*(?:purge|clear|clean)\b", content or "", re.IGNORECASE)
+            or (
+                re.search(r"\b(?:delete|remove|wipe|nuke|purge|clear|clean)\b", content or "", re.IGNORECASE)
+                and re.search(r"\b(?:messages?|msgs?|chat)\b", content or "", re.IGNORECASE)
+            )
+        ):
+            mention = _MENTION_RE.search(content or "")
+            if mention:
+                try:
+                    target_id = int(mention.group(1))
+                except ValueError:
+                    target_id = None
         if target_id is not None:
             args["target_user_id"] = target_id
         channel_id = self._extract_purge_channel_id(content)
@@ -4649,8 +4849,9 @@ class AIModeration(commands.Cog):
             )
         m = re.match(r"^(purge|clear|clean)\b(?:\s+(\d{1,4}))?", low)
         if m:
-            amount = int(m.group(2)) if m.group(2) else 10
-            return Decision(type=DecisionType.TOOL_CALL, reason="rule: purge", tool=ToolType.PURGE, arguments={"amount": amount})
+            args = self._extract_purge_args(content)
+            args.setdefault("amount", int(m.group(2)) if m.group(2) else 10)
+            return Decision(type=DecisionType.TOOL_CALL, reason="rule: purge", tool=ToolType.PURGE, arguments=args)
         if re.match(r"^(delete|remove|wipe|nuke)\b.*\b(?:messages?|msgs?|chat)\b", low):
             return Decision(
                 type=DecisionType.TOOL_CALL,
@@ -4685,6 +4886,9 @@ class AIModeration(commands.Cog):
         if self._HELP_RE.search(low):
             return decision(ToolType.HELP, "help")
 
+        if re.match(r"^\s*(?:purge|clear|clean)\b", content, re.IGNORECASE):
+            return decision(ToolType.PURGE, "purge_messages", self._extract_purge_args(content))
+
         if re.search(r"\b(?:wipe|nuke|clean|clear|delete|purge)\b.*\b(?:chat|messages?|msgs?)\b", low):
             return decision(ToolType.PURGE, "purge_messages", self._extract_purge_args(content))
 
@@ -4717,15 +4921,15 @@ class AIModeration(commands.Cog):
         if re.search(r"\b(?:create|make|add|build|set up)\b.*\brole\b", low):
             name = self._extract_simple_name_after(content, r"role")
             return decision(ToolType.CREATE_ROLE, "create_role", {"name": name} if name else {})
-        if re.search(r"\b(?:delete|remove|trash|destroy)\b.*\brole\b", low):
-            role = self._extract_role_name(content) or self._extract_simple_name_after(content, r"role")
-            return decision(ToolType.DELETE_ROLE, "delete_role", {"role_name": role} if role else {})
         if re.search(r"\b(?:give|add)\b.*\brole\b", low):
             role = self._extract_role_name(content)
             return decision(ToolType.ADD_ROLE, "add_role", {"role_name": role} if role else {})
         if re.search(r"\b(?:take|remove)\b.*\brole\b", low):
             role = self._extract_role_name(content)
             return decision(ToolType.REMOVE_ROLE, "remove_role", {"role_name": role} if role else {})
+        if re.search(r"\b(?:delete|trash|destroy)\b.*\brole\b", low):
+            role = self._extract_role_name(content) or self._extract_simple_name_after(content, r"role")
+            return decision(ToolType.DELETE_ROLE, "delete_role", {"role_name": role} if role else {})
 
         if re.search(r"\b(?:unmute|untimeout|free|let .*talk|let .*speak)\b", low):
             return decision(ToolType.UNTIMEOUT, "untimeout")
@@ -4949,6 +5153,8 @@ class AIModeration(commands.Cog):
                     return m
 
         q = str(query).strip().lstrip("@").lower()
+        if not q:
+            return None
 
         m = discord.utils.find(
             lambda x: x.name.lower() == q or x.display_name.lower() == q or str(x).lower() == q,
@@ -4987,14 +5193,14 @@ class AIModeration(commands.Cog):
                     return r
 
         q = str(query).strip().lstrip("@").lower()
+        if not q:
+            return None
         r = discord.utils.find(lambda x: x.name.lower() == q, guild.roles)
         if r:
             return r
-        names = [r.name for r in guild.roles]
-        close = difflib.get_close_matches(q, names, n=1, cutoff=0.7)
-        if close:
-            return discord.utils.find(lambda x: x.name == close[0], guild.roles)
-        return None
+        index = {r.name.lower(): r for r in guild.roles}
+        close = difflib.get_close_matches(q, list(index), n=1, cutoff=0.7)
+        return index[close[0]] if close else None
 
     # ------------------------------------------------------------------
     # Reply helpers
@@ -5046,11 +5252,11 @@ class AIModeration(commands.Cog):
         channel_id = message.channel.id
         current_time = _now().astimezone().isoformat()
 
-        # ── Build server context snapshot ───────────────────────────
+        # Build server context snapshot
         # Categories + channels (max 60 to keep prompt small)
         channel_lines: List[str] = []
         for cat in guild.categories[:20]:
-            channel_lines.append(f"  📁 {cat.name} (id={cat.id})")
+            channel_lines.append(f"  {cat.name} (id={cat.id})")
             for ch in cat.channels[:10]:
                 kind = "text" if isinstance(ch, discord.TextChannel) else (
                     "voice" if isinstance(ch, discord.VoiceChannel) else "other"
@@ -5074,7 +5280,7 @@ class AIModeration(commands.Cog):
             "\n"
             "== Runtime Globals ==\n"
             "bot, guild, author, message, channel, discord, asyncio, fetch_recent_activity\n"
-            "The code runs with FULL access — channel.send() actually posts, guild.create_role() actually creates, etc.\n"
+            "The code runs with access to the bot, guild, and Discord API.\n"
             "\n"
             "== Allowed Imports ==\n"
             "Any stdlib module (datetime, json, re, random, io, csv, os, etc). Do not use pytz.\n"
@@ -5088,7 +5294,7 @@ class AIModeration(commands.Cog):
             "\n"
             f"== Server Channels ==\n{channel_ctx}\n"
             "\n"
-            f"== Server Roles (top→bottom) ==\n{role_ctx}\n"
+            f"== Server Roles (top to bottom) ==\n{role_ctx}\n"
             "\n"
             "== Scheduled Events ==\n"
             "guild.create_scheduled_event(..., privacy_level=discord.PrivacyLevel.guild_only, "
@@ -5103,11 +5309,11 @@ class AIModeration(commands.Cog):
             "Scheduled code must be self-contained (only has: bot, guild, discord, asyncio).\n"
             "\n"
             "== Rules ==\n"
-            "• Use real channel/role IDs from the snapshot above when possible.\n"
-            "• You CAN send messages — channel.send() works normally.\n"
-            "• Return a concise string summarizing what was done.\n"
-            "• For mass/destructive actions, limit scope and return what was affected.\n"
-            "• Output ONLY raw Python code. No markdown fences. No explanation.\n"
+            "- Use real channel/role IDs from the snapshot above when possible.\n"
+            "- Use channel.send(), user.send(), or message.reply() for requests that ask to send/post a message; otherwise return a concise string.\n"
+            "- Return a concise string summarizing what was done.\n"
+            "- For mass/destructive actions, use the requested scope and return what was affected.\n"
+            "- Output ONLY raw Python code. No markdown fences. No explanation.\n"
         )
 
         raw_response = await self.ai._call(
@@ -5219,9 +5425,7 @@ class AIModeration(commands.Cog):
 
         content = self.clean_content(message)
         if not content:
-            if (is_mentioned or is_reply_to_bot) and any(
-                self.ai._is_supported_image_attachment(a) for a in message.attachments
-            ):
+            if (is_mentioned or is_reply_to_bot) and await self._message_has_image_context(message):
                 content = "What is in this image?"
             else:
                 if (is_mentioned or is_reply_to_bot) and settings.chat_enabled:
@@ -5684,8 +5888,8 @@ class AIModeration(commands.Cog):
 
         settings = await self.get_guild_settings(interaction.guild.id)
         color = discord.Color.blurple() if settings.enabled else discord.Color.greyple()
-        embed = discord.Embed(title="Bot AI Moderation Status", color=color)
-        embed.add_field(name="Enabled", value="Done Yes" if settings.enabled else "No No", inline=True)
+        embed = discord.Embed(title="AI Moderation Status", color=color)
+        embed.add_field(name="Enabled", value="Yes" if settings.enabled else "No", inline=True)
         embed.add_field(name="Talking", value="On" if settings.chat_enabled else "Off", inline=True)
         embed.add_field(name="Model", value=f"`{settings.model or self.config.model}`", inline=True)
         embed.add_field(name="Context Messages", value=str(settings.context_messages), inline=True)
@@ -5701,7 +5905,7 @@ class AIModeration(commands.Cog):
         settings = await self.get_guild_settings(interaction.guild.id)
         new_value = not settings.enabled
         await self.update_guild_setting(interaction.guild.id, "aimod_enabled", new_value)
-        status = "Done enabled" if new_value else "No disabled"
+        status = "enabled" if new_value else "disabled"
         await interaction.response.send_message(f"AI Moderation is now **{status}**.", ephemeral=True)
 
     @aimod_group.command(name="talking")
@@ -5721,16 +5925,6 @@ class AIModeration(commands.Cog):
             "I will stay quiet for casual chat and only handle moderation flows."
         )
         await interaction.response.send_message(f"AI talking is now **{status}**. {detail}", ephemeral=True)
-
-    @aimod_group.command(name="confirm")
-    @app_commands.describe(enabled="Ignored. Confirmation dialogs have been removed.")
-    async def aimod_confirm(self, interaction: discord.Interaction, enabled: bool) -> None:
-        """Confirmation dialogs are removed."""
-        if not await self._require_manage(interaction):
-            return
-
-        await self.update_guild_setting(interaction.guild.id, "aimod_confirm_enabled", False)
-        await interaction.response.send_message("Confirmation dialogs have been removed and stay disabled.", ephemeral=True)
 
     @app_commands.command(name="aihelp")
     async def aihelp(self, interaction: discord.Interaction) -> None:
