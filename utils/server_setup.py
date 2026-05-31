@@ -222,28 +222,16 @@ QUICKSTART_ROLE_SPECS: List[Dict[str, Any]] = [
 
 CATEGORY_SPECS: List[Dict[str, Any]] = [
     {"name": "Moderation Logs", "setting_key": "logs_category", "prefer_name": True},
-    {"name": "Staff Area", "setting_key": "staff_category"},
     {"name": "Support Tickets", "setting_key": "ticket_category"},
-    {"name": "Modmail", "setting_key": "modmail_category_id"},
-    {"name": "Verification", "setting_key": "verification_category"},
 ]
 
 CHANNEL_SPECS: List[Dict[str, Any]] = [
     {"name": "welcome", "setting_key": "welcome_channel", "topic": "Welcome and onboarding messages."},
-    {"name": "verify", "setting_key": "verify_channel", "category": "verification_category", "topic": "Verification instructions."},
-    {"name": "verify-logs", "setting_key": "verify_log_channel", "category": "verification_category", "topic": "Verification logs."},
     {"name": "audit-logs", "setting_key": "audit_log_channel", "category": "logs_category", "topic": "Server audit events and configuration changes.", "prefer_name": True},
     {"name": "mod-logs", "setting_key": "mod_log_channel", "category": "logs_category", "topic": "Moderation actions.", "prefer_name": True},
     {"name": "message-logs", "setting_key": "message_log_channel", "category": "logs_category", "topic": "Message edits, deletes, and purge logs.", "prefer_name": True},
     {"name": "automod-logs", "setting_key": "automod_log_channel", "category": "logs_category", "topic": "Automod and AI moderation events.", "prefer_name": True},
     {"name": "voice-logs", "setting_key": "voice_log_channel", "category": "logs_category", "topic": "Voice channel moderation and state changes.", "prefer_name": True},
-    {"name": "staff-chat", "setting_key": "staff_chat_channel", "category": "staff_category", "topic": "General staff discussion."},
-    {"name": "staff-commands", "setting_key": "staff_commands_channel", "category": "staff_category", "topic": "Staff bot commands."},
-    {"name": "staff-announcements", "setting_key": "staff_announcements_channel", "category": "staff_category", "topic": "Important staff announcements."},
-    {"name": "staff-updates", "setting_key": "staff_updates_channel", "category": "staff_category", "topic": "Staff promotions and demotions."},
-    {"name": "staff-sanctions", "setting_key": "staff_sanctions_channel", "category": "staff_category", "topic": "Staff sanctions and notes."},
-    {"name": "staff-guide", "setting_key": "staff_guide_channel", "category": "staff_category", "topic": "Internal staff guide."},
-    {"name": "supervisor-logs", "setting_key": "supervisor_log_channel", "category": "staff_category", "topic": "Supervisor actions."},
     {"name": "jail", "setting_key": "quarantine_channel", "topic": "Channel for quarantined users."},
 ]
 
@@ -595,12 +583,6 @@ def build_setup_summary(
             "label": "Core Channels",
             "items": [
                 channel_item("Welcome Channel", "welcome_channel"),
-                module_channel_item("Verification Channel", "verification", "verifyChannel", "verify_channel"),
-                module_channel_item("Verification Log Channel", "verification", "verifyLogChannel", "verify_log_channel"),
-                channel_item("Staff Guide Channel", "staff_guide_channel"),
-                channel_item("Staff Updates Channel", "staff_updates_channel"),
-                channel_item("Staff Commands Channel", "staff_commands_channel"),
-                channel_item("Staff Announcements Channel", "staff_announcements_channel"),
             ],
         },
         {
@@ -613,7 +595,6 @@ def build_setup_summary(
                 module_channel_item("AutoMod Log Channel", "logging", "automodChannel", "automod_log_channel"),
                 module_channel_item("Voice Log Channel", "logging", "voiceChannel", "voice_log_channel"),
                 category_item("Ticket Category", "ticket_category"),
-                category_item("Modmail Category", "modmail_category_id"),
                 module_channel_item("Ticket/Modmail Log Channel", "tickets", "logChannel", "ticket_log_channel"),
             ],
         },
