@@ -1,0 +1,244 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Dashboard — Server Picker
+   ═══════════════════════════════════════════════════════════════════ */
+
+.dash-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  gap: 16px;
+  color: var(--text-secondary);
+}
+.dash-loading a {
+  color: var(--brand-secondary);
+  text-decoration: underline;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+.dashboard-page {
+  min-height: 100vh;
+  background: var(--bg-deepest);
+}
+
+/* ── Topbar ── */
+.dash-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--header-height);
+  padding: 0 24px;
+  border-bottom: 1px solid rgba(108, 92, 231, 0.08);
+}
+
+.dash-topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.dash-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.dash-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid rgba(108, 92, 231, 0.3);
+}
+
+.dash-avatar-placeholder {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--brand-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.dash-username {
+  font-weight: 500;
+  font-size: 0.9rem;
+}
+
+/* ── Content ── */
+.dash-content {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+}
+
+.dash-hero {
+  text-align: center;
+  margin-bottom: 40px;
+}
+
+.dash-hero h1 {
+  font-size: 2rem;
+  font-weight: 800;
+  letter-spacing: -1px;
+  margin-bottom: 8px;
+}
+
+.dash-hero p {
+  color: var(--text-secondary);
+  font-size: 1rem;
+}
+
+.dash-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 40px;
+  padding: 4px 4px 4px 16px;
+  background: var(--bg-elevated);
+  border: 1px solid rgba(108, 92, 231, 0.1);
+  border-radius: var(--radius-lg);
+  color: var(--text-muted);
+}
+
+.dash-search-bar .input {
+  border: none;
+  background: transparent;
+  padding: 14px 12px;
+}
+
+.dash-search-bar .input:focus {
+  box-shadow: none;
+}
+
+/* ── Guild Sections ── */
+.dash-guild-section {
+  margin-bottom: 48px;
+}
+
+.dash-section-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.guild-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.guild-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 20px;
+  cursor: pointer;
+  transition: all var(--duration-normal) var(--ease-out);
+}
+
+.guild-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(108, 92, 231, 0.3);
+  box-shadow: var(--shadow-glow);
+}
+
+.guild-card-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.guild-card-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.guild-card-placeholder {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, var(--bg-hover), var(--bg-active));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.guild-card-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.guild-card-name {
+  font-weight: 600;
+  font-size: 0.92rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.guild-card-members {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.guild-card-members.not-installed {
+  color: var(--warning);
+}
+
+.guild-card-arrow {
+  color: var(--text-muted);
+  opacity: 0;
+  transform: translateX(-5px);
+  transition: all var(--duration-normal) var(--ease-out);
+}
+
+.guild-card:hover .guild-card-arrow {
+  opacity: 1;
+  transform: translateX(0);
+  color: var(--brand-secondary);
+}
+
+.guild-card-invite .guild-card-action {
+  flex-shrink: 0;
+}
+
+.dash-empty {
+  text-align: center;
+  padding: 80px 24px;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.dash-empty h3 {
+  color: var(--text-secondary);
+}

@@ -16,6 +16,11 @@ from ..views.shop_views import ItemDetailView, SHOP_ITEMS, ShopBrowserView
 from ..views.v2_embed import apply_v2_embed_layout
 
 
+SHOP_CHANNEL_ID = 1508713516096557174
+SHOP_CHANNEL_MENTION = f"<#{SHOP_CHANNEL_ID}>"
+SHOP_CHANNEL_MESSAGE = f"The shop is only open in {SHOP_CHANNEL_MENTION}."
+
+
 class ShopCog(commands.Cog):
     """Shop commands: shop, buy, sell."""
 
@@ -86,6 +91,39 @@ class ShopCog(commands.Cog):
 
         return None, None, suggestions
 
+    @staticmethod
+    def _normalize_category(category: str) -> str:
+        category = ShopCog._normalize_item_query(category or "all")
+        aliases = {
+            "all items": "all",
+            "item": "all",
+            "items": "all",
+            "ingredient": "ingredients",
+            "cooking": "ingredients",
+            "consumable": "consumables",
+            "vehicle": "vehicles",
+            "collectible": "collectibles",
+        }
+        category = aliases.get(category, category)
+        valid = {"all", "food", "tools", "consumables", "vehicles", "collectibles", "ingredients"}
+        return category if category in valid else "all"
+
+    @staticmethod
+    def _is_shop_channel(channel: object) -> bool:
+        return getattr(channel, "id", None) == SHOP_CHANNEL_ID
+
+    async def _reject_wrong_shop_channel_interaction(self, interaction: discord.Interaction) -> bool:
+        if self._is_shop_channel(interaction.channel):
+            return False
+        await safe_reply(interaction, content=SHOP_CHANNEL_MESSAGE, ephemeral=True)
+        return True
+
+    async def _reject_wrong_shop_channel_context(self, ctx: commands.Context) -> bool:
+        if self._is_shop_channel(ctx.channel):
+            return False
+        await ctx.reply(SHOP_CHANNEL_MESSAGE, mention_author=False)
+        return True
+
     @app_commands.command(name="shop", description="🛍️ Browse the shop")
     @app_commands.describe(category="Filter by category")
     @app_commands.choices(
@@ -96,17 +134,31 @@ class ShopCog(commands.Cog):
             app_commands.Choice(name="🧪 Consumables", value="consumables"),
             app_commands.Choice(name="🚗 Vehicles", value="vehicles"),
             app_commands.Choice(name="🏆 Collectibles", value="collectibles"),
+            app_commands.Choice(name="Ingredients", value="ingredients"),
         ]
     )
     async def shop(self, interaction: discord.Interaction, category: str = "all"):
         """Open the shop browser."""
+        if await self._reject_wrong_shop_channel_interaction(interaction):
+            return
         await safe_defer(interaction, ephemeral=True)
 
-        view = ShopBrowserView(self.bot, interaction.user, category)
+        view = ShopBrowserView(self.bot, interaction.user, self._normalize_category(category))
         embed = view.create_embed()
 
         apply_v2_embed_layout(view, embed=embed)
         await safe_reply(interaction, view=view, ephemeral=True)
+
+    @commands.command(name="shop")
+    async def shop_prefix(self, ctx: commands.Context, category: str = "all"):
+        """Open the shop browser from the configured prefix."""
+        if await self._reject_wrong_shop_channel_context(ctx):
+            return
+
+        view = ShopBrowserView(self.bot, ctx.author, self._normalize_category(category))
+        embed = view.create_embed()
+        apply_v2_embed_layout(view, embed=embed)
+        await ctx.reply(view=view, mention_author=False)
 
     @app_commands.command(name="buy", description="🛒 Buy an item from the shop")
     @app_commands.describe(item="Item name to buy", quantity="How many to buy (default: 1)")

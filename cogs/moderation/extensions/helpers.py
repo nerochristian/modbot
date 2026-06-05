@@ -290,28 +290,55 @@ class HelperCommands:
         
         # Server owner = max level
         if member.id == member.guild.owner_id:
+            self._hierarchy_cache[cache_key] = (datetime.now(), 100)
             return 100
         
         # Check role hierarchy from settings
         settings = await self.bot.db.get_settings(guild_id)
         user_role_ids = {r.id for r in member.roles}
+
+        def setting_has_role(*keys: str) -> bool:
+            for key in keys:
+                value = settings.get(key)
+                if isinstance(value, (list, tuple, set)):
+                    for role_id in value:
+                        try:
+                            if int(role_id) in user_role_ids:
+                                return True
+                        except (TypeError, ValueError):
+                            continue
+                    continue
+
+                try:
+                    if value is not None and int(value) in user_role_ids:
+                        return True
+                except (TypeError, ValueError):
+                    continue
+
+            return False
         
-        role_hierarchy = {
-            'manager_role': 8,
-            'admin_role': 7,
-            'supervisor_role': 6,
-            'senior_mod_role': 5,
-            'mod_role': 4,
-            'trial_mod_role': 3,
-            'staff_role': 2
-        }
+        role_hierarchy = (
+            (("manager_role",), 8),
+            (("admin_role", "admin_roles"), 7),
+            (("supervisor_role", "supervisor_roles"), 6),
+            (("senior_mod_role",), 5),
+            (("mod_role", "moderator_role", "mod_roles"), 4),
+            (("trial_mod_role",), 3),
+            (("staff_role", "helper_role"), 2),
+        )
         
-        for role_key, level in role_hierarchy.items():
-            if settings.get(role_key) in user_role_ids:
-                self._hierarchy_cache[cache_key] = (datetime.now(), level)
-                return level
+        current_level = 0
+        for role_keys, level in role_hierarchy:
+            if setting_has_role(*role_keys):
+                current_level = max(current_level, level)
+
+        # Native Discord administrators should pass moderation checks even when
+        # the server has not configured a matching bot admin role.
+        if member.guild_permissions.administrator:
+            current_level = max(current_level, 7)
         
-        return 0
+        self._hierarchy_cache[cache_key] = (datetime.now(), current_level)
+        return current_level
 
     async def can_moderate(
         self,
