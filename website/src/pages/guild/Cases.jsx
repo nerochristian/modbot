@@ -4,7 +4,7 @@ import {
   User, Clock, AlertTriangle, Ban, UserMinus, VolumeX,
   AlertCircle, Loader2
 } from 'lucide-react'
-import { useGuild } from '../GuildDashboard'
+import { useGuild } from './GuildContext'
 import { api } from '../../api'
 
 const ACTION_ICONS = {

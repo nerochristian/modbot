@@ -6,9 +6,12 @@
   padding-left: var(--sidebar-width);
   min-height: 100vh;
   background:
-    radial-gradient(circle at 20% 0%, rgba(124, 109, 240, 0.16), transparent 30%),
-    radial-gradient(circle at 92% 10%, rgba(56, 189, 248, 0.08), transparent 28%),
+    radial-gradient(circle at 18% 0%, rgba(124, 109, 240, 0.22), transparent 28%),
+    radial-gradient(circle at 92% 10%, rgba(56, 189, 248, 0.10), transparent 26%),
+    linear-gradient(rgba(124, 109, 240, 0.028) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(124, 109, 240, 0.024) 1px, transparent 1px),
     linear-gradient(180deg, var(--bg-root) 0%, var(--bg-deepest) 100%);
+  background-size: auto, auto, 64px 64px, 64px 64px, auto;
   color: var(--text-primary);
 }
 
@@ -21,7 +24,9 @@
   width: var(--sidebar-width);
   display: flex;
   flex-direction: column;
-  background: color-mix(in srgb, var(--bg-deep) 92%, transparent);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--bg-deep) 94%, transparent), color-mix(in srgb, var(--bg-root) 94%, transparent)),
+    radial-gradient(circle at 36% 0%, rgba(124, 109, 240, 0.16), transparent 34%);
   border-right: 1px solid var(--border-default);
   z-index: 200;
   overflow-y: auto;
@@ -46,6 +51,10 @@
   justify-content: center;
   color: white;
   box-shadow: var(--shadow-glow-brand);
+}
+.gd-brand-icon svg {
+  width: 74%;
+  height: 74%;
 }
 .gd-brand-text {
   display: flex;
@@ -211,7 +220,7 @@
 .gd-topbar {
   height: var(--header-height);
   border-bottom: 1px solid var(--border-default);
-  background: color-mix(in srgb, var(--bg-root) 84%, transparent);
+  background: color-mix(in srgb, var(--bg-root) 86%, transparent);
   backdrop-filter: blur(22px);
   display: flex;
   align-items: center;
@@ -238,7 +247,7 @@
 .gd-tb-center { flex: 1; display: flex; justify-content: center; max-width: 500px; margin: 0 24px; }
 .gd-search-box {
   width: 100%; display: flex; align-items: center; gap: 10px;
-  background: var(--glass-bg); border: 1px solid var(--border-default);
+  background: color-mix(in srgb, var(--bg-card) 72%, transparent); border: 1px solid var(--border-default);
   border-radius: var(--radius-md); padding: 8px 16px;
   box-shadow: var(--shadow-xs);
   backdrop-filter: blur(18px);

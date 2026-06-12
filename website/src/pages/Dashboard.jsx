@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  Shield, LogOut, Server, Users, ChevronRight,
-  Bot, Plus, Search, Loader2, AlertCircle
+  LogOut, Server, Users, ChevronRight,
+  Bot, Plus, Search, Loader2, AlertCircle,
+  ShieldCheck, Activity, Zap, Database, BarChart3
 } from 'lucide-react'
 import { api } from '../api'
 import { ThemeToggle } from '../theme'
+import VortexLogo from '../components/VortexLogo'
 import './Dashboard.css'
 
 export default function Dashboard() {
@@ -39,6 +41,7 @@ export default function Dashboard() {
 
   const installed = filtered.filter(g => g.botInstalled)
   const notInstalled = filtered.filter(g => !g.botInstalled && g.canManage)
+  const manageableCount = guilds.filter(g => g.botInstalled || g.canManage).length
 
   if (loading) {
     return (
@@ -63,7 +66,7 @@ export default function Dashboard() {
       {/* Top bar */}
       <header className="dash-topbar glass-strong">
         <Link to="/" className="nav-brand">
-          <div className="nav-logo"><Shield size={20} /></div>
+          <div className="nav-logo"><VortexLogo size={22} /></div>
           <span className="nav-name">VORTEX <em>MODERATION</em></span>
         </Link>
         <div className="dash-topbar-right">
@@ -89,9 +92,63 @@ export default function Dashboard() {
 
       {/* Content */}
       <main className="dash-content">
-        <div className="dash-hero">
-          <h1>Select a Server</h1>
-          <p>Choose a server to manage with the Vortex moderation command center.</p>
+        <div className="dash-command">
+          <section className="dash-hero">
+            <div className="dash-kicker">
+              <VortexLogo size={16} />
+              Server command center
+            </div>
+            <h1>Select a Server</h1>
+            <p>Choose a server to manage protection, automation, moderation logs, backups, and staff workflows from one Vortex dashboard.</p>
+            <div className="dash-hero-stats">
+              <div><strong>{installed.length}</strong><span>Protected</span></div>
+              <div><strong>{notInstalled.length}</strong><span>Ready to invite</span></div>
+              <div><strong>{manageableCount}</strong><span>Manageable</span></div>
+            </div>
+          </section>
+
+          <aside className="dash-preview" aria-label="Vortex dashboard preview">
+            <div className="dash-preview-top">
+              <div className="dash-preview-brand">
+                <div className="dash-preview-logo"><VortexLogo size={22} /></div>
+                <div>
+                  <span>Live Protection</span>
+                  <small>All systems operational</small>
+                </div>
+              </div>
+              <span className="dash-live-pill">Online</span>
+            </div>
+            <div className="dash-preview-grid">
+              <div className="dash-preview-card">
+                <ShieldCheck size={18} />
+                <strong>247</strong>
+                <span>Threats blocked</span>
+              </div>
+              <div className="dash-preview-card">
+                <Activity size={18} />
+                <strong>18</strong>
+                <span>Active cases</span>
+              </div>
+              <div className="dash-preview-card">
+                <Zap size={18} />
+                <strong>892</strong>
+                <span>Auto actions</span>
+              </div>
+            </div>
+            <div className="dash-preview-chart">
+              <BarChart3 size={16} />
+              <div className="dash-chart-bars">
+                {[34, 58, 42, 76, 63, 89, 70, 96, 66, 82].map((height, index) => (
+                  <span key={index} style={{ height: `${height}%` }} />
+                ))}
+              </div>
+            </div>
+            <div className="dash-preview-row">
+              <Database size={16} />
+              <span>Backup completed 2m ago</span>
+              <strong>Ready</strong>
+            </div>
+          </aside>
         </div>
 
         <div className="dash-search-bar">

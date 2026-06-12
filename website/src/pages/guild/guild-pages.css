@@ -851,20 +851,22 @@
 .vtx-overview {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 18px;
 }
 
 .vtx-page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  margin-bottom: 4px;
+  padding: 4px 2px;
 }
 .vtx-page-title {
-  font-size: 1.25rem;
-  font-weight: 700;
+  font-size: clamp(1.35rem, 2vw, 1.8rem);
+  font-weight: 800;
   color: var(--text-primary);
   margin-bottom: 4px;
+  letter-spacing: -0.03em;
 }
 .vtx-page-subtitle {
   font-size: 0.85rem;
@@ -879,14 +881,15 @@
 .vtx-stats-row {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 16px;
+  gap: 14px;
 }
 .vtx-stat-card {
   background:
-    linear-gradient(145deg, color-mix(in srgb, var(--bg-card) 94%, white 6%), var(--bg-elevated));
+    radial-gradient(circle at 86% 22%, rgba(124, 109, 240, 0.13), transparent 34%),
+    linear-gradient(145deg, color-mix(in srgb, var(--bg-card) 96%, white 4%), var(--bg-elevated));
   border-radius: var(--radius-md);
   border: 1px solid var(--border-default);
-  padding: 16px;
+  padding: 17px;
   display: flex;
   flex-direction: column;
   box-shadow: var(--shadow-sm);
@@ -932,11 +935,11 @@
 .vtx-bento-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 16px;
+  gap: 14px;
 }
 .vtx-bento-card {
   background:
-    linear-gradient(145deg, color-mix(in srgb, var(--bg-card) 96%, white 4%), var(--bg-elevated));
+    linear-gradient(145deg, color-mix(in srgb, var(--bg-card) 96%, white 4%), color-mix(in srgb, var(--bg-elevated) 98%, black 2%));
   border-radius: var(--radius-md);
   border: 1px solid var(--border-default);
   padding: 16px;
@@ -952,7 +955,7 @@
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(circle at 16% 0%, rgba(124, 109, 240, 0.08), transparent 34%),
+    radial-gradient(circle at 16% 0%, rgba(124, 109, 240, 0.10), transparent 34%),
     linear-gradient(180deg, rgba(255,255,255,0.035), transparent 45%);
   opacity: 0.9;
 }
@@ -969,8 +972,8 @@
   margin-bottom: 16px;
 }
 .vtx-bc-header h3 {
-  font-size: 0.85rem;
-  font-weight: 700;
+  font-size: 0.88rem;
+  font-weight: 800;
   color: var(--text-primary);
 }
 .vtx-bc-link {

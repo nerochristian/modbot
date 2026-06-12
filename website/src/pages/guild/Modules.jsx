@@ -5,7 +5,7 @@ import {
   BarChart3, Clock, Bell, Terminal, CheckCircle2, XCircle,
   ArrowUpDown, Loader2, Package, Bot, UserCheck, Mail, Filter
 } from 'lucide-react'
-import { useGuild } from '../GuildDashboard'
+import { useGuild } from './GuildContext'
 import { api } from '../../api'
 import ModuleSettingsModal from './ModuleSettingsModal'
 

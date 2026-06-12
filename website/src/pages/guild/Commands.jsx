@@ -7,7 +7,7 @@ import {
   ArrowUpDown, Package, BarChart3, Smile, Bell, Tag, Heart,
   Gift, FileText, Image, Timer, Radio
 } from 'lucide-react'
-import { useGuild } from '../GuildDashboard'
+import { useGuild } from './GuildContext'
 
 const COMMANDS = [
   // Moderation

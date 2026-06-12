@@ -4,7 +4,7 @@ import {
   Calendar, Zap, Bell, CheckCircle2, XCircle, TrendingUp,
   ChevronDown, MoreHorizontal, AlertTriangle, Crown
 } from 'lucide-react'
-import { useGuild } from '../GuildDashboard'
+import { useGuild } from './GuildContext'
 import { api } from '../../api'
 
 // --- Custom SVG Components ---

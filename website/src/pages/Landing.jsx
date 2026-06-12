@@ -2,22 +2,16 @@ import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Shield, Zap, Terminal, Database, Users, Settings, Activity,
-  Lock, Eye, AlertTriangle, CheckCircle2, XCircle, Clock,
-  ChevronRight, ArrowUpRight, BarChart3, Search, MessageSquare, Menu,
+  Lock, AlertTriangle, CheckCircle2,
+  ChevronRight, BarChart3, Search, MessageSquare,
   ShieldAlert, ScrollText, Sun, Moon
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useTheme } from '../theme'
+import VortexLogo from '../components/VortexLogo'
 import './Landing.css'
 
 /* ── Custom Shield Logo ── */
-const VortexLogo = ({ size = 24 }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
-    <path d="M9 10l3 4 3-4" />
-  </svg>
-)
-
 /* ── Components ────────────────────────────────────────────────── */
 
 const Nav = () => {
@@ -275,8 +269,6 @@ const DemoChat = () => {
     </div>
   )
 }
-
-function ScrollTextIcon(props) { return <ScrollText {...props}/> }
 
 /* ── Main Page ─────────────────────────────────────────────────── */
 

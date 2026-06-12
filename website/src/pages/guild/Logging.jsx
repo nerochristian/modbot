@@ -3,7 +3,7 @@ import {
   ScrollText, Hash, Shield, MessageSquare, Users, Mic,
   Zap, AlertTriangle, CheckCircle2, XCircle, Save, Loader2
 } from 'lucide-react'
-import { useGuild } from '../GuildDashboard'
+import { useGuild } from './GuildContext'
 import { api } from '../../api'
 
 const LOG_CHANNELS = [

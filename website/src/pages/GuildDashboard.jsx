@@ -1,14 +1,16 @@
-import { useState, useEffect, createContext, useContext } from 'react'
-import { Link, useParams, useNavigate, Routes, Route, useLocation } from 'react-router-dom'
+import { useState, useEffect } from 'react'
+import { Link, useParams, Routes, Route, useLocation } from 'react-router-dom'
 import {
-  Shield, LogOut, ChevronLeft, LayoutDashboard, Zap, Brain,
-  ScrollText, Ticket, Gavel, Settings, Users, Server, Terminal,
-  Bell, Eye, ShieldCheck, MessageSquare, Lock, Loader2,
+  Shield, LayoutDashboard,
+  Gavel, Settings, Users, Server,
+  Bell, Loader2,
   AlertCircle, ChevronDown, Menu, X, BarChart3, Calendar, List,
   ShieldAlert, AlertTriangle, FileText, RefreshCcw, Database, Puzzle, Star, Search, HelpCircle
 } from 'lucide-react'
 import { api } from '../api'
 import { ThemeToggle } from '../theme'
+import VortexLogo from '../components/VortexLogo'
+import { GuildContext } from './guild/GuildContext'
 import Overview from './guild/Overview'
 import Modules from './guild/Modules'
 import Logging from './guild/Logging'
@@ -16,9 +18,6 @@ import Commands from './guild/Commands'
 import Cases from './guild/Cases'
 import GuildSettings from './guild/GuildSettings'
 import './GuildDashboard.css'
-
-const GuildContext = createContext(null)
-export const useGuild = () => useContext(GuildContext)
 
 const NAV_ITEMS = [
   { path: '', icon: LayoutDashboard, label: 'Overview', end: true },
@@ -40,7 +39,6 @@ const NAV_ITEMS = [
 
 export default function GuildDashboard() {
   const { guildId } = useParams()
-  const navigate = useNavigate()
   const location = useLocation()
   const [guild, setGuild] = useState(null)
   const [config, setConfig] = useState(null)
@@ -65,25 +63,14 @@ export default function GuildDashboard() {
   }, [guildId])
 
   const refreshConfig = async () => {
-    try {
-      const c = await api.getGuildConfig(guildId)
-      setConfig(c)
-    } catch {}
+    const c = await api.getGuildConfig(guildId).catch(() => null)
+    if (c) setConfig(c)
   }
 
   const updateConfig = async (updates) => {
-    try {
-      const c = await api.updateGuildConfig(guildId, updates)
-      setConfig(c)
-      return c
-    } catch (err) {
-      throw err
-    }
-  }
-
-  const handleLogout = async () => {
-    await api.logout().catch(() => {})
-    navigate('/')
+    const c = await api.updateGuildConfig(guildId, updates)
+    setConfig(c)
+    return c
   }
 
   const currentPath = location.pathname.split(`/dashboard/${guildId}`)[1]?.replace(/^\//, '') || ''
@@ -123,7 +110,7 @@ export default function GuildDashboard() {
           <div className="gd-sidebar-top">
             <Link to="/" className="gd-brand">
               <div className="gd-brand-icon">
-                <Shield size={20} />
+                <VortexLogo size={22} />
               </div>
               <div className="gd-brand-text">
                 <span className="gd-brand-title">VORTEX</span>

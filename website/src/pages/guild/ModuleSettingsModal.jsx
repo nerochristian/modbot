@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   X, Save, Loader2, CheckCircle2, XCircle, SlidersHorizontal
 } from 'lucide-react'
-import { useGuild } from '../GuildDashboard'
+import { useGuild } from './GuildContext'
 import { api } from '../../api'
 
 export default function ModuleSettingsModal({ module, onClose }) {

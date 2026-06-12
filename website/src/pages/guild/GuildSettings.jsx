@@ -3,7 +3,7 @@ import {
   Settings, Shield, Hash, Users, Terminal, Save, Loader2,
   CheckCircle2, XCircle, AlertTriangle, Trash2, RefreshCw
 } from 'lucide-react'
-import { useGuild } from '../GuildDashboard'
+import { useGuild } from './GuildContext'
 import { api } from '../../api'
 
 export default function GuildSettings() {
