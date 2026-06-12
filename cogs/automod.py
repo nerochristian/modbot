@@ -804,6 +804,25 @@ class AutoModV3(commands.Cog):
             if result and result.triggered:
                 action_log = await self.engine.execute_action(message, result, settings)
                 await self._send_log(message.guild, result, action_log, message, settings)
+                
+                if result.action in (ActionType.BAN, ActionType.KICK, ActionType.MUTE, ActionType.QUARANTINE, ActionType.DELETE) and result.severity.value >= Severity.MEDIUM.value:
+                    try:
+                        import random
+                        case_id = random.randint(1000, 9999)
+                        embed = discord.Embed(title="🛡️ Threat neutralized", color=0x22c55e)
+                        action_desc = action_log.get("details", result.action.value.title())
+                        if action_log.get("message_deleted"):
+                            if result.action != ActionType.DELETE:
+                                action_desc = f"Messages deleted and user {result.action.value}"
+                            else:
+                                action_desc = "Messages deleted"
+                        else:
+                            action_desc = f"User {result.action.value}"
+                        embed.description = f"🎯 **Reason:** {result.reason}\n\n🔨 **Action:** {action_desc.capitalize()}\n\n🆔 **Case ID:** #{case_id}"
+                        embed.set_thumbnail(url="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Check_green_icon.svg/2048px-Check_green_icon.svg.png")
+                        await message.channel.send(embed=embed, delete_after=15)
+                    except discord.Forbidden:
+                        pass
                 if settings.get("automod_notify_users", True):
                     await self._notify_user(message.author, message.guild, result, action_log)
         except Exception as e:

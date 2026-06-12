@@ -644,6 +644,33 @@ class Admin(commands.Cog):
 
     # Settings command removed: moved to cogs.settings
 
+    @app_commands.command(name="neutralize", description="🛡️ Send a threat neutralized embed to the channel")
+    @app_commands.describe(
+        user="The user that was neutralized",
+        reason="Reason for neutralization",
+        action="Action taken",
+        case_id="Case ID (optional)"
+    )
+    @is_admin()
+    async def neutralize(self, interaction: discord.Interaction, user: discord.Member, reason: str, action: str, case_id: Optional[int] = None):
+        if not case_id:
+            import random
+            case_id = random.randint(1000, 9999)
+            
+        embed = discord.Embed(
+            title="🛡️ Threat neutralized",
+            color=0x22c55e, # Success Green
+        )
+        embed.description = (
+            f"🎯 **Reason:** {reason}\n\n"
+            f"🔨 **Action:** {action}\n\n"
+            f"🆔 **Case ID:** #{case_id}"
+        )
+        # Using a checkmark shield thumbnail
+        embed.set_thumbnail(url="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Check_green_icon.svg/2048px-Check_green_icon.svg.png")
+        
+        await interaction.response.send_message(embed=embed)
+
     @app_commands.command(name="modrole", description="🏷️ Add or remove a moderator role")
     @app_commands.describe(action="Add or remove", role="The role")
     @is_admin()
