@@ -4,7 +4,7 @@ import {
   Shield, Zap, Terminal, Database, Users, Settings, Activity,
   Lock, Eye, AlertTriangle, CheckCircle2, XCircle, Clock,
   ChevronRight, ArrowUpRight, BarChart3, Search, MessageSquare, Menu,
-  ShieldAlert, ScrollText
+  ShieldAlert, ScrollText, Sun, Moon
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import './Landing.css'
@@ -20,6 +20,15 @@ const VortexLogo = ({ size = 24 }) => (
 /* ── Components ────────────────────────────────────────────────── */
 
 const Nav = () => {
+  const [theme, setTheme] = useState(() => document.documentElement.getAttribute('data-theme') || 'dark')
+  
+  const toggleTheme = () => {
+    const newTheme = theme === 'dark' ? 'light' : 'dark'
+    setTheme(newTheme)
+    document.documentElement.setAttribute('data-theme', newTheme)
+    localStorage.setItem('theme', newTheme)
+  }
+
   return (
     <nav className="lp-nav">
       <Link to="/" className="lp-logo">
@@ -35,6 +44,9 @@ const Nav = () => {
         <a href="#support">Support</a>
       </div>
       <div className="lp-actions">
+        <button onClick={toggleTheme} className="lp-btn-ghost" style={{padding: '10px', display: 'flex', cursor: 'pointer'}} title="Toggle Theme">
+          {theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}
+        </button>
         <a href="/auth/login" className="lp-btn-ghost">View Dashboard</a>
         <a href="/auth/invite" className="lp-btn-primary"><img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png" alt="Discord" style={{width:16, filter:'brightness(0) invert(1)'}}/> Add to Discord</a>
       </div>
@@ -146,14 +158,14 @@ const HeroMockup = () => {
                  <span style={{color:'white', fontWeight:600, fontSize:'0.85rem'}}>Recent Events</span>
                  <span style={{color:'var(--cine-text-muted)', fontSize:'0.75rem'}}>View All Events</span>
               </div>
-              <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:12}}>
-                <div style={{background:'rgba(255,255,255,0.02)', border:'1px solid var(--cine-border)', borderRadius:6, padding:12, display:'flex', alignItems:'center', gap:12}}>
+              <div style={{display:'grid', gridTemplateColumns:'minmax(0, 1fr) minmax(0, 1fr)', gap:12}}>
+                <div style={{background:'rgba(255,255,255,0.02)', border:'1px solid var(--cine-border)', borderRadius:6, padding:12, display:'flex', alignItems:'center', gap:12, minWidth:0}}>
                   <Shield size={16} color="var(--cine-success)" style={{flexShrink:0}}/>
-                  <div style={{overflow:'hidden'}}><div style={{color:'white', fontSize:'0.75rem', fontWeight:600, whiteSpace:'nowrap', textOverflow:'ellipsis', overflow:'hidden'}}>Raid attempt blocked</div><div style={{color:'var(--cine-text-muted)', fontSize:'0.65rem'}}>15 suspicious joins</div></div>
+                  <div style={{overflow:'hidden', minWidth:0}}><div style={{color:'var(--cine-text)', fontSize:'0.75rem', fontWeight:600, whiteSpace:'nowrap', textOverflow:'ellipsis', overflow:'hidden'}}>Raid attempt blocked</div><div style={{color:'var(--cine-text-muted)', fontSize:'0.65rem'}}>15 suspicious joins</div></div>
                 </div>
-                <div style={{background:'rgba(255,255,255,0.02)', border:'1px solid var(--cine-border)', borderRadius:6, padding:12, display:'flex', alignItems:'center', gap:12}}>
+                <div style={{background:'rgba(255,255,255,0.02)', border:'1px solid var(--cine-border)', borderRadius:6, padding:12, display:'flex', alignItems:'center', gap:12, minWidth:0}}>
                   <Zap size={16} color="var(--cine-primary)" style={{flexShrink:0}}/>
-                  <div style={{overflow:'hidden'}}><div style={{color:'white', fontSize:'0.75rem', fontWeight:600, whiteSpace:'nowrap', textOverflow:'ellipsis', overflow:'hidden'}}>Spam messages filtered</div><div style={{color:'var(--cine-text-muted)', fontSize:'0.65rem'}}>28 messages removed</div></div>
+                  <div style={{overflow:'hidden', minWidth:0}}><div style={{color:'var(--cine-text)', fontSize:'0.75rem', fontWeight:600, whiteSpace:'nowrap', textOverflow:'ellipsis', overflow:'hidden'}}>Spam messages filtered</div><div style={{color:'var(--cine-text-muted)', fontSize:'0.65rem'}}>28 messages removed</div></div>
                 </div>
               </div>
             </div>
