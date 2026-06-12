@@ -2,10 +2,11 @@ import { createContext, useContext, useEffect, useMemo, useState } from 'react'
 import { Moon, Sun } from 'lucide-react'
 
 const ThemeContext = createContext(null)
-const STORAGE_KEY = 'orion-theme'
+const STORAGE_KEY = 'vortex-theme'
+const LEGACY_STORAGE_KEY = 'orion-theme'
 
 function getInitialTheme() {
-  const stored = window.localStorage.getItem(STORAGE_KEY)
+  const stored = window.localStorage.getItem(STORAGE_KEY) || window.localStorage.getItem(LEGACY_STORAGE_KEY)
   return stored === 'light' || stored === 'dark' ? stored : 'dark'
 }
 

@@ -213,6 +213,7 @@ export default function GuildDashboard() {
             </div>
 
             <div className="gd-tb-right">
+              <ThemeToggle className="gd-theme-toggle" />
               <button className="btn-icon"><HelpCircle size={18} /></button>
               <button className="btn-icon gd-notif-btn">
                 <Bell size={18} />
