@@ -7,6 +7,7 @@ import {
   ShieldAlert, ScrollText, Sun, Moon
 } from 'lucide-react'
 import { Link } from 'react-router-dom'
+import { useTheme } from '../theme'
 import './Landing.css'
 
 /* ── Custom Shield Logo ── */
@@ -20,14 +21,9 @@ const VortexLogo = ({ size = 24 }) => (
 /* ── Components ────────────────────────────────────────────────── */
 
 const Nav = () => {
-  const [theme, setTheme] = useState(() => document.documentElement.getAttribute('data-theme') || 'dark')
-  
-  const toggleTheme = () => {
-    const newTheme = theme === 'dark' ? 'light' : 'dark'
-    setTheme(newTheme)
-    document.documentElement.setAttribute('data-theme', newTheme)
-    localStorage.setItem('theme', newTheme)
-  }
+  const { isLight, toggleTheme } = useTheme()
+  const ThemeIcon = isLight ? Moon : Sun
+  const themeLabel = isLight ? 'Switch to dark mode' : 'Switch to light mode'
 
   return (
     <nav className="lp-nav">
@@ -44,8 +40,8 @@ const Nav = () => {
         <a href="#support">Support</a>
       </div>
       <div className="lp-actions">
-        <button onClick={toggleTheme} className="lp-btn-ghost" style={{padding: '10px', display: 'flex', cursor: 'pointer'}} title="Toggle Theme">
-          {theme === 'dark' ? <Sun size={16}/> : <Moon size={16}/>}
+        <button onClick={toggleTheme} className="lp-theme-toggle" title={themeLabel} aria-label={themeLabel}>
+          <ThemeIcon size={16}/>
         </button>
         <a href="/auth/login" className="lp-btn-ghost">View Dashboard</a>
         <a href="/auth/invite" className="lp-btn-primary"><img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png" alt="Discord" style={{width:16, filter:'brightness(0) invert(1)'}}/> Add to Discord</a>
@@ -59,13 +55,13 @@ const HeroMockup = () => {
     <div className="lp-mockup">
       <div className="lp-mockup-disc-sidebar">
         <div className="lp-disc-icon active"><VortexLogo size={28}/></div>
-        <div style={{width: 32, height: 2, background: 'rgba(255,255,255,0.1)', margin: '4px 0'}} />
-        <div className="lp-disc-icon"><Users size={20} color="#dbdee1"/></div>
-        <div className="lp-disc-icon"><Activity size={20} color="#dbdee1"/></div>
-        <div className="lp-disc-icon"><Terminal size={20} color="#dbdee1"/></div>
+        <div style={{width: 32, height: 2, background: 'var(--cine-border)', margin: '4px 0'}} />
+        <div className="lp-disc-icon"><Users size={20}/></div>
+        <div className="lp-disc-icon"><Activity size={20}/></div>
+        <div className="lp-disc-icon"><Terminal size={20}/></div>
       </div>
       <div className="lp-mockup-disc-nav">
-        <div style={{fontWeight: 700, color: 'white', marginBottom: 20, display: 'flex', justifyContent: 'space-between'}}>
+        <div style={{fontWeight: 700, color: 'var(--cine-text)', marginBottom: 20, display: 'flex', justifyContent: 'space-between'}}>
           Astral Community <ChevronRight size={16} color="var(--cine-text-muted)"/>
         </div>
         <div style={{fontSize: '0.75rem', fontWeight: 700, color: 'var(--cine-text-muted)', marginBottom: 12}}>SERVER STATS</div>
@@ -73,25 +69,25 @@ const HeroMockup = () => {
           <span>Threat Level</span><span style={{color:'var(--cine-success)', fontWeight:600}}>SECURE</span>
         </div>
         <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.85rem', color:'var(--cine-text-dim)', marginBottom:8}}>
-          <span>Members</span><span style={{color:'white'}}>12,842</span>
+          <span>Members</span><span style={{color:'var(--cine-text)'}}>12,842</span>
         </div>
         <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.85rem', color:'var(--cine-text-dim)', marginBottom:8}}>
-          <span>Channels</span><span style={{color:'white'}}>156</span>
+          <span>Channels</span><span style={{color:'var(--cine-text)'}}>156</span>
         </div>
         <div style={{display:'flex', justifyContent:'space-between', fontSize:'0.85rem', color:'var(--cine-text-dim)', marginBottom:24}}>
-          <span>Uptime</span><span style={{color:'white'}}>99.99%</span>
+          <span>Uptime</span><span style={{color:'var(--cine-text)'}}>99.99%</span>
         </div>
         <div style={{fontSize: '0.75rem', fontWeight: 700, color: 'var(--cine-text-muted)', marginBottom: 12}}>BOT STATUS</div>
-        <div style={{display:'flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.05)', padding:8, borderRadius:6, marginBottom:20}}>
+        <div style={{display:'flex', alignItems:'center', gap:8, background:'var(--cine-soft-panel)', padding:8, borderRadius:6, marginBottom:20}}>
           <div style={{width:24, height:24, borderRadius:'50%', background:'var(--cine-primary)', display:'flex', alignItems:'center', justifyContent:'center'}}>
              <VortexLogo size={14}/>
           </div>
-          <span style={{color:'white', fontWeight:600, fontSize:'0.9rem'}}>Vortex</span>
+          <span style={{color:'var(--cine-text)', fontWeight:600, fontSize:'0.9rem'}}>Vortex</span>
           <span style={{color:'var(--cine-success)', fontSize:'0.7rem', fontWeight:700, marginLeft:'auto'}}>ONLINE</span>
         </div>
         
         <div style={{display:'flex', flexDirection:'column', gap:4}}>
-          <div style={{background:'rgba(124,109,240,0.1)', color:'white', padding:'8px 12px', borderRadius:6, display:'flex', alignItems:'center', gap:8, fontSize:'0.9rem', fontWeight:500}}>
+          <div style={{background:'rgba(124,109,240,0.12)', color:'var(--cine-text)', padding:'8px 12px', borderRadius:6, display:'flex', alignItems:'center', gap:8, fontSize:'0.9rem', fontWeight:500}}>
             <Activity size={16} color="var(--cine-primary)"/> Overview
           </div>
           <div style={{color:'var(--cine-text-dim)', padding:'8px 12px', display:'flex', alignItems:'center', gap:8, fontSize:'0.9rem', fontWeight:500}}>
@@ -119,7 +115,7 @@ const HeroMockup = () => {
               <Activity size={18}/>
             </div>
             <div>
-              <div style={{color:'white', fontWeight:600, fontSize:'0.95rem'}}>Live Protection</div>
+              <div style={{color:'var(--cine-text)', fontWeight:600, fontSize:'0.95rem'}}>Live Protection</div>
               <div style={{color:'var(--cine-text-muted)', fontSize:'0.75rem'}}>Real-time server protection and event monitor</div>
             </div>
           </div>
@@ -155,15 +151,15 @@ const HeroMockup = () => {
             
             <div style={{position:'absolute', bottom: 24, left: 24, right: 24}}>
               <div style={{display:'flex', justifyContent:'space-between', alignItems:'flex-end', marginBottom: 12}}>
-                 <span style={{color:'white', fontWeight:600, fontSize:'0.85rem'}}>Recent Events</span>
+                 <span style={{color:'var(--cine-text)', fontWeight:600, fontSize:'0.85rem'}}>Recent Events</span>
                  <span style={{color:'var(--cine-text-muted)', fontSize:'0.75rem'}}>View All Events</span>
               </div>
               <div style={{display:'grid', gridTemplateColumns:'minmax(0, 1fr) minmax(0, 1fr)', gap:12}}>
-                <div style={{background:'rgba(255,255,255,0.02)', border:'1px solid var(--cine-border)', borderRadius:6, padding:12, display:'flex', alignItems:'center', gap:12, minWidth:0}}>
+                <div style={{background:'var(--cine-soft-panel)', border:'1px solid var(--cine-border)', borderRadius:6, padding:12, display:'flex', alignItems:'center', gap:12, minWidth:0}}>
                   <Shield size={16} color="var(--cine-success)" style={{flexShrink:0}}/>
                   <div style={{overflow:'hidden', minWidth:0}}><div style={{color:'var(--cine-text)', fontSize:'0.75rem', fontWeight:600, whiteSpace:'nowrap', textOverflow:'ellipsis', overflow:'hidden'}}>Raid attempt blocked</div><div style={{color:'var(--cine-text-muted)', fontSize:'0.65rem'}}>15 suspicious joins</div></div>
                 </div>
-                <div style={{background:'rgba(255,255,255,0.02)', border:'1px solid var(--cine-border)', borderRadius:6, padding:12, display:'flex', alignItems:'center', gap:12, minWidth:0}}>
+                <div style={{background:'var(--cine-soft-panel)', border:'1px solid var(--cine-border)', borderRadius:6, padding:12, display:'flex', alignItems:'center', gap:12, minWidth:0}}>
                   <Zap size={16} color="var(--cine-primary)" style={{flexShrink:0}}/>
                   <div style={{overflow:'hidden', minWidth:0}}><div style={{color:'var(--cine-text)', fontSize:'0.75rem', fontWeight:600, whiteSpace:'nowrap', textOverflow:'ellipsis', overflow:'hidden'}}>Spam messages filtered</div><div style={{color:'var(--cine-text-muted)', fontSize:'0.65rem'}}>28 messages removed</div></div>
                 </div>
@@ -172,7 +168,7 @@ const HeroMockup = () => {
           </div>
           
           <div className="lp-dash-right">
-            <div style={{fontSize:'0.85rem', fontWeight:600, color:'white', marginBottom:8}}>Live Statistics</div>
+            <div style={{fontSize:'0.85rem', fontWeight:600, color:'var(--cine-text)', marginBottom:8}}>Live Statistics</div>
             <div className="lp-dash-stat">
               <span className="lp-dash-stat-val">24</span>
               <span className="lp-dash-stat-lbl">Threats Blocked</span>
@@ -216,8 +212,8 @@ const DemoChat = () => {
     <div style={{display:'flex', flexDirection:'column', gap:16, flex:1}}>
       <div className="lp-demo-chat">
         <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:8}}>
-          <span style={{fontSize:'0.75rem', color:'#949ba4'}}>15:42</span>
-          <span style={{fontSize:'0.75rem', color:'#949ba4'}}><AlertTriangle size={12} style={{display:'inline', verticalAlign:'middle'}}/> Suspicious User joined the server</span>
+          <span style={{fontSize:'0.75rem', color:'var(--cine-discord-muted)'}}>15:42</span>
+          <span style={{fontSize:'0.75rem', color:'var(--cine-discord-muted)'}}><AlertTriangle size={12} style={{display:'inline', verticalAlign:'middle'}}/> Suspicious User joined the server</span>
         </div>
         
         <AnimatePresence mode="popLayout">
@@ -253,12 +249,12 @@ const DemoChat = () => {
                   <span className="lp-chat-time">15:42</span>
                 </div>
                 <div className="lp-chat-embed">
-                  <div style={{display:'flex', alignItems:'center', gap:8, color:'white', fontWeight:700, marginBottom:8}}>
+                  <div style={{display:'flex', alignItems:'center', gap:8, color:'var(--cine-discord-text)', fontWeight:700, marginBottom:8}}>
                     <CheckCircle2 size={16} color="var(--cine-success)"/> Threat neutralized
                   </div>
-                  <div style={{fontSize:'0.8rem', color:'#dbdee1', marginBottom:4}}><span style={{fontWeight:700}}>Reason:</span> Repeated malicious links</div>
-                  <div style={{fontSize:'0.8rem', color:'#dbdee1', marginBottom:4}}><span style={{fontWeight:700}}>Action:</span> Messages deleted and user quarantined</div>
-                  <div style={{fontSize:'0.8rem', color:'#dbdee1'}}><span style={{fontWeight:700}}>Case ID:</span> #4821</div>
+                  <div style={{fontSize:'0.8rem', color:'var(--cine-discord-text)', marginBottom:4}}><span style={{fontWeight:700}}>Reason:</span> Repeated malicious links</div>
+                  <div style={{fontSize:'0.8rem', color:'var(--cine-discord-text)', marginBottom:4}}><span style={{fontWeight:700}}>Action:</span> Messages deleted and user quarantined</div>
+                  <div style={{fontSize:'0.8rem', color:'var(--cine-discord-text)'}}><span style={{fontWeight:700}}>Case ID:</span> #4821</div>
                 </div>
               </div>
             </motion.div>
@@ -387,7 +383,7 @@ export default function Landing() {
           
           <div className="lp-bento-card">
             <div className="lp-bento-top">
-              <div className="lp-bento-icon" style={{background:'rgba(255,255,255,0.1)', color:'white'}}><Activity size={18}/></div>
+              <div className="lp-bento-icon" style={{background:'var(--cine-soft-panel)', color:'var(--cine-text)'}}><Activity size={18}/></div>
               <div>
                 <div className="lp-bento-title">Detailed Mod Logs</div>
                 <div className="lp-bento-desc">Track everything with beautiful, searchable logs.</div>
@@ -428,11 +424,11 @@ export default function Landing() {
               <div style={{display:'flex', justifyContent:'space-between'}}>
                 <div style={{display:'flex', flexDirection:'column'}}>
                   <span style={{fontSize:'0.7rem', color:'var(--cine-text-dim)'}}>Active Staff</span>
-                  <span style={{fontSize:'1.5rem', fontWeight:700, color:'white'}}>24</span>
+                  <span style={{fontSize:'1.5rem', fontWeight:700, color:'var(--cine-text)'}}>24</span>
                 </div>
                 <div style={{display:'flex', flexDirection:'column', alignItems:'flex-end'}}>
                   <span style={{fontSize:'0.7rem', color:'var(--cine-text-dim)'}}>Cases Handled</span>
-                  <span style={{fontSize:'1.5rem', fontWeight:700, color:'white'}}>1,248</span>
+                  <span style={{fontSize:'1.5rem', fontWeight:700, color:'var(--cine-text)'}}>1,248</span>
                 </div>
               </div>
               <div className="lp-mock-graph" style={{borderTopColor:'var(--cine-success)', background:'linear-gradient(180deg, rgba(16,185,129,0.2) 0%, transparent 100%)', height: 20}} />
@@ -449,7 +445,7 @@ export default function Landing() {
             </div>
             <div className="lp-bento-bottom">
               <div className="lp-mock-row"><span>Last Backup</span> <span style={{color:'var(--cine-success)'}}>Status ∨</span></div>
-              <div className="lp-mock-row"><span style={{color:'white', fontWeight:600}}>2m ago</span> <span style={{color:'var(--cine-success)'}}>Completed</span></div>
+              <div className="lp-mock-row"><span style={{color:'var(--cine-text)', fontWeight:600}}>2m ago</span> <span style={{color:'var(--cine-success)'}}>Completed</span></div>
             </div>
           </div>
           
@@ -463,7 +459,7 @@ export default function Landing() {
             </div>
             <div className="lp-bento-bottom">
               <div className="lp-mock-row"><span>Dashboard</span> <span style={{color:'var(--cine-success)'}}>Online •</span></div>
-              <div className="lp-mock-row"><span>Panels</span> <span style={{color:'white'}}>12</span></div>
+              <div className="lp-mock-row"><span>Panels</span> <span style={{color:'var(--cine-text)'}}>12</span></div>
             </div>
           </div>
         </div>
@@ -553,7 +549,7 @@ export default function Landing() {
                     <div style={{fontSize:'0.75rem', color:'var(--cine-text-muted)'}}>Uptime</div>
                   </div>
                 </div>
-                <div style={{height: 150, background:'rgba(255,255,255,0.02)', border:'1px solid var(--cine-border)', borderRadius:8, display:'flex', alignItems:'flex-end', padding:16, gap:8}}>
+                <div style={{height: 150, background:'var(--cine-soft-panel)', border:'1px solid var(--cine-border)', borderRadius:8, display:'flex', alignItems:'flex-end', padding:16, gap:8}}>
                   <div style={{flex:1, height:'40%', background:'var(--cine-primary)', borderRadius:'4px 4px 0 0', opacity:0.8}}/>
                   <div style={{flex:1, height:'60%', background:'var(--cine-primary)', borderRadius:'4px 4px 0 0', opacity:0.8}}/>
                   <div style={{flex:1, height:'30%', background:'var(--cine-primary)', borderRadius:'4px 4px 0 0', opacity:0.8}}/>
@@ -658,7 +654,7 @@ export default function Landing() {
             <p style={{color:'var(--cine-text-muted)', fontSize:'0.8rem', lineHeight:1.6, maxWidth:250}}>The most advanced Discord moderation bot with intelligent automod and powerful staff tools.</p>
             
             <div style={{marginTop: 24}}>
-              <div style={{fontSize:'0.75rem', fontWeight:700, color:'white', marginBottom:12}}>Community</div>
+              <div style={{fontSize:'0.75rem', fontWeight:700, color:'var(--cine-text)', marginBottom:12}}>Community</div>
               <div style={{display:'flex', alignItems:'center', gap:8, fontSize:'0.8rem', color:'var(--cine-text-dim)'}}>
                 <img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png" alt="Discord" style={{width:16, filter:'grayscale(1) opacity(0.7)'}}/> 12,842 Online
               </div>
@@ -695,9 +691,9 @@ export default function Landing() {
         </div>
         
         <div style={{maxWidth: 1500, margin: '40px auto 0', display:'flex', justifyContent:'flex-end'}}>
-          <div style={{display:'flex', alignItems:'center', gap:40, background:'rgba(255,255,255,0.02)', border:'1px solid var(--cine-border)', padding:'12px 24px', borderRadius:8}}>
+          <div style={{display:'flex', alignItems:'center', gap:40, background:'var(--cine-soft-panel)', border:'1px solid var(--cine-border)', padding:'12px 24px', borderRadius:8}}>
             <div>
-              <div style={{fontSize:'0.8rem', fontWeight:700, color:'white', display:'flex', alignItems:'center', gap:8}}>System Status <CheckCircle2 size={12} color="var(--cine-success)"/></div>
+              <div style={{fontSize:'0.8rem', fontWeight:700, color:'var(--cine-text)', display:'flex', alignItems:'center', gap:8}}>System Status <CheckCircle2 size={12} color="var(--cine-success)"/></div>
               <div style={{fontSize:'0.7rem', color:'var(--cine-success)'}}>All systems operational</div>
             </div>
             <div className="lp-mock-graph" style={{width: 100, borderTopColor:'var(--cine-success)', background:'linear-gradient(180deg, rgba(16,185,129,0.2) 0%, transparent 100%)', marginTop:0, height:30}}/>

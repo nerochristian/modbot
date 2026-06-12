@@ -8,6 +8,16 @@
   --cine-bg: #05050f;
   --cine-surface: #0a0a16;
   --cine-surface-raised: #121222;
+  --cine-soft-panel: rgba(255, 255, 255, 0.03);
+  --cine-nav-bg: rgba(5, 5, 15, 0.84);
+  --cine-strip-bg: rgba(10, 10, 20, 0.5);
+  --cine-footer-bg: #020205;
+  --cine-terminal-bg: #09090b;
+  --cine-discord-bg: #313338;
+  --cine-discord-panel: #2b2d31;
+  --cine-discord-text: #dbdee1;
+  --cine-discord-name: #f2f3f5;
+  --cine-discord-muted: #949ba4;
   --cine-border: rgba(255, 255, 255, 0.08);
   --cine-border-glow: rgba(124, 109, 240, 0.3);
   
@@ -28,6 +38,16 @@
   --cine-bg: #f8f9fc;
   --cine-surface: #ffffff;
   --cine-surface-raised: #f1f5f9;
+  --cine-soft-panel: rgba(99, 102, 241, 0.055);
+  --cine-nav-bg: rgba(255, 255, 255, 0.86);
+  --cine-strip-bg: rgba(255, 255, 255, 0.68);
+  --cine-footer-bg: #ffffff;
+  --cine-terminal-bg: #ffffff;
+  --cine-discord-bg: #f1f5f9;
+  --cine-discord-panel: #ffffff;
+  --cine-discord-text: #334155;
+  --cine-discord-name: #0f172a;
+  --cine-discord-muted: #64748b;
   --cine-border: rgba(0, 0, 0, 0.08);
   --cine-border-glow: rgba(99, 102, 241, 0.15);
   
@@ -85,7 +105,7 @@ body {
   justify-content: space-between;
   padding: 0 40px;
   z-index: 100;
-  background: rgba(5, 5, 15, 0.8);
+  background: var(--cine-nav-bg);
   backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--cine-border);
 }
@@ -96,7 +116,7 @@ body {
   font-weight: 800;
   font-size: 1.1rem;
   letter-spacing: -0.5px;
-  color: white;
+  color: var(--cine-text);
   text-decoration: none;
 }
 .lp-logo-icon {
@@ -116,15 +136,31 @@ body {
   font-weight: 500;
   transition: color 0.2s;
 }
-.lp-links a:hover { color: white; }
+.lp-links a:hover { color: var(--cine-text); }
 .lp-actions { display: flex; gap: 16px; align-items: center; }
 .lp-btn-ghost {
-  color: white;
+  color: var(--cine-text);
   text-decoration: none;
   font-size: 0.85rem; font-weight: 600;
   padding: 10px 20px; border-radius: 8px;
   border: 1px solid var(--cine-border);
-  background: rgba(255,255,255,0.02);
+  background: var(--cine-soft-panel);
+}
+.lp-theme-toggle {
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  color: var(--cine-text);
+  background: var(--cine-soft-panel);
+  border: 1px solid var(--cine-border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: border-color 0.2s, background 0.2s, color 0.2s;
+}
+.lp-theme-toggle:hover {
+  border-color: var(--cine-border-glow);
+  color: var(--cine-primary);
 }
 .lp-btn-primary {
   background: var(--cine-primary);
@@ -189,6 +225,7 @@ body {
   width: 72px; background: var(--cine-surface-raised); display: flex; flex-direction: column; align-items: center; padding: 12px 0; gap: 8px; border-right: 1px solid var(--cine-border);
 }
 .lp-disc-icon { width: 48px; height: 48px; border-radius: 50%; background: var(--cine-border); transition: border-radius 0.2s; display: flex; align-items: center; justify-content: center;}
+.lp-disc-icon:not(.active) { color: var(--cine-text-dim); }
 .lp-disc-icon.active { border-radius: 16px; background: #5865F2; }
 .lp-mockup-disc-nav {
   width: 240px; background: var(--cine-surface); display: flex; flex-direction: column; padding: 16px; border-right: 1px solid var(--cine-border);
@@ -243,7 +280,7 @@ body {
 /* ── Live Strip ────────────────────────────────────────────────── */
 .lp-strip {
   width: 100%; border-top: 1px solid var(--cine-border); border-bottom: 1px solid var(--cine-border);
-  padding: 20px 0; background: rgba(10,10,20,0.5);
+  padding: 20px 0; background: var(--cine-strip-bg);
 }
 .lp-strip-inner {
   display: flex; justify-content: space-evenly; max-width: 1500px; margin: 0 auto; padding: 0 40px; flex-wrap: wrap; gap: 20px;
@@ -297,14 +334,14 @@ body {
 
 /* Discord Demo */
 .lp-demo-chat {
-  background: #313338; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 16px; flex: 1; border: 1px solid var(--cine-border);
+  background: var(--cine-discord-bg); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 16px; flex: 1; border: 1px solid var(--cine-border);
 }
 .lp-chat-msg { display: flex; gap: 12px; }
 .lp-chat-av { width: 32px; height: 32px; border-radius: 50%; background: #da373c; flex-shrink: 0; }
-.lp-chat-name { font-weight: 600; font-size: 0.85rem; color: #f2f3f5; }
-.lp-chat-time { font-size: 0.65rem; color: #949ba4; margin-left: 8px; }
-.lp-chat-text { font-size: 0.85rem; color: #dbdee1; margin-top: 4px; }
-.lp-chat-embed { background: #2b2d31; border-left: 4px solid var(--cine-success); border-radius: 4px; padding: 12px; margin-top: 8px; }
+.lp-chat-name { font-weight: 600; font-size: 0.85rem; color: var(--cine-discord-name); }
+.lp-chat-time { font-size: 0.65rem; color: var(--cine-discord-muted); margin-left: 8px; }
+.lp-chat-text { font-size: 0.85rem; color: var(--cine-discord-text); margin-top: 4px; }
+.lp-chat-embed { background: var(--cine-discord-panel); border-left: 4px solid var(--cine-success); border-radius: 4px; padding: 12px; margin-top: 8px; }
 
 /* Demo Steps */
 .lp-demo-steps {
@@ -317,12 +354,12 @@ body {
 
 /* Terminal Commands */
 .lp-terminal-split {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 20px; background: #09090b; padding: 20px; border-radius: 8px; border: 1px solid var(--cine-border); flex: 1;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 20px; background: var(--cine-terminal-bg); padding: 20px; border-radius: 8px; border: 1px solid var(--cine-border); flex: 1;
 }
 .lp-term-left { display: flex; flex-direction: column; gap: 12px; }
 .lp-term-right { display: flex; flex-direction: column; gap: 12px; }
 .lp-term-cmd { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--cine-success); padding: 8px 12px; background: rgba(16,185,129,0.05); border-radius: 4px; }
-.lp-term-res { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--cine-text-dim); padding: 8px 12px; background: rgba(255,255,255,0.02); border-radius: 4px; border: 1px solid var(--cine-border); }
+.lp-term-res { font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: var(--cine-text-dim); padding: 8px 12px; background: var(--cine-soft-panel); border-radius: 4px; border: 1px solid var(--cine-border); }
 
 /* ── Security / Bottom Dash ────────────────────────────────────── */
 .lp-security-split {
@@ -386,7 +423,7 @@ body {
 
 /* ── Footer ────────────────────────────────────────────────────── */
 .lp-footer {
-  border-top: 1px solid var(--cine-border); padding: 40px; background: #020205;
+  border-top: 1px solid var(--cine-border); padding: 40px; background: var(--cine-footer-bg);
 }
 .lp-footer-grid {
   max-width: 1500px; margin: 0 auto; display: grid; grid-template-columns: 2fr 1fr 1fr 1fr 1fr; gap: 40px;
@@ -411,11 +448,151 @@ body {
   .lp-demo-steps { position: relative; right: auto; top: auto; flex-direction: row; flex-wrap: wrap; margin-top: 24px; justify-content: center; }
 }
 
+@media (max-width: 1450px) and (min-width: 1201px) {
+  .lp-hero-grid {
+    grid-template-columns: minmax(360px, 0.8fr) minmax(660px, 1.45fr);
+    gap: 32px;
+  }
+
+  .lp-mockup-disc-nav {
+    width: 220px;
+  }
+
+  .lp-dash-body {
+    padding: 20px;
+    gap: 20px;
+  }
+
+  .lp-dash-right {
+    display: none;
+  }
+
+  .lp-fp-1 {
+    left: 4%;
+  }
+
+  .lp-fp-2 {
+    left: 0;
+  }
+
+  .lp-fp-3 {
+    right: 4% !important;
+  }
+
+  .lp-fp-4 {
+    right: 0 !important;
+  }
+}
+
 @media (max-width: 768px) {
-  .lp-nav { padding: 0 20px; }
+  .lp-nav { padding: 0 16px; gap: 12px; }
+  .lp-logo { flex-shrink: 0; }
+  .lp-logo span { display: none; }
   .lp-links { display: none; }
+  .lp-actions { gap: 8px; }
+  .lp-actions .lp-btn-primary { display: none; }
+  .lp-actions .lp-btn-ghost { display: none; }
   .lp-section { padding: 60px 20px; }
-  .lp-hero { padding: 120px 20px 60px; }
+  .lp-hero {
+    padding: 120px 20px 60px;
+    overflow: hidden;
+  }
+  .lp-hero-grid,
+  .lp-hero-content {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .lp-hero-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .lp-hero-content {
+    width: 100%;
+  }
+  .lp-hero-grid > * {
+    min-width: 0;
+  }
+  .lp-hero-grid > :last-child {
+    display: none;
+  }
+  .lp-hero-content h1 {
+    font-size: clamp(2.75rem, 14vw, 3.4rem);
+    line-height: 1.06;
+    width: 100%;
+    max-width: 350px;
+    overflow-wrap: break-word;
+  }
+  .lp-hero-content p {
+    font-size: 1rem;
+    max-width: 350px;
+  }
+  .lp-hero-buttons {
+    width: 100%;
+    max-width: 350px;
+    flex-direction: column;
+  }
+  .lp-hero-buttons .lp-btn-primary,
+  .lp-hero-buttons .lp-btn-ghost {
+    width: 100%;
+    justify-content: center;
+  }
+  .lp-trust {
+    width: 100%;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+  .lp-mockup {
+    width: 100%;
+    height: 460px;
+    min-width: 0;
+  }
+  .lp-mockup-disc-sidebar {
+    width: 64px;
+  }
+  .lp-mockup-disc-nav,
+  .lp-dash-right {
+    display: none;
+  }
+  .lp-dash-header {
+    height: auto;
+    min-height: 64px;
+    padding: 12px 16px;
+  }
+  .lp-dash-header > div:last-child {
+    display: none !important;
+  }
+  .lp-dash-body {
+    padding: 16px;
+    gap: 0;
+  }
+  .lp-center-shield {
+    width: 110px;
+    height: 110px;
+  }
+  .lp-center-shield svg {
+    width: 64px;
+    height: 64px;
+  }
+  .lp-shield-text {
+    bottom: -28px;
+    font-size: 0.72rem;
+  }
+  .lp-float-panel {
+    max-width: 142px;
+    transform: scale(0.86);
+  }
+  .lp-fp-1 { top: 12%; left: 2%; }
+  .lp-fp-2 { bottom: 38%; left: -8%; }
+  .lp-fp-3 { top: 18% !important; right: -8% !important; }
+  .lp-fp-4 { bottom: 34% !important; right: -10% !important; }
+  .lp-dash-center > div[style*="bottom: 24px"] {
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 8px !important;
+  }
+  .lp-dash-center div[style*="grid-template-columns"] {
+    grid-template-columns: 1fr !important;
+  }
   .lp-strip-inner { justify-content: flex-start; padding: 0 20px; }
   .lp-bento { grid-template-columns: 1fr; }
   .lp-terminal-split { grid-template-columns: 1fr; }
@@ -426,4 +603,10 @@ body {
   .lp-step { width: 100%; }
   .lp-cta-btns { flex-direction: column; }
   .lp-footer-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 480px) {
+  .lp-actions .lp-btn-ghost {
+    display: none;
+  }
 }
