@@ -7,9 +7,13 @@ class ApiClient {
       headers: { 'Content-Type': 'application/json', ...options.headers },
       ...options,
     });
+    const contentType = res.headers.get('content-type') || '';
     if (res.status === 401) {
       window.location.href = '/';
       throw new Error('Unauthorized');
+    }
+    if (!contentType.includes('application/json')) {
+      throw new Error(`Expected JSON from ${path}, got ${contentType || 'unknown content type'}`);
     }
     if (!res.ok) {
       const err = await res.json().catch(() => ({ message: res.statusText }));
@@ -41,7 +45,7 @@ class ApiClient {
   syncCommands(id) {
     return this.request(`/api/guilds/${id}/commands/sync`, { method: 'POST' });
   }
-  logout() { return this.request('/auth/logout', { method: 'GET' }); }
+  logout() { return this.request('/api/auth/logout', { method: 'POST' }); }
 }
 
 export const api = new ApiClient();

@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════════
-   ModBot — Global Design System
+   Orion Protection - Global Design System
    Premium dark theme with purple accent palette
    ═══════════════════════════════════════════════════════════════════ */
 
@@ -51,6 +51,10 @@
   --shadow-lg: 0 8px 40px rgba(0, 0, 0, 0.4);
   --shadow-glow: 0 0 30px rgba(108, 92, 231, 0.15);
   --shadow-glow-strong: 0 0 60px rgba(108, 92, 231, 0.25);
+  --glass-bg: rgba(30, 30, 53, 0.6);
+  --glass-strong-bg: rgba(30, 30, 53, 0.8);
+  --border-soft: rgba(108, 92, 231, 0.1);
+  --border-strong: rgba(108, 92, 231, 0.15);
 
   /* ── Transitions ── */
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -58,6 +62,46 @@
   --duration-fast: 150ms;
   --duration-normal: 250ms;
   --duration-slow: 400ms;
+}
+
+[data-theme='light'] {
+  --brand-primary: #6153df;
+  --brand-secondary: #4f46c8;
+  --brand-tertiary: #7468ec;
+  --brand-glow: rgba(97, 83, 223, 0.24);
+
+  --bg-deepest: #f5f7fb;
+  --bg-deep: #edf0f7;
+  --bg-base: #f9fafc;
+  --bg-elevated: #ffffff;
+  --bg-surface: #f6f7fb;
+  --bg-card: #ffffff;
+  --bg-hover: #eef1fb;
+  --bg-active: #e4e8f8;
+
+  --text-primary: #171827;
+  --text-secondary: #4d5670;
+  --text-muted: #7b8498;
+  --text-accent: #4f46c8;
+
+  --success: #008a63;
+  --success-bg: rgba(0, 138, 99, 0.1);
+  --warning: #a86d00;
+  --warning-bg: rgba(168, 109, 0, 0.12);
+  --error: #c52a44;
+  --error-bg: rgba(197, 42, 68, 0.1);
+  --info: #047a9b;
+  --info-bg: rgba(4, 122, 155, 0.1);
+
+  --shadow-sm: 0 2px 8px rgba(26, 31, 54, 0.08);
+  --shadow-md: 0 8px 24px rgba(26, 31, 54, 0.1);
+  --shadow-lg: 0 16px 42px rgba(26, 31, 54, 0.14);
+  --shadow-glow: 0 10px 34px rgba(97, 83, 223, 0.13);
+  --shadow-glow-strong: 0 18px 60px rgba(97, 83, 223, 0.2);
+  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-strong-bg: rgba(255, 255, 255, 0.88);
+  --border-soft: rgba(97, 83, 223, 0.14);
+  --border-strong: rgba(97, 83, 223, 0.2);
 }
 
 /* ── Reset & Base ── */
@@ -129,17 +173,17 @@ img {
 }
 
 .glass {
-  background: rgba(30, 30, 53, 0.6);
+  background: var(--glass-bg);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(108, 92, 231, 0.1);
+  border: 1px solid var(--border-soft);
 }
 
 .glass-strong {
-  background: rgba(30, 30, 53, 0.8);
+  background: var(--glass-strong-bg);
   backdrop-filter: blur(40px);
   -webkit-backdrop-filter: blur(40px);
-  border: 1px solid rgba(108, 92, 231, 0.15);
+  border: 1px solid var(--border-strong);
 }
 
 /* ── Gradient Text ── */
@@ -216,6 +260,30 @@ img {
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-width: 94px;
+  height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  background: var(--bg-surface);
+  border: 1px solid var(--border-soft);
+  font-size: 0.82rem;
+  font-weight: 700;
+  transition: all var(--duration-normal) var(--ease-out);
+}
+
+.theme-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--brand-primary);
+  box-shadow: var(--shadow-glow);
+  transform: translateY(-1px);
 }
 
 /* ── Card ── */

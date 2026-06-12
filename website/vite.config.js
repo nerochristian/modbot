@@ -6,9 +6,27 @@ export default defineConfig({
   server: {
     port: 3000,
     proxy: {
-      '/api': 'http://localhost:10547',
-      '/auth': 'http://localhost:10547',
-      '/health': 'http://localhost:10547',
+      '/api': {
+        target: 'http://localhost:10547',
+        headers: {
+          'X-Forwarded-Host': '127.0.0.1:3000',
+          'X-Forwarded-Proto': 'http',
+        },
+      },
+      '/auth': {
+        target: 'http://localhost:10547',
+        headers: {
+          'X-Forwarded-Host': '127.0.0.1:3000',
+          'X-Forwarded-Proto': 'http',
+        },
+      },
+      '/health': {
+        target: 'http://localhost:10547',
+        headers: {
+          'X-Forwarded-Host': '127.0.0.1:3000',
+          'X-Forwarded-Proto': 'http',
+        },
+      },
     }
   },
   build: {

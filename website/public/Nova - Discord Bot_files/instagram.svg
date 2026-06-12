@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="uuid-202afeb4-f2c7-4909-aed6-b6255b613637" data-name="Layer 2" xmlns="http://www.w3.org/2000/svg" width="45" height="45" viewBox="0 0 45 45">
+  <g id="uuid-23364c38-f192-4b9f-bebe-053612bbcb5f" data-name="Layer 3">
+    <g>
+      <rect width="45" height="45" fill="none" stroke-width="0"/>
+      <g>
+        <path d="m9.5,16c0-1.72.68-3.38,1.9-4.6,1.22-1.22,2.87-1.9,4.6-1.9h13c1.72,0,3.38.68,4.6,1.9,1.22,1.22,1.9,2.87,1.9,4.6v13c0,1.72-.68,3.38-1.9,4.6-1.22,1.22-2.87,1.9-4.6,1.9h-13c-1.72,0-3.38-.68-4.6-1.9-1.22-1.22-1.9-2.87-1.9-4.6v-13Z" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/>
+        <path d="m17.62,22.5c0,1.29.51,2.53,1.43,3.45.91.91,2.15,1.43,3.45,1.43s2.53-.51,3.45-1.43c.91-.91,1.43-2.15,1.43-3.45s-.51-2.53-1.43-3.45c-.91-.91-2.15-1.43-3.45-1.43s-2.53.51-3.45,1.43c-.91.91-1.43,2.15-1.43,3.45Z" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/>
+        <path d="m29.81,15.19h0" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/>
+        <rect x="9.88" y="11.03" width="25.24" height="24.09" rx="4" ry="4" fill="#d9d9d9" isolation="isolate" opacity=".17" stroke-width="0"/>
+      </g>
+    </g>
+  </g>
+</svg>

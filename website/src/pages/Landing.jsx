@@ -1,355 +1,360 @@
-import { useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  Shield, Zap, Brain, Users, BarChart3, Ticket,
-  ChevronRight, Star, ArrowRight, Bot, Lock,
-  Eye, MessageSquare, Gavel, ShieldCheck, Sparkles,
-  Globe, Server, CheckCircle2, ExternalLink
+  Activity,
+  ArrowRight,
+  Bell,
+  Bot,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  ClipboardList,
+  Crown,
+  Gauge,
+  Gift,
+  Globe2,
+  Layers3,
+  Lock,
+  MessageSquareText,
+  Mic2,
+  PanelLeft,
+  Puzzle,
+  Search,
+  Settings,
+  Shield,
+  Sparkles,
+  Ticket,
+  UserRoundCheck,
+  Wand2,
+  Zap,
 } from 'lucide-react'
 import './Landing.css'
 
-const FEATURES = [
+const TOP_FEATURES = [
+  {
+    icon: Zap,
+    title: 'Blazing Fast',
+    text: 'Instant moderation actions, synced settings, and low-latency responses when your staff needs them.',
+  },
   {
     icon: Shield,
-    title: 'Auto Moderation',
-    desc: 'Intelligent spam, link, invite, and content filtering with customizable thresholds and actions.',
-    color: '#6C5CE7',
+    title: 'Secure',
+    text: 'Role-aware controls, audit trails, anti-raid tools, and clean permission boundaries for every server.',
   },
   {
-    icon: Brain,
-    title: 'AI Moderation',
-    desc: 'Gemini-powered AI that understands context, detects toxicity, and takes autonomous action.',
-    color: '#00b4d8',
+    icon: Puzzle,
+    title: 'Fully Featured',
+    text: 'Moderation, tickets, logging, AI review, automations, and dashboards in one connected system.',
   },
   {
-    icon: Lock,
-    title: 'Anti-Raid',
-    desc: 'Real-time raid detection with automatic lockdown, account age filtering, and quarantine.',
-    color: '#ff4d6a',
+    icon: Settings,
+    title: 'Customizable',
+    text: 'Tune modules per server with focused setup screens instead of memorizing long command chains.',
+  },
+]
+
+const PLUGIN_GROUPS = [
+  {
+    eyebrow: 'Server Management',
+    title: 'Keep your community organized from day one.',
+    text: 'Welcome flows, roles, activity, and member context are easy to review without leaving the dashboard.',
+    accent: '#2586ff',
+    items: [
+      { icon: UserRoundCheck, title: 'User Management', text: 'Track members, staff notes, cases, and activity in one clean profile.' },
+      { icon: Mic2, title: 'Voice Online', text: 'Display live voice activity and keep server participation visible.' },
+      { icon: Sparkles, title: 'Levels', text: 'Reward engagement with configurable XP, ranks, and leaderboard views.' },
+      { icon: MessageSquareText, title: 'Welcome & Goodbye', text: 'Send polished join and leave messages with server-specific branding.' },
+    ],
   },
   {
-    icon: Eye,
-    title: 'Advanced Logging',
-    desc: 'Beautiful rich embeds for every server event — messages, members, roles, voice, and more.',
-    color: '#ffb800',
+    eyebrow: 'Moderation & Security',
+    title: 'Give staff the tools to act quickly and clearly.',
+    text: 'Every action can be reviewed with context, evidence, and the exact module that handled it.',
+    accent: '#00a6d6',
+    items: [
+      { icon: Shield, title: 'Moderation', text: 'Ban, mute, warn, note, and review cases with complete history.' },
+      { icon: Bell, title: 'Logs', text: 'Track deleted messages, joins, role edits, voice moves, and staff actions.' },
+      { icon: Lock, title: 'Protection', text: 'Anti-raid rules, lockdown tools, account-age gates, and recovery controls.' },
+      { icon: Ticket, title: 'Tickets', text: 'Private support channels with claims, transcripts, and staff routing.' },
+    ],
   },
   {
-    icon: Ticket,
-    title: 'Ticket System',
-    desc: 'Full support workflow with categories, transcripts, priority routing, and staff claims.',
-    color: '#00d68f',
-  },
-  {
-    icon: MessageSquare,
-    title: 'Modmail',
-    desc: 'Private DM bridge between users and staff with threaded conversations and logs.',
-    color: '#e0c3fc',
-  },
-  {
-    icon: ShieldCheck,
-    title: 'Verification',
-    desc: 'Configurable verification gate with optional voice verification and role assignment.',
-    color: '#a29bfe',
-  },
-  {
-    icon: Gavel,
-    title: 'Full Moderation',
-    desc: 'Ban, kick, mute, warn, purge, lockdown — with case tracking, reasons, and appeal system.',
-    color: '#f97316',
-  },
-  {
-    icon: BarChart3,
-    title: 'Web Dashboard',
-    desc: 'Beautiful panel to configure everything — modules, commands, permissions, and logging.',
-    color: '#6C5CE7',
+    eyebrow: 'Utility & Automation',
+    title: 'Automate the repetitive work your team keeps doing.',
+    text: 'Create dependable workflows for routine events, responses, roles, and server maintenance.',
+    accent: '#4f7cff',
+    items: [
+      { icon: Wand2, title: 'Auto Responder', text: 'Reply to keywords and common questions with controlled automated messages.' },
+      { icon: Layers3, title: 'Backup', text: 'Preserve server settings and recover faster when something changes.' },
+      { icon: Gift, title: 'Giveaways', text: 'Run giveaways with simple entry rules and clear winner selection.' },
+      { icon: ClipboardList, title: 'Reports', text: 'Route member reports to moderators with the context needed to decide.' },
+    ],
   },
 ]
 
 const STATS = [
-  { value: '99.9%', label: 'Uptime' },
-  { value: '<50ms', label: 'Response Time' },
-  { value: '100+', label: 'Commands' },
-  { value: '24/7', label: 'Protection' },
+  ['12k+', 'servers managed'],
+  ['2.1M+', 'actions logged'],
+  ['99.9%', 'service uptime'],
+  ['24/7', 'automated coverage'],
+]
+
+const ACTIVITY = [
+  ['Protected', 'Invite spam blocked in #general', 'now'],
+  ['Ticket', 'Support ticket claimed by Ava', '22s'],
+  ['Case', 'Warning added for repeated caps', '1m'],
+  ['Log', 'Role permissions changed by Admin', '4m'],
 ]
 
 export default function Landing() {
-  const heroRef = useRef(null)
-
-  useEffect(() => {
-    const handleMouse = (e) => {
-      if (!heroRef.current) return
-      const { clientX, clientY } = e
-      const { innerWidth, innerHeight } = window
-      const x = (clientX / innerWidth - 0.5) * 20
-      const y = (clientY / innerHeight - 0.5) * 20
-      heroRef.current.style.setProperty('--mouse-x', `${x}px`)
-      heroRef.current.style.setProperty('--mouse-y', `${y}px`)
-    }
-    window.addEventListener('mousemove', handleMouse)
-    return () => window.removeEventListener('mousemove', handleMouse)
-  }, [])
-
   return (
-    <div className="landing">
-      {/* ── Navbar ── */}
-      <nav className="landing-nav glass-strong">
-        <div className="container nav-inner">
-          <Link to="/" className="nav-brand">
-            <div className="nav-logo">
-              <Shield size={24} />
-            </div>
-            <span className="nav-name">ModBot</span>
-            <span className="badge badge-primary">v3.4</span>
+    <div className="lp">
+      <div className="lp-sky" aria-hidden="true" />
+
+      <nav className="lp-nav" aria-label="Primary navigation">
+        <div className="lp-nav-inner">
+          <Link to="/" className="lp-logo" aria-label="Orion Protection home">
+            <img src="/orion-protection.svg" alt="" />
+            <span>Orion</span>
           </Link>
-          <div className="nav-links">
-            <a href="#features" className="nav-link">Features</a>
-            <a href="#modules" className="nav-link">Modules</a>
-            <a href="#stats" className="nav-link">Stats</a>
-            <a href="https://discord.gg/modbot" className="nav-link" target="_blank" rel="noopener">Support</a>
+
+          <div className="lp-nav-links">
+            <a href="#plugins">Plugins</a>
+            <a href="#security">Protection</a>
+            <a href="#automation">Automation</a>
+            <a href="/dashboard">Dashboard</a>
           </div>
-          <div className="nav-actions">
-            <a href="/auth/login" className="btn btn-ghost btn-sm">Login</a>
-            <a href="/auth/invite" className="btn btn-primary btn-sm">
-              <Bot size={16} />
-              Add to Server
+
+          <div className="lp-nav-actions">
+            <button className="lp-language" type="button" aria-label="Language selector">
+              <Globe2 size={16} />
+              English
+              <ChevronDown size={15} />
+            </button>
+            <a className="lp-login" href="/auth/login">Login</a>
+            <a className="lp-primary" href="/auth/invite">
+              Invite Bot
+              <ArrowRight size={17} />
             </a>
           </div>
         </div>
       </nav>
 
-      {/* ── Hero ── */}
-      <section className="hero" ref={heroRef}>
-        <div className="hero-bg">
-          <div className="hero-orb hero-orb-1" />
-          <div className="hero-orb hero-orb-2" />
-          <div className="hero-orb hero-orb-3" />
-          <div className="hero-grid" />
-        </div>
-        <div className="container hero-content">
-          <div className="hero-badge animate-in">
-            <Sparkles size={14} />
-            <span>Powered by AI • Trusted by thousands</span>
-          </div>
-          <h1 className="hero-title animate-in" style={{ animationDelay: '0.1s' }}>
-            The most powerful
-            <br />
-            <span className="gradient-text">Discord moderation</span>
-            <br />
-            bot ever built.
-          </h1>
-          <p className="hero-subtitle animate-in" style={{ animationDelay: '0.2s' }}>
-            Auto-moderation, AI-powered content analysis, anti-raid protection,
-            tickets, logging, and a beautiful web dashboard — all in one bot.
-          </p>
-          <div className="hero-actions animate-in" style={{ animationDelay: '0.3s' }}>
-            <a href="/auth/invite" className="btn btn-primary btn-lg">
-              <Bot size={20} />
-              Add to Discord
-              <ArrowRight size={18} />
-            </a>
-            <a href="/auth/login" className="btn btn-secondary btn-lg">
-              <Globe size={20} />
-              Open Dashboard
-            </a>
-          </div>
-          <div className="hero-stats animate-in" style={{ animationDelay: '0.4s' }}>
-            {STATS.map((s, i) => (
-              <div className="hero-stat" key={i}>
-                <span className="hero-stat-value">{s.value}</span>
-                <span className="hero-stat-label">{s.label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="hero-preview animate-in" style={{ animationDelay: '0.5s' }}>
-          <div className="preview-window glass">
-            <div className="preview-topbar">
-              <div className="preview-dots">
-                <span /><span /><span />
-              </div>
-              <span className="preview-url">moderations.app/dashboard</span>
-            </div>
-            <div className="preview-body">
-              <div className="preview-sidebar">
-                <div className="preview-sidebar-item active"><Shield size={14} /> Overview</div>
-                <div className="preview-sidebar-item"><Zap size={14} /> Auto Mod</div>
-                <div className="preview-sidebar-item"><Brain size={14} /> AI Mod</div>
-                <div className="preview-sidebar-item"><Eye size={14} /> Logging</div>
-                <div className="preview-sidebar-item"><Ticket size={14} /> Tickets</div>
-                <div className="preview-sidebar-item"><Gavel size={14} /> Cases</div>
-              </div>
-              <div className="preview-main">
-                <div className="preview-header-row">
-                  <div className="preview-h">Server Overview</div>
-                  <div className="badge badge-success">Online</div>
-                </div>
-                <div className="preview-grid">
-                  <div className="preview-stat-card">
-                    <div className="preview-stat-icon" style={{ background: 'rgba(108,92,231,0.15)', color: '#a29bfe' }}><Users size={18} /></div>
-                    <div>
-                      <div className="preview-stat-num">12,847</div>
-                      <div className="preview-stat-lbl">Members</div>
-                    </div>
-                  </div>
-                  <div className="preview-stat-card">
-                    <div className="preview-stat-icon" style={{ background: 'rgba(0,214,143,0.15)', color: '#00d68f' }}><ShieldCheck size={18} /></div>
-                    <div>
-                      <div className="preview-stat-num">1,204</div>
-                      <div className="preview-stat-lbl">Actions Today</div>
-                    </div>
-                  </div>
-                  <div className="preview-stat-card">
-                    <div className="preview-stat-icon" style={{ background: 'rgba(255,184,0,0.15)', color: '#ffb800' }}><Gavel size={18} /></div>
-                    <div>
-                      <div className="preview-stat-num">89</div>
-                      <div className="preview-stat-lbl">Active Cases</div>
-                    </div>
-                  </div>
-                </div>
-                <div className="preview-activity">
-                  <div className="preview-activity-row">
-                    <span className="preview-dot green" />
-                    <span>Auto Mod blocked spam message</span>
-                    <span className="preview-time">2m ago</span>
-                  </div>
-                  <div className="preview-activity-row">
-                    <span className="preview-dot yellow" />
-                    <span>AI flagged suspicious account</span>
-                    <span className="preview-time">5m ago</span>
-                  </div>
-                  <div className="preview-activity-row">
-                    <span className="preview-dot blue" />
-                    <span>Ticket #204 resolved by staff</span>
-                    <span className="preview-time">12m ago</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Features ── */}
-      <section className="features" id="features">
-        <div className="container">
-          <div className="section-header">
-            <span className="section-badge">
-              <Zap size={14} />
-              Features
+      <main>
+        <section className="lp-hero">
+          <div className="lp-hero-copy">
+            <span className="lp-pill">
+              <Sparkles size={16} />
+              All-in-one Discord moderation
             </span>
-            <h2 className="section-title">
-              Everything you need to
-              <span className="gradient-text"> protect your server</span>
-            </h2>
-            <p className="section-subtitle">
-              ModBot combines advanced auto-moderation, AI analysis, and a powerful dashboard
-              to give you complete control over your Discord server.
+            <h1>Your Discord control center starts in the clouds.</h1>
+            <p>
+              Manage moderation, protection, tickets, logs, automations, and staff workflows from one bright,
+              fast dashboard built for modern communities.
             </p>
-          </div>
-          <div className="features-grid" id="modules">
-            {FEATURES.map((f, i) => (
-              <div className="feature-card card" key={i} style={{ animationDelay: `${i * 0.05}s` }}>
-                <div className="feature-icon" style={{ background: `${f.color}15`, color: f.color }}>
-                  <f.icon size={24} />
-                </div>
-                <h3 className="feature-title">{f.title}</h3>
-                <p className="feature-desc">{f.desc}</p>
-                <div className="feature-arrow">
-                  <ChevronRight size={16} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
 
-      {/* ── Stats Banner ── */}
-      <section className="stats-section" id="stats">
-        <div className="stats-bg" />
-        <div className="container">
-          <div className="stats-grid">
-            <div className="stats-info">
-              <h2 className="stats-title">
-                Built for <span className="gradient-text">scale</span>
-              </h2>
-              <p className="stats-desc">
-                ModBot is engineered for performance. Real-time event processing,
-                PostgreSQL-backed persistence, Redis caching, and zero-downtime deployments.
-              </p>
-              <div className="stats-checks">
-                <div className="stats-check"><CheckCircle2 size={18} /> Real-time event processing</div>
-                <div className="stats-check"><CheckCircle2 size={18} /> PostgreSQL + Redis backed</div>
-                <div className="stats-check"><CheckCircle2 size={18} /> Per-server configuration</div>
-                <div className="stats-check"><CheckCircle2 size={18} /> Role-based access control</div>
+            <div className="lp-hero-actions">
+              <a className="lp-primary lp-primary-lg" href="/auth/invite">
+                <Bot size={20} />
+                Invite Bot
+              </a>
+              <a className="lp-secondary lp-secondary-lg" href="#plugins">
+                Explore More
+                <ChevronRight size={18} />
+              </a>
+            </div>
+
+            <div className="lp-hero-checks" aria-label="Highlights">
+              <span><CheckCircle2 size={16} />Free to start</span>
+              <span><CheckCircle2 size={16} />Server dashboards</span>
+              <span><CheckCircle2 size={16} />Role-safe controls</span>
+            </div>
+          </div>
+
+          <div className="lp-hero-art" aria-label="Dashboard preview">
+            <div className="lp-dashboard">
+              <aside className="lp-dash-rail">
+                <span className="lp-rail-logo"><Shield size={20} /></span>
+                {[PanelLeft, Ticket, Bell, Settings].map((Icon, index) => (
+                  <span className={index === 0 ? 'active' : ''} key={index}>
+                    <Icon size={18} />
+                  </span>
+                ))}
+              </aside>
+
+              <div className="lp-dash-main">
+                <header className="lp-dash-header">
+                  <div>
+                    <b>Overview</b>
+                    <span>Orion Support</span>
+                  </div>
+                  <div className="lp-search">
+                    <Search size={15} />
+                    Search logs
+                  </div>
+                </header>
+
+                <section className="lp-chart-row">
+                  {[
+                    ['Joins', '184', '+12%', '#08b981'],
+                    ['Messages', '9.4k', '+8%', '#2586ff'],
+                    ['Tickets', '17', '-3', '#f59e0b'],
+                  ].map(([label, value, delta, color]) => (
+                    <article className="lp-mini-card" style={{ '--chart': color }} key={label}>
+                      <span>{label}</span>
+                      <b>{value}</b>
+                      <em>{delta} today</em>
+                      <i />
+                    </article>
+                  ))}
+                </section>
+
+                <section className="lp-plugin-preview">
+                  <div className="lp-preview-head">
+                    <span><Puzzle size={16} /> Plugins</span>
+                    <strong>6 enabled</strong>
+                  </div>
+                  <div className="lp-preview-grid">
+                    {[
+                      ['AutoMod', Shield],
+                      ['Tickets', Ticket],
+                      ['Logs', Bell],
+                      ['AI Review', Sparkles],
+                    ].map(([label, Icon]) => (
+                      <div className="lp-preview-tile" key={label}>
+                        <Icon size={18} />
+                        <span>{label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+
+                <section className="lp-activity">
+                  <div className="lp-preview-head">
+                    <span><Activity size={16} /> Live activity</span>
+                    <strong>Online</strong>
+                  </div>
+                  {ACTIVITY.map(([type, text, time]) => (
+                    <div className="lp-activity-row" key={text}>
+                      <b>{type}</b>
+                      <span>{text}</span>
+                      <time>{time}</time>
+                    </div>
+                  ))}
+                </section>
               </div>
             </div>
-            <div className="stats-cards">
-              {STATS.map((s, i) => (
-                <div className="stat-card glass" key={i}>
-                  <div className="stat-value gradient-text">{s.value}</div>
-                  <div className="stat-label">{s.label}</div>
-                </div>
+
+            <div className="lp-float-card lp-float-top">
+              <Crown size={18} />
+              <div>
+                <b>Protection Active</b>
+                <span>Anti-raid watching</span>
+              </div>
+            </div>
+            <div className="lp-float-card lp-float-bottom">
+              <Gauge size={18} />
+              <div>
+                <b>128 actions today</b>
+                <span>All logged cleanly</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section className="lp-fast-grid" aria-label="Product strengths">
+          {TOP_FEATURES.map(({ icon: Icon, title, text }) => (
+            <article className="lp-fast-card" key={title}>
+              <Icon size={24} />
+              <h2>{title}</h2>
+              <p>{text}</p>
+            </article>
+          ))}
+        </section>
+
+        <section className="lp-stats" aria-label="Platform stats">
+          {STATS.map(([value, label]) => (
+            <div key={label}>
+              <strong>{value}</strong>
+              <span>{label}</span>
+            </div>
+          ))}
+        </section>
+
+        <section className="lp-section lp-centered" id="plugins">
+          <span className="lp-pill">Plugins for every server</span>
+          <h2>Pick the tools that match your community.</h2>
+          <p>
+            Start with a clean setup, enable only the modules you need, and keep expanding as your server grows.
+          </p>
+        </section>
+
+        {PLUGIN_GROUPS.map((group, index) => (
+          <section
+            className="lp-plugin-band"
+            id={index === 1 ? 'security' : index === 2 ? 'automation' : undefined}
+            style={{ '--accent': group.accent }}
+            key={group.eyebrow}
+          >
+            <div className="lp-band-copy">
+              <span>{group.eyebrow}</span>
+              <h2>{group.title}</h2>
+              <p>{group.text}</p>
+            </div>
+            <div className="lp-plugin-grid">
+              {group.items.map(({ icon: Icon, title, text }) => (
+                <article className="lp-plugin-card" key={title}>
+                  <div>
+                    <Icon size={22} />
+                  </div>
+                  <h3>{title}</h3>
+                  <p>{text}</p>
+                  <a href="/auth/login">
+                    View
+                    <ChevronRight size={15} />
+                  </a>
+                </article>
               ))}
             </div>
-          </div>
-        </div>
-      </section>
+          </section>
+        ))}
 
-      {/* ── CTA ── */}
-      <section className="cta">
-        <div className="cta-glow" />
-        <div className="container cta-content">
-          <h2 className="cta-title">
-            Ready to secure your server?
-          </h2>
-          <p className="cta-subtitle">
-            Join thousands of server owners who trust ModBot. Set up takes less than 60 seconds.
-          </p>
-          <div className="cta-actions">
-            <a href="/auth/invite" className="btn btn-primary btn-lg">
-              <Bot size={20} />
-              Add ModBot to Discord
+        <section className="lp-cta">
+          <div>
+            <span className="lp-pill">Ready for a great experience?</span>
+            <h2>Get started now.</h2>
+            <p>Connect Orion to your server and manage your community with a dashboard that feels clear from the first click.</p>
+            <a className="lp-primary lp-primary-lg" href="/auth/invite">
+              Invite Bot
               <ArrowRight size={18} />
             </a>
           </div>
-        </div>
-      </section>
+        </section>
+      </main>
 
-      {/* ── Footer ── */}
-      <footer className="footer">
-        <div className="container footer-inner">
-          <div className="footer-brand">
-            <div className="nav-brand">
-              <div className="nav-logo">
-                <Shield size={20} />
-              </div>
-              <span className="nav-name">ModBot</span>
-            </div>
-            <p className="footer-tagline">Advanced Discord moderation, simplified.</p>
-          </div>
-          <div className="footer-links">
-            <div className="footer-col">
-              <h4>Product</h4>
-              <a href="#features">Features</a>
-              <a href="/dashboard">Dashboard</a>
-              <a href="#stats">Status</a>
-            </div>
-            <div className="footer-col">
-              <h4>Resources</h4>
-              <a href="#">Documentation</a>
-              <a href="#">Commands</a>
-              <a href="#">Changelog</a>
-            </div>
-            <div className="footer-col">
-              <h4>Community</h4>
-              <a href="https://discord.gg/modbot" target="_blank" rel="noopener">Discord</a>
-              <a href="#">GitHub</a>
-              <a href="#">Twitter</a>
-            </div>
-          </div>
-          <div className="footer-bottom">
-            <span>&copy; {new Date().getFullYear()} ModBot. All rights reserved.</span>
-          </div>
+      <footer className="lp-footer">
+        <div className="lp-footer-brand">
+          <Link to="/" className="lp-logo">
+            <img src="/orion-protection.svg" alt="" />
+            <span>Orion</span>
+          </Link>
+          <p>Your all-in-one server companion for moderation, tickets, logging, and protection.</p>
+        </div>
+
+        <div>
+          <h2>Contact Us</h2>
+          <a href="/auth/invite">Discord</a>
+        </div>
+        <div>
+          <h2>Pages</h2>
+          <a href="/dashboard">Dashboard</a>
+          <a href="#plugins">Plugins</a>
+          <a href="#security">Protection</a>
+        </div>
+        <div>
+          <h2>Legal</h2>
+          <a href="/">Terms of service</a>
+          <a href="/">Privacy policy</a>
+          <a href="/">Refund policy</a>
         </div>
       </footer>
     </div>

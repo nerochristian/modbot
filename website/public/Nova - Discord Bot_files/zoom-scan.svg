@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="uuid-1b947608-b9a0-4809-84ec-9c795e254f95" data-name="Layer 1" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <path d="m0,0h24v24H0V0Z" fill="none" stroke-width="0"/>
+  <path d="m4,8v-2c0-1.1.9-2,2-2h2" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+  <path d="m4,16v2c0,1.1.9,2,2,2h2" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+  <path d="m16,4h2c1.1,0,2,.9,2,2v2" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+  <path d="m16,20h2c1.1,0,2-.9,2-2v-2" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+  <path d="m8,11c0,1.66,1.34,3,3,3s3-1.34,3-3-1.34-3-3-3-3,1.34-3,3" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+  <path d="m16,16l-2.5-2.5" fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round" stroke-width="2"/>
+  <rect x="4" y="4" width="16" height="16" rx="2.55" ry="2.55" fill="#fff" opacity=".17" stroke-width="0"/>
+</svg>

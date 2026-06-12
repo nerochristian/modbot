@@ -73,7 +73,7 @@ export default function GuildSettings() {
     <div>
       <div className="page-header">
         <h1 className="page-title">Server Settings</h1>
-        <p className="page-subtitle">Configure ModBot's core behavior for this server.</p>
+        <p className="page-subtitle">Configure Orion Protection's core behavior for this server.</p>
       </div>
 
       {/* General */}

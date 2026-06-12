@@ -15,7 +15,7 @@ import secrets
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, get_args, get_origin
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import aiohttp
 import discord
@@ -564,11 +564,23 @@ def _request_origin(request: web.Request) -> str:
     return f"{scheme}://{authority}".rstrip("/")
 
 
+def _is_loopback_origin(origin: str) -> bool:
+    parsed = urlparse(origin)
+    host = (parsed.hostname or "").lower()
+    return host == "localhost" or host == "::1" or host.startswith("127.")
+
+
 def _dashboard_base_url(request: web.Request) -> str:
-    return BACKEND_PUBLIC_URL or _request_origin(request)
+    request_origin = _request_origin(request)
+    if _is_loopback_origin(request_origin):
+        return request_origin
+    return BACKEND_PUBLIC_URL or request_origin
 
 
 def _frontend_base_url(request: web.Request) -> str:
+    request_origin = _request_origin(request)
+    if _is_loopback_origin(request_origin):
+        return request_origin
     return FRONTEND_PUBLIC_URL or _dashboard_base_url(request)
 
 
@@ -580,6 +592,9 @@ def _session_cookie_settings(request: web.Request) -> Dict[str, Any]:
     default_same_site = "None" if _is_cross_origin_frontend(request) else "Lax"
     configured_same_site = os.getenv("SESSION_COOKIE_SAMESITE", "").strip().capitalize()
     same_site = configured_same_site if configured_same_site in {"Lax", "Strict", "None"} else default_same_site
+
+    if _is_loopback_origin(_dashboard_base_url(request)):
+        return {"samesite": "Lax" if same_site == "None" else same_site, "secure": False}
 
     secure_default = (
         same_site == "None"
@@ -2811,8 +2826,19 @@ def _setup_static(app: web.Application):
 
     # SPA fallback — serve index.html for all non-API routes
     async def spa_handler(request: web.Request):
+        path = request.match_info.get("path", "")
+        if path == "api" or path.startswith("api/"):
+            raise web.HTTPNotFound(
+                text=json.dumps({"code": 404, "message": "API route not found"}),
+                content_type="application/json",
+            )
+        if path == "auth" or path.startswith("auth/"):
+            raise web.HTTPNotFound(
+                text=json.dumps({"code": 404, "message": "Auth route not found"}),
+                content_type="application/json",
+            )
         # Also serve any root-level static files (favicon, robots.txt, etc.)
-        file_path = dist_dir / request.match_info.get("path", "")
+        file_path = dist_dir / path
         if file_path.is_file() and file_path.resolve().is_relative_to(dist_dir.resolve()):
             return web.FileResponse(file_path)
         # SPA fallback
@@ -2840,12 +2866,15 @@ def create_app(bot=None) -> web.Application:
     app.router.add_get("/auth/login", auth_login)
     app.router.add_get("/auth/invite", auth_login)
     app.router.add_get("/auth/callback", auth_callback)
+    app.router.add_get("/auth/logout", auth_logout)
     app.router.add_post("/api/auth/logout", auth_logout)
 
     # API routes
     app.router.add_get("/api/me", api_me)
     app.router.add_get("/api/bot/capabilities", api_bot_capabilities)
     app.router.add_get("/api/guilds", api_guilds)
+    app.router.add_get("/api/guilds/{guild_id}", api_guild_summary)
+    app.router.add_get("/api/guilds/{guild_id}/", api_guild_summary)
     app.router.add_get("/api/guilds/{guild_id}/summary", api_guild_summary)
     app.router.add_get("/api/guilds/{guild_id}/channels", api_guild_channels)
     app.router.add_get("/api/guilds/{guild_id}/roles", api_guild_roles)

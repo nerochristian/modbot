@@ -5861,6 +5861,8 @@ class AIModeration(commands.Cog):
         if not await self._require_manage(interaction):
             return
 
+        await interaction.response.defer(ephemeral=True)
+
         guild_id = interaction.guild.id
         await self.update_guild_setting(guild_id, "aimod_enabled", enabled)
         await self.update_guild_setting(guild_id, "aimod_chat_enabled", talking)
@@ -5878,13 +5880,15 @@ class AIModeration(commands.Cog):
             value="Mention the bot: `timeout @User 1h for spam` or use `/aihelp` for examples.",
             inline=False,
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @aimod_group.command(name="status")
     async def aimod_status(self, interaction: discord.Interaction) -> None:
         """View current AI moderation settings."""
         if not await self._require_manage(interaction):
             return
+
+        await interaction.response.defer(ephemeral=True)
 
         settings = await self.get_guild_settings(interaction.guild.id)
         color = discord.Color.blurple() if settings.enabled else discord.Color.greyple()
@@ -5894,7 +5898,7 @@ class AIModeration(commands.Cog):
         embed.add_field(name="Model", value=f"`{settings.model or self.config.model}`", inline=True)
         embed.add_field(name="Context Messages", value=str(settings.context_messages), inline=True)
         embed.add_field(name="Proactive Chance", value=f"{settings.proactive_chance * 100:.1f}%", inline=True)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     @aimod_group.command(name="toggle")
     async def aimod_toggle(self, interaction: discord.Interaction) -> None:
@@ -5902,11 +5906,13 @@ class AIModeration(commands.Cog):
         if not await self._require_manage(interaction):
             return
 
+        await interaction.response.defer(ephemeral=True)
+
         settings = await self.get_guild_settings(interaction.guild.id)
         new_value = not settings.enabled
         await self.update_guild_setting(interaction.guild.id, "aimod_enabled", new_value)
         status = "enabled" if new_value else "disabled"
-        await interaction.response.send_message(f"AI Moderation is now **{status}**.", ephemeral=True)
+        await interaction.followup.send(f"AI Moderation is now **{status}**.", ephemeral=True)
 
     @aimod_group.command(name="talking")
     @app_commands.describe(enabled="Turn casual AI replies on or off. Leave empty to toggle.")
@@ -5914,6 +5920,8 @@ class AIModeration(commands.Cog):
         """Toggle casual AI conversation replies on or off."""
         if not await self._require_manage(interaction):
             return
+
+        await interaction.response.defer(ephemeral=True)
 
         settings = await self.get_guild_settings(interaction.guild.id)
         new_value = (not settings.chat_enabled) if enabled is None else bool(enabled)
@@ -5924,7 +5932,7 @@ class AIModeration(commands.Cog):
             if new_value else
             "I will stay quiet for casual chat and only handle moderation flows."
         )
-        await interaction.response.send_message(f"AI talking is now **{status}**. {detail}", ephemeral=True)
+        await interaction.followup.send(f"AI talking is now **{status}**. {detail}", ephemeral=True)
 
     @app_commands.command(name="aihelp")
     async def aihelp(self, interaction: discord.Interaction) -> None:

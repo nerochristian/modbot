@@ -5,6 +5,7 @@ import {
   Bot, Plus, Search, Loader2, AlertCircle
 } from 'lucide-react'
 import { api } from '../api'
+import { ThemeToggle } from '../theme'
 import './Dashboard.css'
 
 export default function Dashboard() {
@@ -63,9 +64,10 @@ export default function Dashboard() {
       <header className="dash-topbar glass-strong">
         <Link to="/" className="nav-brand">
           <div className="nav-logo"><Shield size={20} /></div>
-          <span className="nav-name">ModBot</span>
+          <span className="nav-name">Orion Protection</span>
         </Link>
         <div className="dash-topbar-right">
+          <ThemeToggle />
           {user && (
             <div className="dash-user">
               {user.avatar ? (
@@ -89,7 +91,7 @@ export default function Dashboard() {
       <main className="dash-content">
         <div className="dash-hero">
           <h1>Select a Server</h1>
-          <p>Choose a server to manage with the ModBot dashboard.</p>
+          <p>Choose a server to manage with the Orion Protection dashboard.</p>
         </div>
 
         <div className="dash-search-bar">
@@ -146,7 +148,7 @@ export default function Dashboard() {
           <section className="dash-guild-section">
             <h2 className="dash-section-title">
               <Plus size={18} />
-              Add ModBot
+              Add Orion Protection
             </h2>
             <div className="guild-grid">
               {notInstalled.map(g => (

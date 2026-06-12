@@ -22713,3 +22713,611 @@ aiohttp.client_exceptions.ClientConnectorDNSError: Cannot connect to host gatewa
 2026-05-20 21:42:12,087 | INFO | ModBot | [CMD] apflov2 used 'purge' in The Supreme People
 2026-05-20 21:42:16,169 | WARNING | cogs.logging_cog | Dropping mod log in The Supreme People: destination channel is not configured.
 2026-05-20 22:01:39,642 | INFO | LifeSimBot | Database auto-backup completed
+2026-06-06 16:04:43,098 | INFO | LifeSimBot | LifeSimBot starting up
+2026-06-06 16:04:43,100 | INFO | LifeSimBot | Python 3.14.0 | discord.py 2.7.1 | OS Windows 11
+2026-06-06 16:04:43,101 | INFO | LifeSimBot | DB C:\Users\Dell\mod\LifeSimBot\modbot.db | Log C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-06-06 16:04:43,102 | INFO | LifeSimBot | Debug False | Features 16 enabled
+2026-06-06 16:04:43,103 | INFO | LifeSimBot | Connecting LifeSimBot to Discord...
+2026-06-06 16:04:43,156 | INFO | group_bot | Connecting GroupBot to Discord...
+2026-06-06 16:04:43,159 | INFO | ModBot.Dashboard | Dashboard running on http://0.0.0.0:10547
+2026-06-06 16:04:43,160 | INFO | ModBot | [OK] Dashboard started (pre-connect)
+2026-06-06 16:04:43,161 | INFO | ModBot | [NET] Connecting ModBot to Discord...
+2026-06-06 16:04:43,547 | INFO | LifeSimBot | Initializing...
+2026-06-06 16:04:43,550 | INFO | bot.database | Initializing Database Schema...
+2026-06-06 16:04:43,647 | INFO | ModBot | [>>] Initializing bot systems...
+2026-06-06 16:04:43,677 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-06-06 16:04:43,686 | INFO | LifeSimBot | [OK] Database initialized
+2026-06-06 16:04:43,695 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-06-06 16:04:43,697 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-06-06 16:04:43,705 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-06-06 16:04:43,710 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-06-06 16:04:43,712 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-06-06 16:04:43,732 | INFO | LifeSimBot.Core | Core cog initialized
+2026-06-06 16:04:43,733 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-06-06 16:04:43,742 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-06-06 16:04:43,742 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-06-06 16:04:43,750 | INFO | LifeSimBot.Help | Help cog initialized
+2026-06-06 16:04:43,753 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-06-06 16:04:43,766 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-06-06 16:04:43,785 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-06-06 16:04:43,794 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-06-06 16:04:43,802 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-06-06 16:04:43,812 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-06-06 16:04:43,821 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-06-06 16:04:43,828 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-06-06 16:04:43,843 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-06-06 16:04:43,862 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-06-06 16:04:43,875 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-06-06 16:04:43,890 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-06-06 16:04:43,902 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-06-06 16:04:43,903 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-06-06 16:04:43,911 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-06-06 16:04:43,916 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-06-06 16:04:43,927 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-06-06 16:04:43,933 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-06-06 16:04:43,942 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-06-06 16:04:43,949 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-06-06 16:04:43,973 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-06-06 16:04:43,977 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-06-06 16:04:43,978 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
+2026-06-06 16:04:44,368 | INFO | LifeSimBot | [OK] Synced 97 application commands
+2026-06-06 16:04:44,382 | INFO | LifeSimBot | Background tasks started
+2026-06-06 16:04:44,383 | INFO | LifeSimBot | [OK] Ready (startup 0.84s)
+2026-06-06 16:04:44,433 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: c91cbaa049124bf59965aa215b8bda9f).
+2026-06-06 16:04:44,866 | INFO | ModBot.Database | Database connection pool initialized (PostgreSQL)
+2026-06-06 16:04:44,867 | INFO | ModBot.RedisCache | Using in-memory caches (no REDIS_URL configured).
+2026-06-06 16:04:44,868 | INFO | ModBot | [CACHE] Backend: memory
+2026-06-06 16:04:47,114 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 0b0f9d9433d019a3b8f41f4fad2f11f8).
+2026-06-06 16:04:47,120 | INFO | group_bot | Logged in as Group Creater#8732
+2026-06-06 16:04:47,599 | INFO | ModBot |   [OK] Loaded: cogs.moderation
+2026-06-06 16:04:47,606 | INFO | ModBot |   [OK] Loaded: cogs.setup
+2026-06-06 16:04:47,624 | INFO | ModBot |   [OK] Loaded: cogs.verification
+2026-06-06 16:04:47,699 | INFO | ModBot |   [OK] Loaded: cogs.help
+2026-06-06 16:04:47,705 | INFO | ModBot |   [OK] Loaded: cogs.roles
+2026-06-06 16:04:47,867 | INFO | ModBot |   [OK] Loaded: cogs.logging_cog
+2026-06-06 16:04:47,875 | INFO | ModBot |   [OK] Loaded: cogs.pin
+2026-06-06 16:04:47,878 | INFO | ModBot |   [OK] Loaded: cogs.reports
+2026-06-06 16:04:47,882 | INFO | ModBot |   [OK] Loaded: cogs.blacklist
+2026-06-06 16:04:47,887 | INFO | ModBot |   [OK] Loaded: cogs.forum_moderation
+2026-06-06 16:04:47,915 | INFO | ModBot |   [OK] Loaded: cogs.prefix_commands
+2026-06-06 16:04:51,155 | INFO | ModBot |   [OK] Loaded: cogs.aimoderation
+2026-06-06 16:04:51,165 | INFO | ModBot |   [OK] Loaded: cogs.ai_scheduler
+2026-06-06 16:04:53,581 | INFO | ModBot |   [OK] Loaded: cogs.automod
+2026-06-06 16:04:55,918 | INFO | ModBot |   [OK] Loaded: cogs.antiraid
+2026-06-06 16:04:56,006 | INFO | ModBot |   [OK] Loaded: cogs.voice
+2026-06-06 16:04:56,053 | INFO | ModBot |   [OK] Loaded: cogs.settings
+2026-06-06 16:04:56,058 | INFO | ModBot |   [OK] Loaded: cogs.polls
+2026-06-06 16:04:56,068 | INFO | ModBot |   [OK] Loaded: cogs.tickets
+2026-06-06 16:04:56,077 | INFO | ModBot.Modmail | 📬 Loading modmail system...
+2026-06-06 16:04:56,078 | INFO | ModBot.Modmail | ✅ Modmail cog loaded - threads will restore when bot is ready
+2026-06-06 16:04:56,079 | INFO | ModBot |   [OK] Loaded: cogs.modmail
+2026-06-06 16:04:56,090 | INFO | ModBot |   [OK] Loaded: cogs.utility
+2026-06-06 16:04:56,100 | INFO | ModBot |   [OK] Loaded: cogs.admin
+2026-06-06 16:04:56,106 | INFO | ModBot |   [OK] Loaded: cogs.staff
+2026-06-06 16:04:56,125 | INFO | LifeSimBot | ====================================================
+2026-06-06 16:04:56,126 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-06-06 16:04:56,127 | INFO | LifeSimBot | Guilds: 1 | Users: 37 | Latency: 104ms
+2026-06-06 16:04:56,128 | INFO | LifeSimBot | ====================================================
+2026-06-06 16:04:56,163 | INFO | LifeSimBot | Database auto-backup completed
+2026-06-06 16:04:56,215 | INFO | ModBot |   [OK] Loaded: cogs.court
+2026-06-06 16:04:56,222 | INFO | ModBot |   [OK] Loaded: cogs.whitelist
+2026-06-06 16:04:56,222 | INFO | ModBot | ============================================================
+2026-06-06 16:04:56,223 | INFO | ModBot | [COG] Cog Loading Summary:
+2026-06-06 16:04:56,223 | INFO | ModBot |   Loaded:  25
+2026-06-06 16:04:56,224 | INFO | ModBot |   Skipped: 0
+2026-06-06 16:04:56,224 | INFO | ModBot |   Failed:  0
+2026-06-06 16:04:56,225 | INFO | ModBot |   Commands: 120 prefix, 50 slash
+2026-06-06 16:04:56,226 | INFO | ModBot | ============================================================
+2026-06-06 16:04:56,226 | INFO | ModBot | [CMD] Syncing slash commands globally...
+2026-06-06 16:04:56,777 | INFO | ModBot | [CMD] Synced 50 slash commands globally
+2026-06-06 16:04:57,344 | INFO | ModBot | [OK] Dashboard server stopped
+2026-06-06 16:04:57,346 | INFO | ModBot | [BYE] Shutting down ModBot...
+2026-06-06 16:04:57,348 | INFO | ModBot | Session Stats:
+2026-06-06 16:04:57,348 | INFO | ModBot |   Uptime:        14s (0.0h)
+2026-06-06 16:04:57,349 | INFO | ModBot |   Commands Used: 0
+2026-06-06 16:04:57,349 | INFO | ModBot |   Messages Seen: 0
+2026-06-06 16:04:57,349 | INFO | ModBot |   Errors Caught: 0
+2026-06-06 16:04:57,350 | INFO | ModBot | [OK] Caches cleared
+2026-06-06 16:04:57,473 | INFO | ModBot.Database | Database closed.
+2026-06-06 16:04:57,473 | INFO | ModBot | [OK] Database connections closed
+2026-06-06 16:04:57,487 | INFO | ModBot.Modmail | ✅ Modmail system unloaded
+2026-06-06 16:04:57,493 | INFO | ModBot | [OK] Bot shutdown complete
+2026-06-06 16:04:57,493 | CRITICAL | ModBot | ============================================================
+2026-06-06 16:04:57,494 | CRITICAL | ModBot | [FATAL] Missing Privileged Intents for ModBot!
+2026-06-06 16:04:57,494 | CRITICAL | ModBot |   Enable in the Discord Developer Portal:
+2026-06-06 16:04:57,495 | CRITICAL | ModBot |     - Server Members Intent
+2026-06-06 16:04:57,496 | CRITICAL | ModBot |     - Message Content Intent
+2026-06-06 16:04:57,496 | CRITICAL | ModBot |     - Presence Intent
+2026-06-06 16:04:57,496 | CRITICAL | ModBot | ============================================================
+2026-06-06 16:04:57,497 | WARNING | ModBot | [WARN] modbot stopped; shutting down remaining bots.
+2026-06-06 16:04:57,498 | INFO | LifeSimBot | Bot shutting down...
+2026-06-06 16:04:57,513 | INFO | LifeSimBot | Bot shutdown complete
+2026-06-06 16:33:51,222 | INFO | LifeSimBot | LifeSimBot starting up
+2026-06-06 16:33:51,223 | INFO | LifeSimBot | Python 3.14.0 | discord.py 2.7.1 | OS Windows 11
+2026-06-06 16:33:51,224 | INFO | LifeSimBot | DB C:\Users\Dell\mod\LifeSimBot\modbot.db | Log C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-06-06 16:33:51,224 | INFO | LifeSimBot | Debug False | Features 16 enabled
+2026-06-06 16:33:51,225 | INFO | LifeSimBot | Connecting LifeSimBot to Discord...
+2026-06-06 16:33:51,264 | INFO | group_bot | Connecting GroupBot to Discord...
+2026-06-06 16:33:51,268 | INFO | ModBot.Dashboard | Dashboard running on http://0.0.0.0:10547
+2026-06-06 16:33:51,269 | INFO | ModBot | [OK] Dashboard started (pre-connect)
+2026-06-06 16:33:51,270 | INFO | ModBot | [NET] Connecting ModBot to Discord...
+2026-06-06 16:33:51,653 | INFO | LifeSimBot | Initializing...
+2026-06-06 16:33:51,655 | INFO | bot.database | Initializing Database Schema...
+2026-06-06 16:33:51,719 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-06-06 16:33:51,724 | INFO | LifeSimBot | [OK] Database initialized
+2026-06-06 16:33:51,734 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-06-06 16:33:51,736 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-06-06 16:33:51,741 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-06-06 16:33:51,749 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-06-06 16:33:51,752 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-06-06 16:33:51,763 | INFO | LifeSimBot.Core | Core cog initialized
+2026-06-06 16:33:51,764 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-06-06 16:33:51,772 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-06-06 16:33:51,773 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-06-06 16:33:51,779 | INFO | LifeSimBot.Help | Help cog initialized
+2026-06-06 16:33:51,780 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-06-06 16:33:51,789 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-06-06 16:33:51,800 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-06-06 16:33:51,809 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-06-06 16:33:51,814 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-06-06 16:33:51,825 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-06-06 16:33:51,832 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-06-06 16:33:51,838 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-06-06 16:33:51,848 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-06-06 16:33:51,863 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-06-06 16:33:51,874 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-06-06 16:33:51,881 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-06-06 16:33:51,894 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-06-06 16:33:51,895 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-06-06 16:33:51,902 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-06-06 16:33:51,906 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-06-06 16:33:51,918 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-06-06 16:33:51,926 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-06-06 16:33:51,935 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-06-06 16:33:51,940 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-06-06 16:33:51,945 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-06-06 16:33:51,949 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-06-06 16:33:51,950 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
+2026-06-06 16:33:51,960 | INFO | ModBot | [>>] Initializing bot systems...
+2026-06-06 16:33:52,432 | INFO | LifeSimBot | [OK] Synced 97 application commands
+2026-06-06 16:33:52,433 | INFO | LifeSimBot | Background tasks started
+2026-06-06 16:33:52,434 | INFO | LifeSimBot | [OK] Ready (startup 0.78s)
+2026-06-06 16:33:52,557 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 805d941e6b436ccac8d6bfbed70c6d56).
+2026-06-06 16:33:52,866 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: f2ac8080c87644888ef9e3f7b4327166).
+2026-06-06 16:33:52,993 | INFO | ModBot.Database | Database connection pool initialized (PostgreSQL)
+2026-06-06 16:33:52,994 | INFO | ModBot.RedisCache | Using in-memory caches (no REDIS_URL configured).
+2026-06-06 16:33:52,995 | INFO | ModBot | [CACHE] Backend: memory
+2026-06-06 16:33:55,159 | INFO | group_bot | Logged in as Group Creater#8732
+2026-06-06 16:33:55,192 | INFO | LifeSimBot | ====================================================
+2026-06-06 16:33:55,194 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-06-06 16:33:55,195 | INFO | LifeSimBot | Guilds: 1 | Users: 38 | Latency: 51ms
+2026-06-06 16:33:55,195 | INFO | LifeSimBot | ====================================================
+2026-06-06 16:33:55,218 | INFO | LifeSimBot | Database auto-backup completed
+2026-06-06 16:33:55,641 | INFO | ModBot |   [OK] Loaded: cogs.moderation
+2026-06-06 16:33:55,649 | INFO | ModBot |   [OK] Loaded: cogs.setup
+2026-06-06 16:33:55,668 | INFO | ModBot |   [OK] Loaded: cogs.verification
+2026-06-06 16:33:55,681 | INFO | ModBot |   [OK] Loaded: cogs.help
+2026-06-06 16:33:55,690 | INFO | ModBot |   [OK] Loaded: cogs.roles
+2026-06-06 16:33:55,696 | INFO | ModBot |   [OK] Loaded: cogs.logging_cog
+2026-06-06 16:33:55,705 | INFO | ModBot |   [OK] Loaded: cogs.pin
+2026-06-06 16:33:55,710 | INFO | ModBot |   [OK] Loaded: cogs.reports
+2026-06-06 16:33:55,715 | INFO | ModBot |   [OK] Loaded: cogs.blacklist
+2026-06-06 16:33:55,722 | INFO | ModBot |   [OK] Loaded: cogs.forum_moderation
+2026-06-06 16:33:55,747 | INFO | ModBot |   [OK] Loaded: cogs.prefix_commands
+2026-06-06 16:33:58,968 | INFO | ModBot |   [OK] Loaded: cogs.aimoderation
+2026-06-06 16:33:58,979 | INFO | ModBot |   [OK] Loaded: cogs.ai_scheduler
+2026-06-06 16:34:03,163 | INFO | ModBot |   [OK] Loaded: cogs.automod
+2026-06-06 16:34:06,544 | INFO | ModBot |   [OK] Loaded: cogs.antiraid
+2026-06-06 16:34:06,651 | INFO | ModBot |   [OK] Loaded: cogs.voice
+2026-06-06 16:34:06,658 | INFO | ModBot |   [OK] Loaded: cogs.settings
+2026-06-06 16:34:06,674 | INFO | ModBot |   [OK] Loaded: cogs.polls
+2026-06-06 16:34:06,698 | INFO | ModBot |   [OK] Loaded: cogs.tickets
+2026-06-06 16:34:06,711 | INFO | ModBot.Modmail | 📬 Loading modmail system...
+2026-06-06 16:34:06,712 | INFO | ModBot.Modmail | ✅ Modmail cog loaded - threads will restore when bot is ready
+2026-06-06 16:34:06,713 | INFO | ModBot |   [OK] Loaded: cogs.modmail
+2026-06-06 16:34:06,726 | INFO | ModBot |   [OK] Loaded: cogs.utility
+2026-06-06 16:34:06,738 | INFO | ModBot |   [OK] Loaded: cogs.admin
+2026-06-06 16:34:06,750 | INFO | ModBot |   [OK] Loaded: cogs.staff
+2026-06-06 16:34:06,775 | INFO | ModBot |   [OK] Loaded: cogs.court
+2026-06-06 16:34:06,782 | INFO | ModBot |   [OK] Loaded: cogs.whitelist
+2026-06-06 16:34:06,782 | INFO | ModBot | ============================================================
+2026-06-06 16:34:06,783 | INFO | ModBot | [COG] Cog Loading Summary:
+2026-06-06 16:34:06,784 | INFO | ModBot |   Loaded:  25
+2026-06-06 16:34:06,785 | INFO | ModBot |   Skipped: 0
+2026-06-06 16:34:06,786 | INFO | ModBot |   Failed:  0
+2026-06-06 16:34:06,786 | INFO | ModBot |   Commands: 120 prefix, 50 slash
+2026-06-06 16:34:06,787 | INFO | ModBot | ============================================================
+2026-06-06 16:34:06,788 | INFO | ModBot | [CMD] Syncing slash commands globally...
+2026-06-06 16:34:07,720 | INFO | ModBot | [CMD] Synced 50 slash commands globally
+2026-06-06 16:34:08,085 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 481934a26e2c8ddada1993c119229415).
+2026-06-06 16:34:10,103 | INFO | ModBot | ============================================================
+2026-06-06 16:34:10,104 | INFO | ModBot | [BOT] Online: Ass Moderation#1325 (ID: 1512917769082114229)
+2026-06-06 16:34:10,105 | INFO | ModBot | [BOT] Guilds: 1
+2026-06-06 16:34:10,106 | INFO | ModBot | [BOT] Users:  2
+2026-06-06 16:34:10,106 | INFO | ModBot | [BOT] Version: 3.4.0
+2026-06-06 16:34:10,107 | INFO | ModBot | [BOT] discord.py: 2.7.1
+2026-06-06 16:34:10,107 | INFO | ModBot | ============================================================
+2026-06-06 16:34:10,108 | INFO | ModBot | [DB] Initializing guild databases...
+2026-06-06 16:34:10,112 | INFO | ModBot.Modmail | 📬 Restoring modmail threads from database...
+2026-06-06 16:34:24,507 | INFO | ModBot.Database | ✅ Initialized database for guild 1512928670774202448
+2026-06-06 16:34:24,631 | INFO | ModBot | [DB] Initialized 1/1 guilds
+2026-06-06 16:34:25,109 | INFO | ModBot.AIScheduler | AI Scheduler is now active.
+2026-06-06 16:34:31,345 | INFO | ModBot | [OK] Synced 11 status emoji assets to application
+2026-06-06 16:34:32,187 | INFO | ModBot | [OK] Loaded 0 blacklisted users
+2026-06-06 16:34:32,190 | INFO | ModBot | [START] Bot is fully operational!
+2026-06-06 16:34:36,381 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:34:36 -0500] "GET /health HTTP/1.1" 200 212 "-" "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.8457"
+2026-06-06 16:34:36,450 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:34:36 -0500] "GET /api/me HTTP/1.1" 401 233 "-" "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.8457"
+2026-06-06 16:34:38,107 | INFO | ModBot.Modmail | ✅ Loaded 0 active modmail threads from database
+2026-06-06 16:37:52,053 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:37:52 -0500] "GET /api/me HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:37:52,062 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:37:52 -0500] "GET /api/me HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:37:54,345 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:37:54 -0500] "GET /auth/login HTTP/1.1" 302 357 "http://127.0.0.1:3000/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:37:59,993 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:37:59 -0500] "GET /auth/callback?code=YTQi4rxmnliDJ4N9uBcR3xfVCQ2HmM HTTP/1.1" 302 386 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:38:00,317 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:38:00 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:38:00,323 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:38:00 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:38:06,941 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:38:06 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:38:06,945 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:38:06 -0500] "GET /api/guilds/1512928670774202448 HTTP/1.1" 200 256 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:38:06,947 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:38:06 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:38:07,335 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:38:06 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:38:07,591 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:38:07 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:40:07,783 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:40:07 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:40:07,807 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:40:07 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:40:08,043 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:40:07 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:40:08,402 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:40:08 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:41:33,166 | INFO | LifeSimBot | LifeSimBot starting up
+2026-06-06 16:41:33,166 | INFO | LifeSimBot | Python 3.14.0 | discord.py 2.7.1 | OS Windows 11
+2026-06-06 16:41:33,166 | INFO | LifeSimBot | DB C:\Users\Dell\mod\LifeSimBot\modbot.db | Log C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-06-06 16:41:33,167 | INFO | LifeSimBot | Debug False | Features 16 enabled
+2026-06-06 16:41:33,167 | INFO | LifeSimBot | Connecting LifeSimBot to Discord...
+2026-06-06 16:41:33,182 | INFO | group_bot | Connecting GroupBot to Discord...
+2026-06-06 16:41:33,183 | INFO | ModBot.Dashboard | Dashboard running on http://0.0.0.0:10547
+2026-06-06 16:41:33,184 | INFO | ModBot | [OK] Dashboard started (pre-connect)
+2026-06-06 16:41:33,184 | INFO | ModBot | [NET] Connecting ModBot to Discord...
+2026-06-06 16:41:33,611 | INFO | LifeSimBot | Initializing...
+2026-06-06 16:41:33,612 | INFO | bot.database | Initializing Database Schema...
+2026-06-06 16:41:33,642 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-06-06 16:41:33,644 | INFO | LifeSimBot | [OK] Database initialized
+2026-06-06 16:41:33,649 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-06-06 16:41:33,650 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-06-06 16:41:33,653 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-06-06 16:41:33,657 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-06-06 16:41:33,657 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-06-06 16:41:33,663 | INFO | LifeSimBot.Core | Core cog initialized
+2026-06-06 16:41:33,664 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-06-06 16:41:33,668 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-06-06 16:41:33,668 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-06-06 16:41:33,671 | INFO | LifeSimBot.Help | Help cog initialized
+2026-06-06 16:41:33,672 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-06-06 16:41:33,679 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-06-06 16:41:33,688 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-06-06 16:41:33,694 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-06-06 16:41:33,698 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-06-06 16:41:33,706 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-06-06 16:41:33,712 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-06-06 16:41:33,718 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-06-06 16:41:33,726 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-06-06 16:41:33,738 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-06-06 16:41:33,748 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-06-06 16:41:33,755 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-06-06 16:41:33,763 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-06-06 16:41:33,764 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-06-06 16:41:33,770 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-06-06 16:41:33,773 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-06-06 16:41:33,781 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-06-06 16:41:33,786 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-06-06 16:41:33,792 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-06-06 16:41:33,796 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-06-06 16:41:33,799 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-06-06 16:41:33,802 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-06-06 16:41:33,802 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
+2026-06-06 16:41:33,807 | INFO | ModBot | [>>] Initializing bot systems...
+2026-06-06 16:41:34,208 | INFO | LifeSimBot | [OK] Synced 97 application commands
+2026-06-06 16:41:34,211 | INFO | LifeSimBot | Background tasks started
+2026-06-06 16:41:34,212 | INFO | LifeSimBot | [OK] Ready (startup 0.60s)
+2026-06-06 16:41:34,767 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 623afe129074d55c0a1f725936dbc210).
+2026-06-06 16:41:34,777 | INFO | ModBot.Database | Database connection pool initialized (PostgreSQL)
+2026-06-06 16:41:34,778 | INFO | ModBot.RedisCache | Using in-memory caches (no REDIS_URL configured).
+2026-06-06 16:41:34,779 | INFO | ModBot | [CACHE] Backend: memory
+2026-06-06 16:41:37,626 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 82aa80861e9d23d4c0a1e0add38c598f).
+2026-06-06 16:41:37,632 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:41:37 -0500] "GET /api/me HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:41:37,639 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:41:37 -0500] "GET /api/me HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:41:38,364 | INFO | ModBot |   [OK] Loaded: cogs.moderation
+2026-06-06 16:41:38,371 | INFO | ModBot |   [OK] Loaded: cogs.setup
+2026-06-06 16:41:38,387 | INFO | ModBot |   [OK] Loaded: cogs.verification
+2026-06-06 16:41:38,397 | INFO | ModBot |   [OK] Loaded: cogs.help
+2026-06-06 16:41:38,402 | INFO | ModBot |   [OK] Loaded: cogs.roles
+2026-06-06 16:41:38,408 | INFO | ModBot |   [OK] Loaded: cogs.logging_cog
+2026-06-06 16:41:38,415 | INFO | ModBot |   [OK] Loaded: cogs.pin
+2026-06-06 16:41:38,420 | INFO | ModBot |   [OK] Loaded: cogs.reports
+2026-06-06 16:41:38,424 | INFO | ModBot |   [OK] Loaded: cogs.blacklist
+2026-06-06 16:41:38,428 | INFO | ModBot |   [OK] Loaded: cogs.forum_moderation
+2026-06-06 16:41:38,447 | INFO | ModBot |   [OK] Loaded: cogs.prefix_commands
+2026-06-06 16:41:40,612 | INFO | ModBot |   [OK] Loaded: cogs.aimoderation
+2026-06-06 16:41:40,617 | INFO | ModBot |   [OK] Loaded: cogs.ai_scheduler
+2026-06-06 16:41:42,325 | INFO | ModBot |   [OK] Loaded: cogs.automod
+2026-06-06 16:41:44,175 | INFO | ModBot |   [OK] Loaded: cogs.antiraid
+2026-06-06 16:41:44,249 | INFO | ModBot |   [OK] Loaded: cogs.voice
+2026-06-06 16:41:44,255 | INFO | ModBot |   [OK] Loaded: cogs.settings
+2026-06-06 16:41:44,260 | INFO | ModBot |   [OK] Loaded: cogs.polls
+2026-06-06 16:41:44,269 | INFO | ModBot |   [OK] Loaded: cogs.tickets
+2026-06-06 16:41:44,277 | INFO | ModBot.Modmail | 📬 Loading modmail system...
+2026-06-06 16:41:44,278 | INFO | ModBot.Modmail | ✅ Modmail cog loaded - threads will restore when bot is ready
+2026-06-06 16:41:44,278 | INFO | ModBot |   [OK] Loaded: cogs.modmail
+2026-06-06 16:41:44,288 | INFO | ModBot |   [OK] Loaded: cogs.utility
+2026-06-06 16:41:44,297 | INFO | ModBot |   [OK] Loaded: cogs.admin
+2026-06-06 16:41:44,304 | INFO | ModBot |   [OK] Loaded: cogs.staff
+2026-06-06 16:41:44,312 | INFO | group_bot | Logged in as Group Creater#8732
+2026-06-06 16:41:44,339 | INFO | LifeSimBot | ====================================================
+2026-06-06 16:41:44,340 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-06-06 16:41:44,341 | INFO | LifeSimBot | Guilds: 1 | Users: 38 | Latency: 52ms
+2026-06-06 16:41:44,342 | INFO | LifeSimBot | ====================================================
+2026-06-06 16:41:44,352 | INFO | ModBot |   [OK] Loaded: cogs.court
+2026-06-06 16:41:44,357 | INFO | ModBot |   [OK] Loaded: cogs.whitelist
+2026-06-06 16:41:44,358 | INFO | ModBot | ============================================================
+2026-06-06 16:41:44,358 | INFO | ModBot | [COG] Cog Loading Summary:
+2026-06-06 16:41:44,359 | INFO | ModBot |   Loaded:  25
+2026-06-06 16:41:44,359 | INFO | ModBot |   Skipped: 0
+2026-06-06 16:41:44,359 | INFO | ModBot |   Failed:  0
+2026-06-06 16:41:44,360 | INFO | ModBot |   Commands: 120 prefix, 50 slash
+2026-06-06 16:41:44,361 | INFO | ModBot | ============================================================
+2026-06-06 16:41:44,361 | INFO | ModBot | [CMD] Syncing slash commands globally...
+2026-06-06 16:41:44,367 | INFO | LifeSimBot | Database auto-backup completed
+2026-06-06 16:41:44,991 | INFO | ModBot | [CMD] Synced 50 slash commands globally
+2026-06-06 16:41:45,518 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 5abd887ca9d5205485c2e4d1eb6bf480).
+2026-06-06 16:41:46,946 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:41:46 -0500] "GET /auth/login HTTP/1.1" 302 357 "http://127.0.0.1:3000/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:41:47,536 | INFO | ModBot | ============================================================
+2026-06-06 16:41:47,538 | INFO | ModBot | [BOT] Online: Ass Moderation#1325 (ID: 1512917769082114229)
+2026-06-06 16:41:47,538 | INFO | ModBot | [BOT] Guilds: 1
+2026-06-06 16:41:47,539 | INFO | ModBot | [BOT] Users:  2
+2026-06-06 16:41:47,539 | INFO | ModBot | [BOT] Version: 3.4.0
+2026-06-06 16:41:47,539 | INFO | ModBot | [BOT] discord.py: 2.7.1
+2026-06-06 16:41:47,540 | INFO | ModBot | ============================================================
+2026-06-06 16:41:47,540 | INFO | ModBot | [DB] Initializing guild databases...
+2026-06-06 16:41:47,544 | INFO | ModBot.Modmail | 📬 Restoring modmail threads from database...
+2026-06-06 16:41:52,028 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:41:51 -0500] "GET /auth/callback?code=VDyLgDes7WcNXn4asFbKx99rqEvJtI HTTP/1.1" 302 386 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:41:52,284 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:41:52 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:41:52,289 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:41:52 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:41:53,655 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:41:53 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:41:53,660 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:41:53 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:41:54,035 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:41:53 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:41:54,285 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:41:54 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:42:00,187 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:42:00 -0500] "GET /health HTTP/1.1" 200 212 "-" "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.8457"
+2026-06-06 16:42:01,913 | INFO | ModBot.Database | ✅ Initialized database for guild 1512928670774202448
+2026-06-06 16:42:02,034 | INFO | ModBot | [DB] Initialized 1/1 guilds
+2026-06-06 16:42:02,540 | INFO | ModBot.AIScheduler | AI Scheduler is now active.
+2026-06-06 16:42:08,967 | INFO | ModBot | [OK] Synced 11 status emoji assets to application
+2026-06-06 16:42:09,867 | INFO | ModBot | [OK] Loaded 0 blacklisted users
+2026-06-06 16:42:09,870 | INFO | ModBot | [START] Bot is fully operational!
+2026-06-06 16:42:15,458 | INFO | ModBot.Modmail | ✅ Loaded 0 active modmail threads from database
+2026-06-06 16:42:24,145 | INFO | discord.gateway | Shard ID None has successfully RESUMED session 5abd887ca9d5205485c2e4d1eb6bf480.
+2026-06-06 16:42:24,148 | INFO | discord.gateway | Shard ID None has successfully RESUMED session 82aa80861e9d23d4c0a1e0add38c598f.
+2026-06-06 16:42:24,149 | INFO | discord.gateway | Shard ID None has successfully RESUMED session 623afe129074d55c0a1f725936dbc210.
+2026-06-06 16:43:00,688 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:43:00 -0500] "GET /api/guilds/1512928670774202448 HTTP/1.1" 401 233 "-" "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.8457"
+2026-06-06 16:44:02,377 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:44:02 -0500] "GET /api/me HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:44:02,378 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:44:02 -0500] "GET /api/guilds/1512928670774202448 HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:44:02,380 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:44:02 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:44:02,388 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:44:02 -0500] "GET /api/me HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:44:02,390 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:44:02 -0500] "GET /api/guilds/1512928670774202448 HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:44:02,392 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:44:02 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:44:33,024 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:44:33 -0500] "GET /health HTTP/1.1" 200 212 "-" "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.8457"
+2026-06-06 16:44:33,086 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:44:33 -0500] "GET /api/guilds/1512928670774202448 HTTP/1.1" 401 233 "-" "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.8457"
+2026-06-06 16:44:43,011 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:44:43 -0500] "GET /auth/login HTTP/1.1" 302 357 "http://127.0.0.1:3000/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:45:19,757 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:45:19 -0500] "GET /auth/login HTTP/1.1" 302 357 "http://127.0.0.1:3000/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:45:24,426 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:45:23 -0500] "GET /auth/callback?code=X8XIyIKitbV2yIrxb3HpolRIDyZHmu HTTP/1.1" 302 386 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:45:24,748 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:45:24 -0500] "GET /api/me HTTP/1.1" 200 567 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:45:24,754 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:45:24 -0500] "GET /api/me HTTP/1.1" 200 567 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:45:30,100 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:45:30 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:45:30,106 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:45:30 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:45:30,666 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:45:30 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:45:30,933 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:45:30 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:45:31,195 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:45:31 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:45:31,202 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:45:31 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:45:31,458 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:45:31 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:45:31,726 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:45:31 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:45:31,979 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:45:31 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:45:31,985 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:45:31 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:31,834 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:31 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:31,839 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:31 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:35,083 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:35 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:35,089 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:35 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:35,515 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:35 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:36,163 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:35 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:47,555 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:47 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:47,563 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:47 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:49,877 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:49 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:49,882 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:49 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:50,804 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:50 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:50,811 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:50 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:52,073 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:52 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:52,078 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:52 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:52,339 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:52 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:52,605 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:52 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:58,374 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:58 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:46:58,381 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:46:58 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:49:36,717 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:49:36 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:49:36,729 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:49:36 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:49:36,990 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:49:36 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:49:37,255 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:49:36 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:49:44,769 | INFO | LifeSimBot | LifeSimBot starting up
+2026-06-06 16:49:44,770 | INFO | LifeSimBot | Python 3.14.0 | discord.py 2.7.1 | OS Windows 11
+2026-06-06 16:49:44,771 | INFO | LifeSimBot | DB C:\Users\Dell\mod\LifeSimBot\modbot.db | Log C:\Users\Dell\mod\LifeSimBot\bot.log
+2026-06-06 16:49:44,771 | INFO | LifeSimBot | Debug False | Features 16 enabled
+2026-06-06 16:49:44,771 | INFO | LifeSimBot | Connecting LifeSimBot to Discord...
+2026-06-06 16:49:44,783 | INFO | group_bot | Connecting GroupBot to Discord...
+2026-06-06 16:49:44,786 | INFO | ModBot.Dashboard | Dashboard running on http://0.0.0.0:10547
+2026-06-06 16:49:44,786 | INFO | ModBot | [OK] Dashboard started (pre-connect)
+2026-06-06 16:49:44,786 | INFO | ModBot | [NET] Connecting ModBot to Discord...
+2026-06-06 16:49:45,207 | INFO | ModBot | [>>] Initializing bot systems...
+2026-06-06 16:49:45,289 | INFO | LifeSimBot | Initializing...
+2026-06-06 16:49:45,292 | INFO | bot.database | Initializing Database Schema...
+2026-06-06 16:49:45,362 | INFO | bot.database | Database Schema Initialized Successfully.
+2026-06-06 16:49:45,370 | INFO | LifeSimBot | [OK] Database initialized
+2026-06-06 16:49:45,376 | INFO | LifeSimBot | Skipping duel_cog (empty placeholder)
+2026-06-06 16:49:45,377 | INFO | LifeSimBot | Skipping events_cog (empty placeholder)
+2026-06-06 16:49:45,379 | INFO | LifeSimBot | Skipping leaderboard_cog (handled by core_cog)
+2026-06-06 16:49:45,386 | INFO | LifeSimBot | Skipping social_cog (empty placeholder)
+2026-06-06 16:49:45,387 | INFO | LifeSimBot | Skipping stocks_cog (empty placeholder)
+2026-06-06 16:49:45,403 | INFO | LifeSimBot.Core | Core cog initialized
+2026-06-06 16:49:45,404 | INFO | LifeSimBot | [OK] Loaded cog: core_cog
+2026-06-06 16:49:45,411 | INFO | LifeSimBot.Economy | Economy cog initialized
+2026-06-06 16:49:45,412 | INFO | LifeSimBot | [OK] Loaded cog: economy_cog
+2026-06-06 16:49:45,421 | INFO | LifeSimBot.Help | Help cog initialized
+2026-06-06 16:49:45,422 | INFO | LifeSimBot | [OK] Loaded cog: help_cog
+2026-06-06 16:49:45,433 | INFO | LifeSimBot | [OK] Loaded cog: hub_cog
+2026-06-06 16:49:45,445 | INFO | LifeSimBot | [OK] Loaded cog: achievements_cog
+2026-06-06 16:49:45,462 | INFO | LifeSimBot | [OK] Loaded cog: admin_cog
+2026-06-06 16:49:45,471 | INFO | LifeSimBot | [OK] Loaded cog: businesses_cog
+2026-06-06 16:49:45,484 | INFO | LifeSimBot | [OK] Loaded cog: casino_cog
+2026-06-06 16:49:45,493 | INFO | LifeSimBot | [OK] Loaded cog: cooking_cog
+2026-06-06 16:49:45,507 | INFO | LifeSimBot | [OK] Loaded cog: crime_cog
+2026-06-06 16:49:45,524 | INFO | LifeSimBot | [OK] Loaded cog: crypto_cog
+2026-06-06 16:49:45,540 | INFO | LifeSimBot | [OK] Loaded cog: family_cog
+2026-06-06 16:49:45,552 | INFO | LifeSimBot | [OK] Loaded cog: guilds_cog
+2026-06-06 16:49:45,560 | INFO | LifeSimBot | [OK] Loaded cog: inventory_cog
+2026-06-06 16:49:45,570 | INFO | bot.services.economy | Service 'economy' initialized.
+2026-06-06 16:49:45,571 | INFO | bot.services.jobs | Service 'jobs' initialized.
+2026-06-06 16:49:45,579 | INFO | LifeSimBot | [OK] Loaded cog: jobs_cog
+2026-06-06 16:49:45,584 | INFO | LifeSimBot | [OK] Loaded cog: lifecycle_cog
+2026-06-06 16:49:45,594 | INFO | LifeSimBot | [OK] Loaded cog: pets_cog
+2026-06-06 16:49:45,601 | INFO | LifeSimBot | [OK] Loaded cog: properties_cog
+2026-06-06 16:49:45,608 | INFO | LifeSimBot | [OK] Loaded cog: quests_cog
+2026-06-06 16:49:45,613 | INFO | LifeSimBot | [OK] Loaded cog: relationships_cog
+2026-06-06 16:49:45,620 | INFO | LifeSimBot | [OK] Loaded cog: shop_cog
+2026-06-06 16:49:45,625 | INFO | LifeSimBot | [OK] Loaded cog: skills_cog
+2026-06-06 16:49:45,626 | INFO | LifeSimBot | Cogs: 22 loaded, 0 failed
+2026-06-06 16:49:45,837 | INFO | LifeSimBot | [OK] Synced 97 application commands
+2026-06-06 16:49:45,840 | INFO | LifeSimBot | Background tasks started
+2026-06-06 16:49:45,841 | INFO | LifeSimBot | [OK] Ready (startup 0.55s)
+2026-06-06 16:49:46,251 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 9a4283031276777d11a3328e38770525).
+2026-06-06 16:49:46,383 | INFO | ModBot.Database | Database connection pool initialized (PostgreSQL)
+2026-06-06 16:49:46,386 | INFO | ModBot.RedisCache | Using in-memory caches (no REDIS_URL configured).
+2026-06-06 16:49:46,387 | INFO | ModBot | [CACHE] Backend: memory
+2026-06-06 16:49:48,037 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 007e6263f908bb7b658f3dac6f733a49).
+2026-06-06 16:49:48,267 | INFO | LifeSimBot | ====================================================
+2026-06-06 16:49:48,269 | INFO | LifeSimBot | [OK] Logged in as Economy Bot#5956 (1448505438214684816)
+2026-06-06 16:49:48,270 | INFO | LifeSimBot | Guilds: 1 | Users: 39 | Latency: 40ms
+2026-06-06 16:49:48,270 | INFO | LifeSimBot | ====================================================
+2026-06-06 16:49:48,282 | INFO | LifeSimBot | Database auto-backup completed
+2026-06-06 16:49:48,514 | INFO | ModBot |   [OK] Loaded: cogs.moderation
+2026-06-06 16:49:48,519 | INFO | ModBot |   [OK] Loaded: cogs.setup
+2026-06-06 16:49:48,526 | INFO | ModBot |   [OK] Loaded: cogs.verification
+2026-06-06 16:49:48,533 | INFO | ModBot |   [OK] Loaded: cogs.help
+2026-06-06 16:49:48,536 | INFO | ModBot |   [OK] Loaded: cogs.roles
+2026-06-06 16:49:48,539 | INFO | ModBot |   [OK] Loaded: cogs.logging_cog
+2026-06-06 16:49:48,542 | INFO | ModBot |   [OK] Loaded: cogs.pin
+2026-06-06 16:49:48,544 | INFO | ModBot |   [OK] Loaded: cogs.reports
+2026-06-06 16:49:48,545 | INFO | ModBot |   [OK] Loaded: cogs.blacklist
+2026-06-06 16:49:48,548 | INFO | ModBot |   [OK] Loaded: cogs.forum_moderation
+2026-06-06 16:49:48,557 | INFO | ModBot |   [OK] Loaded: cogs.prefix_commands
+2026-06-06 16:49:49,881 | INFO | ModBot |   [OK] Loaded: cogs.aimoderation
+2026-06-06 16:49:49,886 | INFO | ModBot |   [OK] Loaded: cogs.ai_scheduler
+2026-06-06 16:49:51,023 | INFO | ModBot |   [OK] Loaded: cogs.automod
+2026-06-06 16:49:52,127 | INFO | ModBot |   [OK] Loaded: cogs.antiraid
+2026-06-06 16:49:52,168 | INFO | ModBot |   [OK] Loaded: cogs.voice
+2026-06-06 16:49:52,172 | INFO | ModBot |   [OK] Loaded: cogs.settings
+2026-06-06 16:49:52,175 | INFO | ModBot |   [OK] Loaded: cogs.polls
+2026-06-06 16:49:52,180 | INFO | ModBot |   [OK] Loaded: cogs.tickets
+2026-06-06 16:49:52,184 | INFO | ModBot.Modmail | 📬 Loading modmail system...
+2026-06-06 16:49:52,185 | INFO | ModBot.Modmail | ✅ Modmail cog loaded - threads will restore when bot is ready
+2026-06-06 16:49:52,185 | INFO | ModBot |   [OK] Loaded: cogs.modmail
+2026-06-06 16:49:52,190 | INFO | ModBot |   [OK] Loaded: cogs.utility
+2026-06-06 16:49:52,194 | INFO | ModBot |   [OK] Loaded: cogs.admin
+2026-06-06 16:49:52,196 | INFO | ModBot |   [OK] Loaded: cogs.staff
+2026-06-06 16:49:52,202 | INFO | group_bot | Logged in as Group Creater#8732
+2026-06-06 16:49:52,222 | INFO | ModBot |   [OK] Loaded: cogs.court
+2026-06-06 16:49:52,225 | INFO | ModBot |   [OK] Loaded: cogs.whitelist
+2026-06-06 16:49:52,225 | INFO | ModBot | ============================================================
+2026-06-06 16:49:52,226 | INFO | ModBot | [COG] Cog Loading Summary:
+2026-06-06 16:49:52,226 | INFO | ModBot |   Loaded:  25
+2026-06-06 16:49:52,226 | INFO | ModBot |   Skipped: 0
+2026-06-06 16:49:52,227 | INFO | ModBot |   Failed:  0
+2026-06-06 16:49:52,227 | INFO | ModBot |   Commands: 120 prefix, 50 slash
+2026-06-06 16:49:52,227 | INFO | ModBot | ============================================================
+2026-06-06 16:49:52,227 | INFO | ModBot | [CMD] Syncing slash commands globally...
+2026-06-06 16:49:52,630 | INFO | ModBot | [CMD] Synced 50 slash commands globally
+2026-06-06 16:49:52,970 | INFO | discord.gateway | Shard ID None has connected to Gateway (Session ID: 325ae7b6a338b98fafb1d29ce2a7c24a).
+2026-06-06 16:49:54,999 | INFO | ModBot | ============================================================
+2026-06-06 16:49:55,003 | INFO | ModBot | [BOT] Online: Ass Moderation#1325 (ID: 1512917769082114229)
+2026-06-06 16:49:55,003 | INFO | ModBot | [BOT] Guilds: 1
+2026-06-06 16:49:55,004 | INFO | ModBot | [BOT] Users:  2
+2026-06-06 16:49:55,004 | INFO | ModBot | [BOT] Version: 3.4.0
+2026-06-06 16:49:55,004 | INFO | ModBot | [BOT] discord.py: 2.7.1
+2026-06-06 16:49:55,005 | INFO | ModBot | ============================================================
+2026-06-06 16:49:55,005 | INFO | ModBot | [DB] Initializing guild databases...
+2026-06-06 16:49:55,008 | INFO | ModBot.Modmail | 📬 Restoring modmail threads from database...
+2026-06-06 16:50:10,000 | INFO | ModBot.AIScheduler | AI Scheduler is now active.
+2026-06-06 16:50:12,208 | INFO | ModBot.Database | ✅ Initialized database for guild 1512928670774202448
+2026-06-06 16:50:12,345 | INFO | ModBot | [DB] Initialized 1/1 guilds
+2026-06-06 16:50:18,359 | INFO | ModBot | [OK] Synced 11 status emoji assets to application
+2026-06-06 16:50:19,148 | INFO | ModBot | [OK] Loaded 0 blacklisted users
+2026-06-06 16:50:19,149 | INFO | ModBot | [START] Bot is fully operational!
+2026-06-06 16:50:20,094 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:50:20 -0500] "GET /health HTTP/1.1" 200 212 "-" "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.8457"
+2026-06-06 16:50:20,114 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:50:20 -0500] "GET /api/nope HTTP/1.1" 404 232 "-" "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.8457"
+2026-06-06 16:50:20,171 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:50:20 -0500] "GET /api/guilds/1512928670774202448/ HTTP/1.1" 401 233 "-" "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.8457"
+2026-06-06 16:50:27,431 | INFO | ModBot.Modmail | ✅ Loaded 0 active modmail threads from database
+2026-06-06 16:51:07,965 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:51:07 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:51:07,969 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:51:07 -0500] "GET /api/me HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:51:07,984 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:51:07 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:51:07,986 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:51:07 -0500] "GET /api/me HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:51:11,092 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:51:11 -0500] "GET /auth/login HTTP/1.1" 302 357 "http://127.0.0.1:3000/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:51:16,080 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:51:16 -0500] "GET /health HTTP/1.1" 200 212 "-" "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.8457"
+2026-06-06 16:51:16,102 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:51:16 -0500] "GET /api/nope HTTP/1.1" 404 232 "-" "Mozilla/5.0 (Windows NT; Windows NT 10.0; en-US) WindowsPowerShell/5.1.26100.8457"
+2026-06-06 16:51:17,328 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:51:16 -0500] "GET /auth/callback?code=Nfhdj0ypnZBQUa9tUoW7mvQ1wnsMJA HTTP/1.1" 302 386 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:51:17,932 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:51:17 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:51:17,949 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:51:17 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:51:46,446 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:51:46 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:51:46,454 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:51:46 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:51:46,853 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:51:46 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:51:47,115 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:51:46 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:57:00,083 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:57:00 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:57:00,109 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:57:00 -0500] "GET /api/me HTTP/1.1" 200 579 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:57:00,470 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:57:00 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 16:57:00,739 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:16:57:00 -0500] "GET /api/guilds/1512928670774202448/config HTTP/1.1" 200 170157 "http://127.0.0.1:3000/dashboard/1512928670774202448" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:06,544 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:06 -0500] "GET /api/me HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:06,546 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:06 -0500] "GET /api/guilds/123 HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:06,548 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:06 -0500] "GET /api/guilds/123/config HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:06,562 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:06 -0500] "GET /api/me HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:06,564 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:06 -0500] "GET /api/guilds/123 HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:06,566 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:06 -0500] "GET /api/guilds/123/config HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:16,573 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:16 -0500] "GET /auth/login HTTP/1.1" 302 357 "http://localhost:3000/" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:24,450 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:24 -0500] "GET /api/me HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:24,453 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:24 -0500] "GET /api/guilds/123 HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:24,455 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:24 -0500] "GET /api/guilds/123/config HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:24,462 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:24 -0500] "GET /api/me HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:24,468 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:24 -0500] "GET /api/guilds/123 HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:24,470 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:24 -0500] "GET /api/guilds/123/config HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:39,570 | ERROR | ModBot.Dashboard | Token exchange failed: {"error": "invalid_grant", "error_description": "Invalid \"code\" in request."}
+2026-06-06 17:00:39,574 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:39 -0500] "GET /auth/callback?code=mock HTTP/1.1" 200 447 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:42,791 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:42 -0500] "GET /api/me HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules?mock=true" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:42,794 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:42 -0500] "GET /api/guilds/123 HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules?mock=true" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:42,796 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:42 -0500] "GET /api/guilds/123/config HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules?mock=true" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:42,801 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:42 -0500] "GET /api/me HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules?mock=true" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:42,808 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:42 -0500] "GET /api/guilds/123 HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules?mock=true" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:42,810 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:42 -0500] "GET /api/guilds/123/config HTTP/1.1" 401 233 "http://localhost:3000/dashboard/123/modules?mock=true" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:46,365 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:46 -0500] "GET /api/me HTTP/1.1" 401 233 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:53,742 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:53 -0500] "GET /api/me?mock=true HTTP/1.1" 401 233 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:00:56,939 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:00:56 -0500] "GET /auth/dev HTTP/1.1" 404 233 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:01:07,519 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:01:07 -0500] "GET /api/me HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:01:07,522 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:01:07 -0500] "GET /api/guilds/123 HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:01:07,523 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:01:07 -0500] "GET /api/guilds/123/config HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:01:07,570 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:01:07 -0500] "GET /api/me HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:01:07,578 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:01:07 -0500] "GET /api/guilds/123 HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:01:07,580 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:01:07 -0500] "GET /api/guilds/123/config HTTP/1.1" 401 233 "http://127.0.0.1:3000/dashboard/123/modules" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:01:56,074 | ERROR | ModBot.Dashboard | Token exchange failed: {"error": "invalid_grant", "error_description": "Invalid \"code\" in request."}
+2026-06-06 17:01:56,079 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:01:55 -0500] "GET /auth/callback?code=mock HTTP/1.1" 200 447 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:02:09,355 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:02:09 -0500] "GET /api/auth/mock HTTP/1.1" 404 232 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:02:40,178 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:02:40 -0500] "GET /api/auth/session HTTP/1.1" 404 232 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:02:43,769 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:02:43 -0500] "GET /api/auth HTTP/1.1" 404 232 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:02:46,944 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:02:46 -0500] "GET /api/login HTTP/1.1" 404 232 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:03:06,946 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:03:06 -0500] "GET /health HTTP/1.1" 200 212 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:03:11,121 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:03:11 -0500] "GET /health HTTP/1.1" 200 212 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:03:17,636 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:03:17 -0500] "GET /auth/login?mock=1 HTTP/1.1" 302 357 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:04:14,302 | ERROR | ModBot.Dashboard | Token exchange failed: {"error": "invalid_grant", "error_description": "Invalid \"code\" in request."}
+2026-06-06 17:04:14,307 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:04:14 -0500] "GET /auth/callback?code=mock HTTP/1.1" 200 447 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:04:26,947 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:04:26 -0500] "GET /api/me?mock=1 HTTP/1.1" 401 233 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:04:31,145 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:04:31 -0500] "GET /api/me?user_id=123 HTTP/1.1" 401 233 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:04:39,219 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:04:39 -0500] "GET /auth/mock HTTP/1.1" 404 233 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:04:42,383 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:04:42 -0500] "GET /auth/test HTTP/1.1" 404 233 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:05:10,106 | ERROR | ModBot.Dashboard | Token exchange failed: {"error": "invalid_grant", "error_description": "Invalid \"code\" in request."}
+2026-06-06 17:05:10,109 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:05:09 -0500] "GET /auth/callback?code=dev HTTP/1.1" 200 447 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"
+2026-06-06 17:06:17,063 | ERROR | ModBot.Dashboard | Token exchange failed: {"error": "invalid_grant", "error_description": "Invalid \"code\" in request."}
+2026-06-06 17:06:17,067 | INFO | aiohttp.access | 127.0.0.1 [06/Jun/2026:17:06:16 -0500] "GET /auth/callback?code=mock&state=mock HTTP/1.1" 200 447 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36"

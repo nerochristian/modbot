@@ -2,14 +2,16 @@ import { useState, useEffect, createContext, useContext } from 'react'
 import { Link, useParams, useNavigate, Routes, Route, useLocation } from 'react-router-dom'
 import {
   Shield, LogOut, ChevronLeft, LayoutDashboard, Zap, Brain,
-  ScrollText, Ticket, Gavel, Settings, Users, Server,
+  ScrollText, Ticket, Gavel, Settings, Users, Server, Terminal,
   Bell, Eye, ShieldCheck, MessageSquare, Lock, Loader2,
   AlertCircle, ChevronDown, Menu, X
 } from 'lucide-react'
 import { api } from '../api'
+import { ThemeToggle } from '../theme'
 import Overview from './guild/Overview'
 import Modules from './guild/Modules'
 import Logging from './guild/Logging'
+import Commands from './guild/Commands'
 import Cases from './guild/Cases'
 import GuildSettings from './guild/GuildSettings'
 import './GuildDashboard.css'
@@ -20,6 +22,7 @@ export const useGuild = () => useContext(GuildContext)
 const NAV_ITEMS = [
   { path: '', icon: LayoutDashboard, label: 'Overview', end: true },
   { path: 'modules', icon: Zap, label: 'Modules' },
+  { path: 'commands', icon: Terminal, label: 'Commands' },
   { path: 'logging', icon: ScrollText, label: 'Logging' },
   { path: 'cases', icon: Gavel, label: 'Cases' },
   { path: 'settings', icon: Settings, label: 'Settings' },
@@ -154,6 +157,7 @@ export default function GuildDashboard() {
           </nav>
 
           <div className="gd-sidebar-bottom">
+            <ThemeToggle className="gd-theme-toggle" />
             <div className="gd-user-card">
               {user?.avatar ? (
                 <img src={user.avatar} alt="" className="gd-user-avatar" />
@@ -183,6 +187,7 @@ export default function GuildDashboard() {
           <Routes>
             <Route index element={<Overview />} />
             <Route path="modules" element={<Modules />} />
+            <Route path="commands" element={<Commands />} />
             <Route path="logging" element={<Logging />} />
             <Route path="cases" element={<Cases />} />
             <Route path="settings" element={<GuildSettings />} />

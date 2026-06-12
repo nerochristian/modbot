@@ -158,6 +158,11 @@
   border-top: 1px solid rgba(108, 92, 231, 0.06);
 }
 
+.gd-theme-toggle {
+  width: 100%;
+  margin-bottom: 10px;
+}
+
 .gd-user-card {
   display: flex;
   align-items: center;
