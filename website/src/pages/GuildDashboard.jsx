@@ -17,6 +17,19 @@ import Logging from './guild/Logging'
 import Commands from './guild/Commands'
 import Cases from './guild/Cases'
 import GuildSettings from './guild/GuildSettings'
+import {
+  AntiRaidDashboard,
+  AppealsDashboard,
+  BackupDashboard,
+  CommandCenter,
+  EventsDashboard,
+  IntegrationsDashboard,
+  LogsDashboard,
+  MembersDashboard,
+  ModerationDashboard,
+  PremiumDashboard,
+  WarningsDashboard,
+} from './guild/DashboardViews'
 import './GuildDashboard.css'
 
 const NAV_ITEMS = [
@@ -224,11 +237,22 @@ export default function GuildDashboard() {
           <main className="gd-main">
             <Routes>
               <Route index element={<Overview />} />
+              <Route path="dashboard" element={<CommandCenter />} />
+              <Route path="events" element={<EventsDashboard />} />
+              <Route path="logs" element={<LogsDashboard />} />
               <Route path="automod" element={<Modules />} />
+              <Route path="antiraid" element={<AntiRaidDashboard />} />
+              <Route path="moderation" element={<ModerationDashboard />} />
+              <Route path="members" element={<MembersDashboard />} />
+              <Route path="warnings" element={<WarningsDashboard />} />
               <Route path="commands" element={<Commands />} />
-              <Route path="logs" element={<Logging />} />
+              <Route path="logging" element={<Logging />} />
               <Route path="cases" element={<Cases />} />
+              <Route path="appeals" element={<AppealsDashboard />} />
+              <Route path="backup" element={<BackupDashboard />} />
               <Route path="settings" element={<GuildSettings />} />
+              <Route path="integrations" element={<IntegrationsDashboard />} />
+              <Route path="premium" element={<PremiumDashboard />} />
               <Route path="*" element={<Overview />} />
             </Routes>
           </main>
