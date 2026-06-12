@@ -4,7 +4,8 @@ import {
   Shield, LogOut, ChevronLeft, LayoutDashboard, Zap, Brain,
   ScrollText, Ticket, Gavel, Settings, Users, Server, Terminal,
   Bell, Eye, ShieldCheck, MessageSquare, Lock, Loader2,
-  AlertCircle, ChevronDown, Menu, X
+  AlertCircle, ChevronDown, Menu, X, BarChart3, Calendar, List,
+  ShieldAlert, AlertTriangle, FileText, RefreshCcw, Database, Puzzle, Star, Search, HelpCircle
 } from 'lucide-react'
 import { api } from '../api'
 import { ThemeToggle } from '../theme'
@@ -21,11 +22,20 @@ export const useGuild = () => useContext(GuildContext)
 
 const NAV_ITEMS = [
   { path: '', icon: LayoutDashboard, label: 'Overview', end: true },
-  { path: 'modules', icon: Zap, label: 'Modules' },
-  { path: 'commands', icon: Terminal, label: 'Commands' },
-  { path: 'logging', icon: ScrollText, label: 'Logging' },
-  { path: 'cases', icon: Gavel, label: 'Cases' },
+  { path: 'dashboard', icon: BarChart3, label: 'Dashboard', badge: 'Beta' },
+  { path: 'events', icon: Calendar, label: 'Events' },
+  { path: 'logs', icon: List, label: 'Logs' },
+  { path: 'automod', icon: Shield, label: 'AutoMod' },
+  { path: 'antiraid', icon: ShieldAlert, label: 'Anti-Raid' },
+  { path: 'moderation', icon: Gavel, label: 'Moderation' },
+  { path: 'members', icon: Users, label: 'Members' },
+  { path: 'warnings', icon: AlertTriangle, label: 'Warnings' },
+  { path: 'cases', icon: FileText, label: 'Cases' },
+  { path: 'appeals', icon: RefreshCcw, label: 'Appeals' },
+  { path: 'backup', icon: Database, label: 'Server Backup' },
   { path: 'settings', icon: Settings, label: 'Settings' },
+  { path: 'integrations', icon: Puzzle, label: 'Integrations' },
+  { path: 'premium', icon: Star, label: 'Premium' },
 ]
 
 export default function GuildDashboard() {
@@ -111,32 +121,18 @@ export default function GuildDashboard() {
         {/* Sidebar */}
         <aside className={`gd-sidebar glass-strong ${sidebarOpen ? 'open' : ''}`}>
           <div className="gd-sidebar-top">
-            <Link to="/dashboard" className="gd-back">
-              <ChevronLeft size={16} />
-              <span>All Servers</span>
+            <Link to="/" className="gd-brand">
+              <div className="gd-brand-icon">
+                <Shield size={20} />
+              </div>
+              <div className="gd-brand-text">
+                <span className="gd-brand-title">VORTEX</span>
+                <span className="gd-brand-subtitle">MODERATION</span>
+              </div>
             </Link>
-            <div className="gd-guild-header">
-              <div className="gd-guild-icon">
-                {guild?.icon ? (
-                  <img src={guild.icon} alt="" />
-                ) : (
-                  <div className="gd-guild-placeholder">
-                    {guild?.name?.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()}
-                  </div>
-                )}
-              </div>
-              <div className="gd-guild-info">
-                <span className="gd-guild-name">{guild?.name}</span>
-                <span className="gd-guild-members">
-                  <Users size={12} />
-                  {(guild?.memberCount || 0).toLocaleString()}
-                </span>
-              </div>
-            </div>
           </div>
 
           <nav className="gd-nav">
-            <div className="gd-nav-label">Dashboard</div>
             {NAV_ITEMS.map(item => {
               const isActive = item.end
                 ? currentPath === ''
@@ -150,6 +146,7 @@ export default function GuildDashboard() {
                 >
                   <item.icon size={18} />
                   <span>{item.label}</span>
+                  {item.badge && <span className="gd-nav-badge">{item.badge}</span>}
                   {isActive && <div className="gd-nav-indicator" />}
                 </Link>
               )
@@ -157,22 +154,30 @@ export default function GuildDashboard() {
           </nav>
 
           <div className="gd-sidebar-bottom">
-            <ThemeToggle className="gd-theme-toggle" />
-            <div className="gd-user-card">
-              {user?.avatar ? (
-                <img src={user.avatar} alt="" className="gd-user-avatar" />
-              ) : (
-                <div className="gd-user-avatar-ph">
-                  {user?.username?.[0]?.toUpperCase()}
-                </div>
-              )}
-              <div className="gd-user-info">
-                <span className="gd-user-name">{user?.globalName || user?.username}</span>
-                <span className="gd-user-tag">@{user?.username}</span>
+            <div className="gd-vortex-status">
+              <div className="vtx-stat-header">
+                <div className="vtx-stat-dot"></div>
+                <span>Vortex Status</span>
               </div>
-              <button className="btn-icon gd-logout" onClick={handleLogout} title="Logout">
-                <LogOut size={16} />
-              </button>
+              <div className="vtx-stat-sub">All Systems Operational</div>
+              <div className="vtx-uptime-box">
+                <div className="vtx-uptime-header">
+                  <span>Uptime</span>
+                  <span className="vtx-uptime-val">99.99%</span>
+                </div>
+                <div className="vtx-uptime-chart">
+                  <svg viewBox="0 0 100 30" preserveAspectRatio="none">
+                    <defs>
+                      <linearGradient id="upGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#10b981" stopOpacity="0.4"/>
+                        <stop offset="100%" stopColor="#10b981" stopOpacity="0"/>
+                      </linearGradient>
+                    </defs>
+                    <path d="M0,30 L0,20 L10,15 L20,22 L30,10 L40,18 L50,8 L60,12 L70,5 L80,15 L90,8 L100,2 L100,30 Z" fill="url(#upGrad)"/>
+                    <polyline points="0,20 10,15 20,22 30,10 40,18 50,8 60,12 70,5 80,15 90,8 100,2" fill="none" stroke="#10b981" strokeWidth="2"/>
+                  </svg>
+                </div>
+              </div>
             </div>
           </div>
         </aside>
@@ -182,17 +187,64 @@ export default function GuildDashboard() {
           <div className="gd-overlay" onClick={() => setSidebarOpen(false)} />
         )}
 
+        {/* Topbar & Main Wrapper */}
+        <div className="gd-content-wrapper">
+          <header className="gd-topbar">
+            <div className="gd-tb-left">
+              <button className="sidebar-toggle btn-icon" onClick={() => setSidebarOpen(!sidebarOpen)}>
+                <Menu size={20} />
+              </button>
+              
+              <div className="gd-server-selector">
+                <div className="gd-ss-icon">
+                  {guild?.icon ? <img src={guild.icon} alt="" /> : <Server size={14} />}
+                </div>
+                <span className="gd-ss-name">{guild?.name}</span>
+                <ChevronDown size={14} className="gd-ss-arrow" />
+              </div>
+            </div>
+
+            <div className="gd-tb-center">
+              <div className="gd-search-box">
+                <Search size={16} />
+                <input type="text" placeholder="Search anything..." />
+                <span className="gd-search-key">⌘K</span>
+              </div>
+            </div>
+
+            <div className="gd-tb-right">
+              <button className="btn-icon"><HelpCircle size={18} /></button>
+              <button className="btn-icon gd-notif-btn">
+                <Bell size={18} />
+                <span className="gd-notif-badge">3</span>
+              </button>
+              <div className="gd-user-dropdown">
+                {user?.avatar ? (
+                  <img src={user.avatar} alt="" className="gd-user-avatar" />
+                ) : (
+                  <div className="gd-user-avatar-ph">{user?.username?.[0]?.toUpperCase()}</div>
+                )}
+                <div className="gd-user-info">
+                  <span className="gd-user-name">{user?.globalName || user?.username}</span>
+                  <span className="gd-user-tag">Server Owner</span>
+                </div>
+              </div>
+            </div>
+          </header>
+
         {/* Main Content */}
-        <main className="gd-main">
-          <Routes>
-            <Route index element={<Overview />} />
-            <Route path="modules" element={<Modules />} />
-            <Route path="commands" element={<Commands />} />
-            <Route path="logging" element={<Logging />} />
-            <Route path="cases" element={<Cases />} />
-            <Route path="settings" element={<GuildSettings />} />
-          </Routes>
-        </main>
+          <main className="gd-main">
+            <Routes>
+              <Route index element={<Overview />} />
+              <Route path="automod" element={<Modules />} />
+              <Route path="commands" element={<Commands />} />
+              <Route path="logs" element={<Logging />} />
+              <Route path="cases" element={<Cases />} />
+              <Route path="settings" element={<GuildSettings />} />
+              <Route path="*" element={<Overview />} />
+            </Routes>
+          </main>
+        </div>
       </div>
     </GuildContext.Provider>
   )
