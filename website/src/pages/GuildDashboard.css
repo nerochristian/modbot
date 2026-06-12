@@ -3,8 +3,7 @@
    ═══════════════════════════════════════════════════════════════════ */
 
 .guild-dashboard {
-  display: grid;
-  grid-template-columns: var(--sidebar-width) 1fr;
+  padding-left: var(--sidebar-width);
   min-height: 100vh;
   background: var(--bg-root);
 }
@@ -245,7 +244,7 @@
 }
 
 @media (max-width: 768px) {
-  .guild-dashboard { grid-template-columns: 1fr; }
+  .guild-dashboard { padding-left: 0; }
   .sidebar-toggle { display: flex; }
   .gd-sidebar {
     transform: translateX(-100%);
