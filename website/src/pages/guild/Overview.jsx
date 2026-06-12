@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react'
 import {
-  Users, Shield, Gavel, MessageSquare, Zap, BarChart3,
-  TrendingUp, Activity, Clock, ShieldCheck, AlertTriangle,
-  Bot, Hash, Mic, Eye
+  Users, Shield, Gavel, MessageSquare, Zap, Activity, Clock,
+  ShieldCheck, Bot, Eye, RefreshCw, CheckCircle2, XCircle,
+  TrendingUp, Server, Hash, Loader2
 } from 'lucide-react'
 import { useGuild } from '../GuildDashboard'
 import { api } from '../../api'
@@ -22,7 +22,6 @@ export default function Overview() {
   const settings = config?.settings || {}
   const modules = config?.modules || {}
 
-  // Count enabled modules
   const enabledModules = Object.values(modules).filter(m =>
     m && (m.enabled === true || m.enabled === undefined)
   ).length
@@ -32,39 +31,32 @@ export default function Overview() {
       icon: Users,
       label: 'Members',
       value: guild?.memberCount?.toLocaleString() || '0',
-      color: '#6C5CE7',
-      bg: 'rgba(108,92,231,0.12)',
+      color: '#7c6df0',
+      bg: 'rgba(124,109,240,0.10)',
     },
     {
       icon: Zap,
-      label: 'Modules',
+      label: 'Active Modules',
       value: enabledModules || Object.keys(modules).length || '—',
-      color: '#00b4d8',
-      bg: 'rgba(0,180,216,0.12)',
+      color: '#38bdf8',
+      bg: 'rgba(56,189,248,0.10)',
     },
     {
       icon: Gavel,
       label: 'Cases Today',
       value: stats?.casesToday?.toLocaleString() || '0',
-      color: '#ffb800',
-      bg: 'rgba(255,184,0,0.12)',
+      color: '#fbbf24',
+      bg: 'rgba(251,191,36,0.10)',
     },
     {
       icon: MessageSquare,
       label: 'Messages Today',
       value: stats?.messagesToday?.toLocaleString() || '0',
-      color: '#00d68f',
-      bg: 'rgba(0,214,143,0.12)',
+      color: '#34d399',
+      bg: 'rgba(52,211,153,0.10)',
     },
   ]
 
-  const recentActivity = [
-    { color: 'var(--success)', text: 'Auto Mod is actively monitoring', time: 'Live' },
-    { color: 'var(--brand-primary)', text: `Prefix set to "${settings.prefix || ','}"`, time: 'Config' },
-    { color: 'var(--info)', text: `${enabledModules || 0} modules active`, time: 'Status' },
-  ]
-
-  // Quick module status
   const moduleStatus = [
     { name: 'Auto Moderation', key: 'automod', icon: Zap, settingKey: 'automod_enabled' },
     { name: 'AI Moderation', key: 'aimod', icon: Bot, settingKey: 'aimod_enabled' },
@@ -72,6 +64,12 @@ export default function Overview() {
     { name: 'Logging', key: 'logging', icon: Eye, settingKey: 'logging_enabled' },
     { name: 'Tickets', key: 'tickets', icon: MessageSquare, settingKey: 'tickets_enabled' },
     { name: 'Verification', key: 'verification', icon: Shield, settingKey: 'verification_enabled' },
+  ]
+
+  const recentActivity = [
+    { color: 'var(--success)', text: 'Auto Mod is actively monitoring', time: 'Live' },
+    { color: 'var(--brand-primary)', text: `Prefix set to "${settings.prefix || ','}"`, time: 'Config' },
+    { color: 'var(--info)', text: `${enabledModules || 0} modules active`, time: 'Status' },
   ]
 
   return (
@@ -115,7 +113,7 @@ export default function Overview() {
                   <div
                     className="module-status-icon"
                     style={{
-                      background: isEnabled ? 'rgba(0,214,143,0.1)' : 'rgba(255,77,106,0.1)',
+                      background: isEnabled ? 'rgba(52,211,153,0.08)' : 'rgba(248,113,113,0.08)',
                       color: isEnabled ? 'var(--success)' : 'var(--error)',
                     }}
                   >

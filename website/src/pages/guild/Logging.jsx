@@ -1,50 +1,61 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
-  ScrollText, Hash, CheckCircle2, XCircle, AlertCircle,
-  MessageSquare, Users, Gavel, Zap, Mic, Shield
+  ScrollText, Hash, Shield, MessageSquare, Users, Mic,
+  Zap, AlertTriangle, CheckCircle2, XCircle, Save, Loader2
 } from 'lucide-react'
 import { useGuild } from '../GuildDashboard'
 import { api } from '../../api'
 
 const LOG_CHANNELS = [
-  { key: 'mod_log_channel', label: 'Moderation Logs', icon: Gavel, desc: 'Ban, kick, warn, mute actions' },
-  { key: 'audit_log_channel', label: 'Audit Logs', icon: Shield, desc: 'Member joins/leaves, role changes' },
-  { key: 'message_log_channel', label: 'Message Logs', icon: MessageSquare, desc: 'Deleted & edited messages' },
-  { key: 'voice_log_channel', label: 'Voice Logs', icon: Mic, desc: 'Voice joins, leaves, and moves' },
-  { key: 'automod_log_channel', label: 'AutoMod Logs', icon: Zap, desc: 'Auto-moderation triggers' },
-  { key: 'report_log_channel', label: 'Report Logs', icon: AlertCircle, desc: 'User report submissions' },
-  { key: 'ticket_log_channel', label: 'Ticket Logs', icon: ScrollText, desc: 'Ticket open/close/transcripts' },
+  { key: 'mod_log_channel', label: 'Moderation Log', icon: Shield, color: '#f87171', desc: 'Bans, kicks, warns, timeouts' },
+  { key: 'audit_log_channel', label: 'Audit Log', icon: Users, color: '#7c6df0', desc: 'Member joins, leaves, role changes' },
+  { key: 'message_log_channel', label: 'Message Log', icon: MessageSquare, color: '#38bdf8', desc: 'Deleted and edited messages' },
+  { key: 'voice_log_channel', label: 'Voice Log', icon: Mic, color: '#34d399', desc: 'Voice joins, leaves, moves' },
+  { key: 'automod_log_channel', label: 'AutoMod Log', icon: Zap, color: '#fbbf24', desc: 'Auto-moderation triggers and actions' },
+  { key: 'report_log_channel', label: 'Report Log', icon: AlertTriangle, color: '#f97316', desc: 'User reports and escalations' },
 ]
 
 export default function Logging() {
-  const { config, guildId, updateConfig } = useGuild()
+  const { guildId, config, updateConfig } = useGuild()
   const [channels, setChannels] = useState([])
+  const [values, setValues] = useState({})
+  const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
-  const [saving, setSaving] = useState(null)
-
-  const settings = config?.settings || {}
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     api.getGuildChannels(guildId)
-      .then(data => setChannels(data.filter(c => c.type === 0)))
-      .catch(() => {})
+      .then(setChannels)
+      .catch(() => setChannels([]))
+      .finally(() => setLoading(false))
   }, [guildId])
 
-  const handleChange = async (key, value) => {
-    setSaving(key)
+  useEffect(() => {
+    const settings = config?.settings || {}
+    const initial = {}
+    LOG_CHANNELS.forEach(lc => {
+      initial[lc.key] = settings[lc.key] || ''
+    })
+    setValues(initial)
+  }, [config])
+
+  const handleChange = useCallback((key, value) => {
+    setValues(prev => ({ ...prev, [key]: value }))
+  }, [])
+
+  const handleSave = async () => {
+    setSaving(true)
     try {
-      await updateConfig({ [key]: value || null })
-      showToast('Log channel updated', 'success')
+      await updateConfig(values)
+      setToast({ message: 'Logging settings saved', type: 'success' })
     } catch {
-      showToast('Failed to update', 'error')
+      setToast({ message: 'Failed to save', type: 'error' })
     }
-    setSaving(null)
+    setSaving(false)
+    setTimeout(() => setToast(null), 2500)
   }
 
-  const showToast = (message, type) => {
-    setToast({ message, type })
-    setTimeout(() => setToast(null), 3000)
-  }
+  const textChannels = channels.filter(c => c.type === 0 || c.type === 5)
 
   return (
     <div>
@@ -53,80 +64,50 @@ export default function Logging() {
         <p className="page-subtitle">Route server events to dedicated log channels.</p>
       </div>
 
-      <div className="settings-group">
-        <div className="settings-group-title">
-          <ScrollText size={18} />
-          Log Channels
+      {loading ? (
+        <div className="empty-state">
+          <Loader2 size={32} className="spin" />
+          <p>Loading channels...</p>
         </div>
-        {LOG_CHANNELS.map(lc => {
-          const currentValue = settings[lc.key] || ''
-          return (
-            <div className="settings-row" key={lc.key}>
-              <div className="settings-label">
-                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <lc.icon size={16} style={{ color: 'var(--brand-secondary)', flexShrink: 0 }} />
-                  {lc.label}
-                </span>
-                <span>{lc.desc}</span>
-              </div>
-              <div className="settings-input">
+      ) : (
+        <>
+          <div className="log-channel-grid">
+            {LOG_CHANNELS.map(lc => (
+              <div className="log-channel-card" key={lc.key}>
+                <div className="log-channel-header">
+                  <div
+                    className="log-channel-icon"
+                    style={{ background: `${lc.color}12`, color: lc.color }}
+                  >
+                    <lc.icon size={18} />
+                  </div>
+                  <div>
+                    <div className="log-channel-title">{lc.label}</div>
+                    <div className="log-channel-desc">{lc.desc}</div>
+                  </div>
+                </div>
                 <select
-                  className="input"
-                  value={currentValue}
+                  className="select"
+                  value={values[lc.key] || ''}
                   onChange={e => handleChange(lc.key, e.target.value)}
-                  disabled={saving === lc.key}
-                  style={{ minWidth: 200 }}
                 >
-                  <option value="">Not set</option>
-                  {channels.map(ch => (
-                    <option key={ch.id} value={ch.id}>
-                      #{ch.name}
-                    </option>
+                  <option value="">Not configured</option>
+                  {textChannels.map(ch => (
+                    <option key={ch.id} value={ch.id}>#{ch.name}</option>
                   ))}
                 </select>
               </div>
-            </div>
-          )
-        })}
-      </div>
+            ))}
+          </div>
 
-      {/* Status */}
-      <div className="page-section">
-        <h2 className="page-section-title">
-          <CheckCircle2 size={16} />
-          Channel Status
-        </h2>
-        <div className="page-grid">
-          {LOG_CHANNELS.map(lc => {
-            const configured = Boolean(settings[lc.key])
-            const channel = channels.find(c => c.id === settings[lc.key])
-            return (
-              <div
-                className="activity-item"
-                key={lc.key}
-                style={{ borderColor: configured ? 'rgba(0,214,143,0.15)' : 'rgba(255,77,106,0.08)' }}
-              >
-                <div
-                  className="activity-dot"
-                  style={{ background: configured ? 'var(--success)' : 'var(--error)' }}
-                />
-                <span className="activity-text">
-                  {lc.label}
-                  {configured && channel && (
-                    <span style={{ color: 'var(--text-muted)', marginLeft: 4 }}>
-                      → #{channel.name}
-                    </span>
-                  )}
-                </span>
-                <span className={`badge ${configured ? 'badge-success' : 'badge-error'}`}
-                  style={{ fontSize: '0.65rem' }}>
-                  {configured ? 'Set' : 'Not set'}
-                </span>
-              </div>
-            )
-          })}
-        </div>
-      </div>
+          <div style={{ marginTop: 24, display: 'flex', justifyContent: 'flex-end' }}>
+            <button className="btn btn-primary" onClick={handleSave} disabled={saving}>
+              {saving ? <Loader2 size={16} className="spin" /> : <Save size={16} />}
+              Save Logging Settings
+            </button>
+          </div>
+        </>
+      )}
 
       {toast && (
         <div className="toast-container">

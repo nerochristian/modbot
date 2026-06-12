@@ -1,206 +1,293 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import {
-  X, Settings, Shield, Hash, Zap, ScrollText, Image, Clock,
-  Users, Bell, Link, SlidersHorizontal, CheckCircle2, XCircle, Save, Loader2
+  X, Save, Loader2, CheckCircle2, XCircle, SlidersHorizontal
 } from 'lucide-react'
-
-const SETTINGS_TABS = [
-  { id: 'general', label: 'General', icon: Settings },
-  { id: 'permissions', label: 'Permissions', icon: Shield },
-  { id: 'channels', label: 'Channels', icon: Hash },
-  { id: 'triggers', label: 'Triggers', icon: Zap },
-  { id: 'logs', label: 'Logs', icon: ScrollText },
-  { id: 'embeds', label: 'Embeds', icon: Image },
-  { id: 'ratelimits', label: 'Rate Limits', icon: Clock },
-  { id: 'roles', label: 'Role Rules', icon: Users },
-  { id: 'schedule', label: 'Schedule', icon: Bell },
-  { id: 'webhooks', label: 'Webhooks', icon: Link },
-  { id: 'advanced', label: 'Advanced', icon: SlidersHorizontal },
-]
+import { useGuild } from '../GuildDashboard'
+import { api } from '../../api'
 
 export default function ModuleSettingsModal({ module, onClose }) {
-  const [activeTab, setActiveTab] = useState('general')
+  const { guildId, config, updateConfig } = useGuild()
+  const [channels, setChannels] = useState([])
+  const [roles, setRoles] = useState([])
+  const [values, setValues] = useState({})
   const [saving, setSaving] = useState(false)
   const [toast, setToast] = useState(null)
+  const [loadingPickers, setLoadingPickers] = useState(true)
+
+  // Fetch channels/roles for pickers
+  useEffect(() => {
+    Promise.all([
+      api.getGuildChannels(guildId).catch(() => []),
+      api.getGuildRoles(guildId).catch(() => []),
+    ]).then(([ch, ro]) => {
+      setChannels(ch)
+      setRoles(ro)
+    }).finally(() => setLoadingPickers(false))
+  }, [guildId])
+
+  // Load current values from config
+  useEffect(() => {
+    const moduleConfig = config?.modules?.[module.id] || {}
+    const settings = moduleConfig.settings || {}
+    setValues({ ...settings })
+  }, [config, module.id])
+
+  // Get the settings schema from the module capabilities
+  const capabilities = config?.capabilities || {}
+  const moduleCap = capabilities[module.id] || {}
+  const schema = moduleCap.settingsSchema || module.settingsSchema || []
+
+  // Group schema fields by section
+  const sections = {}
+  schema.forEach(field => {
+    const sec = field.section || 'General'
+    if (!sections[sec]) sections[sec] = []
+    sections[sec].push(field)
+  })
+
+  const handleChange = useCallback((key, value) => {
+    setValues(prev => ({ ...prev, [key]: value }))
+  }, [])
 
   const handleSave = async () => {
     setSaving(true)
-    await new Promise(r => setTimeout(r, 600))
+    try {
+      const payload = {
+        modules: {
+          [module.id]: {
+            settings: values,
+          },
+        },
+      }
+      await updateConfig(payload)
+      setToast({ message: 'Settings saved', type: 'success' })
+    } catch {
+      setToast({ message: 'Failed to save', type: 'error' })
+    }
     setSaving(false)
-    setToast({ message: 'Settings saved', type: 'success' })
-    setTimeout(() => setToast(null), 2000)
+    setTimeout(() => setToast(null), 2500)
   }
 
+  // Close on escape
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [onClose])
+
+  const renderField = (field) => {
+    const val = values[field.key]
+
+    switch (field.type) {
+      case 'boolean':
+        return (
+          <div className="settings-row" key={field.key}>
+            <div>
+              <div className="settings-row-label">{field.label}</div>
+              {field.description && <div className="settings-row-desc">{field.description}</div>}
+            </div>
+            <button
+              className={`mp-toggle ${val ? 'on' : ''}`}
+              onClick={() => handleChange(field.key, !val)}
+            >
+              <span className="mp-toggle-thumb" />
+            </button>
+          </div>
+        )
+
+      case 'number':
+        return (
+          <div className="modal-field" key={field.key}>
+            <label className="modal-field-label">{field.label}</label>
+            <input
+              type="number"
+              className="input"
+              value={val ?? field.defaultValue ?? ''}
+              min={field.constraints?.min}
+              max={field.constraints?.max}
+              onChange={e => handleChange(field.key, parseFloat(e.target.value) || 0)}
+            />
+          </div>
+        )
+
+      case 'string':
+        return (
+          <div className="modal-field" key={field.key}>
+            <label className="modal-field-label">{field.label}</label>
+            <input
+              type="text"
+              className="input"
+              value={val ?? field.defaultValue ?? ''}
+              onChange={e => handleChange(field.key, e.target.value)}
+              placeholder={`Enter ${field.label.toLowerCase()}...`}
+            />
+          </div>
+        )
+
+      case 'select':
+        return (
+          <div className="modal-field" key={field.key}>
+            <label className="modal-field-label">{field.label}</label>
+            <select
+              className="select"
+              value={val ?? field.defaultValue ?? ''}
+              onChange={e => handleChange(field.key, e.target.value)}
+            >
+              {(field.constraints?.options || []).map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+        )
+
+      case 'channelPicker':
+        return (
+          <div className="modal-field" key={field.key}>
+            <label className="modal-field-label">{field.label}</label>
+            <select
+              className="select"
+              value={val ?? ''}
+              onChange={e => handleChange(field.key, e.target.value)}
+            >
+              <option value="">None</option>
+              {channels
+                .filter(c => c.type === 0 || c.type === 5)
+                .map(c => (
+                  <option key={c.id} value={c.id}>#{c.name}</option>
+                ))}
+            </select>
+          </div>
+        )
+
+      case 'rolePicker':
+        return (
+          <div className="modal-field" key={field.key}>
+            <label className="modal-field-label">{field.label}</label>
+            <select
+              className="select"
+              value={val ?? ''}
+              onChange={e => handleChange(field.key, e.target.value)}
+            >
+              <option value="">None</option>
+              {roles.map(r => (
+                <option key={r.id} value={r.id}>@{r.name}</option>
+              ))}
+            </select>
+          </div>
+        )
+
+      case 'duration':
+        return (
+          <div className="modal-field" key={field.key}>
+            <label className="modal-field-label">{field.label}</label>
+            <input
+              type="number"
+              className="input"
+              value={val ?? field.defaultValue ?? ''}
+              min={field.constraints?.min}
+              max={field.constraints?.max}
+              onChange={e => handleChange(field.key, parseInt(e.target.value) || 0)}
+            />
+            <span className="modal-field-desc">Duration in seconds</span>
+          </div>
+        )
+
+      case 'stringList':
+        return (
+          <div className="modal-field" key={field.key}>
+            <label className="modal-field-label">{field.label}</label>
+            <input
+              type="text"
+              className="input"
+              value={Array.isArray(val) ? val.join(', ') : (val ?? '')}
+              onChange={e => handleChange(field.key, e.target.value.split(',').map(s => s.trim()).filter(Boolean))}
+              placeholder="Comma-separated values..."
+            />
+          </div>
+        )
+
+      default:
+        return (
+          <div className="modal-field" key={field.key}>
+            <label className="modal-field-label">{field.label}</label>
+            <input
+              type="text"
+              className="input"
+              value={val ?? ''}
+              onChange={e => handleChange(field.key, e.target.value)}
+            />
+          </div>
+        )
+    }
+  }
+
+  const hasSchema = schema.length > 0
+
   return (
-    <div className="msm-overlay" onClick={onClose}>
-      <div className="msm" onClick={e => e.stopPropagation()}>
+    <div className="modal-overlay" data-position="right" onClick={onClose}>
+      <div className="modal-content" onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div className="msm-header">
-          <div className="msm-header-left">
-            <div className="msm-icon" style={{ background: `${module.color}15`, color: module.color }}>
-              <module.icon size={20} />
+        <div className="modal-header">
+          <div className="modal-title">
+            <div style={{ 
+              width: 36, height: 36,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              borderRadius: 'var(--radius-md)',
+              background: `${module.color}15`, color: module.color 
+            }}>
+              <module.icon size={18} />
             </div>
             <div>
-              <h2 className="msm-title">{module.name} Settings</h2>
-              <p className="msm-subtitle">{module.category} Module</p>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem' }}>{module.name}</div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>{module.category}</div>
             </div>
           </div>
-          <button className="msm-close" onClick={onClose}><X size={18} /></button>
+          <button className="modal-close" onClick={onClose}><X size={18} /></button>
         </div>
 
-        <div className="msm-body">
-          {/* Tabs sidebar */}
-          <div className="msm-tabs">
-            {SETTINGS_TABS.map(tab => (
-              <button
-                key={tab.id}
-                className={`msm-tab ${activeTab === tab.id ? 'active' : ''}`}
-                onClick={() => setActiveTab(tab.id)}
-              >
-                <tab.icon size={15} />
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Content */}
-          <div className="msm-content">
-            {activeTab === 'general' && (
-              <div className="msm-section">
-                <h3 className="msm-section-title">General Settings</h3>
-                <div className="msm-field">
-                  <label>Module Name Override</label>
-                  <input type="text" className="input" placeholder={module.name} />
-                </div>
-                <div className="msm-field">
-                  <label>Response Style</label>
-                  <select className="input">
-                    <option>Embed</option>
-                    <option>Plain Text</option>
-                    <option>Ephemeral</option>
-                  </select>
-                </div>
-                <div className="msm-field-row">
-                  <div className="msm-field-info">
-                    <span>Delete Trigger Messages</span>
-                    <span className="msm-field-hint">Automatically delete the command message</span>
-                  </div>
-                  <button className="mp-toggle on"><span className="mp-toggle-thumb" /></button>
-                </div>
-                <div className="msm-field-row">
-                  <div className="msm-field-info">
-                    <span>Silent Mode</span>
-                    <span className="msm-field-hint">Suppress all module notifications</span>
-                  </div>
-                  <button className="mp-toggle"><span className="mp-toggle-thumb" /></button>
-                </div>
+        {/* Body */}
+        <div className="modal-body">
+          {loadingPickers ? (
+            <div className="empty-state" style={{ padding: '40px 0' }}>
+              <Loader2 size={24} className="spin" />
+              <p>Loading settings...</p>
+            </div>
+          ) : hasSchema ? (
+            Object.entries(sections).map(([sectionName, fields]) => (
+              <div className="modal-section" key={sectionName}>
+                <div className="modal-section-title">{sectionName}</div>
+                {fields.map(field => renderField(field))}
               </div>
-            )}
-
-            {activeTab === 'permissions' && (
-              <div className="msm-section">
-                <h3 className="msm-section-title">Permission Rules</h3>
-                <div className="msm-field">
-                  <label>Required Permission</label>
-                  <select className="input">
-                    <option>Send Messages</option>
-                    <option>Manage Messages</option>
-                    <option>Manage Server</option>
-                    <option>Administrator</option>
-                  </select>
-                </div>
-                <div className="msm-field">
-                  <label>Minimum Staff Level</label>
-                  <select className="input">
-                    <option>Everyone</option>
-                    <option>Moderator</option>
-                    <option>Admin</option>
-                    <option>Owner</option>
-                  </select>
-                </div>
-                <div className="msm-field-row">
-                  <div className="msm-field-info">
-                    <span>Enforce Role Hierarchy</span>
-                    <span className="msm-field-hint">Prevent targeting users above your role</span>
-                  </div>
-                  <button className="mp-toggle on"><span className="mp-toggle-thumb" /></button>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'channels' && (
-              <div className="msm-section">
-                <h3 className="msm-section-title">Channel Configuration</h3>
-                <div className="msm-field">
-                  <label>Channel Mode</label>
-                  <select className="input">
-                    <option>Enabled Everywhere</option>
-                    <option>Whitelist Only</option>
-                    <option>Blacklist Channels</option>
-                  </select>
-                </div>
-                <div className="msm-field">
-                  <label>Allowed Channels</label>
-                  <input type="text" className="input" placeholder="Search and add channels..." />
-                </div>
-                <div className="msm-field-row">
-                  <div className="msm-field-info">
-                    <span>Disable in Threads</span>
-                    <span className="msm-field-hint">Prevent module from running in threads</span>
-                  </div>
-                  <button className="mp-toggle"><span className="mp-toggle-thumb" /></button>
-                </div>
-              </div>
-            )}
-
-            {activeTab === 'ratelimits' && (
-              <div className="msm-section">
-                <h3 className="msm-section-title">Rate Limits & Cooldowns</h3>
-                <div className="msm-field">
-                  <label>Per-User Cooldown (seconds)</label>
-                  <input type="number" className="input" defaultValue={5} min={0} max={3600} />
-                </div>
-                <div className="msm-field">
-                  <label>Per-Channel Cooldown (seconds)</label>
-                  <input type="number" className="input" defaultValue={0} min={0} max={3600} />
-                </div>
-                <div className="msm-field">
-                  <label>Max Uses Per Minute</label>
-                  <input type="number" className="input" defaultValue={30} min={0} max={300} />
-                </div>
-              </div>
-            )}
-
-            {!['general', 'permissions', 'channels', 'ratelimits'].includes(activeTab) && (
-              <div className="msm-section">
-                <h3 className="msm-section-title">{SETTINGS_TABS.find(t => t.id === activeTab)?.label}</h3>
-                <div className="msm-empty">
-                  <SlidersHorizontal size={32} />
-                  <p>Configure {SETTINGS_TABS.find(t => t.id === activeTab)?.label.toLowerCase()} settings for {module.name}.</p>
-                  <span className="msm-empty-hint">Settings will appear here once configured.</span>
-                </div>
-              </div>
-            )}
-          </div>
+            ))
+          ) : (
+            <div className="empty-state" style={{ padding: '40px 0' }}>
+              <SlidersHorizontal size={32} />
+              <h3>No settings available</h3>
+              <p>This module doesn't have configurable settings yet.</p>
+            </div>
+          )}
         </div>
 
         {/* Footer */}
-        <div className="msm-footer">
-          <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
-          <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
-            {saving ? <Loader2 size={14} className="spin" /> : <Save size={14} />}
-            Save Changes
-          </button>
-        </div>
-
-        {toast && (
-          <div className="toast-container" style={{ position: 'absolute' }}>
-            <div className={`toast toast-${toast.type}`}>
-              <CheckCircle2 size={16} />{toast.message}
-            </div>
+        {hasSchema && (
+          <div className="modal-footer">
+            <button className="btn btn-ghost btn-sm" onClick={onClose}>Cancel</button>
+            <button className="btn btn-primary btn-sm" onClick={handleSave} disabled={saving}>
+              {saving ? <Loader2 size={14} className="spin" /> : <Save size={14} />}
+              Save Changes
+            </button>
           </div>
         )}
       </div>
+
+      {toast && (
+        <div className="toast-container">
+          <div className={`toast toast-${toast.type}`}>
+            {toast.type === 'success' ? <CheckCircle2 size={16} /> : <XCircle size={16} />}
+            {toast.message}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

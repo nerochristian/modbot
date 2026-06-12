@@ -1,61 +1,58 @@
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect } from 'react'
 import {
-  Search, Settings, X, ChevronRight, Zap, Shield, Brain, ShieldAlert,
-  ScrollText, Ticket, MessageSquare, Lock, Eye, Users, Star, Crown,
-  Sparkles, BarChart3, Clock, Bell, Trash2, Hash, Mic, Tag, Terminal,
-  Smile, Timer, Mail, Image, Heart, Radio, Tv, Video, Bookmark,
-  Ban, Gift, FileText, CheckCircle2, XCircle, AlertTriangle,
-  SlidersHorizontal, Filter, ArrowUpDown, Loader2, Package
+  Search, Settings, X, Zap, Shield, ShieldAlert, ScrollText,
+  Ticket, MessageSquare, Lock, Eye, Users, Crown, Sparkles,
+  BarChart3, Clock, Bell, Terminal, CheckCircle2, XCircle,
+  ArrowUpDown, Loader2, Package, Bot, UserCheck, Mail, Filter
 } from 'lucide-react'
 import { useGuild } from '../GuildDashboard'
+import { api } from '../../api'
 import ModuleSettingsModal from './ModuleSettingsModal'
 
-/* ── Module Data ── */
-const MODULES = [
-  { id: 'levels', name: 'Levels', description: 'Enables levelling on the guild', category: 'Engagement', icon: BarChart3, color: '#6C5CE7', badges: ['New'], tier: 'Standard', enabled: true, hasSettings: true, setupStatus: 'configured', stats: { users: 1240 } },
-  { id: 'tickets', name: 'Tickets', description: 'Support tickets with dashboard-deployed panel, private channels, transcripts, and staff actions.', category: 'Utility', icon: Ticket, color: '#00d68f', badges: ['New'], tier: 'Free', enabled: true, hasSettings: true, setupStatus: 'configured', stats: { open: 3 } },
-  { id: 'moderation', name: 'Moderation', description: 'Enabled moderation commands and mod log.', category: 'Moderation', icon: Shield, color: '#ff4d6a', badges: [], tier: 'Free', enabled: true, hasSettings: true, setupStatus: 'configured', stats: { actions: 89 } },
-  { id: 'afk', name: 'AFK', description: 'Allow members to set an AFK status.', category: 'Utility', icon: Clock, color: '#a29bfe', badges: [], tier: 'Free', enabled: true, hasSettings: false, setupStatus: 'configured', stats: {} },
-  { id: 'autopurge', name: 'Auto Purge', description: 'Automatically purge messages in a channel at configurable times.', category: 'Automation', icon: Trash2, color: '#f97316', badges: [], tier: 'Standard', enabled: false, hasSettings: true, setupStatus: 'needs_setup', stats: {} },
-  { id: 'announcements', name: 'Announcements', description: 'Enables join/leave/ban announcements (with options).', category: 'Utility', icon: Bell, color: '#ffb800', badges: [], tier: 'Free', enabled: true, hasSettings: true, setupStatus: 'configured', stats: {} },
-  { id: 'actionlog', name: 'Action Log', description: 'Customizable log of events that happen in the server.', category: 'Logging', icon: ScrollText, color: '#00b4d8', badges: [], tier: 'Free', enabled: true, hasSettings: true, setupStatus: 'configured', stats: { events: 2401 } },
-  { id: 'automod', name: 'Automod', description: 'Enables various auto moderation features.', category: 'Moderation', icon: Zap, color: '#6C5CE7', badges: [], tier: 'Free', enabled: true, hasSettings: true, setupStatus: 'configured', stats: { blocked: 47 } },
-  { id: 'autoresponder', name: 'Autoresponder', description: 'Automatically respond to text triggers.', category: 'Automation', icon: MessageSquare, color: '#e0c3fc', badges: [], tier: 'Free', enabled: false, hasSettings: true, setupStatus: 'needs_setup', stats: {} },
-  { id: 'reminders', name: 'Reminders', description: 'Enables members to set reminders.', category: 'Utility', icon: Bell, color: '#00d68f', badges: [], tier: 'Free', enabled: true, hasSettings: false, setupStatus: 'configured', stats: {} },
-  { id: 'autoroles', name: 'Autoroles', description: 'Enables auto roles on join, timed auto roles, and joinable ranks.', category: 'Automation', icon: Users, color: '#a29bfe', badges: [], tier: 'Free', enabled: true, hasSettings: true, setupStatus: 'configured', stats: {} },
-  { id: 'voicetext', name: 'Voice Text Linking', description: 'Open a text channel when a user joins a voice channel', category: 'Utility', icon: Mic, color: '#00b4d8', badges: [], tier: 'Standard', enabled: false, hasSettings: true, setupStatus: 'needs_setup', stats: {} },
-  { id: 'tags', name: 'Tags', description: 'Allow users or some roles to create tags', category: 'Utility', icon: Tag, color: '#ffb800', badges: [], tier: 'Free', enabled: true, hasSettings: true, setupStatus: 'configured', stats: {} },
-  { id: 'customcommands', name: 'Custom Commands', description: 'Create custom commands with a variety of options.', category: 'Automation', icon: Terminal, color: '#6C5CE7', badges: [], tier: 'Free', enabled: true, hasSettings: true, setupStatus: 'configured', stats: { commands: 12 } },
-  { id: 'fun', name: 'Fun', description: 'Adds fun commands to dyno!', category: 'Engagement', icon: Smile, color: '#f97316', badges: [], tier: 'Free', enabled: true, hasSettings: false, setupStatus: 'configured', stats: {} },
-  { id: 'slowmode', name: 'Slowmode', description: 'Rate limit the number of messages members can send in a channel.', category: 'Moderation', icon: Timer, color: '#ff4d6a', badges: [], tier: 'Standard', enabled: false, hasSettings: true, setupStatus: 'needs_setup', stats: {} },
-  { id: 'automessage', name: 'Auto Message', description: 'Automatically post timed messages in a channel.', category: 'Automation', icon: Mail, color: '#00d68f', badges: [], tier: 'Free', enabled: false, hasSettings: true, setupStatus: 'needs_setup', stats: {} },
-  { id: 'embedder', name: 'Message Embedder', description: 'Post and edit managed embeds in any channel!', category: 'Utility', icon: Image, color: '#a29bfe', badges: [], tier: 'Free', enabled: true, hasSettings: true, setupStatus: 'configured', stats: {} },
-  { id: 'welcome', name: 'Welcome', description: 'Create welcome messages with various options.', category: 'Engagement', icon: Heart, color: '#e0c3fc', badges: [], tier: 'Free', enabled: true, hasSettings: true, setupStatus: 'configured', stats: {} },
-  { id: 'reddit', name: 'Reddit', description: 'Subscribe to new posts in subreddits.', category: 'Engagement', icon: Radio, color: '#f97316', badges: [], tier: 'Premium', enabled: false, hasSettings: true, setupStatus: 'needs_setup', stats: {} },
-  { id: 'autodelete', name: 'Auto Delete', description: 'Automatically delete messages in a channel after users send them.', category: 'Automation', icon: Trash2, color: '#ff4d6a', badges: [], tier: 'Free', enabled: false, hasSettings: true, setupStatus: 'needs_setup', stats: {} },
-  { id: 'reactionroles', name: 'Reaction Roles', description: 'Allow members to self-assign roles by reacting.', category: 'Engagement', icon: Star, color: '#ffb800', badges: [], tier: 'Free', enabled: true, hasSettings: true, setupStatus: 'configured', stats: {} },
-  { id: 'starboard', name: 'Starboard', description: 'Allows members to save the best posts into a channel by reacting.', category: 'Engagement', icon: Bookmark, color: '#6C5CE7', badges: [], tier: 'Free', enabled: false, hasSettings: true, setupStatus: 'needs_setup', stats: {} },
-  { id: 'autoban', name: 'Autoban', description: 'Auto bans user based on a set of rules', category: 'Moderation', icon: Ban, color: '#ff4d6a', badges: [], tier: 'Free', enabled: false, hasSettings: true, setupStatus: 'needs_setup', stats: {} },
-  { id: 'giveaways', name: 'Giveaways', description: 'Allows you to host giveaways on your server with Dyno.', category: 'Engagement', icon: Gift, color: '#00d68f', badges: [], tier: 'Free', enabled: false, hasSettings: true, setupStatus: 'needs_setup', stats: {} },
-  { id: 'forms', name: 'Forms', description: 'Forms allows you to build your own set of questions for your server members/users to fill out and receive submissions straight into your Discord server!', category: 'Utility', icon: FileText, color: '#00b4d8', badges: [], tier: 'Free', enabled: false, hasSettings: true, setupStatus: 'needs_setup', stats: {} },
-  { id: 'twitch', name: 'Twitch', description: 'Notifications when streamers go online', category: 'Engagement', icon: Tv, color: '#9146FF', badges: [], tier: 'Premium', enabled: false, hasSettings: true, setupStatus: 'needs_setup', stats: {} },
-  { id: 'youtube', name: 'Youtube', description: 'Notifications when youtubers post videos', category: 'Engagement', icon: Video, color: '#FF0000', badges: [], tier: 'Premium', enabled: false, hasSettings: true, setupStatus: 'needs_setup', stats: {} },
-  { id: 'highlights', name: 'Highlights', description: 'Allow members to subscribe to DM notifications for keywords in the server.', category: 'Utility', icon: Sparkles, color: '#ffb800', badges: [], tier: 'Free', enabled: false, hasSettings: false, setupStatus: 'configured', stats: {} },
-  { id: 'tiktok', name: 'TikTok', description: 'Notifications when creators posts a new video', category: 'Engagement', icon: Video, color: '#00f2ea', badges: [], tier: 'Premium', enabled: false, hasSettings: true, setupStatus: 'needs_setup', stats: {} },
-  { id: 'kick', name: 'Kick', description: 'Notifications when streamers go online.', category: 'Engagement', icon: Tv, color: '#53FC18', badges: [], tier: 'Premium', enabled: false, hasSettings: true, setupStatus: 'needs_setup', stats: {} },
+/* Icon map for dynamic module rendering */
+const ICON_MAP = {
+  Zap, Shield, ShieldAlert, ScrollText, Ticket, MessageSquare,
+  Lock, Eye, Users, Crown, Sparkles, BarChart3, Clock, Bell,
+  Terminal, Bot, UserCheck, Mail, Filter,
+}
+
+const FALLBACK_MODULES = [
+  { id: 'automod', name: 'Auto Moderation', description: 'Automatically filter spam, links, invites, and unsafe content.', category: 'Moderation', iconHint: 'Zap', color: '#6366f1' },
+  { id: 'aimod', name: 'AI Moderation', description: 'Mention router with configurable tools, confirmations, and model behavior.', category: 'Moderation', iconHint: 'Shield', color: '#7c6df0' },
+  { id: 'antiraid', name: 'Anti-Raid', description: 'Detect mass joins and apply automatic raid responses.', category: 'Protection', iconHint: 'ShieldAlert', color: '#f87171' },
+  { id: 'logging', name: 'Logging', description: 'Route moderation and server events to dedicated log channels.', category: 'Utility', iconHint: 'ScrollText', color: '#38bdf8' },
+  { id: 'tickets', name: 'Tickets', description: 'Ticket panel, close flow, logs, and support role routing.', category: 'Support', iconHint: 'Ticket', color: '#34d399' },
+  { id: 'verification', name: 'Verification', description: 'Configure verification roles and optional voice verification flow.', category: 'Protection', iconHint: 'UserCheck', color: '#fbbf24' },
+  { id: 'modmail', name: 'Modmail', description: 'Ticket-style DM bridge between users and staff.', category: 'Support', iconHint: 'Mail', color: '#a78bfa' },
+  { id: 'whitelist', name: 'Whitelist', description: 'Allowlist-only server access with join protections.', category: 'Protection', iconHint: 'Lock', color: '#f97316' },
+  { id: 'forum_moderation', name: 'Forum Moderation', description: 'Moderate forum posts and route flagged content alerts.', category: 'Moderation', iconHint: 'ShieldAlert', color: '#fb923c' },
 ]
 
-const CATEGORIES = ['All', 'Moderation', 'Utility', 'Engagement', 'Logging', 'Automation']
-const FILTERS = ['All', 'Enabled', 'Disabled', 'New', 'Standard', 'Premium']
-const SORT_OPTIONS = [
-  { value: 'name', label: 'Name' },
-  { value: 'status', label: 'Status' },
-  { value: 'tier', label: 'Tier' },
-]
+const ENABLED_KEYS = {
+  automod: 'automod_enabled',
+  aimod: 'aimod_enabled',
+  antiraid: 'antiraid_enabled',
+  logging: 'logging_enabled',
+  tickets: 'tickets_enabled',
+  verification: 'verification_enabled',
+  modmail: 'modmail_enabled',
+  whitelist: 'whitelist_enabled',
+  forum_moderation: 'forum_moderation_enabled',
+}
+
+const ENABLED_DEFAULTS = {
+  automod: true,
+  logging: true,
+  verification: true,
+  modmail: true,
+}
+
+const CATEGORIES = ['All', 'Moderation', 'Protection', 'Support', 'Utility']
+const FILTERS = ['All', 'Enabled', 'Disabled']
 
 export default function Modules() {
-  const { config, updateConfig } = useGuild()
-  const [modules, setModules] = useState(MODULES)
+  const { config, updateConfig, guildId } = useGuild()
+  const [capabilities, setCapabilities] = useState(null)
   const [search, setSearch] = useState('')
   const [activeCategory, setActiveCategory] = useState('All')
   const [activeFilter, setActiveFilter] = useState('All')
@@ -64,21 +61,83 @@ export default function Modules() {
   const [togglingId, setTogglingId] = useState(null)
   const [toast, setToast] = useState(null)
 
+  // Fetch bot capabilities for module schemas
+  useEffect(() => {
+    api.request('/api/bot/capabilities')
+      .then(setCapabilities)
+      .catch(() => setCapabilities({}))
+  }, [])
+
+  const settings = config?.settings || {}
+
   const showToast = useCallback((message, type = 'success') => {
     setToast({ message, type })
     setTimeout(() => setToast(null), 3000)
   }, [])
 
+  // Build module list from capabilities + fallbacks
+  const modules = useMemo(() => {
+    const caps = capabilities || {}
+    const moduleList = []
+    const seen = new Set()
+
+    // From capabilities
+    for (const [id, cap] of Object.entries(caps)) {
+      seen.add(id)
+      const icon = ICON_MAP[cap.iconHint] || Zap
+      const enabledKey = ENABLED_KEYS[id]
+      const defaultEnabled = ENABLED_DEFAULTS[id] ?? false
+      const isEnabled = enabledKey
+        ? (settings[enabledKey] !== false && settings[enabledKey] !== 'false' && settings[enabledKey] !== 0 && (settings[enabledKey] !== undefined || defaultEnabled))
+        : defaultEnabled
+
+      moduleList.push({
+        id,
+        name: cap.name || id,
+        description: cap.description || '',
+        category: cap.category || 'Other',
+        icon,
+        iconHint: cap.iconHint,
+        color: FALLBACK_MODULES.find(f => f.id === id)?.color || '#7c6df0',
+        enabled: isEnabled,
+        hasSettings: (cap.settingsSchema || []).length > 0,
+        settingsSchema: cap.settingsSchema || [],
+        supportsOverrides: cap.supportsOverrides || false,
+      })
+    }
+
+    // Add fallbacks not in capabilities
+    for (const fb of FALLBACK_MODULES) {
+      if (seen.has(fb.id)) continue
+      const enabledKey = ENABLED_KEYS[fb.id]
+      const defaultEnabled = ENABLED_DEFAULTS[fb.id] ?? false
+      const isEnabled = enabledKey
+        ? (settings[enabledKey] !== false && settings[enabledKey] !== 'false' && settings[enabledKey] !== 0 && (settings[enabledKey] !== undefined || defaultEnabled))
+        : defaultEnabled
+
+      moduleList.push({
+        ...fb,
+        icon: ICON_MAP[fb.iconHint] || Zap,
+        enabled: isEnabled,
+        hasSettings: false,
+        settingsSchema: [],
+        supportsOverrides: false,
+      })
+    }
+
+    return moduleList
+  }, [capabilities, settings])
+
   const handleToggle = useCallback(async (mod) => {
+    const enabledKey = ENABLED_KEYS[mod.id]
+    if (!enabledKey) return
+
     setTogglingId(mod.id)
     const newEnabled = !mod.enabled
-    setModules(prev => prev.map(m => m.id === mod.id ? { ...m, enabled: newEnabled } : m))
     try {
-      const key = `${mod.id}_enabled`
-      await updateConfig({ [key]: newEnabled })
+      await updateConfig({ [enabledKey]: newEnabled })
       showToast(`${mod.name} ${newEnabled ? 'enabled' : 'disabled'}`)
     } catch {
-      setModules(prev => prev.map(m => m.id === mod.id ? { ...m, enabled: !newEnabled } : m))
       showToast('Failed to update module', 'error')
     }
     setTogglingId(null)
@@ -93,16 +152,9 @@ export default function Modules() {
     if (activeCategory !== 'All') result = result.filter(m => m.category === activeCategory)
     if (activeFilter === 'Enabled') result = result.filter(m => m.enabled)
     else if (activeFilter === 'Disabled') result = result.filter(m => !m.enabled)
-    else if (activeFilter === 'New') result = result.filter(m => m.badges.includes('New'))
-    else if (activeFilter === 'Standard') result = result.filter(m => m.tier === 'Standard')
-    else if (activeFilter === 'Premium') result = result.filter(m => m.tier === 'Premium')
 
     result.sort((a, b) => {
       if (sortBy === 'status') return (b.enabled ? 1 : 0) - (a.enabled ? 1 : 0)
-      if (sortBy === 'tier') {
-        const order = { Premium: 0, Standard: 1, Free: 2 }
-        return (order[a.tier] ?? 2) - (order[b.tier] ?? 2)
-      }
       return a.name.localeCompare(b.name)
     })
     return result
@@ -111,8 +163,6 @@ export default function Modules() {
   const counts = useMemo(() => ({
     total: modules.length,
     enabled: modules.filter(m => m.enabled).length,
-    premium: modules.filter(m => m.tier === 'Premium').length,
-    needsSetup: modules.filter(m => m.setupStatus === 'needs_setup' && m.enabled).length,
   }), [modules])
 
   return (
@@ -126,8 +176,6 @@ export default function Modules() {
         <div className="mp-counters">
           <div className="mp-counter"><span className="mp-counter-val">{counts.total}</span><span className="mp-counter-lbl">Total</span></div>
           <div className="mp-counter"><span className="mp-counter-val mp-c-green">{counts.enabled}</span><span className="mp-counter-lbl">Enabled</span></div>
-          <div className="mp-counter"><span className="mp-counter-val mp-c-gold">{counts.premium}</span><span className="mp-counter-lbl">Premium</span></div>
-          {counts.needsSetup > 0 && <div className="mp-counter"><span className="mp-counter-val mp-c-orange">{counts.needsSetup}</span><span className="mp-counter-lbl">Setup</span></div>}
         </div>
       </div>
 
@@ -141,12 +189,13 @@ export default function Modules() {
         <div className="mp-sort">
           <ArrowUpDown size={14} />
           <select value={sortBy} onChange={e => setSortBy(e.target.value)}>
-            {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            <option value="name">Name</option>
+            <option value="status">Status</option>
           </select>
         </div>
       </div>
 
-      {/* Filter chips */}
+      {/* Filters */}
       <div className="mp-filters">
         <div className="mp-chip-group">
           {CATEGORIES.map(c => (
@@ -156,15 +205,12 @@ export default function Modules() {
         <div className="mp-chip-divider" />
         <div className="mp-chip-group">
           {FILTERS.map(f => (
-            <button key={f} className={`mp-chip ${activeFilter === f ? 'active' : ''}`} onClick={() => setActiveFilter(f)}>
-              {f === 'Premium' && <Crown size={12} />}
-              {f}
-            </button>
+            <button key={f} className={`mp-chip ${activeFilter === f ? 'active' : ''}`} onClick={() => setActiveFilter(f)}>{f}</button>
           ))}
         </div>
       </div>
 
-      {/* Module grid */}
+      {/* Grid */}
       {filtered.length === 0 ? (
         <div className="empty-state">
           <Package size={48} />
@@ -176,22 +222,17 @@ export default function Modules() {
           {filtered.map(mod => (
             <div className={`mp-card ${mod.enabled ? 'mp-card-on' : 'mp-card-off'}`} key={mod.id}>
               <div className="mp-card-top">
-                <div className="mp-card-icon" style={{ background: `${mod.color}15`, color: mod.color }}>
+                <div className="mp-card-icon" style={{ background: `${mod.color}12`, color: mod.color }}>
                   <mod.icon size={20} />
                 </div>
                 <div className="mp-card-info">
-                  <div className="mp-card-name">
-                    {mod.name}
-                    {mod.badges.map(b => <span key={b} className="mp-badge mp-badge-new">{b}</span>)}
-                    {mod.tier === 'Standard' && <span className="mp-badge mp-badge-std">Standard</span>}
-                    {mod.tier === 'Premium' && <span className="mp-badge mp-badge-prem"><Crown size={10} />Premium</span>}
-                  </div>
+                  <div className="mp-card-name">{mod.name}</div>
                   <div className="mp-card-cat">{mod.category}</div>
                 </div>
                 <button
                   className={`mp-toggle ${mod.enabled ? 'on' : ''}`}
                   onClick={() => handleToggle(mod)}
-                  disabled={togglingId === mod.id}
+                  disabled={togglingId === mod.id || !ENABLED_KEYS[mod.id]}
                   aria-label={mod.enabled ? `Disable ${mod.name}` : `Enable ${mod.name}`}
                 >
                   <span className="mp-toggle-thumb" />
@@ -215,7 +256,7 @@ export default function Modules() {
         </div>
       )}
 
-      {/* Settings Modal */}
+      {/* Settings Drawer */}
       {settingsModule && (
         <ModuleSettingsModal module={settingsModule} onClose={() => setSettingsModule(null)} />
       )}
