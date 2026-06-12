@@ -35,8 +35,8 @@ const Nav = () => {
         <a href="#support">Support</a>
       </div>
       <div className="lp-actions">
-        <Link to="/dashboard" className="lp-btn-ghost">View Dashboard</Link>
-        <a href="#" className="lp-btn-primary"><img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png" alt="Discord" style={{width:16, filter:'brightness(0) invert(1)'}}/> Add to Discord</a>
+        <a href="/auth/login" className="lp-btn-ghost">View Dashboard</a>
+        <a href="/auth/invite" className="lp-btn-primary"><img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png" alt="Discord" style={{width:16, filter:'brightness(0) invert(1)'}}/> Add to Discord</a>
       </div>
     </nav>
   )
@@ -291,7 +291,7 @@ export default function Landing() {
             <h1>Moderation that <span>never</span> sleeps.</h1>
             <p>Protect your community with intelligent automoderation, advanced security, detailed logs, customizable commands, and powerful staff tools—all controlled from one command center.</p>
             <div className="lp-hero-buttons">
-              <a href="#" className="lp-btn-primary"><img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png" alt="Discord" style={{width:18, filter:'brightness(0) invert(1)'}}/> Add to Discord</a>
+              <a href="/auth/invite" className="lp-btn-primary"><img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png" alt="Discord" style={{width:18, filter:'brightness(0) invert(1)'}}/> Add to Discord</a>
               <a href="#features" className="lp-btn-ghost">Explore Features</a>
             </div>
             <div className="lp-trust">
@@ -622,8 +622,8 @@ export default function Landing() {
                <h3 style={{fontSize:'1.5rem', fontWeight:800, marginBottom:16, lineHeight:1.2}}>Your community deserves better protection.</h3>
                <p>Set up Vortex in minutes and give your moderators the tools they need to keep your server safe, organized, and under control.</p>
                <div className="lp-cta-btns">
-                 <a href="#" className="lp-btn-primary"><img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png" alt="Discord" style={{width:16, filter:'brightness(0) invert(1)'}}/> Add to Discord</a>
-                 <Link to="/dashboard" className="lp-btn-ghost">Open Dashboard</Link>
+                 <a href="/auth/invite" className="lp-btn-primary"><img src="https://assets-global.website-files.com/6257adef93867e50d84d30e2/636e0a6a49cf127bf92de1e2_icon_clyde_blurple_RGB.png" alt="Discord" style={{width:16, filter:'brightness(0) invert(1)'}}/> Add to Discord</a>
+                 <a href="/auth/login" className="lp-btn-ghost">Open Dashboard</a>
                </div>
                <div style={{fontSize:'0.75rem', color:'var(--cine-text-muted)'}}>Free to start. No complicated setup.</div>
                
