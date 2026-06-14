@@ -10,37 +10,37 @@ import { useGuild } from './GuildContext'
 const statRows = {
   dashboard: [
     ['Server Health', 'Excellent', '100/100', ShieldCheck, '#10b981'],
-    ['Members', '12,842', '+5.23%', Users, '#8b5cf6'],
-    ['Messages (24h)', '18,392', '+12.45%', MessageSquare, '#38bdf8'],
-    ['Threats Blocked', '247', '+18.6%', Shield, '#a78bfa'],
-    ['Active Cases', '18', '-5', Gavel, '#f59e0b'],
-    ['Uptime', '99.99%', 'Operational', CheckCircle2, '#10b981'],
+    ['Members', '12,842', '+5.23%', Users, 'var(--brand-primary)'],
+    ['Messages (24h)', '18,392', '+12.45%', MessageSquare, 'var(--info)'],
+    ['Threats Blocked', '247', '+18.6%', Shield, 'var(--success)'],
+    ['Active Cases', '18', '-5', Gavel, 'var(--warning)'],
+    ['Uptime', '99.99%', 'Operational', CheckCircle2, 'var(--success)'],
   ],
   events: [
-    ['Total Events', '24,892', '+18.7%', Activity, '#8b5cf6'],
-    ['Security Events', '492', '+21.4%', Shield, '#6366f1'],
-    ['Moderation Actions', '1,842', '+14.9%', Gavel, '#a78bfa'],
-    ['Users Affected', '3,128', '+9.3%', Users, '#38bdf8'],
-    ['Critical Events', '38', '+26.7%', AlertTriangle, '#ef4444'],
-    ['Events Per Hour', '103', 'Live average', Clock, '#8b5cf6'],
+    ['Total Events', '24,892', '+18.7%', Activity, 'var(--brand-primary)'],
+    ['Security Events', '492', '+21.4%', Shield, 'var(--success)'],
+    ['Moderation Actions', '1,842', '+14.9%', Gavel, 'var(--warning)'],
+    ['Users Affected', '3,128', '+9.3%', Users, 'var(--info)'],
+    ['Critical Events', '38', '+26.7%', AlertTriangle, 'var(--error)'],
+    ['Events Per Hour', '103', 'Live average', Clock, 'var(--brand-primary)'],
   ],
   logs: [
-    ['Total Logs', '34,782', '+18.6%', FileText, '#8b5cf6'],
-    ['Deleted Messages', '12,842', '+23.7%', Trash2, '#ef4444'],
-    ['Member Actions', '8,621', '+12.4%', Users, '#a78bfa'],
-    ['Automod Actions', '6,247', '+15.3%', ShieldAlert, '#f59e0b'],
-    ['Channel Updates', '3,072', '+8.7%', Hash, '#38bdf8'],
-    ['Role Changes', '3,998', '+11.2%', ShieldCheck, '#10b981'],
+    ['Total Logs', '34,782', '+18.6%', FileText, 'var(--brand-primary)'],
+    ['Deleted Messages', '12,842', '+23.7%', Trash2, 'var(--error)'],
+    ['Member Actions', '8,621', '+12.4%', Users, 'var(--warning)'],
+    ['Automod Actions', '6,247', '+15.3%', ShieldAlert, 'var(--info)'],
+    ['Channel Updates', '3,072', '+8.7%', Hash, 'var(--info)'],
+    ['Role Changes', '3,998', '+11.2%', ShieldCheck, 'var(--success)'],
   ],
 }
 
 const timeline = [
-  ['15:42:18', 'Raid attempt blocked', 'AutoMod blocked 15 suspicious joins', 'High', '#ef4444'],
-  ['15:41:33', 'Message deleted', 'Inappropriate content detected', 'Medium', '#f59e0b'],
-  ['15:40:07', 'User warned', 'Reason: Spam', 'Low', '#38bdf8'],
-  ['15:38:51', 'Channel locked', 'Raid protection enabled', 'High', '#ef4444'],
-  ['15:36:45', 'Mass mentions detected', '15+ users mentioned', 'Medium', '#f59e0b'],
-  ['15:34:01', 'Backup completed', 'Server channels and roles saved', 'Info', '#10b981'],
+  ['15:42:18', 'Raid attempt blocked', 'AutoMod blocked 15 suspicious joins', 'High', 'var(--error)'],
+  ['15:41:33', 'Message deleted', 'Inappropriate content detected', 'Medium', 'var(--warning)'],
+  ['15:40:07', 'User warned', 'Reason: Spam', 'Low', 'var(--info)'],
+  ['15:38:51', 'Channel locked', 'Raid protection enabled', 'High', 'var(--error)'],
+  ['15:36:45', 'Mass mentions detected', '15+ users mentioned', 'Medium', 'var(--warning)'],
+  ['15:34:01', 'Backup completed', 'Server channels and roles saved', 'Info', 'var(--success)'],
 ]
 
 function PageHeader({ title, subtitle, actions = true }) {
@@ -83,7 +83,7 @@ function StatStrip({ type = 'dashboard' }) {
   )
 }
 
-function Sparkline({ color = '#8b5cf6', values = [22, 48, 42, 66, 58, 83, 61, 74, 49, 70, 62, 88] }) {
+function Sparkline({ color = 'var(--brand-primary)', values = [22, 48, 42, 66, 58, 83, 61, 74, 49, 70, 62, 88] }) {
   const max = Math.max(...values)
   const points = values.map((value, index) => `${(index / (values.length - 1)) * 100},${100 - (value / max) * 92}`).join(' ')
 
@@ -120,12 +120,12 @@ function TimelinePanel({ title = 'Activity Timeline' }) {
 
 function QuickActions() {
   const actions = [
-    [AlertTriangle, 'Warn User', '#f59e0b'],
-    [UserMinus, 'Mute User', '#8b5cf6'],
-    [Ban, 'Ban User', '#ef4444'],
-    [FileText, 'Add Note', '#38bdf8'],
-    [Lock, 'Lock Channel', '#a78bfa'],
-    [Trash2, 'Clear Chat', '#ef4444'],
+    [AlertTriangle, 'Warn User', 'var(--warning)'],
+    [UserMinus, 'Mute User', 'var(--brand-primary)'],
+    [Ban, 'Ban User', 'var(--error)'],
+    [FileText, 'Add Note', 'var(--info)'],
+    [Lock, 'Lock Channel', 'var(--warning)'],
+    [Trash2, 'Clear Chat', 'var(--error)'],
   ]
 
   return (
@@ -154,11 +154,11 @@ function DonutSummary({ title = 'Automation Summary' }) {
         </div>
         <div className="vtx-ring-list">
           {[
-            ['Spam Filter', '412', '#8b5cf6'],
-            ['Link Filter', '213', '#f59e0b'],
-            ['Anti-Raid', '156', '#38bdf8'],
-            ['Word Filter', '89', '#10b981'],
-            ['Other', '22', '#64748b'],
+            ['Spam Filter', '412', 'var(--brand-primary)'],
+            ['Link Filter', '213', 'var(--warning)'],
+            ['Anti-Raid', '156', 'var(--info)'],
+            ['Word Filter', '89', 'var(--success)'],
+            ['Other', '22', 'var(--text-muted)'],
           ].map(([label, value, color]) => (
             <div key={label}><span style={{ background: color }} />{label}<strong>{value}</strong></div>
           ))}
@@ -257,7 +257,7 @@ export function ModerationDashboard() {
       title="Moderation"
       subtitle="Run staff actions, review active cases, and track moderator output."
       icon={Gavel}
-      color="#8b5cf6"
+      color="var(--brand-primary)"
       stats={[['Active Cases', '18'], ['Actions Today', '392'], ['Avg Response', '42s'], ['Staff Online', '24']]}
       modules={['Warn workflow', 'Timeout presets', 'Case notes', 'Mod leaderboard', 'Escalation rules', 'Evidence capture']}
     />
@@ -270,7 +270,7 @@ export function MembersDashboard() {
       title="Members"
       subtitle="Monitor joins, leaves, risk score, roles, and member activity."
       icon={Users}
-      color="#38bdf8"
+      color="var(--info)"
       stats={[['Members', '12,842'], ['Joined Today', '156'], ['Left Today', '89'], ['Flagged', '42']]}
       modules={['Join analytics', 'Role distribution', 'Risk scoring', 'Inactive members', 'New member queue', 'Account age segments']}
     />
@@ -283,7 +283,7 @@ export function WarningsDashboard() {
       title="Warnings"
       subtitle="Review warning trends, repeat offenders, and configured escalation thresholds."
       icon={AlertTriangle}
-      color="#f59e0b"
+      color="var(--warning)"
       stats={[['Warnings', '454'], ['Repeat Users', '37'], ['Escalated', '18'], ['Resolved', '92%']]}
       modules={['Warning rules', 'Strike decay', 'Escalations', 'Appeal links', 'Moderator notes', 'Repeat detection']}
     />
@@ -309,7 +309,7 @@ export function BackupDashboard() {
       title="Server Backup"
       subtitle="Backup channels, roles, permissions, and automations with restore checkpoints."
       icon={Database}
-      color="#38bdf8"
+      color="var(--info)"
       stats={[['Backups', '28'], ['Last Backup', '2m'], ['Restore Points', '14'], ['Coverage', '100%']]}
       modules={['Role snapshots', 'Channel tree', 'Permission diff', 'Scheduled backups', 'One-click restore', 'Export archive']}
     />
@@ -322,7 +322,7 @@ export function IntegrationsDashboard() {
       title="Integrations"
       subtitle="Connect Vortex to support tools, audit sinks, webhooks, and automation pipelines."
       icon={Plug}
-      color="#a78bfa"
+      color="var(--brand-primary)"
       stats={[['Connected', '8'], ['Webhooks', '12'], ['Failures', '0'], ['Sync Health', '99%']]}
       modules={['Discord webhooks', 'Audit exports', 'Support bridge', 'AI provider', 'Status page', 'Custom API']}
     />
@@ -453,11 +453,11 @@ function SystemOverview() {
       <div className="vtx-bc-header"><h3>System Overview</h3><span className="vtx-bc-link">Live</span></div>
       <div className="vtx-system-grid">
         {[
-          ['CPU Usage', '23%', '#10b981'],
-          ['Memory Usage', '41%', '#8b5cf6'],
-          ['Disk Usage', '31%', '#38bdf8'],
-          ['Network In', '1.2 MB/s', '#10b981'],
-          ['Network Out', '2.4 MB/s', '#f59e0b'],
+          ['CPU Usage', '23%', 'var(--success)'],
+          ['Memory Usage', '41%', 'var(--brand-primary)'],
+          ['Disk Usage', '31%', 'var(--info)'],
+          ['Network In', '1.2 MB/s', 'var(--success)'],
+          ['Network Out', '2.4 MB/s', 'var(--warning)'],
         ].map(([label, value, color]) => <div key={label}><span>{label}</span><strong>{value}</strong><Sparkline color={color} values={[8, 14, 9, 18, 12, 21, 15]} /></div>)}
       </div>
     </div>

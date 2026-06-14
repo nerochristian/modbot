@@ -187,12 +187,12 @@ export default function Overview() {
               <div className="vtx-li-time">2m ago</div>
             </div>
             <div className="vtx-li">
-              <div className="vtx-li-icon" style={{color: '#f59e0b', background: 'rgba(245,158,11,0.1)'}}><Gavel size={14}/></div>
+              <div className="vtx-li-icon" style={{color: 'var(--warning)', background: 'var(--warning-bg)'}}><Gavel size={14}/></div>
               <div className="vtx-li-text"><h4>Spam messages filtered</h4><p>28 messages removed</p></div>
               <div className="vtx-li-time">5m ago</div>
             </div>
             <div className="vtx-li">
-              <div className="vtx-li-icon" style={{color: '#ef4444', background: 'rgba(239,68,68,0.1)'}}><AlertTriangle size={14}/></div>
+              <div className="vtx-li-icon" style={{color: 'var(--error)', background: 'var(--error-bg)'}}><AlertTriangle size={14}/></div>
               <div className="vtx-li-text"><h4>User quarantined</h4><p>Suspicious account detected</p></div>
               <div className="vtx-li-time">12m ago</div>
             </div>
@@ -215,11 +215,11 @@ export default function Overview() {
             <span className="vtx-bc-link">View All</span>
           </div>
           <div className="vtx-pb-list">
-            <ProgressBar label="Spam Links" pct={42} color="#ef4444" rightText="42%"/>
-            <ProgressBar label="Raid Attempts" pct={28} color="#f59e0b" rightText="28%"/>
-            <ProgressBar label="Mass Mentions" pct={15} color="#eab308" rightText="15%"/>
-            <ProgressBar label="Excessive Caps" pct={8} color="#8b5cf6" rightText="8%"/>
-            <ProgressBar label="Bad Words" pct={7} color="#38bdf8" rightText="7%"/>
+            <ProgressBar label="Spam Links" pct={42} color="var(--error)" rightText="42%"/>
+            <ProgressBar label="Raid Attempts" pct={28} color="var(--warning)" rightText="28%"/>
+            <ProgressBar label="Mass Mentions" pct={15} color="var(--warning)" rightText="15%"/>
+            <ProgressBar label="Excessive Caps" pct={8} color="var(--brand-primary)" rightText="8%"/>
+            <ProgressBar label="Bad Words" pct={7} color="var(--info)" rightText="7%"/>
           </div>
         </div>
 
@@ -230,18 +230,18 @@ export default function Overview() {
           </div>
           <div className="vtx-donut-container">
             <DonutChart total="892" segments={[
-              { pct: 46, color: '#ef4444' },
-              { pct: 24, color: '#f59e0b' },
-              { pct: 14, color: '#10b981' },
-              { pct: 11, color: '#38bdf8' },
-              { pct: 5,  color: '#8b5cf6' }
+              { pct: 46, color: 'var(--error)' },
+              { pct: 24, color: 'var(--warning)' },
+              { pct: 14, color: 'var(--success)' },
+              { pct: 11, color: 'var(--info)' },
+              { pct: 5,  color: 'var(--brand-primary)' }
             ]} />
             <div className="vtx-donut-legend">
-              <div className="vtx-dl-item"><span className="vtx-dl-dot" style={{background:'#ef4444'}}></span> Message Deleted <span className="vtx-dl-val">412 (46%)</span></div>
-              <div className="vtx-dl-item"><span className="vtx-dl-dot" style={{background:'#f59e0b'}}></span> Link Blocked <span className="vtx-dl-val">213 (24%)</span></div>
-              <div className="vtx-dl-item"><span className="vtx-dl-dot" style={{background:'#10b981'}}></span> Mention Blocked <span className="vtx-dl-val">125 (14%)</span></div>
-              <div className="vtx-dl-item"><span className="vtx-dl-dot" style={{background:'#38bdf8'}}></span> Word Filtered <span className="vtx-dl-val">98 (11%)</span></div>
-              <div className="vtx-dl-item"><span className="vtx-dl-dot" style={{background:'#8b5cf6'}}></span> Other <span className="vtx-dl-val">44 (5%)</span></div>
+              <div className="vtx-dl-item"><span className="vtx-dl-dot" style={{background:'var(--error)'}}></span> Message Deleted <span className="vtx-dl-val">412 (46%)</span></div>
+              <div className="vtx-dl-item"><span className="vtx-dl-dot" style={{background:'var(--warning)'}}></span> Link Blocked <span className="vtx-dl-val">213 (24%)</span></div>
+              <div className="vtx-dl-item"><span className="vtx-dl-dot" style={{background:'var(--success)'}}></span> Mention Blocked <span className="vtx-dl-val">125 (14%)</span></div>
+              <div className="vtx-dl-item"><span className="vtx-dl-dot" style={{background:'var(--info)'}}></span> Word Filtered <span className="vtx-dl-val">98 (11%)</span></div>
+              <div className="vtx-dl-item"><span className="vtx-dl-dot" style={{background:'var(--brand-primary)'}}></span> Other <span className="vtx-dl-val">44 (5%)</span></div>
             </div>
           </div>
         </div>
@@ -300,7 +300,7 @@ export default function Overview() {
               <div className="vtx-lb-av" style={{background:'#6b21a8'}}></div>
               <div className="vtx-lb-info"><h4>Nova</h4><p>Actions: 247</p></div>
               <div className="vtx-lb-score">
-                <div className="vtx-lb-bar"><div style={{width:'100%', background:'#8b5cf6'}}></div></div>
+                <div className="vtx-lb-bar"><div style={{width:'100%', background:'var(--brand-primary)'}}></div></div>
                 <span>2,487 <small>Points</small></span>
               </div>
             </div>
@@ -309,7 +309,7 @@ export default function Overview() {
               <div className="vtx-lb-av" style={{background:'#ea580c'}}></div>
               <div className="vtx-lb-info"><h4>Velocity</h4><p>Actions: 182</p></div>
               <div className="vtx-lb-score">
-                <div className="vtx-lb-bar"><div style={{width:'75%', background:'#8b5cf6'}}></div></div>
+                <div className="vtx-lb-bar"><div style={{width:'75%', background:'var(--brand-primary)'}}></div></div>
                 <span>1,842 <small>Points</small></span>
               </div>
             </div>
@@ -318,7 +318,7 @@ export default function Overview() {
               <div className="vtx-lb-av" style={{background:'#0369a1'}}></div>
               <div className="vtx-lb-info"><h4>Stellar</h4><p>Actions: 156</p></div>
               <div className="vtx-lb-score">
-                <div className="vtx-lb-bar"><div style={{width:'65%', background:'#8b5cf6'}}></div></div>
+                <div className="vtx-lb-bar"><div style={{width:'65%', background:'var(--brand-primary)'}}></div></div>
                 <span>1,563 <small>Points</small></span>
               </div>
             </div>
@@ -335,31 +335,31 @@ export default function Overview() {
               <span className="vtx-log-time">15:42</span>
               <MessageSquare size={12} className="vtx-log-icon" />
               <span className="vtx-log-txt">Message deleted in <span className="vtx-log-highlight">#general</span></span>
-              <span className="vtx-log-user" style={{color:'#ef4444'}}>@Spammer</span>
+              <span className="vtx-log-user" style={{color:'var(--error)'}}>@Spammer</span>
             </div>
             <div className="vtx-log-item">
               <span className="vtx-log-time">15:41</span>
               <Users size={12} className="vtx-log-icon" />
               <span className="vtx-log-txt">User banned</span>
-              <span className="vtx-log-user" style={{color:'#ef4444'}}>@BadUser</span>
+              <span className="vtx-log-user" style={{color:'var(--error)'}}>@BadUser</span>
             </div>
             <div className="vtx-log-item">
               <span className="vtx-log-time">15:40</span>
               <Shield size={12} className="vtx-log-icon" />
               <span className="vtx-log-txt">Role added</span>
-              <span className="vtx-log-user" style={{color:'#10b981'}}>@Member</span>
+              <span className="vtx-log-user" style={{color:'var(--success)'}}>@Member</span>
             </div>
             <div className="vtx-log-item">
               <span className="vtx-log-time">15:39</span>
               <AlertTriangle size={12} className="vtx-log-icon" />
               <span className="vtx-log-txt">Channel locked</span>
-              <span className="vtx-log-user" style={{color:'#f59e0b'}}>#memes</span>
+              <span className="vtx-log-user" style={{color:'var(--warning)'}}>#memes</span>
             </div>
             <div className="vtx-log-item">
               <span className="vtx-log-time">15:38</span>
               <AlertTriangle size={12} className="vtx-log-icon" />
               <span className="vtx-log-txt">Warning issued</span>
-              <span className="vtx-log-user" style={{color:'#8b5cf6'}}>@Talkative</span>
+              <span className="vtx-log-user" style={{color:'var(--brand-primary)'}}>@Talkative</span>
             </div>
           </div>
         </div>
@@ -397,10 +397,10 @@ export default function Overview() {
             <h3>Upgrade to Premium</h3>
           </div>
           <div className="vtx-prem-list">
-            <div className="vtx-prem-item"><CheckCircle2 size={14} color="#8b5cf6"/> Advanced Anti-Raid</div>
-            <div className="vtx-prem-item"><CheckCircle2 size={14} color="#8b5cf6"/> Custom AutoMod Rules</div>
-            <div className="vtx-prem-item"><CheckCircle2 size={14} color="#8b5cf6"/> Unlimited Server Backups</div>
-            <div className="vtx-prem-item"><CheckCircle2 size={14} color="#8b5cf6"/> Priority Support</div>
+            <div className="vtx-prem-item"><CheckCircle2 size={14} color="var(--brand-primary)"/> Advanced Anti-Raid</div>
+            <div className="vtx-prem-item"><CheckCircle2 size={14} color="var(--brand-primary)"/> Custom AutoMod Rules</div>
+            <div className="vtx-prem-item"><CheckCircle2 size={14} color="var(--brand-primary)"/> Unlimited Server Backups</div>
+            <div className="vtx-prem-item"><CheckCircle2 size={14} color="var(--brand-primary)"/> Priority Support</div>
           </div>
           <button className="btn btn-primary vtx-prem-btn">Upgrade Now <Crown size={14}/></button>
           <Crown size={80} className="vtx-prem-bg-icon"/>

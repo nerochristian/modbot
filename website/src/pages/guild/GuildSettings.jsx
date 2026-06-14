@@ -36,7 +36,7 @@ export default function GuildSettings() {
       log_channel: s.log_channel || '',
       mod_log_channel: s.mod_log_channel || '',
       disabled_channels: s.disabled_channels || '',
-      embed_color: s.embed_color || '#7c6df0',
+      embed_color: s.embed_color || '#d4952a',
     })
   }, [config])
 

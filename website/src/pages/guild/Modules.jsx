@@ -17,15 +17,15 @@ const ICON_MAP = {
 }
 
 const FALLBACK_MODULES = [
-  { id: 'automod', name: 'Auto Moderation', description: 'Automatically filter spam, links, invites, and unsafe content.', category: 'Moderation', iconHint: 'Zap', color: '#6366f1' },
-  { id: 'aimod', name: 'AI Moderation', description: 'Mention router with configurable tools, confirmations, and model behavior.', category: 'Moderation', iconHint: 'Shield', color: '#7c6df0' },
-  { id: 'antiraid', name: 'Anti-Raid', description: 'Detect mass joins and apply automatic raid responses.', category: 'Protection', iconHint: 'ShieldAlert', color: '#f87171' },
-  { id: 'logging', name: 'Logging', description: 'Route moderation and server events to dedicated log channels.', category: 'Utility', iconHint: 'ScrollText', color: '#38bdf8' },
-  { id: 'tickets', name: 'Tickets', description: 'Ticket panel, close flow, logs, and support role routing.', category: 'Support', iconHint: 'Ticket', color: '#34d399' },
-  { id: 'verification', name: 'Verification', description: 'Configure verification roles and optional voice verification flow.', category: 'Protection', iconHint: 'UserCheck', color: '#fbbf24' },
-  { id: 'modmail', name: 'Modmail', description: 'Ticket-style DM bridge between users and staff.', category: 'Support', iconHint: 'Mail', color: '#a78bfa' },
-  { id: 'whitelist', name: 'Whitelist', description: 'Allowlist-only server access with join protections.', category: 'Protection', iconHint: 'Lock', color: '#f97316' },
-  { id: 'forum_moderation', name: 'Forum Moderation', description: 'Moderate forum posts and route flagged content alerts.', category: 'Moderation', iconHint: 'ShieldAlert', color: '#fb923c' },
+  { id: 'automod', name: 'Auto Moderation', description: 'Automatically filter spam, links, invites, and unsafe content.', category: 'Moderation', iconHint: 'Zap', color: 'var(--brand-primary)' },
+  { id: 'aimod', name: 'AI Moderation', description: 'Mention router with configurable tools, confirmations, and model behavior.', category: 'Moderation', iconHint: 'Shield', color: 'var(--brand-primary)' },
+  { id: 'antiraid', name: 'Anti-Raid', description: 'Detect mass joins and apply automatic raid responses.', category: 'Protection', iconHint: 'ShieldAlert', color: 'var(--error)' },
+  { id: 'logging', name: 'Logging', description: 'Route moderation and server events to dedicated log channels.', category: 'Utility', iconHint: 'ScrollText', color: 'var(--info)' },
+  { id: 'tickets', name: 'Tickets', description: 'Ticket panel, close flow, logs, and support role routing.', category: 'Support', iconHint: 'Ticket', color: 'var(--success)' },
+  { id: 'verification', name: 'Verification', description: 'Configure verification roles and optional voice verification flow.', category: 'Protection', iconHint: 'UserCheck', color: 'var(--warning)' },
+  { id: 'modmail', name: 'Modmail', description: 'Ticket-style DM bridge between users and staff.', category: 'Support', iconHint: 'Mail', color: 'var(--brand-primary)' },
+  { id: 'whitelist', name: 'Whitelist', description: 'Allowlist-only server access with join protections.', category: 'Protection', iconHint: 'Lock', color: 'var(--warning)' },
+  { id: 'forum_moderation', name: 'Forum Moderation', description: 'Moderate forum posts and route flagged content alerts.', category: 'Moderation', iconHint: 'ShieldAlert', color: 'var(--warning)' },
 ]
 
 const ENABLED_KEYS = {
@@ -98,7 +98,7 @@ export default function Modules() {
         category: cap.category || 'Other',
         icon,
         iconHint: cap.iconHint,
-        color: FALLBACK_MODULES.find(f => f.id === id)?.color || '#7c6df0',
+        color: FALLBACK_MODULES.find(f => f.id === id)?.color || 'var(--brand-primary)',
         enabled: isEnabled,
         hasSettings: (cap.settingsSchema || []).length > 0,
         settingsSchema: cap.settingsSchema || [],
