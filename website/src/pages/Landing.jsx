@@ -81,7 +81,7 @@ const HeroMockup = () => {
         </div>
         
         <div style={{display:'flex', flexDirection:'column', gap:4}}>
-          <div style={{background:'rgba(124,109,240,0.12)', color:'var(--cine-text)', padding:'8px 12px', borderRadius:6, display:'flex', alignItems:'center', gap:8, fontSize:'0.9rem', fontWeight:500}}>
+          <div style={{background:'rgba(212,149,42,0.10)', color:'var(--cine-text)', padding:'8px 12px', borderRadius:4, display:'flex', alignItems:'center', gap:8, fontSize:'0.9rem', fontWeight:500}}>
             <Activity size={16} color="var(--cine-primary)"/> Overview
           </div>
           <div style={{color:'var(--cine-text-dim)', padding:'8px 12px', display:'flex', alignItems:'center', gap:8, fontSize:'0.9rem', fontWeight:500}}>
@@ -105,7 +105,7 @@ const HeroMockup = () => {
       <div className="lp-mockup-dash">
         <div className="lp-dash-header">
           <div style={{display:'flex', alignItems:'center', gap:12}}>
-            <div style={{width:32, height:32, background:'rgba(124,109,240,0.1)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--cine-primary)'}}>
+            <div style={{width:32, height:32, background:'rgba(212,149,42,0.08)', borderRadius:8, display:'flex', alignItems:'center', justifyContent:'center', color:'var(--cine-primary)'}}>
               <Activity size={18}/>
             </div>
             <div>
@@ -139,7 +139,7 @@ const HeroMockup = () => {
               <div className="lp-float-text"><h4>WARNING ISSUED</h4><p>User warned</p></div>
             </div>
             <div className="lp-float-panel lp-fp-4" style={{bottom:'35%', right:'2%'}}>
-              <div className="lp-float-icon" style={{background:'rgba(124,109,240,0.1)', color:'var(--cine-primary)'}}><Database size={18}/></div>
+              <div className="lp-float-icon" style={{background:'rgba(212,149,42,0.08)', color:'var(--cine-primary)'}}><Database size={18}/></div>
               <div className="lp-float-text"><h4>CASE CREATED</h4><p>Case #4821 created</p></div>
             </div>
             
@@ -275,12 +275,6 @@ const DemoChat = () => {
 export default function Landing() {
   return (
     <div className="lp-cinematic">
-      <div className="lp-ambient">
-        <div className="lp-ambient-light lp-light-1" />
-        <div className="lp-ambient-light lp-light-2" />
-        <div className="lp-ambient-light lp-light-3" />
-      </div>
-
       <Nav />
 
       {/* Hero */}
@@ -429,7 +423,7 @@ export default function Landing() {
           
           <div className="lp-bento-card">
             <div className="lp-bento-top">
-              <div className="lp-bento-icon" style={{background:'rgba(124,109,240,0.1)', color:'var(--cine-primary)'}}><Database size={18}/></div>
+              <div className="lp-bento-icon" style={{background:'rgba(212,149,42,0.08)', color:'var(--cine-primary)'}}><Database size={18}/></div>
               <div>
                 <div className="lp-bento-title">Server Backups</div>
                 <div className="lp-bento-desc">Backup your server settings, roles, channels, and permissions.</div>
@@ -512,7 +506,7 @@ export default function Landing() {
             </div>
             
             <div style={{marginTop: 60, position:'relative', width: 200, height: 200, display:'flex', alignItems:'center', justifyContent:'center'}}>
-              <div style={{position:'absolute', inset:0, background:'radial-gradient(circle, rgba(124,109,240,0.3) 0%, transparent 70%)', borderRadius:'50%'}}/>
+              <div style={{position:'absolute', inset:0, background:'radial-gradient(circle, rgba(212,149,42,0.15) 0%, transparent 70%)', borderRadius:'50%'}}/>
               <VortexLogo size={120} />
             </div>
           </div>
@@ -555,7 +549,7 @@ export default function Landing() {
                   <div className="lp-bd-text"><h5>Raid Prevented</h5><p>15 suspicious joins blocked</p></div>
                 </div>
                 <div className="lp-bd-card">
-                  <div className="lp-bd-icon" style={{background:'rgba(124,109,240,0.1)', color:'var(--cine-primary)'}}><Database size={16}/></div>
+                  <div className="lp-bd-icon" style={{background:'rgba(212,149,42,0.08)', color:'var(--cine-primary)'}}><Database size={16}/></div>
                   <div className="lp-bd-text"><h5>Backup Completed</h5><p>Server backup completed</p></div>
                 </div>
                 <div className="lp-bd-card">
