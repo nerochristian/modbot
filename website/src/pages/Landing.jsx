@@ -275,6 +275,12 @@ const DemoChat = () => {
 export default function Landing() {
   return (
     <div className="lp-cinematic">
+      <div className="lp-ambient">
+        <div className="lp-ambient-light lp-light-1" />
+        <div className="lp-ambient-light lp-light-2" />
+        <div className="lp-ambient-light lp-light-3" />
+      </div>
+
       <Nav />
 
       {/* Hero */}
