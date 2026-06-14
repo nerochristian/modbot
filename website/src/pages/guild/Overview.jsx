@@ -124,7 +124,7 @@ export default function Overview() {
         <div className="vtx-stat-card">
           <div className="vtx-sc-top">
             <span className="vtx-sc-lbl">Threats Blocked</span>
-            <div className="vtx-sc-icon" style={{background: 'rgba(139, 92, 246, 0.1)', color: '#8b5cf6', boxShadow: '0 0 15px rgba(139,92,246,0.2)'}}><Shield size={18}/></div>
+            <div className="vtx-sc-icon" style={{background: 'var(--success-bg)', color: 'var(--success)'}}><Shield size={18}/></div>
           </div>
           <div className="vtx-sc-val">247</div>
           <div className="vtx-sc-trend vtx-trend-up">▲ 18.6% <span className="vtx-trend-lbl">vs last 7 days</span></div>
@@ -132,7 +132,7 @@ export default function Overview() {
         <div className="vtx-stat-card">
           <div className="vtx-sc-top">
             <span className="vtx-sc-lbl">Messages Filtered</span>
-            <div className="vtx-sc-icon" style={{background: 'rgba(139, 92, 246, 0.1)', color: '#8b5cf6', boxShadow: '0 0 15px rgba(139,92,246,0.2)'}}><MessageSquare size={18}/></div>
+            <div className="vtx-sc-icon" style={{background: 'var(--info-bg)', color: 'var(--info)'}}><MessageSquare size={18}/></div>
           </div>
           <div className="vtx-sc-val">1,842</div>
           <div className="vtx-sc-trend vtx-trend-up">▲ 23.7% <span className="vtx-trend-lbl">vs last 7 days</span></div>
@@ -140,7 +140,7 @@ export default function Overview() {
         <div className="vtx-stat-card">
           <div className="vtx-sc-top">
             <span className="vtx-sc-lbl">Actions Taken</span>
-            <div className="vtx-sc-icon" style={{background: 'rgba(139, 92, 246, 0.1)', color: '#8b5cf6', boxShadow: '0 0 15px rgba(139,92,246,0.2)'}}><Gavel size={18}/></div>
+            <div className="vtx-sc-icon" style={{background: 'var(--warning-bg)', color: 'var(--warning)'}}><Gavel size={18}/></div>
           </div>
           <div className="vtx-sc-val">392</div>
           <div className="vtx-sc-trend vtx-trend-up">▲ 12.4% <span className="vtx-trend-lbl">vs last 7 days</span></div>
@@ -148,7 +148,7 @@ export default function Overview() {
         <div className="vtx-stat-card">
           <div className="vtx-sc-top">
             <span className="vtx-sc-lbl">Members Protected</span>
-            <div className="vtx-sc-icon" style={{background: 'rgba(139, 92, 246, 0.1)', color: '#8b5cf6', boxShadow: '0 0 15px rgba(139,92,246,0.2)'}}><Users size={18}/></div>
+            <div className="vtx-sc-icon" style={{background: 'var(--brand-glow)', color: 'var(--brand-primary)'}}><Users size={18}/></div>
           </div>
           <div className="vtx-sc-val">12,842</div>
           <div className="vtx-sc-trend vtx-trend-up">▲ 15.3% <span className="vtx-trend-lbl">vs last 7 days</span></div>
@@ -156,7 +156,7 @@ export default function Overview() {
         <div className="vtx-stat-card">
           <div className="vtx-sc-top">
             <span className="vtx-sc-lbl">Uptime</span>
-            <div className="vtx-sc-icon" style={{background: 'rgba(16, 185, 129, 0.1)', color: '#10b981', boxShadow: '0 0 15px rgba(16,185,129,0.2)'}}><ShieldCheck size={18}/></div>
+            <div className="vtx-sc-icon" style={{background: 'var(--success-bg)', color: 'var(--success)'}}><ShieldCheck size={18}/></div>
           </div>
           <div className="vtx-sc-val">99.99%</div>
           <div className="vtx-sc-trend vtx-trend-up" style={{color: '#10b981'}}>Excellent</div>
@@ -172,7 +172,7 @@ export default function Overview() {
             <h3>Threat Activity</h3>
             <button className="btn-ghost btn-xs">Last 7 Days <ChevronDown size={12}/></button>
           </div>
-          <LineChart data={[20,40,20,50,45,60,40,50,30,45,25]} color="#8b5cf6" labelX={['May 17', 'May 18', 'May 19', 'May 20', 'May 21', 'May 22', 'May 23', 'May 24']} yMax={80}/>
+          <LineChart data={[20,40,20,50,45,60,40,50,30,45,25]} color="var(--brand-primary)" labelX={['May 17', 'May 18', 'May 19', 'May 20', 'May 21', 'May 22', 'May 23', 'May 24']} yMax={80}/>
         </div>
 
         <div className="vtx-bento-card">
@@ -182,7 +182,7 @@ export default function Overview() {
           </div>
           <div className="vtx-list">
             <div className="vtx-li">
-              <div className="vtx-li-icon" style={{color: '#ef4444', background: 'rgba(239,68,68,0.1)'}}><Shield size={14}/></div>
+              <div className="vtx-li-icon" style={{color: 'var(--error)', background: 'var(--error-bg)'}}><Shield size={14}/></div>
               <div className="vtx-li-text"><h4>Raid attempt blocked</h4><p>15 suspicious joins</p></div>
               <div className="vtx-li-time">2m ago</div>
             </div>
@@ -197,12 +197,12 @@ export default function Overview() {
               <div className="vtx-li-time">12m ago</div>
             </div>
             <div className="vtx-li">
-              <div className="vtx-li-icon" style={{color: '#8b5cf6', background: 'rgba(139,92,246,0.1)'}}><AlertTriangle size={14}/></div>
+              <div className="vtx-li-icon" style={{color: 'var(--info)', background: 'var(--info-bg)'}}><AlertTriangle size={14}/></div>
               <div className="vtx-li-text"><h4>Warning issued</h4><p>Spamming in #general</p></div>
               <div className="vtx-li-time">18m ago</div>
             </div>
             <div className="vtx-li">
-              <div className="vtx-li-icon" style={{color: '#ef4444', background: 'rgba(239,68,68,0.1)'}}><Shield size={14}/></div>
+              <div className="vtx-li-icon" style={{color: 'var(--error)', background: 'var(--error-bg)'}}><Shield size={14}/></div>
               <div className="vtx-li-text"><h4>Link blocked</h4><p>Malicious link detected</p></div>
               <div className="vtx-li-time">25m ago</div>
             </div>
