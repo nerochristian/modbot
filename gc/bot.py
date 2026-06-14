@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 
 ROOT = Path(__file__).resolve().parent
 DB_PATH = ROOT / "groups.sqlite3"
-COMPONENTS_V2_PATH = ROOT / "components_v2 (universal).py"
+COMPONENTS_V2_PATH = ROOT / "components_v2.py"
 TRANSCRIPT_TEMPLATE_PATH = ROOT / "template.html" if (ROOT / "template.html").exists() else ROOT / "transcript_template.html"
 ASSETS_DIR = ROOT / "assets"
 LOGO_PATH = ASSETS_DIR / "logo.png"

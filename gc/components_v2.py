@@ -9,7 +9,7 @@ How to use:
       import importlib.util
       from pathlib import Path
 
-      universal_v2 = Path("components_v2 (universal).py")
+      universal_v2 = Path("components_v2.py")
       spec = importlib.util.spec_from_file_location("components_v2_universal", universal_v2)
       module = importlib.util.module_from_spec(spec)
       spec.loader.exec_module(module)
