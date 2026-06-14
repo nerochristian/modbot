@@ -6,6 +6,72 @@ import {
   Filter, Play, Pause, Download, Settings, Server, Key,
   Lock, ArrowRight, Activity, Clock, Terminal, Box, Globe, RotateCcw
 } from 'lucide-react'
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+} from 'recharts'
+
+// --- Custom Components ---
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-vortex-bg-tertiary border border-vortex-border rounded-lg px-3 py-2 shadow-card" style={{background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 12px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)'}}>
+        <p className="text-xs text-vortex-text-muted" style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px'}}>{label}</p>
+        <p className="text-sm font-semibold text-vortex-text-primary" style={{fontSize: '0.9rem', fontWeight: 700, color: 'var(--text)'}}>{payload[0].value}</p>
+      </div>
+    )
+  }
+  return null
+}
+
+const LineChart = ({ data, color, height = 120, labelX = [], yMax = 100 }) => {
+  const chartData = data.map((val, i) => ({
+    date: labelX[i] || `Point ${i}`,
+    value: val
+  }))
+
+  return (
+    <div className="vtx-chart-wrapper" style={{ height }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={chartData} margin={{ top: 10, right: 0, left: -25, bottom: 0 }}>
+          <defs>
+            <linearGradient id={`grad-${color.replace('#','')}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.25} />
+              <stop offset="100%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+            <filter id={`glow-${color.replace('#','')}`} x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="2" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
+          <XAxis 
+            dataKey="date" 
+            tick={{ fill: 'var(--text-muted)', fontSize: 11 }} 
+            axisLine={false} 
+            tickLine={false}
+            dy={10}
+          />
+          <YAxis 
+            tick={{ fill: 'var(--text-muted)', fontSize: 11 }} 
+            axisLine={false} 
+            tickLine={false} 
+            domain={[0, yMax]}
+          />
+          <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'var(--border)', strokeWidth: 1, strokeDasharray: '4 4' }} />
+          <Area 
+            type="monotone" 
+            dataKey="value" 
+            stroke={color} 
+            strokeWidth={2} 
+            fill={`url(#grad-${color.replace('#','')})`} 
+            filter={`url(#glow-${color.replace('#','')})`}
+            activeDot={{ r: 4, fill: color, stroke: 'var(--bg-card)', strokeWidth: 2 }}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
 
 // --- Reusable SVG Map ---
 const LiveThreatMap = () => (
@@ -256,10 +322,7 @@ export function AntiRaidDashboard() {
         <div className="vtx-bento-card col-span-2">
           <div className="vtx-bc-header"><h3>Join Velocity Matrix</h3></div>
           <div className="vtx-chart-wrapper" style={{height:'180px'}}>
-             <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="vtx-chart-svg">
-              <polyline points="0,90 20,85 40,95 60,80 80,20 100,10" fill="none" stroke="var(--error)" strokeWidth="2" />
-              <polyline points="0,95 20,95 40,95 60,95 80,95 100,95" fill="none" stroke="var(--success)" strokeWidth="1" strokeDasharray="2" />
-            </svg>
+             <LineChart data={[5, 8, 12, 10, 45, 90, 85]} color="var(--error)" height={180} labelX={['14:20', '14:21', '14:22', '14:23', '14:24', '14:25', '14:26']} />
           </div>
           <div style={{marginTop:'16px', display:'flex', justifyContent:'space-between'}}>
              <span>Current: <strong>45 joins/min</strong></span>

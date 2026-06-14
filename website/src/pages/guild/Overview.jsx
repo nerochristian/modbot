@@ -7,50 +7,70 @@ import {
 import { useGuild } from './GuildContext'
 import { api } from '../../api'
 
-// --- Custom SVG Components ---
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
+} from 'recharts'
+
+// --- Custom Components ---
+
+const CustomTooltip = ({ active, payload, label }) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-vortex-bg-tertiary border border-vortex-border rounded-lg px-3 py-2 shadow-card" style={{background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: '8px', padding: '8px 12px', boxShadow: '0 4px 12px rgba(0,0,0,0.5)'}}>
+        <p className="text-xs text-vortex-text-muted" style={{fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px'}}>{label}</p>
+        <p className="text-sm font-semibold text-vortex-text-primary" style={{fontSize: '0.9rem', fontWeight: 700, color: 'var(--text)'}}>{payload[0].value}</p>
+      </div>
+    )
+  }
+  return null
+}
 
 const LineChart = ({ data, color, height = 120, labelX = [], yMax = 100 }) => {
-  const points = data.map((val, i) => {
-    const x = (i / (data.length - 1)) * 100
-    const y = 100 - (val / yMax) * 100
-    return `${x},${y}`
-  }).join(' ')
+  const chartData = data.map((val, i) => ({
+    date: labelX[i] || `Point ${i}`,
+    value: val
+  }))
 
   return (
     <div className="vtx-chart-wrapper" style={{ height }}>
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="vtx-chart-svg">
-        <defs>
-          <linearGradient id={`grad-${color}`} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.3" />
-            <stop offset="100%" stopColor={color} stopOpacity="0" />
-          </linearGradient>
-          <filter id={`glow-${color}`} x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="2" result="blur" />
-            <feComposite in="SourceGraphic" in2="blur" operator="over" />
-          </filter>
-        </defs>
-        
-        {/* Grid lines */}
-        <line x1="0" y1="25" x2="100" y2="25" stroke="var(--border-subtle)" strokeWidth="0.5" />
-        <line x1="0" y1="50" x2="100" y2="50" stroke="var(--border-subtle)" strokeWidth="0.5" />
-        <line x1="0" y1="75" x2="100" y2="75" stroke="var(--border-subtle)" strokeWidth="0.5" />
-        
-        {/* Area fill */}
-        <polygon points={`0,100 ${points} 100,100`} fill={`url(#grad-${color})`} />
-        
-        {/* Line */}
-        <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" filter={`url(#glow-${color})`} />
-        
-        {/* Points */}
-        {data.map((val, i) => {
-          const x = (i / (data.length - 1)) * 100
-          const y = 100 - (val / yMax) * 100
-          return <circle key={i} cx={x} cy={y} r="1.5" fill={color} />
-        })}
-      </svg>
-      <div className="vtx-chart-labels-x">
-        {labelX.map((lbl, i) => <span key={i}>{lbl}</span>)}
-      </div>
+      <ResponsiveContainer width="100%" height="100%">
+        <AreaChart data={chartData} margin={{ top: 10, right: 0, left: -25, bottom: 0 }}>
+          <defs>
+            <linearGradient id={`grad-${color.replace('#','')}`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.25} />
+              <stop offset="100%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+            <filter id={`glow-${color.replace('#','')}`} x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="2" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" vertical={false} />
+          <XAxis 
+            dataKey="date" 
+            tick={{ fill: 'var(--text-muted)', fontSize: 11 }} 
+            axisLine={false} 
+            tickLine={false}
+            dy={10}
+          />
+          <YAxis 
+            tick={{ fill: 'var(--text-muted)', fontSize: 11 }} 
+            axisLine={false} 
+            tickLine={false} 
+            domain={[0, yMax]}
+          />
+          <Tooltip content={<CustomTooltip />} cursor={{ stroke: 'var(--border)', strokeWidth: 1, strokeDasharray: '4 4' }} />
+          <Area 
+            type="monotone" 
+            dataKey="value" 
+            stroke={color} 
+            strokeWidth={2} 
+            fill={`url(#grad-${color.replace('#','')})`} 
+            filter={`url(#glow-${color.replace('#','')})`}
+            activeDot={{ r: 4, fill: color, stroke: 'var(--bg-card)', strokeWidth: 2 }}
+          />
+        </AreaChart>
+      </ResponsiveContainer>
     </div>
   )
 }

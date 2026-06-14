@@ -11,6 +11,7 @@ import { api } from '../api'
 import { ThemeToggle } from '../theme'
 import VortexLogo from '../components/VortexLogo'
 import { GuildContext } from './guild/GuildContext'
+import { AreaChart, Area, ResponsiveContainer } from 'recharts'
 import Overview from './guild/Overview'
 import Modules from './guild/Modules'
 import Logging from './guild/Logging'
@@ -165,17 +166,22 @@ export default function GuildDashboard() {
                   <span>Uptime</span>
                   <span className="vtx-uptime-val">99.99%</span>
                 </div>
-                <div className="vtx-uptime-chart">
-                  <svg viewBox="0 0 100 30" preserveAspectRatio="none">
-                    <defs>
-                      <linearGradient id="upGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#10b981" stopOpacity="0.4"/>
-                        <stop offset="100%" stopColor="#10b981" stopOpacity="0"/>
-                      </linearGradient>
-                    </defs>
-                    <path d="M0,30 L0,20 L10,15 L20,22 L30,10 L40,18 L50,8 L60,12 L70,5 L80,15 L90,8 L100,2 L100,30 Z" fill="url(#upGrad)"/>
-                    <polyline points="0,20 10,15 20,22 30,10 40,18 50,8 60,12 70,5 80,15 90,8 100,2" fill="none" stroke="#10b981" strokeWidth="2"/>
-                  </svg>
+                <div className="vtx-uptime-chart" style={{height:'30px'}}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={[
+                      {val: 20}, {val: 15}, {val: 22}, {val: 10}, 
+                      {val: 18}, {val: 8}, {val: 12}, {val: 5}, 
+                      {val: 15}, {val: 8}, {val: 2}
+                    ]}>
+                      <defs>
+                        <linearGradient id="upGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#10b981" stopOpacity={0.4}/>
+                          <stop offset="100%" stopColor="#10b981" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <Area type="monotone" dataKey="val" stroke="#10b981" strokeWidth={2} fill="url(#upGrad)" isAnimationActive={false} />
+                    </AreaChart>
+                  </ResponsiveContainer>
                 </div>
               </div>
             </div>
