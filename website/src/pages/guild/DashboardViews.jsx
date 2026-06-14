@@ -9,7 +9,7 @@ import { useGuild } from './GuildContext'
 
 const statRows = {
   dashboard: [
-    ['Server Health', 'Excellent', '100/100', ShieldCheck, '#10b981'],
+    ['Server Health', 'Excellent', '100/100', ShieldCheck, 'var(--success)'],
     ['Members', '12,842', '+5.23%', Users, 'var(--brand-primary)'],
     ['Messages (24h)', '18,392', '+12.45%', MessageSquare, 'var(--info)'],
     ['Threats Blocked', '247', '+18.6%', Shield, 'var(--success)'],
@@ -62,13 +62,17 @@ function PageHeader({ title, subtitle, actions = true }) {
 }
 
 function StatStrip({ type = 'dashboard' }) {
+  const iconBg = (color) => {
+    if (color.startsWith('var(')) return `color-mix(in srgb, ${color} 14%, transparent)`
+    return `${color}18`
+  }
   return (
     <div className="vtx-stats-row vtx-stats-row-wide">
       {statRows[type].map(([label, value, trend, Icon, color]) => (
         <div className="vtx-stat-card" key={label}>
           <div className="vtx-sc-top">
             <span className="vtx-sc-lbl">{label}</span>
-            <div className="vtx-sc-icon" style={{ background: `${color}18`, color }}>
+            <div className="vtx-sc-icon" style={{ background: iconBg(color), color }}>
               <Icon size={18} />
             </div>
           </div>

@@ -265,7 +265,8 @@
   box-shadow: var(--shadow-panel);
 }
 .vtx-bento-card > * { position: relative; z-index: 1; }
-.col-span-2 { grid-column: span 2; }
+.col-span-2 { grid-column: span 2; min-height: 220px; }
+.col-span-2 .vtx-chart-wrapper { min-height: 140px; }
 .col-span-3 { grid-column: span 3; }
 .col-span-4 { grid-column: span 4; }
 

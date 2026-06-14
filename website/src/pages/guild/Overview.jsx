@@ -159,7 +159,7 @@ export default function Overview() {
             <div className="vtx-sc-icon" style={{background: 'var(--success-bg)', color: 'var(--success)'}}><ShieldCheck size={18}/></div>
           </div>
           <div className="vtx-sc-val">99.99%</div>
-          <div className="vtx-sc-trend vtx-trend-up" style={{color: '#10b981'}}>Excellent</div>
+          <div className="vtx-sc-trend vtx-trend-up" style={{color: 'var(--success)'}}>Excellent</div>
         </div>
       </div>
 
@@ -309,7 +309,7 @@ export default function Overview() {
               <div className="vtx-lb-av" style={{background:'#ea580c'}}></div>
               <div className="vtx-lb-info"><h4>Velocity</h4><p>Actions: 182</p></div>
               <div className="vtx-lb-score">
-                <div className="vtx-lb-bar"><div style={{width:'75%', background:'var(--brand-primary)'}}></div></div>
+                <div className="vtx-lb-bar"><div style={{width:'75%', background:'var(--brand-primary)', opacity: 0.7}}></div></div>
                 <span>1,842 <small>Points</small></span>
               </div>
             </div>
@@ -318,7 +318,7 @@ export default function Overview() {
               <div className="vtx-lb-av" style={{background:'#0369a1'}}></div>
               <div className="vtx-lb-info"><h4>Stellar</h4><p>Actions: 156</p></div>
               <div className="vtx-lb-score">
-                <div className="vtx-lb-bar"><div style={{width:'65%', background:'var(--brand-primary)'}}></div></div>
+                <div className="vtx-lb-bar"><div style={{width:'65%', background:'var(--brand-primary)', opacity: 0.45}}></div></div>
                 <span>1,563 <small>Points</small></span>
               </div>
             </div>
