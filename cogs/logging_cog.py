@@ -578,6 +578,20 @@ class Logging(commands.Cog):
                 message_id=message_id,
                 attachments=images,
             )
+
+    async def _process_message_attachments_on_send(self, message: discord.Message) -> None:
+        """Downloads and persists attachments when a message is sent so they are available on delete."""
+        try:
+            records = await self._attachment_records_with_data(message.attachments)
+            if records:
+                await self._persist_deleted_image_attachments(
+                    message.guild.id,
+                    message.channel.id,
+                    message.id,
+                    records,
+                )
+        except Exception:
+            pass
         except Exception:
             logger.exception("Failed to persist deleted-message image attachments")
 
@@ -1355,6 +1369,9 @@ class Logging(commands.Cog):
             self._cache_message_snapshot(message)
         except Exception:
             pass
+            
+        if message.attachments:
+            self.bot.loop.create_task(self._process_message_attachments_on_send(message))
     
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message):
@@ -1399,13 +1416,22 @@ class Logging(commands.Cog):
         if delete_reason:
             details_lines.append(f"**Reason:** {self._shorten(delete_reason, 250)}")
 
-        attachment_records = await self._attachment_records_with_data(message.attachments or [])
-        await self._persist_deleted_image_attachments(
-            message.guild.id,
-            message.channel.id,
-            message.id,
-            attachment_records,
-        )
+        db = getattr(self.bot, "db", None)
+        attachment_records = []
+        if db:
+            attachment_records = await db.get_deleted_message_attachments(
+                guild_id=message.guild.id,
+                message_id=message.id,
+            )
+            
+        if not attachment_records:
+            attachment_records = await self._attachment_records_with_data(message.attachments or [])
+            await self._persist_deleted_image_attachments(
+                message.guild.id,
+                message.channel.id,
+                message.id,
+                attachment_records,
+            )
         image_attachments = self._image_attachments(attachment_records)
         content_value = (message.content or "").strip()
         message_text = content_value or (None if attachment_records else "*No content*")
@@ -1534,14 +1560,18 @@ class Logging(commands.Cog):
                 message_text="*Content unavailable (message was not cached by the bot).*",
             )
 
-        image_attachments = self._image_attachments(list(snapshot.get("attachments") or [])) if snapshot else []
-        if snapshot:
-            await self._persist_deleted_image_attachments(
-                guild.id,
-                channel_id,
-                message_id,
-                list(snapshot.get("attachments") or []),
+        db = getattr(self.bot, "db", None)
+        attachment_records = []
+        if db:
+            attachment_records = await db.get_deleted_message_attachments(
+                guild_id=guild.id,
+                message_id=message_id,
             )
+            
+        image_attachments = self._image_attachments(attachment_records)
+        if not attachment_records and snapshot:
+            # Fallback to metadata from snapshot if no DB records exist
+            image_attachments = self._image_attachments(list(snapshot.get("attachments") or []))
         view = DeletedMessageImageView(self.bot, image_attachments) if image_attachments else None
         if view is not None:
             embed.timestamp = None
