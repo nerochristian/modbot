@@ -423,10 +423,15 @@ class ChatCommands:
 
         mod_level = get_sync_level(author)
         
-        search_limit = amount if (user is None and check is None) else max(5000, amount * 5)
+        command_msg_id = getattr(source, "message", None)
+        command_msg_id = command_msg_id.id if command_msg_id else None
+
+        search_limit = amount + 5 if (user is None and check is None) else max(5000, amount * 5)
         match_count = [0]
         
         def combined_check(m: discord.Message):
+            if m.id == command_msg_id:
+                return True
             if match_count[0] >= amount:
                 return False
             if user and m.author.id != user.id:
@@ -437,14 +442,17 @@ class ChatCommands:
             return True
 
         deleted = await channel.purge(limit=search_limit, check=combined_check)
-        count = len(deleted)
+        count = sum(1 for m in deleted if m.id != command_msg_id)
+        
+        # Don't show command msg in preview
+        deleted_clean = [m for m in deleted if m.id != command_msg_id]
 
         if count > 0 and logging_cog and isinstance(channel, discord.TextChannel):
             try:
-                authors = {m.author for m in deleted if not m.author.bot}
-                bot_count = sum(1 for m in deleted if m.author.bot)
+                authors = {m.author for m in deleted_clean if not m.author.bot}
+                bot_count = sum(1 for m in deleted_clean if m.author.bot)
                 preview_lines = []
-                for msg in reversed(deleted):
+                for msg in reversed(deleted_clean):
                     raw = (msg.content or "").strip()
                     if not raw:
                         if msg.attachments:
@@ -469,7 +477,7 @@ class ChatCommands:
                         source.guild,
                         channel,
                         [],
-                        purged_messages=deleted,
+                        purged_messages=deleted_clean,
                     )
                     transcript_bytes = transcript_file.getvalue()
                     transcript_name = f"purge-transcript-{source.guild.id}-{int(datetime.now(timezone.utc).timestamp())}.html"
