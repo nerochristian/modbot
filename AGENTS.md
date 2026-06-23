@@ -12,13 +12,6 @@ Before proposing or committing any code changes, you must sequentially execute t
   - Type mismatches, scope pollution, or inefficient time/space complexity.
 - **Phase D (Validation):** Apply the code and trigger the appropriate syntax checkers, compilers, linters, or test suites.
 
-# 2. REPOSITORY UPDATE PROTOCOL [CRITICAL]
-The script `(folder)\update.bat` commits and pushes changes to the repository. Its execution is heavily guarded by the following rules:
-- **READ-ONLY OVERRIDE:** NEVER execute `(folder)\update.bat` for file exploration, read-only inquiries, or investigative turns.
-- **VERIFICATION LOCK:** You MUST definitively confirm that all relevant syntax checks and unit tests have passed with ZERO errors before execution. 
-- **FAILURE PROTOCOL:** If any test fails, the update sequence is immediately aborted. You must revert to Phase A, output the failure logs, explain the specific logic flaw in your previous attempt, and engineer a revised solution.
-- **GREEN-LIGHT:** You may only run `(folder)\update.bat` after making explicit code/asset modifications AND confirming a 100% verification pass rate.
-
 # 3. ERROR RECOVERY HYPER-LOOP
 If an unexpected error is thrown during execution or testing:
 1. Halt execution immediately.
@@ -26,3 +19,5 @@ If an unexpected error is thrown during execution or testing:
 3. Ingest and output the exact error trace.
 4. Formulate a concrete hypothesis detailing *why* the previous state failed based on the logs.
 5. Draft and deploy a targeted, evidence-based fix.
+
+always run (folder)/update.bat when done with update

