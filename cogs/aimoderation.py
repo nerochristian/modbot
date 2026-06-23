@@ -3508,7 +3508,7 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
         if logging_cog:
             logging_cog.suppress_message_delete_log(target_channel.id)
             logging_cog.suppress_bulk_delete_log(target_channel.id)
-        purge_limit = remaining + 1 if target_user_id is None and lookback_seconds is None else 500
+        purge_limit = remaining + 1 if target_user_id is None and lookback_seconds is None else max(5000, remaining * 5)
         return await target_channel.purge(limit=purge_limit, check=should_delete)
 
     if all_channels_requested:

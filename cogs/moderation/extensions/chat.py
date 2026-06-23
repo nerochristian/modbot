@@ -423,14 +423,20 @@ class ChatCommands:
 
         mod_level = get_sync_level(author)
         
+        search_limit = amount if (user is None and check is None) else max(5000, amount * 5)
+        match_count = [0]
+        
         def combined_check(m: discord.Message):
+            if match_count[0] >= amount:
+                return False
             if user and m.author.id != user.id:
                 return False
             if check and not check(m):
                 return False
+            match_count[0] += 1
             return True
 
-        deleted = await channel.purge(limit=amount, check=combined_check)
+        deleted = await channel.purge(limit=search_limit, check=combined_check)
         count = len(deleted)
 
         if count > 0 and logging_cog and isinstance(channel, discord.TextChannel):
@@ -617,59 +623,59 @@ class ChatCommands:
     @commands.command(name="purge", aliases=["clear"])
     @is_mod()
     async def purge(self, ctx: commands.Context, amount: int, user: Optional[discord.Member] = None):
-        if amount < 1 or amount > 100:
-             return await ctx.send("Amount must be between 1 and 100.")
+        if amount < 1 or amount > 1000:
+             return await ctx.send("Amount must be between 1 and 1000.")
         await self._purge_logic(ctx, amount, user)
 
     # Slash command - registered dynamically in __init__.py
     async def purge_slash(self, interaction: discord.Interaction, amount: int, user: Optional[discord.Member] = None):
-        if amount < 1 or amount > 100:
-             return await interaction.response.send_message("Amount must be between 1 and 100.", ephemeral=True)
+        if amount < 1 or amount > 1000:
+             return await interaction.response.send_message("Amount must be between 1 and 1000.", ephemeral=True)
         await self._purge_logic(interaction, amount, user)
 
     @commands.command(name="purgebots")
     @is_mod()
-    async def purgebots(self, ctx: commands.Context, amount: int = 100):
+    async def purgebots(self, ctx: commands.Context, amount: int = 1000):
         await self._purge_logic(ctx, amount, check=lambda m: m.author.bot)
 
     # Slash command - registered dynamically in __init__.py
-    async def purgebots_slash(self, interaction: discord.Interaction, amount: int = 100):
+    async def purgebots_slash(self, interaction: discord.Interaction, amount: int = 1000):
         await self._purge_logic(interaction, amount, check=lambda m: m.author.bot)
 
     @commands.command(name="purgecontains")
     @is_mod()
-    async def purgecontains(self, ctx: commands.Context, text: str, amount: int = 100):
+    async def purgecontains(self, ctx: commands.Context, text: str, amount: int = 1000):
         await self._purge_logic(ctx, amount, check=lambda m: text.lower() in m.content.lower())
 
     # Slash command - registered dynamically in __init__.py
-    async def purgecontains_slash(self, interaction: discord.Interaction, text: str, amount: int = 100):
+    async def purgecontains_slash(self, interaction: discord.Interaction, text: str, amount: int = 1000):
         await self._purge_logic(interaction, amount, check=lambda m: text.lower() in m.content.lower())
 
     @commands.command(name="purgeembeds")
     @is_mod()
-    async def purgeembeds(self, ctx: commands.Context, amount: int = 100):
+    async def purgeembeds(self, ctx: commands.Context, amount: int = 1000):
         await self._purge_logic(ctx, amount, check=lambda m: len(m.embeds) > 0)
 
     # Slash command - registered dynamically in __init__.py
-    async def purgeembeds_slash(self, interaction: discord.Interaction, amount: int = 100):
+    async def purgeembeds_slash(self, interaction: discord.Interaction, amount: int = 1000):
         await self._purge_logic(interaction, amount, check=lambda m: len(m.embeds) > 0)
 
     @commands.command(name="purgeimages")
     @is_mod()
-    async def purgeimages(self, ctx: commands.Context, amount: int = 100):
+    async def purgeimages(self, ctx: commands.Context, amount: int = 1000):
         await self._purge_logic(ctx, amount, check=lambda m: len(m.attachments) > 0)
 
     # Slash command - registered dynamically in __init__.py
-    async def purgeimages_slash(self, interaction: discord.Interaction, amount: int = 100):
+    async def purgeimages_slash(self, interaction: discord.Interaction, amount: int = 1000):
         await self._purge_logic(interaction, amount, check=lambda m: len(m.attachments) > 0)
 
     @commands.command(name="purgelinks")
     @is_mod()
-    async def purgelinks(self, ctx: commands.Context, amount: int = 100):
+    async def purgelinks(self, ctx: commands.Context, amount: int = 1000):
         url_pattern = re.compile(r'https?://')
         await self._purge_logic(ctx, amount, check=lambda m: url_pattern.search(m.content))
 
     # Slash command - registered dynamically in __init__.py
-    async def purgelinks_slash(self, interaction: discord.Interaction, amount: int = 100):
+    async def purgelinks_slash(self, interaction: discord.Interaction, amount: int = 1000):
         url_pattern = re.compile(r'https?://')
         await self._purge_logic(interaction, amount, check=lambda m: url_pattern.search(m.content))
