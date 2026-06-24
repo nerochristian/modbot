@@ -1384,6 +1384,9 @@ class Logging(commands.Cog):
         if not message.guild:
             return
 
+        if message.author.id == self.bot.user.id:
+            return
+
         self._pop_message_snapshot(
             message.id,
             guild_id=message.guild.id,
@@ -1507,6 +1510,8 @@ class Logging(commands.Cog):
 
         if snapshot:
             author_id = snapshot.get("author_id")
+            if author_id == self.bot.user.id:
+                return
             author_display = snapshot.get("author_display") or snapshot.get("author_name") or "unknown"
             author_ref = f"<@{author_id}> (`@{author_display}`)" if author_id else f"`@{author_display}`"
             created_ts = snapshot.get("created_ts")
