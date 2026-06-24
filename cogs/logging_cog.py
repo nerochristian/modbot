@@ -578,6 +578,8 @@ class Logging(commands.Cog):
                 message_id=message_id,
                 attachments=images,
             )
+        except Exception:
+            pass
 
     async def _process_message_attachments_on_send(self, message: discord.Message) -> None:
         """Downloads and persists attachments when a message is sent so they are available on delete."""
@@ -614,13 +616,15 @@ class Logging(commands.Cog):
     def _image_attachments(self, attachments: list[object]) -> list[dict[str, str]]:
         images: list[dict[str, str]] = []
         for attachment in attachments:
-            if isinstance(attachment, dict) and self._is_image_attachment(attachment) and attachment.get("url"):
-                images.append(
-                    {
-                        "filename": str(attachment.get("filename") or "image"),
-                        "url": str(attachment.get("url")),
-                    }
-                )
+            if isinstance(attachment, dict) and self._is_image_attachment(attachment):
+                url = attachment.get("url") or attachment.get("original_url")
+                if url:
+                    images.append(
+                        {
+                            "filename": str(attachment.get("filename") or "image"),
+                            "url": str(url),
+                        }
+                    )
         return images
 
     def _format_attachment_names(self, attachments: list[object], attachment_count: int) -> str:
