@@ -972,35 +972,30 @@ class AutoModV3(commands.Cog):
     @is_admin()
     async def automod_guide(self, interaction: discord.Interaction):
         embed = discord.Embed(
-            title="AutoMod Commands",
-            description="Start with `/automod setup`, then tune only the parts your server needs.",
+            title="AutoMod Commands & Setup",
+            description="We highly recommend using the **`/automod panel`** for the easiest, interactive setup process.",
             color=Config.COLOR_INFO,
             timestamp=datetime.now(timezone.utc),
         )
         embed.add_field(
-            name="Fast Setup",
+            name="🚀 The Control Panel",
+            value="`/automod panel` - Opens an interactive dashboard with buttons to toggle modules, set thresholds, assign punishments, and block words/links.",
+            inline=False,
+        )
+        embed.add_field(
+            name="⚡ Fast Setup Setup",
             value=(
-                "`/automod setup preset:standard log_channel:#mod-logs`\n"
-                "`/automod on`\n"
-                "`/automod scan content:free nitro click here`"
+                "`/automod quicksetup preset:standard log_channel:#mod-logs`\n"
+                "`/automod enable` - Turn it on!\n"
+                "`/automod scan content:free nitro click here` - Test messages against your filters."
             ),
             inline=False,
         )
         embed.add_field(
-            name="Presets",
+            name="🔧 Individual Commands",
             value=(
-                "`relaxed` - lighter checks, warns by default\n"
-                "`standard` - recommended everyday setup\n"
-                "`strict` - lower thresholds, timeout by default\n"
-                "`raid` - temporary high-pressure mode"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="Tune Later",
-            value=(
-                "`/automod module`, `/automod limits`, `/automod action`, "
-                "`/automod bypass`, `/automod quarantine`, `/automod words`, `/automod domains`"
+                "`/automod toggle`, `/automod thresholds`, `/automod punishment`, "
+                "`/automod bypass`, `/automod quarantinerole`, `/automod blockedwords`, `/automod allowedlinks`"
             ),
             inline=False,
         )
