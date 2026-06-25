@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://moderations.app/sitemap.xml

@@ -226,13 +226,7 @@ except ImportError as e:
     logger.critical(f"[FATAL] Failed to import required modules: {e}")
     sys.exit(1)
 
-# Web dashboard (optional)
-try:
-    from web.app import start_dashboard
-
-    _DASHBOARD_AVAILABLE = True
-except ImportError:
-    _DASHBOARD_AVAILABLE = False
+_DASHBOARD_AVAILABLE = False
 
 # Components v2 patching removed — all channels use classic Discord embeds.
 
@@ -2270,15 +2264,6 @@ class ModBot(commands.Bot):
 async def _run_modbot(bot: ModBot, token: str) -> int:
     try:
         async with bot:
-            # Start web dashboard FIRST so Render detects the open port
-            # before the bot connects to Discord (which can take time).
-            if _DASHBOARD_AVAILABLE:
-                try:
-                    bot._dashboard_runner = await start_dashboard(bot)
-                    logger.info("[OK] Dashboard started (pre-connect)")
-                except Exception as e:
-                    logger.warning(f"[WARN] Dashboard failed to start: {e}")
-
             # On Render, wait a few seconds before connecting to Discord.
             # This gives the previous deployment's process time to fully
             # die, avoiding IDENTIFY rate limits from overlapping sessions.
