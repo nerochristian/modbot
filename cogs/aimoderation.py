@@ -5817,7 +5817,8 @@ class AIModeration(commands.Cog):
             "- `/aimod toggle` - Enable or disable AI moderation\n"
             "- `/aimod talking` - Enable or disable casual AI replies"
         )
-        embed = discord.Embed(title="Bot Apflo's Helper", description=desc, color=discord.Color.blurple())
+        title_text = f"You're always on my mind. {guild.name}" if guild else "You're always on my mind."
+        embed = discord.Embed(title=title_text, description=desc, color=discord.Color.blurple())
         embed.set_footer(text="Powered by DeepSeek AI - Answers anything, moderates when needed")
         return embed
 
