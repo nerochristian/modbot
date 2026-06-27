@@ -1258,8 +1258,6 @@ class GeminiClient:
         if extra_headers:
             headers.update(extra_headers)
 
-        print(f"DEBUG PAYLOAD: {payload}")
-
         session: Optional[aiohttp.ClientSession] = getattr(self.bot, "session", None)
         owned_session = False
         if not session or getattr(session, "closed", False):

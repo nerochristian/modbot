@@ -26,6 +26,7 @@ from cogs.automod_engine import (
 )
 from config import Config
 from utils.checks import get_owner_ids, is_admin, is_mod
+from utils.components_v2 import layout_view_from_embeds
 from utils.embeds import ModEmbed
 from utils.logging import send_log_embed
 
@@ -415,11 +416,12 @@ class AutoModPanel(discord.ui.View):
             await interaction.response.send_message("The panel could not apply that change. Check the bot logs.", ephemeral=True)
 
     async def on_timeout(self) -> None:
+        self.rebuild()
         for item in self.children:
             item.disabled = True
         if self.message is not None:
             try:
-                await self.message.edit(view=self)
+                await self.message.edit(view=await self.build_layout())
             except (discord.NotFound, discord.HTTPException):
                 pass
 
@@ -438,7 +440,7 @@ class AutoModPanel(discord.ui.View):
         self.notice = notice
         self.rebuild()
         if self.message is not None:
-            await self.message.edit(embed=self.build_embed(), view=self)
+            await self.message.edit(view=await self.build_layout())
 
     async def refresh(self, interaction: discord.Interaction, notice: str = "Settings refreshed") -> None:
         await interaction.response.defer()
@@ -446,7 +448,11 @@ class AutoModPanel(discord.ui.View):
         self.notice = notice
         self.rebuild()
         if self.message is not None:
-            await self.message.edit(embed=self.build_embed(), view=self)
+            await self.message.edit(view=await self.build_layout())
+
+    async def build_layout(self) -> discord.ui.LayoutView:
+        """Build a native V2 payload so the process-wide shim cannot flatten rows."""
+        return await layout_view_from_embeds(embed=self.build_embed(), existing_view=self)
 
     def build_embed(self) -> discord.Embed:
         page_label = next(label for value, label, _ in PANEL_PAGES if value == self.page)
@@ -739,7 +745,7 @@ class AutoModPanel(discord.ui.View):
         self.page = str(interaction.data["values"][0])
         self.notice = ""
         self.rebuild()
-        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+        await interaction.response.edit_message(view=await self.build_layout())
 
     async def _toggle_master(self, interaction: discord.Interaction) -> None:
         enabled = not bool(self.settings.get("automod_enabled", True))
@@ -753,7 +759,8 @@ class AutoModPanel(discord.ui.View):
         embed = self.build_embed()
         embed.description = "This control panel was closed. Run `/automod panel` to open a new one."
         embed.set_footer(text="Panel closed")
-        await interaction.response.edit_message(embed=embed, view=None)
+        closed = await layout_view_from_embeds(embed=embed)
+        await interaction.response.edit_message(view=closed)
 
     async def _apply_preset(self, interaction: discord.Interaction) -> None:
         preset = str(interaction.data["values"][0])
@@ -1310,7 +1317,7 @@ class AutoMod(commands.Cog):
     async def automod_panel(self, interaction: discord.Interaction) -> None:
         settings = await self._get_settings(interaction.guild_id, fresh=True)
         panel = AutoModPanel(self, interaction.guild, interaction.user.id, settings)
-        await interaction.response.send_message(embed=panel.build_embed(), view=panel, ephemeral=True)
+        await interaction.response.send_message(view=await panel.build_layout(), ephemeral=True)
         panel.message = await interaction.original_response()
 
     @automod.command(name="status", description="Show the active rules, actions and routing")
