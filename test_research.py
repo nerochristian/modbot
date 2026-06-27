@@ -1,5 +1,7 @@
 import asyncio
 import sys
+from dotenv import load_dotenv
+load_dotenv("/root/modbot/.env")
 
 sys.path.append("/root/modbot")
 
