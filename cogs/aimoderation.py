@@ -1322,8 +1322,12 @@ class GeminiClient:
 
     async def _generate_search_queries(self, user_content: str, num_queries: int = 5) -> List[str]:
         """Use deepseek to decompose the user's prompt into optimal search queries."""
+        import datetime
+        current_date = datetime.datetime.now().strftime("%B %Y")
         sys_prompt = (
             "You are a search query generator. The user wants to research a topic. "
+            f"The current date is {current_date}. If the user asks for 'latest', 'new', or current information, "
+            f"you MUST append '{current_date}' or the current year to the search queries to ensure fresh results.\n"
             f"Break their request down into exactly {num_queries} highly specific, distinct search engine queries. "
             "Output ONLY a raw JSON array of strings. Do not use markdown code blocks. "
             "Example: [\"query 1\", \"query 2\"]"
