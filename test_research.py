@@ -1,12 +1,9 @@
 import asyncio
-import os
-import aiohttp
 import sys
 
-# Add /root/modbot to path
 sys.path.append("/root/modbot")
 
-from cogs.aimoderation import GeminiClient, AIConfig
+from cogs.aimoderation import GeminiClient, AIConfig, ConversationSignals, ConversationMode
 
 async def main():
     class DummyUser:
@@ -25,13 +22,20 @@ async def main():
 
     class DummyBot:
         user = DummyUser()
-        session = aiohttp.ClientSession()
+        session = None
+
+    class MockCog:
+        pass
 
     config = AIConfig()
     client = GeminiClient(DummyBot(), config)
     
-    signals = client._build_conversation_signals("research the latest zenless zone zero upd")
-    print(f"Signals mode: {signals.mode}")
+    signals = ConversationSignals(
+        mode=ConversationMode.RESEARCH,
+        sentiment="neutral",
+        intents=["Research this."],
+        language="en"
+    )
     
     try:
         res = await client.converse(
@@ -49,6 +53,7 @@ async def main():
     except Exception as e:
         print("Crash:", e)
 
-    await DummyBot.session.close()
+    if DummyBot.session:
+        await DummyBot.session.close()
 
 asyncio.run(main())
