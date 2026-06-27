@@ -133,11 +133,27 @@ def _looks_like_image_question_text(content: str) -> bool:
 
 
 def _default_ai_provider() -> str:
-    return "digitalocean"
+    return os.getenv(
+        "AI_PROVIDER",
+        "galaxy"
+        if os.getenv("GALAXY_API_KEY")
+        else ("tokenmix" if os.getenv("TOKENMIX_API_KEY") else ("openrouter" if os.getenv("OPENROUTER_API_KEY") else "gemini")),
+    ).strip().lower()
 
 
 def _default_ai_model() -> str:
-    return os.getenv("DO_AUTOMOD_MODEL", "nemotron-3-nano-omni")
+    explicit = (os.getenv("AI_MODEL") or "").strip()
+    if explicit:
+        return explicit
+
+    provider = _default_ai_provider()
+    if provider == "galaxy":
+        return (os.getenv("GALAXY_MODEL") or "qwen-3-32b-instruct").strip()
+    if provider == "tokenmix":
+        return (os.getenv("TOKENMIX_MODEL") or "qwen/qwen-3-32b-instruct").strip()
+    if provider == "openrouter":
+        return (os.getenv("OPENROUTER_MODEL") or "qwen/qwen-3-32b-instruct").strip()
+    return (os.getenv("GEMINI_MODEL") or "gemini-2.5-flash").strip()
 
 
 @dataclass(frozen=True)
@@ -1113,7 +1129,7 @@ class GeminiClient:
     def __init__(self, bot: commands.Bot, config: AIConfig) -> None:
         self.bot = bot
         self.config = config
-        self.provider = "digitalocean"
+        self.provider = os.getenv("AI_PROVIDER", "digitalocean").lower()
         self._rate_limiter = RateLimiter(
             max_calls=config.rate_limit_calls,
             window_seconds=config.rate_limit_window,
@@ -1124,6 +1140,7 @@ class GeminiClient:
         self._brave_search_api_key = os.getenv("BRAVE_SEARCH_API_KEY")
         self._tavily_api_key = os.getenv("TAVILY_API_KEY")
         self._serpapi_api_key = os.getenv("SERPAPI_API_KEY")
+        self._galaxy_api_key = os.getenv("GALAXY_API_KEY")
 
     @property
     def is_available(self) -> bool:
@@ -1171,7 +1188,7 @@ class GeminiClient:
         json_mode: bool = False,
         allow_multimodal: bool = False,
     ) -> Optional[str]:
-        target_model = model or os.getenv("DO_AUTOMOD_MODEL", "nemotron-3-nano-omni")
+        target_model = model or os.getenv("DO_AUTOMOD_MODEL", "qwen-3-32b")
         return await self._call_openai_compatible(
             messages,
             temperature=temperature,
@@ -1185,6 +1202,13 @@ class GeminiClient:
             normalize_model=False,
             allow_multimodal=allow_multimodal,
         )
+
+    def _openrouter_headers(self) -> Dict[str, str]:
+        headers = {"X-Title": "ModBot AI Moderation"}
+        referer = os.getenv("OPENROUTER_SITE_URL", "").strip()
+        if referer:
+            headers["HTTP-Referer"] = referer
+        return headers
 
     async def _call_openai_compatible(
         self,
@@ -1304,6 +1328,78 @@ class GeminiClient:
 
         return str(content or "").strip()
 
+    async def _call_galaxy(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        temperature: float,
+        max_tokens: int,
+        model: Optional[str] = None,
+        json_mode: bool = False,
+        allow_multimodal: bool = False,
+    ) -> Optional[str]:
+        selected_model = (model or self.config.model or "qwen-3-32b-instruct").strip()
+        if selected_model == "qwen-3-32b":
+            selected_model = "qwen-3-32b-instruct"
+        galaxy_messages = messages if allow_multimodal else self._normalize_galaxy_messages(messages)
+        if not galaxy_messages:
+            raise RuntimeError("Galaxy request has no text messages.")
+        
+        if selected_model == "expert":
+            base = f"{self._galaxy_base_url}/v1/completions/expert"
+            url = f"{base}/json"
+        else:
+            url = f"{self._galaxy_base_url}/v1/chat/completions"
+
+        payload: Dict[str, Any] = {
+            "model": selected_model,
+            "messages": galaxy_messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": False,
+        }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
+
+        headers = {
+            "Authorization": f"Bearer {self._galaxy_api_key}",
+            "Content-Type": "application/json",
+        }
+
+        session: Optional[aiohttp.ClientSession] = getattr(self.bot, "session", None)
+        owned_session = False
+        if not session or getattr(session, "closed", False):
+            session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60))
+            owned_session = True
+
+        try:
+            async with session.post(url, headers=headers, json=payload) as resp:
+                data = await resp.json(content_type=None)
+                if resp.status >= 400:
+                    detail = data.get("error", data) if isinstance(data, dict) else data
+                    detail_text = str(detail)
+                    if resp.status in {401, 403}:
+                        self._set_block(seconds=900, reason="Galaxy authentication or access failed.")
+                    elif resp.status == 429:
+                        self._set_block(seconds=60, reason="Galaxy rate limit / quota reached.")
+                    raise RuntimeError(f"Galaxy HTTP {resp.status}: {detail_text[:500]}")
+        finally:
+            if owned_session:
+                await session.close()
+
+        if isinstance(data, dict):
+            if "content" in data:
+                return str(data.get("content") or "") or None
+            choices = data.get("choices") or []
+            if choices:
+                message = (choices[0] or {}).get("message") or {}
+                content = message.get("content")
+                if content:
+                    return str(content)
+            if "text" in data:
+                return str(data.get("text") or "") or None
+        return None
+
     # ------------------------------------------------------------------
     # Pre-call checks (rate limit + service block)
     # ------------------------------------------------------------------
@@ -1317,6 +1413,73 @@ class GeminiClient:
         if is_limited:
             return Messages.format(Messages.AI_RATE_LIMIT, seconds=int(max(1, retry_after)))
         return None
+
+    async def _call_galaxy_cline(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        temperature: float,
+        max_tokens: int,
+        model: str,
+    ) -> Optional[str]:
+        payload: Dict[str, Any] = {
+            "model": model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,
+        }
+        headers = {
+            "Authorization": f"Bearer {self._galaxy_api_key}",
+            "Content-Type": "application/json",
+        }
+
+        session: Optional[aiohttp.ClientSession] = getattr(self.bot, "session", None)
+        owned_session = False
+        if not session or getattr(session, "closed", False):
+            session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60))
+            owned_session = True
+
+        chunks: List[str] = []
+        try:
+            async with session.post(
+                f"{self._galaxy_base_url}/v1/chat/completions/cline",
+                headers=headers,
+                json=payload,
+            ) as resp:
+                if resp.status >= 400:
+                    detail_text = await resp.text()
+                    if resp.status in {401, 403}:
+                        self._set_block(seconds=900, reason="Galaxy authentication or access failed.")
+                    elif resp.status == 429:
+                        self._set_block(seconds=60, reason="Galaxy rate limit / quota reached.")
+                    raise RuntimeError(f"Galaxy Cline HTTP {resp.status}: {detail_text[:500]}")
+
+                async for raw_line in resp.content:
+                    line = raw_line.decode("utf-8", errors="ignore").strip()
+                    if not line or line.startswith(":"):
+                        continue
+                    if not line.startswith("data:"):
+                        continue
+                    data_text = line.removeprefix("data:").strip()
+                    if data_text == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(data_text)
+                    except json.JSONDecodeError:
+                        continue
+                    choices = data.get("choices") or []
+                    if not choices:
+                        continue
+                    delta = (choices[0] or {}).get("delta") or {}
+                    content = delta.get("content")
+                    if content:
+                        chunks.append(str(content))
+        finally:
+            if owned_session:
+                await session.close()
+
+        return "".join(chunks).strip() or None
 
     async def _web_search(self, query: str, *, max_results: int = 5) -> List[WebSearchResult]:
         if self._brave_search_api_key:
@@ -1582,7 +1745,9 @@ class GeminiClient:
         web_context = ""
         uses_native_search = False
         if signals.mode == ConversationMode.RESEARCH:
-            if not self.has_web_search:
+            if self.provider == "galaxy" and self._galaxy_api_key:
+                uses_native_search = True
+            elif not self.has_web_search:
                 return (
                     "I can't look that up from here because web search is not configured. "
                     "Add `BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`, or `SERPAPI_API_KEY` to enable live research."
@@ -1626,6 +1791,19 @@ class GeminiClient:
             else:
                 image_messages = image_context
                 image_summary = ""
+        elif image_context and self.provider == "galaxy" and not uses_native_search:
+            image_summary = await self._summarize_images_with_galaxy_v4(user_content, image_context) or ""
+            image_messages = []
+            if not image_summary:
+                if is_image_question:
+                    return (
+                        "I found the image, but vision is not available on this deployment right now. "
+                        "Set `GEMINI_API_KEY` for the vision pass, or use a Galaxy endpoint that accepts multimodal image payloads."
+                    )
+                image_summary = (
+                    "Image analysis failed before visual details were returned. "
+                    "Do not guess what is in the image; tell the user the image could not be read right now."
+                )
         messages = self._build_conversation_messages(
             plan,
             recent_messages,
@@ -1636,12 +1814,12 @@ class GeminiClient:
 
         try:
             await self._rate_limiter.record_call(author.id)
-            call_model = model
+            call_model = "expert" if uses_native_search else model
             if not uses_native_search and self.provider == "digitalocean":
                 if signals.mode == ConversationMode.RESEARCH:
                     call_model = os.getenv("DO_RESEARCH_MODEL", "deepseek-4-flash")
                 else:
-                    call_model = os.getenv("DO_AUTOMOD_MODEL", "nemotron-3-nano-omni")
+                    call_model = os.getenv("DO_AUTOMOD_MODEL", "qwen-3-32b")
                     
             allow_multimodal = (call_model != os.getenv("DO_RESEARCH_MODEL", "deepseek-4-flash"))
             
