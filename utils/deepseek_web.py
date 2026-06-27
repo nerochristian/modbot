@@ -105,7 +105,7 @@ class DeepSeekWebClient:
                 request = (
                     "Research the following request using web search. Answer strictly in English. "
                     "Format your response beautifully using Discord markdown (e.g., # for headers, ** for bold, * for italics). "
-                    "CRITICAL: You MUST wrap your ENTIRE final response inside a single ```markdown code block. "
+                    "CRITICAL: You MUST wrap your ENTIRE final response between the exact tags <BOT_RESPONSE> and </BOT_RESPONSE>. Do NOT use a markdown code block. "
                     "Return only the final answer, include source URLs, distinguish confirmed facts from uncertainty, "
                     "and do not expose hidden reasoning.\n\n"
                     f"REQUEST:\n{clean_prompt}"
@@ -137,18 +137,14 @@ class DeepSeekWebClient:
                 if not final:
                     raise DeepSeekWebError("DeepSeek research timed out before a final answer was returned.")
 
-                match = re.search(r'```(?:markdown)?\s*(.*?)\s*```', final, re.DOTALL)
+                match = re.search(r'<BOT_RESPONSE>\s*(.*?)\s*</BOT_RESPONSE>', final, re.DOTALL)
                 if match:
                     final = match.group(1).strip()
                 else:
                     final = final.strip()
-                    if final.startswith("```markdown"):
-                        final = final[11:]
-                    elif final.startswith("```"):
-                        final = final[3:]
-                    if final.endswith("```"):
-                        final = final[:-3]
-                    final = final.strip()
+                    # Fallback cleanup just in case DeepSeek didn't use the tag
+                    if final.startswith("markdown\nCopy\nDownload\n"):
+                        final = final[24:].strip()
                 
                 # Strip out DeepSeek's native Sources block if it exists
                 final = re.sub(r'\n\nSources:\s*(?:[A-Za-z0-9\s]+\[\d+\])+', '', final, flags=re.IGNORECASE).strip()
