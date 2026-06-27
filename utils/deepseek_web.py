@@ -104,6 +104,8 @@ class DeepSeekWebClient:
                 before_count = await answers.count()
                 request = (
                     "Research the following request using web search. Answer strictly in English. "
+                    "Format your response beautifully using Discord markdown (e.g., # for headers, ** for bold, * for italics). "
+                    "CRITICAL: You MUST wrap your ENTIRE final response inside a single ```markdown code block. "
                     "Return only the final answer, include source URLs, distinguish confirmed facts from uncertainty, "
                     "and do not expose hidden reasoning.\n\n"
                     f"REQUEST:\n{clean_prompt}"
@@ -134,6 +136,15 @@ class DeepSeekWebClient:
                         break
                 if not final:
                     raise DeepSeekWebError("DeepSeek research timed out before a final answer was returned.")
+
+                final = final.strip()
+                if final.startswith("```markdown"):
+                    final = final[11:]
+                elif final.startswith("```"):
+                    final = final[3:]
+                if final.endswith("```"):
+                    final = final[:-3]
+                final = final.strip()
 
                 final_locator = answers.nth((await answers.count()) - 1)
                 links = await final_locator.locator("a[href]").evaluate_all(
