@@ -5326,6 +5326,36 @@ class AIModeration(commands.Cog):
         signals: ConversationSignals,
     ) -> None:
         """Deliver a conversation response with smart formatting."""
+        sources_text = None
+        if "\n\n__BOT_SOURCES__\n" in response:
+            response, sources_text = response.split("\n\n__BOT_SOURCES__\n", 1)
+            sources_text = "**Sources:**\n" + sources_text
+
+        view = self._SourcesView(sources_text) if sources_text else None
+
+        # Short responses: plain text
+        if len(response) <= 1900:
+            await self.reply(message, content=response, view=view)
+            return
+
+        # Medium responses (1900-4000): single embed
+        if len(response) <= 4000:
+            color = (
+                discord.Color.from_rgb(88, 101, 242)
+                if signals.mode == ConversationMode.RESEARCH
+                else discord.Color.blue()
+            )
+            embed = discord.Embed(description=response, color=color)
+            if signals.mode == ConversationMode.RESEARCH:
+                embed.set_footer(text="Research response")
+            await self.reply(message, embed=embed, view=view)
+            return
+
+        # Very long responses: split into chunks
+        chunks = self._split_response(response, max_len=1900)
+        for i, chunk in enumerate(chunks):
+            v = view if i == len(chunks) - 1 else None
+            sent = await self.reply(message, content=chunk, view=v)
             if not sent:
                 break
 
