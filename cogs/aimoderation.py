@@ -4996,11 +4996,12 @@ class AIModeration(commands.Cog):
         *,
         content: Optional[str] = None,
         embed: Optional[discord.Embed] = None,
+        view: Optional[discord.ui.View] = None,
         delete_after: Optional[float] = None,
     ) -> Optional[discord.Message]:
         try:
             sent = await message.channel.send(
-                content=content, embed=embed,
+                content=content, embed=embed, view=view,
                 reference=message, mention_author=False,
             )
             if delete_after:
@@ -5511,6 +5512,16 @@ class AIModeration(commands.Cog):
         )
         return embed
 
+class _SourcesView(discord.ui.View):
+    def __init__(self, sources_text: str):
+        super().__init__(timeout=None)
+        self.sources_text = sources_text
+
+    @discord.ui.button(label="View Sources", style=discord.ButtonStyle.secondary, emoji="🔗")
+    async def view_sources(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_message(self.sources_text, ephemeral=True)
+
+
     async def _deliver_response(
         self,
         message: discord.Message,
@@ -5518,10 +5529,16 @@ class AIModeration(commands.Cog):
         signals: ConversationSignals,
     ) -> None:
         """Deliver a conversation response with smart formatting."""
+        sources_text = None
+        if "\n\nSources:\n" in response:
+            response, sources_text = response.split("\n\nSources:\n", 1)
+            sources_text = "**Sources:**\n" + sources_text
+
+        view = _SourcesView(sources_text) if sources_text else None
 
         # Short responses: plain text
         if len(response) <= 1900:
-            await self.reply(message, content=response)
+            await self.reply(message, content=response, view=view)
             return
 
         # Medium responses (1900-4000): single embed
@@ -5534,13 +5551,14 @@ class AIModeration(commands.Cog):
             embed = discord.Embed(description=response, color=color)
             if signals.mode == ConversationMode.RESEARCH:
                 embed.set_footer(text="Research response")
-            await self.reply(message, embed=embed)
+            await self.reply(message, embed=embed, view=view)
             return
 
         # Very long responses: split into chunks
         chunks = self._split_response(response, max_len=1900)
-        for chunk in chunks:
-            sent = await self.reply(message, content=chunk)
+        for i, chunk in enumerate(chunks):
+            v = view if i == len(chunks) - 1 else None
+            sent = await self.reply(message, content=chunk, view=v)
             if not sent:
                 break
 
