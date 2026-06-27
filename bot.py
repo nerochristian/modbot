@@ -34,7 +34,7 @@ from utils.status_emojis import (
 )
 
 # Load environment variables
-load_dotenv()
+load_dotenv(override=True)
 
 # ==================== ENVIRONMENT HELPERS ====================
 IS_RENDER = os.getenv("RENDER", "").lower() in ("true", "1", "yes")

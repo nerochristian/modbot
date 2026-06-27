@@ -5,7 +5,7 @@ Bot Configuration
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(override=True)
 
 def _parse_hex_color(value: str | None, default: int) -> int:
     if not value:
