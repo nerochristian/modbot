@@ -2418,10 +2418,14 @@ class GeminiClient:
             )
 
         # --- STANDARD CONVERSATION ---
-        task_instruction = "Reply naturally. Be concise unless the question needs detail."
+        task_instruction = (
+            "Reply like a real, casual Discord user. Be extremely concise. "
+            "ABSOLUTELY NO AI FLUFF. Never say 'Sure thing', 'Got it', 'I can help with that', or 'Understood'. "
+            "Never summarize what you are about to do. Just say the answer directly."
+        )
         if is_continuation:
-            task_instruction = (
-                "This continues an active conversation. "
+            task_instruction += (
+                " This continues an active conversation. "
                 "Pick up naturally from where you left off - don't re-introduce yourself."
             )
 
