@@ -7,7 +7,6 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import Optional
 
 
 logger = logging.getLogger("ModBot.DeepSeekWeb")
@@ -168,4 +167,3 @@ class DeepSeekWebClient:
                 await playwright.stop()
             except Exception:
                 pass
-
