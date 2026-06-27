@@ -1131,7 +1131,7 @@ class GeminiClient:
 
     @property
     def has_web_search(self) -> bool:
-        return bool(self._brave_search_api_key or self._tavily_api_key or self._serpapi_api_key)
+        return True
 
     # ------------------------------------------------------------------
     # Service-block helpers
@@ -1350,11 +1350,6 @@ class GeminiClient:
         except Exception as e:
             logger.error(f"DDG Search fallback failed: {e}")
             return []
-        if self._tavily_api_key:
-            return await self._search_tavily(query, max_results=max_results)
-        if self._serpapi_api_key:
-            return await self._search_serpapi(query, max_results=max_results)
-        return []
 
     async def _search_brave(self, query: str, *, max_results: int) -> List[WebSearchResult]:
         session, owned_session = self._get_http_session(timeout=20)
@@ -1611,10 +1606,7 @@ class GeminiClient:
         web_context = ""
         uses_native_search = False
         if signals.mode == ConversationMode.RESEARCH:
-            # We don't have native search on DO, so we always scrape and pass context
             if not self.has_web_search:
-                # We now have DDG fallback, so it always works.
-                pass
                 return (
                     "I can't look that up from here because web search is not configured. "
                     "Add `BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`, or `SERPAPI_API_KEY` to enable live research."
