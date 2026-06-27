@@ -4,6 +4,8 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
+import discord
+
 from cogs.automod import (
     PANEL_PAGES,
     AutoModPanel,
@@ -218,6 +220,21 @@ class AutoModPanelTests(unittest.IsolatedAsyncioTestCase):
                 embed = panel.build_embed()
                 self.assertLessEqual(len(embed), 6000)
                 self.assertTrue(all(len(field.value) <= 1024 for field in embed.fields))
+                expected_controls = len(panel.children)
+                layout = await panel.build_layout()
+
+                def walk(item):
+                    yield item
+                    for child in getattr(item, "children", []):
+                        yield from walk(child)
+
+                rendered_controls = [
+                    item
+                    for root in layout.children
+                    for item in walk(root)
+                    if isinstance(item, (discord.ui.Button, discord.ui.Select))
+                ]
+                self.assertEqual(len(rendered_controls), expected_controls)
         finally:
             panel.stop()
 
