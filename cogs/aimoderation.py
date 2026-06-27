@@ -38,6 +38,8 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
+from utils.deepseek_web import DeepSeekWebClient, DeepSeekWebError
+
 DO_API_KEY = os.getenv("DO_API_KEY", "")
 DO_BASE_URL = "https://inference.do-ai.run/v1"
 from utils.cache import RateLimiter
@@ -1124,6 +1126,7 @@ class GeminiClient:
         self._brave_search_api_key = os.getenv("BRAVE_SEARCH_API_KEY")
         self._tavily_api_key = os.getenv("TAVILY_API_KEY")
         self._serpapi_api_key = os.getenv("SERPAPI_API_KEY")
+        self._deepseek_web = DeepSeekWebClient()
 
     @property
     def is_available(self) -> bool:
@@ -1132,6 +1135,9 @@ class GeminiClient:
     @property
     def has_web_search(self) -> bool:
         return True
+
+    async def close(self) -> None:
+        await self._deepseek_web.close()
 
     # ------------------------------------------------------------------
     # Service-block helpers
@@ -1648,6 +1654,11 @@ class GeminiClient:
         web_context = ""
         uses_native_search = False
         if signals.mode == ConversationMode.RESEARCH:
+            if self._deepseek_web.enabled:
+                try:
+                    return await self._deepseek_web.research(user_content)
+                except DeepSeekWebError as exc:
+                    logger.warning("DeepSeek web prototype failed; using search fallback: %s", exc)
             if not self.has_web_search:
                 return (
                     "I can't look that up from here because web search is not configured. "
@@ -3687,6 +3698,7 @@ class AIModeration(commands.Cog):
 
     def cog_unload(self) -> None:
         self._cleanup_cache.cancel()
+        asyncio.create_task(self.ai.close())
 
     # ------------------------------------------------------------------
     # Background tasks
