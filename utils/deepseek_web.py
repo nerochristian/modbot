@@ -161,11 +161,11 @@ class DeepSeekWebClient:
                 # Fix weird header generation like --## to just ##
                 final = re.sub(r'^--(#+)\s', r'\1 ', final, flags=re.MULTILINE)
 
-                final_locator = answers.nth((await answers.count()) - 1)
-                links = await final_locator.locator("a[href]").evaluate_all(
-                    "elements => [...new Set(elements.map(a => a.href).filter(Boolean))]"
+                # Extract all external links from the page (which will be the search sources)
+                links = await page.evaluate(
+                    "() => [...new Set([...document.querySelectorAll('a[href]')].map(a => a.href).filter(h => h.startsWith('http') && !h.includes('deepseek.com')))]"
                 )
-                source_links = [str(url) for url in links if str(url).startswith(("http://", "https://"))]
+                source_links = [str(url) for url in links]
                 if source_links and not any(url in final for url in source_links):
                     final += "\n\n__BOT_SOURCES__\n" + "\n".join(f"[{i+1}] {url}" for i, url in enumerate(source_links[:12]))
                 return final[:24000]
