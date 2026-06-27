@@ -103,7 +103,7 @@ class DeepSeekWebClient:
                 answers = page.locator(".ds-assistant-message-main-content")
                 before_count = await answers.count()
                 request = (
-                    "Research the following request using web search. Answer in the same language as the request. "
+                    "Research the following request using web search. Answer strictly in English. "
                     "Return only the final answer, include source URLs, distinguish confirmed facts from uncertainty, "
                     "and do not expose hidden reasoning.\n\n"
                     f"REQUEST:\n{clean_prompt}"
