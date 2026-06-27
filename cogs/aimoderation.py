@@ -5517,7 +5517,12 @@ class AIModeration(commands.Cog):
 
         @discord.ui.button(label="View Sources", style=discord.ButtonStyle.secondary, emoji="🔗")
         async def view_sources(self, interaction: discord.Interaction, button: discord.ui.Button):
-            await interaction.response.send_message(self.sources_text, ephemeral=True)
+            embed = discord.Embed(
+                title="Research Sources",
+                description=self.sources_text[:4096],
+                color=discord.Color.from_rgb(88, 101, 242)
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
     async def _deliver_response(
