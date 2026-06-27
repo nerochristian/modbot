@@ -1129,7 +1129,7 @@ class GeminiClient:
     def __init__(self, bot: commands.Bot, config: AIConfig) -> None:
         self.bot = bot
         self.config = config
-        self.provider = "digitalocean"
+        self.provider = os.getenv("AI_PROVIDER", "digitalocean").lower()
         self._rate_limiter = RateLimiter(
             max_calls=config.rate_limit_calls,
             window_seconds=config.rate_limit_window,
@@ -1782,7 +1782,7 @@ class GeminiClient:
             return "I don't see an image attachment or embed in the replied/recent messages."
         image_summary = ""
         image_messages = image_context
-        if image_context and self.provider == "DigitalOcean" and not uses_native_search:
+        if image_context and self.provider == "digitalocean" and not uses_native_search:
             if signals.mode == ConversationMode.RESEARCH:
                 image_summary = ""
                 image_messages = []
@@ -1815,7 +1815,7 @@ class GeminiClient:
         try:
             await self._rate_limiter.record_call(author.id)
             call_model = "expert" if uses_native_search else model
-            if not uses_native_search and self.provider == "DigitalOcean":
+            if not uses_native_search and self.provider == "digitalocean":
                 if signals.mode == ConversationMode.RESEARCH:
                     call_model = os.getenv("DO_RESEARCH_MODEL", "deepseek-4-flash")
                 else:
