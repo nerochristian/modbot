@@ -1683,9 +1683,38 @@ class GeminiClient:
                                 
                 if not results:
                     return "I searched thoroughly but did not find usable results. Try a more specific query."
-                    
-                web_context = self._format_web_results(results[:15]) # Limit to 15 best results
+                # Scrape actual page content for the top 5 links to mimic AI Overview
+                top_results = results[:5]
+                async def fetch_page(res: WebSearchResult) -> str:
+                    import aiohttp
+                    try:
+                        async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+                            # Use a realistic user agent
+                            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"}
+                            async with session.get(res.url, headers=headers) as resp:
+                                if resp.status == 200:
+                                    html = await resp.text()
+                                    from bs4 import BeautifulSoup
+                                    soup = BeautifulSoup(html, 'html.parser')
+                                    for script in soup(["script", "style", "nav", "header", "footer"]):
+                                        script.extract()
+                                    text = soup.get_text(separator=' ', strip=True)
+                                    import re
+                                    text = re.sub(r'\s+', ' ', text)
+                                    return f"Source: {res.title} ({res.url})\nContent: {text[:2500]}\n"
+                    except Exception:
+                        pass
+                    return f"Source: {res.title} ({res.url})\nSnippet: {res.snippet}\n"
 
+                page_tasks = [fetch_page(r) for r in top_results]
+                scraped_pages = await asyncio.gather(*page_tasks, return_exceptions=True)
+                
+                valid_pages = [p for p in scraped_pages if isinstance(p, str)]
+                web_context = "### FULL WEB PAGE SCRAPES (Top 5) ###\n" + "\n".join(valid_pages)
+                
+                if len(results) > 5:
+                    web_context += "\n### ADDITIONAL SEARCH SNIPPETS ###\n"
+                    web_context += self._format_web_results(results[5:15])
 
         plan = self._build_conversation_plan(
             signals=signals,
