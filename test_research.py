@@ -32,22 +32,22 @@ async def main():
     
     signals = ConversationSignals(
         mode=ConversationMode.RESEARCH,
-        sentiment="neutral",
-        intents=["Research this."],
-        language="en"
+        confidence=1.0,
+        show_research_indicator=True,
+        asks_for_current_info=True,
+        asks_for_sources=True,
+        asks_for_long_answer=True,
+        mentions_moderation=False
     )
     
     try:
         res = await client.converse(
-            message=DummyMessage(),
             user_content="research the latest zenless zone zero upd",
+            guild=DummyGuild(),
+            author=DummyUser(),
             recent_messages=[],
             signals=signals,
-            is_continuation=False,
-            image_context=None,
-            is_image_question=False,
-            location_context="",
-            settings=None
+            location_context=""
         )
         print("Result:", res)
     except Exception as e:
