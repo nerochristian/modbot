@@ -4,8 +4,6 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-import discord
-
 from cogs.automod import (
     PANEL_PAGES,
     AutoModPanel,
@@ -232,7 +230,7 @@ class AutoModPanelTests(unittest.IsolatedAsyncioTestCase):
                     item
                     for root in layout.children
                     for item in walk(root)
-                    if isinstance(item, (discord.ui.Button, discord.ui.BaseSelect))
+                    if int(item.to_component_dict().get("type", 0)) in {2, 3, 5, 6, 7, 8}
                 ]
                 self.assertEqual(len(rendered_controls), expected_controls)
         finally:
