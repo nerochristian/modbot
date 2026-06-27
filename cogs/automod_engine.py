@@ -420,7 +420,6 @@ class LinksRule(Rule):
         "cutt.ly",
         "rb.gy",
         "is.gd",
-        "t.co",
     )
 
     async def check(self, message: Any, settings: Mapping[str, Any], *, dry_run: bool = False) -> Optional[RuleMatch]:

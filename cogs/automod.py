@@ -20,7 +20,6 @@ from cogs.automod_config import AUTOMOD_SETTINGS
 from cogs.automod_engine import (
     Action,
     AutoModEngine,
-    Category,
     RULE_SETTING_KEYS,
     RuleMatch,
     normalize_domain,
@@ -340,7 +339,7 @@ class AutoMod(commands.Cog):
         action = self.engine.resolve_action(match, settings)
         deleted = False
         deletion_error: Optional[str] = None
-        if match.delete_message and settings.get("automod_delete_violations", True):
+        if action is not Action.LOG and match.delete_message and settings.get("automod_delete_violations", True):
             try:
                 await message.delete()
                 deleted = True
