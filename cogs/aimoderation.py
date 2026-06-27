@@ -1794,7 +1794,10 @@ class GeminiClient:
                 if signals.mode == ConversationMode.RESEARCH:
                     call_model = os.getenv("DO_RESEARCH_MODEL", "deepseek-4-flash")
                 else:
-                    call_model = os.getenv("DO_AUTOMOD_MODEL", "nemotron-3-nano-omni")
+                    if image_context or is_image_question:
+                        call_model = "nemotron-3-nano-omni"
+                    else:
+                        call_model = os.getenv("DO_AUTOMOD_MODEL", "nemotron-3-nano-omni")
                     
             allow_multimodal = (call_model != os.getenv("DO_RESEARCH_MODEL", "deepseek-4-flash"))
             
