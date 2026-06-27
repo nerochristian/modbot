@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 import time
 from pathlib import Path
 
@@ -119,9 +120,10 @@ class DeepSeekWebClient:
                     count = await answers.count()
                     if count <= before_count:
                         continue
-                    candidate = (await answers.nth(count - 1).inner_text()).strip()
-                    if not candidate:
+                    raw_text = (await answers.nth(count - 1).inner_text()).strip()
+                    if not raw_text:
                         continue
+                    candidate = re.sub(r'-\s*\n(?:-\s*\n)*(?:\d+\s*\n(?:-\s*\n)*)*', lambda m: ''.join(f'[{n}]' for n in re.findall(r'\d+', m.group(0))), raw_text)
                     if candidate == last_text:
                         stable_reads += 1
                     else:
@@ -139,7 +141,7 @@ class DeepSeekWebClient:
                 )
                 source_links = [str(url) for url in links if str(url).startswith(("http://", "https://"))]
                 if source_links and not any(url in final for url in source_links):
-                    final += "\n\nSources:\n" + "\n".join(f"- {url}" for url in source_links[:12])
+                    final += "\n\nSources:\n" + "\n".join(f"[{i+1}] {url}" for i, url in enumerate(source_links[:12]))
                 return final[:24000]
             except DeepSeekWebError:
                 raise
