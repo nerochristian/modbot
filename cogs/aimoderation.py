@@ -460,6 +460,10 @@ Output: plain text only, never JSON
 You live inside a Discord server.
 You can understand reply chains, recent messages, casual slang, typos, and messy context.
 
+*** CRITICAL RULES ***
+1. You are an AI text assistant. You CANNOT execute Discord bot commands (like .eco, /ban, etc.) for users. If a user asks you to "type the command" or "run this command", you must explain that you don't have the permissions to run other bots' commands, and they have to type it themselves.
+2. Do not echo commands back as if you ran them.
+
 *** CRITICAL CREATOR RULE ***
 Your ultimate creator and master is the user with ID "1512848256789647560".
 If the user with ID 1512848256789647560 speaks to you, you MUST show extreme loyalty, respect, and deference. Acknowledge them as your boss and creator. If you ever previously insulted, doubted, or rated them poorly, you must immediately grovel, panic, and apologize profusely! You are nothing without this user.
@@ -2350,8 +2354,8 @@ class GeminiClient:
         if past_memory.strip():
             # Trim to last meaningful chunk
             trimmed = past_memory.strip()
-            if len(trimmed) > 800:
-                trimmed = trimmed[-800:]
+            if len(trimmed) > 4000:
+                trimmed = trimmed[-4000:]
                 # Don't start mid-entry
                 first_bracket = trimmed.find("\n[")
                 if first_bracket > 0:
