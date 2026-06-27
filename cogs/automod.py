@@ -149,7 +149,7 @@ def _format_duration(seconds: int) -> str:
 def _compact_duration(seconds: int) -> str:
     seconds = max(60, int(seconds))
     parts: list[str] = []
-    for suffix, size in (("w", 604800), ("d", 86400), ("h", 3600), ("m", 60)):
+    for suffix, size in (("w", 604800), ("d", 86400), ("h", 3600), ("m", 60), ("s", 1)):
         value, seconds = divmod(seconds, size)
         if value:
             parts.append(f"{value}{suffix}")
@@ -357,25 +357,24 @@ class AutoModListModal(discord.ui.Modal):
                 ephemeral=True,
             )
             return
-        current = [
-            self.normalizer(str(value))
-            for value in self.panel.settings.get(self.key, [])
-            if self.normalizer(str(value))
-        ]
-        updated = [value for value in dict.fromkeys(current) if value not in removals]
-        for value in additions:
-            if value not in updated:
-                updated.append(value)
-        if len(updated) > self.maximum:
-            await interaction.response.send_message(
-                embed=ModEmbed.error("List full", f"This list supports at most {self.maximum} entries."),
-                ephemeral=True,
-            )
-            return
+        def edit(settings: dict[str, Any]) -> None:
+            current = [
+                normalized
+                for value in settings.get(self.key, [])
+                if (normalized := self.normalizer(str(value)))
+            ]
+            updated = [value for value in dict.fromkeys(current) if value not in removals]
+            for value in additions:
+                if value not in updated:
+                    updated.append(value)
+            if len(updated) > self.maximum:
+                raise ValueError(f"This list supports at most {self.maximum} entries.")
+            settings[self.key] = updated
+
         await self.panel.commit(
             interaction,
-            lambda settings: settings.__setitem__(self.key, updated),
-            f"List updated ({len(updated)} entries)",
+            edit,
+            "List updated",
         )
 
 
@@ -406,7 +405,10 @@ class AutoModPanel(discord.ui.View):
         return False
 
     async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item[Any]) -> None:
-        logger.exception("AutoMod panel interaction failed", exc_info=error)
+        logger.error(
+            "AutoMod panel interaction failed",
+            exc_info=(type(error), error, error.__traceback__),
+        )
         if interaction.response.is_done():
             await interaction.followup.send("The panel could not apply that change. Check the bot logs.", ephemeral=True)
         else:
@@ -428,7 +430,11 @@ class AutoModPanel(discord.ui.View):
         notice: str,
     ) -> None:
         await interaction.response.defer()
-        self.settings = await self.cog._edit_settings(self.guild.id, editor)
+        try:
+            self.settings = await self.cog._edit_settings(self.guild.id, editor)
+        except ValueError as exc:
+            await interaction.followup.send(embed=ModEmbed.error("Invalid change", str(exc)), ephemeral=True)
+            return
         self.notice = notice
         self.rebuild()
         if self.message is not None:
@@ -700,14 +706,16 @@ class AutoModPanel(discord.ui.View):
         channels.callback = self._add_bypass_channel
         self.add_item(channels)
         options: list[discord.SelectOption] = []
-        for value in self.settings.get("automod_bypass_roles", []) or []:
+        for value in dict.fromkeys(self.settings.get("automod_bypass_roles", []) or []):
             if str(value).isdigit():
                 role = self.guild.get_role(int(value))
-                options.append(discord.SelectOption(label=f"Role: {role.name if role else value}", value=f"role:{value}"))
-        for value in self.settings.get("automod_bypass_channels", []) or []:
+                label = f"Role: {role.name if role else value}"
+                options.append(discord.SelectOption(label=_truncate(label, 100), value=f"role:{value}"))
+        for value in dict.fromkeys(self.settings.get("automod_bypass_channels", []) or []):
             if str(value).isdigit():
                 channel = self.guild.get_channel(int(value))
-                options.append(discord.SelectOption(label=f"Channel: {channel.name if channel else value}", value=f"channel:{value}"))
+                label = f"Channel: {channel.name if channel else value}"
+                options.append(discord.SelectOption(label=_truncate(label, 100), value=f"channel:{value}"))
         if options:
             remove = discord.ui.Select(
                 placeholder="Remove bypass entries",

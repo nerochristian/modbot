@@ -173,7 +173,7 @@ class AutoModUtilityTests(unittest.TestCase):
         self.assertIsNone(_parse_duration("29d"))
 
     def test_compact_duration_round_trips(self) -> None:
-        for seconds in (60, 3600, 9000, 129600, 2419200):
+        for seconds in (60, 65, 3600, 3661, 9000, 129600, 2419200):
             self.assertEqual(_parse_duration(_compact_duration(seconds)), seconds)
 
     def test_threshold_pair_parser_enforces_both_ranges(self) -> None:
