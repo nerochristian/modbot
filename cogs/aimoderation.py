@@ -1582,9 +1582,7 @@ class GeminiClient:
         web_context = ""
         uses_native_search = False
         if signals.mode == ConversationMode.RESEARCH:
-            if self.provider == "galaxy" and self._galaxy_api_key:
-                uses_native_search = True
-            elif not self.has_web_search:
+            if not self.has_web_search:
                 return (
                     "I can't look that up from here because web search is not configured. "
                     "Add `BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`, or `SERPAPI_API_KEY` to enable live research."
@@ -1628,19 +1626,6 @@ class GeminiClient:
             else:
                 image_messages = image_context
                 image_summary = ""
-        elif image_context and self.provider == "galaxy" and not uses_native_search:
-            image_summary = await self._summarize_images_with_galaxy_v4(user_content, image_context) or ""
-            image_messages = []
-            if not image_summary:
-                if is_image_question:
-                    return (
-                        "I found the image, but vision is not available on this deployment right now. "
-                        "Set `GEMINI_API_KEY` for the vision pass, or use a Galaxy endpoint that accepts multimodal image payloads."
-                    )
-                image_summary = (
-                    "Image analysis failed before visual details were returned. "
-                    "Do not guess what is in the image; tell the user the image could not be read right now."
-                )
         messages = self._build_conversation_messages(
             plan,
             recent_messages,
@@ -1651,12 +1636,12 @@ class GeminiClient:
 
         try:
             await self._rate_limiter.record_call(author.id)
-            call_model = "expert" if uses_native_search else model
+            call_model = model
             if not uses_native_search and self.provider == "digitalocean":
                 if signals.mode == ConversationMode.RESEARCH:
                     call_model = os.getenv("DO_RESEARCH_MODEL", "deepseek-4-flash")
                 else:
-                    call_model = os.getenv("DO_AUTOMOD_MODEL", "qwen-3-32b")
+                    call_model = os.getenv("DO_AUTOMOD_MODEL", "nemotron-3-nano-omni")
                     
             allow_multimodal = (call_model != os.getenv("DO_RESEARCH_MODEL", "deepseek-4-flash"))
             
