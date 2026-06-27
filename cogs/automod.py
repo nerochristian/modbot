@@ -498,7 +498,7 @@ Respond ONLY with valid JSON:
 {{"violation": true/false, "category": "toxicity|threats|nsfw|spam|scam|other", "severity": 1-10, "confidence": 0.0-1.0, "reason": "concise explanation"}}"""
 
             payload = {
-                "model": "deepseek-v4-flash",
+                "model": "deepseek-4-flash",
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.2,
                 "max_tokens": 200,

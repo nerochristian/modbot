@@ -1196,12 +1196,12 @@ class GeminiClient:
             messages,
             temperature=temperature,
             max_tokens=max_tokens,
-            model="deepseek-v4-flash",
+            model="deepseek-4-flash",
             json_mode=json_mode,
             provider_name="DigitalOcean",
             api_key=DO_API_KEY,
             base_url=DO_BASE_URL,
-            default_model="deepseek-v4-flash",
+            default_model="deepseek-4-flash",
             normalize_model=False,
         )
 
@@ -2058,7 +2058,7 @@ class GeminiClient:
                 messages,
                 temperature=0.1,
                 max_tokens=700,
-                model="deepseek-v4-flash",
+                model="deepseek-4-flash",
                 json_mode=False,
                 allow_multimodal=True,
             )

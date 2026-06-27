@@ -513,7 +513,7 @@ class AIRule(Rule):
     def __init__(self) -> None:
         self._api_key = os.getenv("DO_API_KEY", "").strip()
         self._base_url = os.getenv("DO_INFERENCE_BASE_URL", "https://inference.digitalocean.com/v1").rstrip("/")
-        self._model = os.getenv("DO_AUTOMOD_MODEL", "deepseek-v4-flash")
+        self._model = os.getenv("DO_AUTOMOD_MODEL", "deepseek-4-flash")
         self._session: Optional[aiohttp.ClientSession] = None
         self._cache: OrderedDict[str, tuple[float, Optional[RuleMatch]]] = OrderedDict()
 

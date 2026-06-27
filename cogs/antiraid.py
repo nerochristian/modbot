@@ -187,7 +187,7 @@ Guidelines:
 
         try:
             payload = {
-                "model": "deepseek-v4-flash",
+                "model": "deepseek-4-flash",
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.15,
                 "max_tokens": 250,
