@@ -4664,6 +4664,13 @@ class AIModeration(commands.Cog):
         except ValueError:
             return None
 
+    def _extract_trailing_reason(self, text: str, command: str) -> Optional[str]:
+        """Extracts reason from text like 'warn @user ur silly'."""
+        text = re.sub(rf"^{command}\b", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"<@!?\d+>", "", text)
+        text = text.strip()
+        return text or None
+
     # ------------------------------------------------------------------
     # Fast rule-based routing
     # ------------------------------------------------------------------
@@ -4722,13 +4729,21 @@ class AIModeration(commands.Cog):
                 arguments=self._extract_purge_args(content),
             )
         if re.match(r"^warn\b", low):
-            return Decision(type=DecisionType.TOOL_CALL, reason="rule: warn", tool=ToolType.WARN, arguments={})
+            reason = self._extract_trailing_reason(content, "warn")
+            args = {"reason": reason} if reason else {}
+            return Decision(type=DecisionType.TOOL_CALL, reason="rule: warn", tool=ToolType.WARN, arguments=args)
         if re.match(r"^kick\b", low):
-            return Decision(type=DecisionType.TOOL_CALL, reason="rule: kick", tool=ToolType.KICK, arguments={})
+            reason = self._extract_trailing_reason(content, "kick")
+            args = {"reason": reason} if reason else {}
+            return Decision(type=DecisionType.TOOL_CALL, reason="rule: kick", tool=ToolType.KICK, arguments=args)
         if re.match(r"^unban\b", low):
-            return Decision(type=DecisionType.TOOL_CALL, reason="rule: unban", tool=ToolType.UNBAN, arguments={})
+            reason = self._extract_trailing_reason(content, "unban")
+            args = {"reason": reason} if reason else {}
+            return Decision(type=DecisionType.TOOL_CALL, reason="rule: unban", tool=ToolType.UNBAN, arguments=args)
         if re.match(r"^ban\b", low):
-            return Decision(type=DecisionType.TOOL_CALL, reason="rule: ban", tool=ToolType.BAN, arguments={})
+            reason = self._extract_trailing_reason(content, "ban")
+            args = {"reason": reason} if reason else {}
+            return Decision(type=DecisionType.TOOL_CALL, reason="rule: ban", tool=ToolType.BAN, arguments=args)
         return None
 
     def _recover_tool_decision(self, content: str) -> Optional[Decision]:
