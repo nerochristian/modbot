@@ -1381,7 +1381,6 @@ class GeminiClient:
         # Fallback to free DuckDuckGo search if no API keys are present
         try:
             from duckduckgo_search import DDGS
-            import asyncio
             def _sync_search():
                 with DDGS() as ddgs:
                     return list(ddgs.text(query, max_results=max_results))
@@ -1671,7 +1670,6 @@ class GeminiClient:
                     queries = [user_content]
                 
                 results: List[WebSearchResult] = []
-                import asyncio
                 
                 async def fetch_query(q: str):
                     try:
