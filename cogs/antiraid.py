@@ -26,7 +26,7 @@ from discord.ext import commands, tasks
 import aiohttp
 
 DO_API_KEY = os.getenv("DO_API_KEY", "")
-DO_BASE_URL = "https://inference.digitalocean.com/v1"
+DO_BASE_URL = "https://inference.do-ai.run/v1"
 
 from utils.embeds import ModEmbed
 from utils.logging import send_log_embed

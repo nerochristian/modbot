@@ -39,7 +39,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 DO_API_KEY = os.getenv("DO_API_KEY", "")
-DO_BASE_URL = "https://inference.digitalocean.com/v1"
+DO_BASE_URL = "https://inference.do-ai.run/v1"
 from utils.cache import RateLimiter
 from utils.checks import is_bot_owner_id
 from utils.messages import Messages
