@@ -1329,6 +1329,31 @@ class GeminiClient:
             return await self._search_tavily(query, max_results=max_results)
         if self._serpapi_api_key:
             return await self._search_serpapi(query, max_results=max_results)
+        
+        # Fallback to free DuckDuckGo search if no API keys are present
+        try:
+            from duckduckgo_search import DDGS
+            import asyncio
+            def _sync_search():
+                with DDGS() as ddgs:
+                    return list(ddgs.text(query, max_results=max_results))
+            loop = asyncio.get_running_loop()
+            raw_results = await loop.run_in_executor(None, _sync_search)
+            results = []
+            for r in raw_results:
+                results.append(WebSearchResult(
+                    title=str(r.get("title", "")),
+                    url=str(r.get("href", "")),
+                    snippet=str(r.get("body", ""))
+                ))
+            return results
+        except Exception as e:
+            logger.error(f"DDG Search fallback failed: {e}")
+            return []
+        if self._tavily_api_key:
+            return await self._search_tavily(query, max_results=max_results)
+        if self._serpapi_api_key:
+            return await self._search_serpapi(query, max_results=max_results)
         return []
 
     async def _search_brave(self, query: str, *, max_results: int) -> List[WebSearchResult]:
@@ -1586,9 +1611,10 @@ class GeminiClient:
         web_context = ""
         uses_native_search = False
         if signals.mode == ConversationMode.RESEARCH:
-            if self.provider == "digitalocean":
-                uses_native_search = True
-            elif not self.has_web_search:
+            # We don't have native search on DO, so we always scrape and pass context
+            if not self.has_web_search:
+                # We now have DDG fallback, so it always works.
+                pass
                 return (
                     "I can't look that up from here because web search is not configured. "
                     "Add `BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`, or `SERPAPI_API_KEY` to enable live research."
