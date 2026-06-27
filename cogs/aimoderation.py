@@ -4722,18 +4722,34 @@ class AIModeration(commands.Cog):
         if re.match(r"^warn\b", low):
             reason = self._extract_trailing_reason(content, "warn")
             args = {"reason": reason} if reason else {}
+            if message.mentions:
+                non_bot = [m for m in message.mentions if not m.bot and (not self.bot.user or m.id != self.bot.user.id)]
+                if non_bot:
+                    args["target_user_id"] = non_bot[0].id
             return Decision(type=DecisionType.TOOL_CALL, reason="rule: warn", tool=ToolType.WARN, arguments=args)
         if re.match(r"^kick\b", low):
             reason = self._extract_trailing_reason(content, "kick")
             args = {"reason": reason} if reason else {}
+            if message.mentions:
+                non_bot = [m for m in message.mentions if not m.bot and (not self.bot.user or m.id != self.bot.user.id)]
+                if non_bot:
+                    args["target_user_id"] = non_bot[0].id
             return Decision(type=DecisionType.TOOL_CALL, reason="rule: kick", tool=ToolType.KICK, arguments=args)
         if re.match(r"^unban\b", low):
             reason = self._extract_trailing_reason(content, "unban")
             args = {"reason": reason} if reason else {}
+            if message.mentions:
+                non_bot = [m for m in message.mentions if not m.bot and (not self.bot.user or m.id != self.bot.user.id)]
+                if non_bot:
+                    args["target_user_id"] = non_bot[0].id
             return Decision(type=DecisionType.TOOL_CALL, reason="rule: unban", tool=ToolType.UNBAN, arguments=args)
         if re.match(r"^ban\b", low):
             reason = self._extract_trailing_reason(content, "ban")
             args = {"reason": reason} if reason else {}
+            if message.mentions:
+                non_bot = [m for m in message.mentions if not m.bot and (not self.bot.user or m.id != self.bot.user.id)]
+                if non_bot:
+                    args["target_user_id"] = non_bot[0].id
             return Decision(type=DecisionType.TOOL_CALL, reason="rule: ban", tool=ToolType.BAN, arguments=args)
         return None
 
