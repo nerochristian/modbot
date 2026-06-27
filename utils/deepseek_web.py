@@ -137,14 +137,21 @@ class DeepSeekWebClient:
                 if not final:
                     raise DeepSeekWebError("DeepSeek research timed out before a final answer was returned.")
 
-                final = final.strip()
-                if final.startswith("```markdown"):
-                    final = final[11:]
-                elif final.startswith("```"):
-                    final = final[3:]
-                if final.endswith("```"):
-                    final = final[:-3]
-                final = final.strip()
+                match = re.search(r'```(?:markdown)?\s*(.*?)\s*```', final, re.DOTALL)
+                if match:
+                    final = match.group(1).strip()
+                else:
+                    final = final.strip()
+                    if final.startswith("```markdown"):
+                        final = final[11:]
+                    elif final.startswith("```"):
+                        final = final[3:]
+                    if final.endswith("```"):
+                        final = final[:-3]
+                    final = final.strip()
+                
+                # Strip out DeepSeek's native Sources block if it exists
+                final = re.sub(r'\n\nSources:\s*(?:[A-Za-z0-9\s]+\[\d+\])+', '', final, flags=re.IGNORECASE).strip()
 
                 final_locator = answers.nth((await answers.count()) - 1)
                 links = await final_locator.locator("a[href]").evaluate_all(
@@ -152,7 +159,7 @@ class DeepSeekWebClient:
                 )
                 source_links = [str(url) for url in links if str(url).startswith(("http://", "https://"))]
                 if source_links and not any(url in final for url in source_links):
-                    final += "\n\nSources:\n" + "\n".join(f"[{i+1}] {url}" for i, url in enumerate(source_links[:12]))
+                    final += "\n\n__BOT_SOURCES__\n" + "\n".join(f"[{i+1}] {url}" for i, url in enumerate(source_links[:12]))
                 return final[:24000]
             except DeepSeekWebError:
                 raise

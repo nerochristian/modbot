@@ -5530,8 +5530,8 @@ class AIModeration(commands.Cog):
     ) -> None:
         """Deliver a conversation response with smart formatting."""
         sources_text = None
-        if "\n\nSources:\n" in response:
-            response, sources_text = response.split("\n\nSources:\n", 1)
+        if "\n\n__BOT_SOURCES__\n" in response:
+            response, sources_text = response.split("\n\n__BOT_SOURCES__\n", 1)
             sources_text = "**Sources:**\n" + sources_text
 
         view = self._SourcesView(sources_text) if sources_text else None
