@@ -161,6 +161,9 @@ class DeepSeekWebClient:
                 # Fix weird header generation like --## to just ##
                 final = re.sub(r'^--(#+)\s', r'\1 ', final, flags=re.MULTILINE)
 
+                # The user hates em-dashes/en-dashes (— or –). Replace them with colons.
+                final = re.sub(r'\s*(?:—|–)\s*', ': ', final)
+
                 # Extract all external links from the page (which will be the search sources)
                 links = await page.evaluate(
                     "() => [...new Set([...document.querySelectorAll('a[href]')].map(a => a.href).filter(h => h.startsWith('http') && !h.includes('deepseek.com')))]"
