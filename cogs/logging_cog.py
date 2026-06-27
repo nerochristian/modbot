@@ -11,6 +11,11 @@ from typing import Optional, Literal, Any
 import logging
 import io
 import re
+import tempfile
+import asyncio
+import time
+from pathlib import Path
+from discord.ext import tasks
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_admin
@@ -18,6 +23,12 @@ from utils.cache import ChannelCache
 from utils.transcript import generate_html_transcript, EphemeralTranscriptView
 from utils.logging import prepare_log_embed
 from utils.classic_send import send_classic_message
+
+CACHE_DIR = Path(tempfile.gettempdir()) / "modbot_images"
+try:
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+except Exception:
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -154,6 +165,24 @@ class Logging(commands.Cog):
         self._audit_search_window_seconds = 15
         self._seen_generic_audit_entries: dict[int, datetime] = {}
         self._suppress_message_delete_until: dict[int, datetime] = {}
+        self._message_snapshots: dict[int, discord.Message] = {}
+        self._snapshot_lock = asyncio.Lock()
+
+    async def cog_load(self):
+        self._cleanup_temp_cache.start()
+
+    async def cog_unload(self):
+        self._cleanup_temp_cache.cancel()
+
+    @tasks.loop(hours=1)
+    async def _cleanup_temp_cache(self):
+        try:
+            now = time.time()
+            for f in CACHE_DIR.glob("*.bin"):
+                if f.is_file() and now - f.stat().st_mtime > 86400:
+                    f.unlink(missing_ok=True)
+        except Exception:
+            pass
         self._suppress_bulk_delete_until: dict[int, datetime] = {}
         self._suppress_timeout_change_until: dict[tuple[int, int], datetime] = {}
         self._seen_webhook_create_entries: dict[int, datetime] = {}
@@ -582,20 +611,20 @@ class Logging(commands.Cog):
             pass
 
     async def _process_message_attachments_on_send(self, message: discord.Message) -> None:
-        """Downloads and persists attachments when a message is sent so they are available on delete."""
+        """Downloads attachments to local temp storage when a message is sent."""
+        if not message.attachments:
+            return
         try:
             records = await self._attachment_records_with_data(message.attachments)
-            if records:
-                await self._persist_deleted_image_attachments(
-                    message.guild.id,
-                    message.channel.id,
-                    message.id,
-                    records,
-                )
+            for i, record in enumerate(records):
+                data = record.get("data")
+                if data:
+                    cache_file = CACHE_DIR / f"{message.id}_{i}.bin"
+                    def _write(cf, d):
+                        cf.write_bytes(d)
+                    await asyncio.to_thread(_write, cache_file, data)
         except Exception:
-            pass
-        except Exception:
-            logger.exception("Failed to persist deleted-message image attachments")
+            logger.exception("Failed to cache message image attachments locally")
 
     @staticmethod
     def _attachment_name(attachment: object) -> str:
@@ -1432,13 +1461,29 @@ class Logging(commands.Cog):
             )
             
         if not attachment_records:
-            attachment_records = await self._attachment_records_with_data(message.attachments or [])
-            await self._persist_deleted_image_attachments(
-                message.guild.id,
-                message.channel.id,
-                message.id,
-                attachment_records,
-            )
+            attachment_records = self._attachment_records(message.attachments or [])
+            has_data = False
+            for i, record in enumerate(attachment_records):
+                cache_file = CACHE_DIR / f"{message.id}_{i}.bin"
+                if cache_file.exists():
+                    try:
+                        def _read(cf):
+                            return cf.read_bytes()
+                        record["data"] = await asyncio.to_thread(_read, cache_file)
+                        has_data = True
+                        def _unlink(cf):
+                            cf.unlink(missing_ok=True)
+                        await asyncio.to_thread(_unlink, cache_file)
+                    except Exception:
+                        pass
+            
+            if has_data:
+                await self._persist_deleted_image_attachments(
+                    message.guild.id,
+                    message.channel.id,
+                    message.id,
+                    attachment_records,
+                )
         image_attachments = self._image_attachments(attachment_records)
         content_value = (message.content or "").strip()
         message_text = content_value or (None if attachment_records else "*No content*")

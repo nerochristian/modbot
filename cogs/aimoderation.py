@@ -1785,12 +1785,11 @@ class GeminiClient:
         image_summary = ""
         image_messages = image_context
         if image_context and self.provider == "DigitalOcean" and not uses_native_search:
-            image_summary = await self._summarize_images_with_do_vision(user_content, image_context) or ""
+            # The API key is strictly locked to deepseek-v4-flash which lacks vision.
+            image_summary = ""
             image_messages = []
-            if not image_summary:
-                if is_image_question:
-                    return "I found the image, but the vision analysis pass failed. Please try again."
-                image_summary = "Image analysis failed."
+            if is_image_question:
+                return "The DigitalOcean API key is strictly locked to DeepSeek-V4-Flash, which does not support processing images."
         elif image_context and self.provider == "galaxy" and not uses_native_search:
             image_summary = await self._summarize_images_with_galaxy_v4(user_content, image_context) or ""
             image_messages = []
@@ -2085,55 +2084,6 @@ class GeminiClient:
         images: List[ImageContext],
     ) -> Optional[str]:
         return None
-
-    async def _summarize_images_with_do_vision(
-        self,
-        user_content: str,
-        images: List[ImageContext],
-    ) -> Optional[str]:
-        if not images:
-            return None
-        parts: List[Dict[str, Any]] = [
-            {
-                "type": "text",
-                "text": f"Describe the image contents vividly and factually to help a text-based AI. User context: {user_content[:500]}",
-            }
-        ]
-        for image in images:
-            parts.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": image.data_url, "detail": "auto"},
-                }
-            )
-
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are a precise vision analysis pass. Return only factual visual observations "
-                    "and direct identifications. Keep it concise."
-                ),
-            },
-            {"role": "user", "content": parts},
-        ]
-
-        try:
-            return await self._call_openai_compatible(
-                messages,
-                temperature=0.1,
-                max_tokens=700,
-                model="openai-gpt-4o-mini",
-                json_mode=False,
-                provider_name="DigitalOcean",
-                api_key=DO_API_KEY,
-                base_url=DO_BASE_URL,
-                default_model="openai-gpt-4o-mini",
-                allow_multimodal=True,
-            )
-        except Exception as exc:
-            logger.warning("DigitalOcean vision pass failed: %s", exc)
-            return None
 
     async def _collect_image_context(
         self,
