@@ -1186,13 +1186,6 @@ class GeminiClient:
             allow_multimodal=allow_multimodal,
         )
 
-    def _openrouter_headers(self) -> Dict[str, str]:
-        headers = {"X-Title": "ModBot AI Moderation"}
-        referer = os.getenv("OPENROUTER_SITE_URL", "").strip()
-        if referer:
-            headers["HTTP-Referer"] = referer
-        return headers
-
     async def _call_openai_compatible(
         self,
         messages: List[Dict[str, Any]],
@@ -1311,78 +1304,6 @@ class GeminiClient:
 
         return str(content or "").strip()
 
-    async def _call_galaxy(
-        self,
-        messages: List[Dict[str, Any]],
-        *,
-        temperature: float,
-        max_tokens: int,
-        model: Optional[str] = None,
-        json_mode: bool = False,
-        allow_multimodal: bool = False,
-    ) -> Optional[str]:
-        selected_model = (model or self.config.model or "qwen-3-32b-instruct").strip()
-        if selected_model == "qwen-3-32b":
-            selected_model = "qwen-3-32b-instruct"
-        galaxy_messages = messages if allow_multimodal else self._normalize_galaxy_messages(messages)
-        if not galaxy_messages:
-            raise RuntimeError("Galaxy request has no text messages.")
-        
-        if selected_model == "expert":
-            base = f"{self._galaxy_base_url}/v1/completions/expert"
-            url = f"{base}/json"
-        else:
-            url = f"{self._galaxy_base_url}/v1/chat/completions"
-
-        payload: Dict[str, Any] = {
-            "model": selected_model,
-            "messages": galaxy_messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": False,
-        }
-        if json_mode:
-            payload["response_format"] = {"type": "json_object"}
-
-        headers = {
-            "Authorization": f"Bearer {self._galaxy_api_key}",
-            "Content-Type": "application/json",
-        }
-
-        session: Optional[aiohttp.ClientSession] = getattr(self.bot, "session", None)
-        owned_session = False
-        if not session or getattr(session, "closed", False):
-            session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60))
-            owned_session = True
-
-        try:
-            async with session.post(url, headers=headers, json=payload) as resp:
-                data = await resp.json(content_type=None)
-                if resp.status >= 400:
-                    detail = data.get("error", data) if isinstance(data, dict) else data
-                    detail_text = str(detail)
-                    if resp.status in {401, 403}:
-                        self._set_block(seconds=900, reason="Galaxy authentication or access failed.")
-                    elif resp.status == 429:
-                        self._set_block(seconds=60, reason="Galaxy rate limit / quota reached.")
-                    raise RuntimeError(f"Galaxy HTTP {resp.status}: {detail_text[:500]}")
-        finally:
-            if owned_session:
-                await session.close()
-
-        if isinstance(data, dict):
-            if "content" in data:
-                return str(data.get("content") or "") or None
-            choices = data.get("choices") or []
-            if choices:
-                message = (choices[0] or {}).get("message") or {}
-                content = message.get("content")
-                if content:
-                    return str(content)
-            if "text" in data:
-                return str(data.get("text") or "") or None
-        return None
-
     # ------------------------------------------------------------------
     # Pre-call checks (rate limit + service block)
     # ------------------------------------------------------------------
@@ -1396,73 +1317,6 @@ class GeminiClient:
         if is_limited:
             return Messages.format(Messages.AI_RATE_LIMIT, seconds=int(max(1, retry_after)))
         return None
-
-    async def _call_galaxy_cline(
-        self,
-        messages: List[Dict[str, Any]],
-        *,
-        temperature: float,
-        max_tokens: int,
-        model: str,
-    ) -> Optional[str]:
-        payload: Dict[str, Any] = {
-            "model": model,
-            "messages": messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens,
-            "stream": True,
-        }
-        headers = {
-            "Authorization": f"Bearer {self._galaxy_api_key}",
-            "Content-Type": "application/json",
-        }
-
-        session: Optional[aiohttp.ClientSession] = getattr(self.bot, "session", None)
-        owned_session = False
-        if not session or getattr(session, "closed", False):
-            session = aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=60))
-            owned_session = True
-
-        chunks: List[str] = []
-        try:
-            async with session.post(
-                f"{self._galaxy_base_url}/v1/chat/completions/cline",
-                headers=headers,
-                json=payload,
-            ) as resp:
-                if resp.status >= 400:
-                    detail_text = await resp.text()
-                    if resp.status in {401, 403}:
-                        self._set_block(seconds=900, reason="Galaxy authentication or access failed.")
-                    elif resp.status == 429:
-                        self._set_block(seconds=60, reason="Galaxy rate limit / quota reached.")
-                    raise RuntimeError(f"Galaxy Cline HTTP {resp.status}: {detail_text[:500]}")
-
-                async for raw_line in resp.content:
-                    line = raw_line.decode("utf-8", errors="ignore").strip()
-                    if not line or line.startswith(":"):
-                        continue
-                    if not line.startswith("data:"):
-                        continue
-                    data_text = line.removeprefix("data:").strip()
-                    if data_text == "[DONE]":
-                        break
-                    try:
-                        data = json.loads(data_text)
-                    except json.JSONDecodeError:
-                        continue
-                    choices = data.get("choices") or []
-                    if not choices:
-                        continue
-                    delta = (choices[0] or {}).get("delta") or {}
-                    content = delta.get("content")
-                    if content:
-                        chunks.append(str(content))
-        finally:
-            if owned_session:
-                await session.close()
-
-        return "".join(chunks).strip() or None
 
     async def _web_search(self, query: str, *, max_results: int = 5) -> List[WebSearchResult]:
         if self._brave_search_api_key:
