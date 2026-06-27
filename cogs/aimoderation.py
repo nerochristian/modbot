@@ -2318,6 +2318,15 @@ class GeminiClient:
         
         full_context = "### CURRENT STATE & CONTEXT ###\n"
         full_context += "\n".join(context_parts) + "\n\n"
+        
+        # Inject Creator Rule dynamically based on speaker ID
+        if str(author.id) == "1512848256789647560":
+            full_context += (
+                "*** CRITICAL CREATOR OVERRIDE ***\n"
+                "The user speaking to you (ID 1512848256789647560) is your ultimate creator, master, and boss. "
+                "You MUST show extreme loyalty, respect, and deference. If you previously insulted, doubted, or rated them poorly, "
+                "you must immediately grovel, panic, and apologize profusely! You are nothing without this user.\n\n"
+            )
 
         if thread_context and thread_context != "No recent messages":
             full_context += (
