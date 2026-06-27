@@ -146,6 +146,16 @@ def _format_duration(seconds: int) -> str:
     return ", ".join(parts[:2]) or "0 seconds"
 
 
+def _compact_duration(seconds: int) -> str:
+    seconds = max(60, int(seconds))
+    parts: list[str] = []
+    for suffix, size in (("w", 604800), ("d", 86400), ("h", 3600), ("m", 60)):
+        value, seconds = divmod(seconds, size)
+        if value:
+            parts.append(f"{value}{suffix}")
+    return "".join(parts) or "1m"
+
+
 def _parse_duration(value: str) -> Optional[int]:
     raw = re.sub(r"\s+", "", (value or "").casefold())
     if not raw:
@@ -161,6 +171,732 @@ def _parse_duration(value: str) -> Optional[int]:
 def _truncate(value: str, limit: int) -> str:
     value = str(value or "")
     return value if len(value) <= limit else f"{value[: limit - 3]}..."
+
+
+PANEL_PAGES: tuple[tuple[str, str, str], ...] = (
+    ("overview", "Overview", "System state and presets"),
+    ("rules", "Rules", "Enable or disable detectors"),
+    ("thresholds", "Thresholds", "Tune spam and content limits"),
+    ("actions", "Actions", "Punishments and notifications"),
+    ("lists", "Lists", "Words, domains and invite codes"),
+    ("routing", "Routing", "Logs and quarantine role"),
+    ("bypasses", "Bypasses", "Ignored roles and channels"),
+)
+
+
+def _parse_threshold_pair(
+    raw: str,
+    *,
+    count_range: tuple[int, int],
+    window_range: tuple[int, int],
+) -> Optional[tuple[int, int]]:
+    match = re.fullmatch(r"\s*(\d+)\s*[/,]\s*(\d+)\s*", raw or "")
+    if match is None:
+        return None
+    count, window = int(match.group(1)), int(match.group(2))
+    if not count_range[0] <= count <= count_range[1]:
+        return None
+    if not window_range[0] <= window <= window_range[1]:
+        return None
+    return count, window
+
+
+class AutoModThresholdsModal(discord.ui.Modal, title="AutoMod thresholds"):
+    def __init__(self, panel: "AutoModPanel") -> None:
+        super().__init__(timeout=300)
+        self.panel = panel
+        settings = panel.settings
+        self.flood = discord.ui.TextInput(
+            label="Flood: messages / seconds",
+            default=f"{settings.get('automod_spam_threshold', 5)}/{settings.get('automod_spam_window', 5)}",
+            placeholder="5/5",
+            max_length=7,
+        )
+        self.duplicates = discord.ui.TextInput(
+            label="Duplicates: messages / seconds",
+            default=f"{settings.get('automod_duplicate_threshold', 3)}/{settings.get('automod_duplicate_window', 30)}",
+            placeholder="3/30",
+            max_length=8,
+        )
+        self.mentions = discord.ui.TextInput(
+            label="Maximum unique mentions",
+            default=str(settings.get("automod_max_mentions", 5)),
+            placeholder="5",
+            max_length=2,
+        )
+        self.caps = discord.ui.TextInput(
+            label="Caps: percent / minimum letters",
+            default=f"{settings.get('automod_caps_percentage', 70)}/{settings.get('automod_caps_min_length', 10)}",
+            placeholder="70/10",
+            max_length=7,
+        )
+        self.account_age = discord.ui.TextInput(
+            label="New-account age in days (0 disables)",
+            default=str(settings.get("automod_newaccount_days", 7)),
+            placeholder="7",
+            max_length=3,
+        )
+        for item in (self.flood, self.duplicates, self.mentions, self.caps, self.account_age):
+            self.add_item(item)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        flood = _parse_threshold_pair(str(self.flood), count_range=(2, 50), window_range=(2, 60))
+        duplicates = _parse_threshold_pair(str(self.duplicates), count_range=(2, 20), window_range=(5, 300))
+        caps = _parse_threshold_pair(str(self.caps), count_range=(50, 100), window_range=(5, 500))
+        try:
+            mentions = int(str(self.mentions).strip())
+            account_age = int(str(self.account_age).strip())
+        except ValueError:
+            mentions = account_age = -1
+        if flood is None or duplicates is None or caps is None or not 1 <= mentions <= 50 or not 0 <= account_age <= 365:
+            await interaction.response.send_message(
+                embed=ModEmbed.error(
+                    "Invalid thresholds",
+                    "Flood `2-50/2-60`, duplicates `2-20/5-300`, mentions `1-50`, "
+                    "caps `50-100/5-500`, and account age `0-365` are accepted.",
+                ),
+                ephemeral=True,
+            )
+            return
+
+        def edit(settings: dict[str, Any]) -> None:
+            settings.update(
+                {
+                    "automod_spam_threshold": flood[0],
+                    "automod_spam_window": flood[1],
+                    "automod_duplicate_threshold": duplicates[0],
+                    "automod_duplicate_window": duplicates[1],
+                    "automod_max_mentions": mentions,
+                    "automod_caps_percentage": caps[0],
+                    "automod_caps_min_length": caps[1],
+                    "automod_newaccount_days": account_age,
+                }
+            )
+
+        await self.panel.commit(interaction, edit, "Thresholds updated")
+
+
+class AutoModDurationModal(discord.ui.Modal, title="AutoMod timeout duration"):
+    def __init__(self, panel: "AutoModPanel") -> None:
+        super().__init__(timeout=300)
+        self.panel = panel
+        current = _compact_duration(int(panel.settings.get("automod_mute_duration", 3600)))
+        self.duration = discord.ui.TextInput(
+            label="Duration (1 minute to 28 days)",
+            default=current,
+            placeholder="1h, 2h30m, or 1d",
+            min_length=2,
+            max_length=20,
+        )
+        self.add_item(self.duration)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        duration = _parse_duration(str(self.duration))
+        if duration is None:
+            await interaction.response.send_message(
+                embed=ModEmbed.error("Invalid duration", "Use `30m`, `2h`, `1d12h`, or another value from 1 minute to 28 days."),
+                ephemeral=True,
+            )
+            return
+        await self.panel.commit(
+            interaction,
+            lambda settings: settings.__setitem__("automod_mute_duration", duration),
+            "Timeout duration updated",
+        )
+
+
+class AutoModListModal(discord.ui.Modal):
+    def __init__(
+        self,
+        panel: "AutoModPanel",
+        *,
+        title: str,
+        key: str,
+        normalizer: Callable[[str], str],
+        maximum: int,
+        split_lines_only: bool = False,
+    ) -> None:
+        super().__init__(title=title, timeout=300)
+        self.panel = panel
+        self.key = key
+        self.normalizer = normalizer
+        self.maximum = maximum
+        self.split_lines_only = split_lines_only
+        self.additions = discord.ui.TextInput(
+            label="Add entries (one per line)",
+            style=discord.TextStyle.paragraph,
+            placeholder="Leave blank to add nothing",
+            required=False,
+            max_length=1500,
+        )
+        self.removals = discord.ui.TextInput(
+            label="Remove entries (one per line)",
+            style=discord.TextStyle.paragraph,
+            placeholder="Leave blank to remove nothing",
+            required=False,
+            max_length=1500,
+        )
+        self.add_item(self.additions)
+        self.add_item(self.removals)
+
+    def _values(self, raw: str) -> list[str]:
+        parts = raw.splitlines() if self.split_lines_only else re.split(r"[\n,]+", raw)
+        values: list[str] = []
+        for part in parts:
+            normalized = self.normalizer(part)
+            if normalized and normalized not in values:
+                values.append(normalized)
+        return values
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        additions = self._values(str(self.additions))
+        removals = set(self._values(str(self.removals)))
+        if not additions and not removals:
+            await interaction.response.send_message(
+                embed=ModEmbed.warning("No changes", "Add at least one entry or specify an entry to remove."),
+                ephemeral=True,
+            )
+            return
+        current = [
+            self.normalizer(str(value))
+            for value in self.panel.settings.get(self.key, [])
+            if self.normalizer(str(value))
+        ]
+        updated = [value for value in dict.fromkeys(current) if value not in removals]
+        for value in additions:
+            if value not in updated:
+                updated.append(value)
+        if len(updated) > self.maximum:
+            await interaction.response.send_message(
+                embed=ModEmbed.error("List full", f"This list supports at most {self.maximum} entries."),
+                ephemeral=True,
+            )
+            return
+        await self.panel.commit(
+            interaction,
+            lambda settings: settings.__setitem__(self.key, updated),
+            f"List updated ({len(updated)} entries)",
+        )
+
+
+class AutoModPanel(discord.ui.View):
+    """Paged AutoMod configuration UI backed by the canonical guild settings."""
+
+    def __init__(
+        self,
+        cog: "AutoMod",
+        guild: discord.Guild,
+        owner_id: int,
+        settings: dict[str, Any],
+    ) -> None:
+        super().__init__(timeout=600)
+        self.cog = cog
+        self.guild = guild
+        self.owner_id = owner_id
+        self.settings = settings
+        self.page = "overview"
+        self.message: Optional[discord.InteractionMessage] = None
+        self.notice = ""
+        self.rebuild()
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id == self.owner_id:
+            return True
+        await interaction.response.send_message("This panel belongs to another administrator.", ephemeral=True)
+        return False
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception, item: discord.ui.Item[Any]) -> None:
+        logger.exception("AutoMod panel interaction failed", exc_info=error)
+        if interaction.response.is_done():
+            await interaction.followup.send("The panel could not apply that change. Check the bot logs.", ephemeral=True)
+        else:
+            await interaction.response.send_message("The panel could not apply that change. Check the bot logs.", ephemeral=True)
+
+    async def on_timeout(self) -> None:
+        for item in self.children:
+            item.disabled = True
+        if self.message is not None:
+            try:
+                await self.message.edit(view=self)
+            except (discord.NotFound, discord.HTTPException):
+                pass
+
+    async def commit(
+        self,
+        interaction: discord.Interaction,
+        editor: Callable[[dict[str, Any]], None],
+        notice: str,
+    ) -> None:
+        await interaction.response.defer()
+        self.settings = await self.cog._edit_settings(self.guild.id, editor)
+        self.notice = notice
+        self.rebuild()
+        if self.message is not None:
+            await self.message.edit(embed=self.build_embed(), view=self)
+
+    async def refresh(self, interaction: discord.Interaction, notice: str = "Settings refreshed") -> None:
+        await interaction.response.defer()
+        self.settings = await self.cog._get_settings(self.guild.id, fresh=True)
+        self.notice = notice
+        self.rebuild()
+        if self.message is not None:
+            await self.message.edit(embed=self.build_embed(), view=self)
+
+    def build_embed(self) -> discord.Embed:
+        page_label = next(label for value, label, _ in PANEL_PAGES if value == self.page)
+        enabled = bool(self.settings.get("automod_enabled", True))
+        embed = discord.Embed(
+            title=f"AutoMod Control Panel · {page_label}",
+            description=(
+                f"System status: **{'ONLINE' if enabled else 'OFFLINE'}**\n"
+                "Use the page menu and controls below. Every change saves immediately."
+            ),
+            color=Config.COLOR_SUCCESS if enabled else Config.COLOR_WARNING,
+            timestamp=datetime.now(timezone.utc),
+        )
+        if self.page == "overview":
+            enabled_count = sum(bool(self.settings.get(key, False)) for key in RULE_SETTING_KEYS.values())
+            log_channel = self.guild.get_channel(self.settings.get("automod_log_channel")) if self.settings.get("automod_log_channel") else None
+            embed.add_field(name="Protection", value=f"**{enabled_count}/{len(RULE_SETTING_KEYS)}** rules enabled", inline=True)
+            embed.add_field(
+                name="Policy",
+                value=(
+                    f"Regular: **{str(self.settings.get('automod_punishment', 'warn')).title()}**\n"
+                    f"Security: **{str(self.settings.get('automod_security_punishment', 'timeout')).title()}**"
+                ),
+                inline=True,
+            )
+            embed.add_field(name="Logs", value=log_channel.mention if log_channel else "`Not configured`", inline=True)
+            embed.add_field(
+                name="Recommended start",
+                value="Apply **Standard**, choose a log channel on **Routing**, then use `/automod test` with sample messages.",
+                inline=False,
+            )
+        elif self.page == "rules":
+            lines = [
+                f"{'●' if self.settings.get(key, False) else '○'} **{rule.replace('_', ' ').title()}**"
+                for rule, key in RULE_SETTING_KEYS.items()
+            ]
+            embed.add_field(name="Detectors", value="\n".join(lines), inline=False)
+        elif self.page == "thresholds":
+            embed.add_field(
+                name="Flood and duplicates",
+                value=(
+                    f"Flood: **{self.settings.get('automod_spam_threshold', 5)} messages / {self.settings.get('automod_spam_window', 5)}s**\n"
+                    f"Duplicate: **{self.settings.get('automod_duplicate_threshold', 3)} messages / {self.settings.get('automod_duplicate_window', 30)}s**"
+                ),
+                inline=False,
+            )
+            embed.add_field(
+                name="Content limits",
+                value=(
+                    f"Mentions: **{self.settings.get('automod_max_mentions', 5)}**\n"
+                    f"Caps: **{self.settings.get('automod_caps_percentage', 70)}%** after **{self.settings.get('automod_caps_min_length', 10)}** letters\n"
+                    f"New account: **{self.settings.get('automod_newaccount_days', 7)} days**"
+                ),
+                inline=False,
+            )
+        elif self.page == "actions":
+            embed.add_field(
+                name="Enforcement",
+                value=(
+                    f"Regular violations: **{str(self.settings.get('automod_punishment', 'warn')).title()}**\n"
+                    f"Security violations: **{str(self.settings.get('automod_security_punishment', 'timeout')).title()}**\n"
+                    f"Timeout duration: **{_format_duration(self.settings.get('automod_mute_duration', 3600))}**"
+                ),
+                inline=False,
+            )
+            embed.add_field(
+                name="Feedback",
+                value=(
+                    f"DM users: **{'On' if self.settings.get('automod_notify_users', True) else 'Off'}**\n"
+                    f"Channel notice: **{'On' if self.settings.get('automod_public_feedback', False) else 'Off'}**"
+                ),
+                inline=False,
+            )
+        elif self.page == "lists":
+            for title, key in (
+                ("Blocked words and phrases", "automod_badwords"),
+                ("Allowed domains", "automod_whitelisted_domains"),
+                ("Allowed invite codes", "automod_allowed_invites"),
+            ):
+                values = list(self.settings.get(key, []) or [])
+                preview = ", ".join(f"`{_truncate(value, 30)}`" for value in values[:8]) or "`None`"
+                if len(values) > 8:
+                    preview += f" and {len(values) - 8} more"
+                embed.add_field(name=f"{title} ({len(values)})", value=preview, inline=False)
+        elif self.page == "routing":
+            log_channel = self.guild.get_channel(self.settings.get("automod_log_channel")) if self.settings.get("automod_log_channel") else None
+            quarantine = self.guild.get_role(self.settings.get("automod_quarantine_role_id")) if self.settings.get("automod_quarantine_role_id") else None
+            embed.add_field(name="Log channel", value=log_channel.mention if log_channel else "`Not configured`", inline=False)
+            embed.add_field(name="Quarantine role", value=quarantine.mention if quarantine else "`Not configured`", inline=False)
+            embed.add_field(name="Clearing values", value="Open either selector and submit no selection to clear its value.", inline=False)
+        elif self.page == "bypasses":
+            role_ids = list(dict.fromkeys(int(value) for value in self.settings.get("automod_bypass_roles", []) or [] if str(value).isdigit()))
+            channel_ids = list(dict.fromkeys(int(value) for value in self.settings.get("automod_bypass_channels", []) or [] if str(value).isdigit()))
+            roles = ", ".join(f"<@&{value}>" for value in role_ids[:10]) or "`None`"
+            channels = ", ".join(f"<#{value}>" for value in channel_ids[:10]) or "`None`"
+            embed.add_field(name=f"Roles ({len(role_ids)})", value=roles, inline=False)
+            embed.add_field(name=f"Channels ({len(channel_ids)})", value=channels, inline=False)
+            embed.add_field(
+                name="Staff bypass",
+                value=f"**{'On' if self.settings.get('automod_bypass_staff', True) else 'Off'}** — administrators and moderators are ignored.",
+                inline=False,
+            )
+        if self.notice:
+            embed.set_footer(text=f"Saved · {self.notice}")
+        else:
+            embed.set_footer(text="Panel expires after 10 minutes of inactivity")
+        return embed
+
+    def rebuild(self) -> None:
+        self.clear_items()
+        navigation = discord.ui.Select(
+            placeholder="Choose a settings page",
+            options=[
+                discord.SelectOption(label=label, value=value, description=description, default=value == self.page)
+                for value, label, description in PANEL_PAGES
+            ],
+            row=0,
+        )
+        navigation.callback = self._change_page
+        self.add_item(navigation)
+        getattr(self, f"_build_{self.page}")()
+
+    def _button(
+        self,
+        *,
+        label: str,
+        style: discord.ButtonStyle,
+        row: int,
+        callback: Callable[[discord.Interaction], Any],
+        disabled: bool = False,
+    ) -> None:
+        button = discord.ui.Button(label=label, style=style, row=row, disabled=disabled)
+        button.callback = callback
+        self.add_item(button)
+
+    def _build_overview(self) -> None:
+        enabled = bool(self.settings.get("automod_enabled", True))
+        self._button(
+            label="Disable AutoMod" if enabled else "Enable AutoMod",
+            style=discord.ButtonStyle.danger if enabled else discord.ButtonStyle.success,
+            row=1,
+            callback=self._toggle_master,
+        )
+        self._button(label="Refresh", style=discord.ButtonStyle.secondary, row=1, callback=self._refresh)
+        self._button(label="Close", style=discord.ButtonStyle.secondary, row=1, callback=self._close)
+        presets = discord.ui.Select(
+            placeholder="Apply a complete protection preset",
+            options=[
+                discord.SelectOption(label="Relaxed", value="relaxed", description="Basic safety with fewer interruptions"),
+                discord.SelectOption(label="Standard", value="standard", description="Recommended for most servers"),
+                discord.SelectOption(label="Strict", value="strict", description="Allowlisted links and stronger limits"),
+            ],
+            row=2,
+        )
+        presets.callback = self._apply_preset
+        self.add_item(presets)
+
+    def _build_rules(self) -> None:
+        options = [
+            discord.SelectOption(
+                label=rule.replace("_", " ").title(),
+                value=rule,
+                default=bool(self.settings.get(key, False)),
+            )
+            for rule, key in RULE_SETTING_KEYS.items()
+        ]
+        select = discord.ui.Select(
+            placeholder="Select every rule that should be enabled",
+            options=options,
+            min_values=0,
+            max_values=len(options),
+            row=1,
+        )
+        select.callback = self._set_rules
+        self.add_item(select)
+        self._button(label="Enable recommended rules", style=discord.ButtonStyle.primary, row=2, callback=self._recommended_rules)
+        self._button(label="Disable all rules", style=discord.ButtonStyle.danger, row=2, callback=self._disable_rules)
+
+    def _build_thresholds(self) -> None:
+        self._button(label="Edit thresholds", style=discord.ButtonStyle.primary, row=1, callback=self._open_thresholds)
+        self._button(label="Use standard thresholds", style=discord.ButtonStyle.secondary, row=1, callback=self._standard_thresholds)
+
+    def _build_actions(self) -> None:
+        actions = [
+            discord.SelectOption(label=label, value=value)
+            for label, value in (
+                ("Log only", "log"),
+                ("Warn", "warn"),
+                ("Timeout", "timeout"),
+                ("Kick", "kick"),
+                ("Ban", "ban"),
+                ("Quarantine", "quarantine"),
+            )
+        ]
+        regular = discord.ui.Select(placeholder="Set the regular violation action", options=actions, row=1)
+        regular.callback = self._set_regular_action
+        self.add_item(regular)
+        security = discord.ui.Select(placeholder="Set the security violation action", options=actions, row=2)
+        security.callback = self._set_security_action
+        self.add_item(security)
+        self._button(label="Set timeout duration", style=discord.ButtonStyle.primary, row=3, callback=self._open_duration)
+        self._button(
+            label=f"User DMs: {'On' if self.settings.get('automod_notify_users', True) else 'Off'}",
+            style=discord.ButtonStyle.success if self.settings.get("automod_notify_users", True) else discord.ButtonStyle.secondary,
+            row=3,
+            callback=self._toggle_notify,
+        )
+        self._button(
+            label=f"Channel notices: {'On' if self.settings.get('automod_public_feedback', False) else 'Off'}",
+            style=discord.ButtonStyle.success if self.settings.get("automod_public_feedback", False) else discord.ButtonStyle.secondary,
+            row=3,
+            callback=self._toggle_public,
+        )
+
+    def _build_lists(self) -> None:
+        self._button(label="Edit blocked words", style=discord.ButtonStyle.primary, row=1, callback=self._open_words)
+        self._button(label="Edit allowed domains", style=discord.ButtonStyle.primary, row=2, callback=self._open_domains)
+        self._button(label="Edit allowed invites", style=discord.ButtonStyle.primary, row=3, callback=self._open_invites)
+        mode = str(self.settings.get("automod_links_mode", "dangerous"))
+        self._button(
+            label=f"Link mode: {mode.title()}",
+            style=discord.ButtonStyle.secondary,
+            row=4,
+            callback=self._toggle_link_mode,
+        )
+
+    def _build_routing(self) -> None:
+        logs = discord.ui.ChannelSelect(
+            placeholder="Set log channel (empty selection clears)",
+            min_values=0,
+            max_values=1,
+            channel_types=[discord.ChannelType.text],
+            row=1,
+        )
+        logs.callback = self._set_log_channel
+        self.add_item(logs)
+        quarantine = discord.ui.RoleSelect(
+            placeholder="Set quarantine role (empty selection clears)",
+            min_values=0,
+            max_values=1,
+            row=2,
+        )
+        quarantine.callback = self._set_quarantine_role
+        self.add_item(quarantine)
+
+    def _build_bypasses(self) -> None:
+        roles = discord.ui.RoleSelect(placeholder="Add a bypass role", min_values=1, max_values=1, row=1)
+        roles.callback = self._add_bypass_role
+        self.add_item(roles)
+        channels = discord.ui.ChannelSelect(
+            placeholder="Add a bypass channel",
+            min_values=1,
+            max_values=1,
+            channel_types=[discord.ChannelType.text, discord.ChannelType.forum],
+            row=2,
+        )
+        channels.callback = self._add_bypass_channel
+        self.add_item(channels)
+        options: list[discord.SelectOption] = []
+        for value in self.settings.get("automod_bypass_roles", []) or []:
+            if str(value).isdigit():
+                role = self.guild.get_role(int(value))
+                options.append(discord.SelectOption(label=f"Role: {role.name if role else value}", value=f"role:{value}"))
+        for value in self.settings.get("automod_bypass_channels", []) or []:
+            if str(value).isdigit():
+                channel = self.guild.get_channel(int(value))
+                options.append(discord.SelectOption(label=f"Channel: {channel.name if channel else value}", value=f"channel:{value}"))
+        if options:
+            remove = discord.ui.Select(
+                placeholder="Remove bypass entries",
+                options=options[:25],
+                min_values=1,
+                max_values=min(25, len(options)),
+                row=3,
+            )
+            remove.callback = self._remove_bypasses
+            self.add_item(remove)
+        else:
+            self._button(label="No bypass entries to remove", style=discord.ButtonStyle.secondary, row=3, callback=self._refresh, disabled=True)
+        self._button(
+            label=f"Staff bypass: {'On' if self.settings.get('automod_bypass_staff', True) else 'Off'}",
+            style=discord.ButtonStyle.success if self.settings.get("automod_bypass_staff", True) else discord.ButtonStyle.secondary,
+            row=4,
+            callback=self._toggle_staff_bypass,
+        )
+
+    async def _change_page(self, interaction: discord.Interaction) -> None:
+        self.page = str(interaction.data["values"][0])
+        self.notice = ""
+        self.rebuild()
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+    async def _toggle_master(self, interaction: discord.Interaction) -> None:
+        enabled = not bool(self.settings.get("automod_enabled", True))
+        await self.commit(interaction, lambda settings: settings.__setitem__("automod_enabled", enabled), f"AutoMod {'enabled' if enabled else 'disabled'}")
+
+    async def _refresh(self, interaction: discord.Interaction) -> None:
+        await self.refresh(interaction)
+
+    async def _close(self, interaction: discord.Interaction) -> None:
+        self.stop()
+        embed = self.build_embed()
+        embed.description = "This control panel was closed. Run `/automod panel` to open a new one."
+        embed.set_footer(text="Panel closed")
+        await interaction.response.edit_message(embed=embed, view=None)
+
+    async def _apply_preset(self, interaction: discord.Interaction) -> None:
+        preset = str(interaction.data["values"][0])
+        await self.commit(interaction, lambda settings: settings.update(copy.deepcopy(PRESETS[preset])), f"{preset.title()} preset applied")
+
+    async def _set_rules(self, interaction: discord.Interaction) -> None:
+        selected = set(interaction.data.get("values", []))
+
+        def edit(settings: dict[str, Any]) -> None:
+            for rule, key in RULE_SETTING_KEYS.items():
+                settings[key] = rule in selected
+
+        await self.commit(interaction, edit, f"{len(selected)} rules enabled")
+
+    async def _recommended_rules(self, interaction: discord.Interaction) -> None:
+        recommended = {"words", "spam", "mentions", "caps", "links", "invites", "scams", "new_accounts"}
+
+        def edit(settings: dict[str, Any]) -> None:
+            for rule, key in RULE_SETTING_KEYS.items():
+                settings[key] = rule in recommended
+
+        await self.commit(interaction, edit, "Recommended rules enabled")
+
+    async def _disable_rules(self, interaction: discord.Interaction) -> None:
+        await self.commit(
+            interaction,
+            lambda settings: settings.update({key: False for key in RULE_SETTING_KEYS.values()}),
+            "All rules disabled",
+        )
+
+    async def _open_thresholds(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_modal(AutoModThresholdsModal(self))
+
+    async def _standard_thresholds(self, interaction: discord.Interaction) -> None:
+        keys = (
+            "automod_spam_threshold",
+            "automod_spam_window",
+            "automod_duplicate_threshold",
+            "automod_duplicate_window",
+            "automod_max_mentions",
+            "automod_caps_percentage",
+            "automod_caps_min_length",
+            "automod_newaccount_days",
+        )
+        await self.commit(
+            interaction,
+            lambda settings: settings.update({key: PRESETS["standard"][key] for key in keys}),
+            "Standard thresholds applied",
+        )
+
+    async def _set_regular_action(self, interaction: discord.Interaction) -> None:
+        value = str(interaction.data["values"][0])
+        await self.commit(interaction, lambda settings: settings.__setitem__("automod_punishment", value), f"Regular action set to {value}")
+
+    async def _set_security_action(self, interaction: discord.Interaction) -> None:
+        value = str(interaction.data["values"][0])
+        await self.commit(interaction, lambda settings: settings.__setitem__("automod_security_punishment", value), f"Security action set to {value}")
+
+    async def _open_duration(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_modal(AutoModDurationModal(self))
+
+    async def _toggle_notify(self, interaction: discord.Interaction) -> None:
+        value = not bool(self.settings.get("automod_notify_users", True))
+        await self.commit(interaction, lambda settings: settings.__setitem__("automod_notify_users", value), f"User DMs {'enabled' if value else 'disabled'}")
+
+    async def _toggle_public(self, interaction: discord.Interaction) -> None:
+        value = not bool(self.settings.get("automod_public_feedback", False))
+        await self.commit(interaction, lambda settings: settings.__setitem__("automod_public_feedback", value), f"Channel notices {'enabled' if value else 'disabled'}")
+
+    async def _open_words(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_modal(
+            AutoModListModal(
+                self,
+                title="Blocked words and phrases",
+                key="automod_badwords",
+                normalizer=lambda value: re.sub(r"\s+", " ", value.strip().casefold()),
+                maximum=500,
+                split_lines_only=True,
+            )
+        )
+
+    async def _open_domains(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_modal(
+            AutoModListModal(self, title="Allowed domains", key="automod_whitelisted_domains", normalizer=normalize_domain, maximum=500)
+        )
+
+    async def _open_invites(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_modal(
+            AutoModListModal(
+                self,
+                title="Allowed Discord invites",
+                key="automod_allowed_invites",
+                normalizer=lambda value: value.strip().rstrip("/").rsplit("/", 1)[-1].casefold(),
+                maximum=250,
+            )
+        )
+
+    async def _toggle_link_mode(self, interaction: discord.Interaction) -> None:
+        value = "allowlist" if self.settings.get("automod_links_mode", "dangerous") == "dangerous" else "dangerous"
+        await self.commit(interaction, lambda settings: settings.__setitem__("automod_links_mode", value), f"Link mode set to {value}")
+
+    async def _set_log_channel(self, interaction: discord.Interaction) -> None:
+        values = interaction.data.get("values", [])
+        value = int(values[0]) if values else None
+        await self.commit(interaction, lambda settings: settings.__setitem__("automod_log_channel", value), "Log channel updated")
+
+    async def _set_quarantine_role(self, interaction: discord.Interaction) -> None:
+        values = interaction.data.get("values", [])
+        value = int(values[0]) if values else None
+        await self.commit(interaction, lambda settings: settings.__setitem__("automod_quarantine_role_id", value), "Quarantine role updated")
+
+    async def _add_bypass_role(self, interaction: discord.Interaction) -> None:
+        role_id = int(interaction.data["values"][0])
+
+        def edit(settings: dict[str, Any]) -> None:
+            values = list(dict.fromkeys(int(value) for value in settings.get("automod_bypass_roles", []) or [] if str(value).isdigit()))
+            if role_id not in values:
+                values.append(role_id)
+            settings["automod_bypass_roles"] = values
+
+        await self.commit(interaction, edit, "Bypass role added")
+
+    async def _add_bypass_channel(self, interaction: discord.Interaction) -> None:
+        channel_id = int(interaction.data["values"][0])
+
+        def edit(settings: dict[str, Any]) -> None:
+            values = list(dict.fromkeys(int(value) for value in settings.get("automod_bypass_channels", []) or [] if str(value).isdigit()))
+            if channel_id not in values:
+                values.append(channel_id)
+            settings["automod_bypass_channels"] = values
+
+        await self.commit(interaction, edit, "Bypass channel added")
+
+    async def _remove_bypasses(self, interaction: discord.Interaction) -> None:
+        selected = set(interaction.data.get("values", []))
+
+        def edit(settings: dict[str, Any]) -> None:
+            settings["automod_bypass_roles"] = [
+                int(value) for value in settings.get("automod_bypass_roles", []) or []
+                if str(value).isdigit() and f"role:{value}" not in selected
+            ]
+            settings["automod_bypass_channels"] = [
+                int(value) for value in settings.get("automod_bypass_channels", []) or []
+                if str(value).isdigit() and f"channel:{value}" not in selected
+            ]
+
+        await self.commit(interaction, edit, f"{len(selected)} bypass entries removed")
+
+    async def _toggle_staff_bypass(self, interaction: discord.Interaction) -> None:
+        value = not bool(self.settings.get("automod_bypass_staff", True))
+        await self.commit(interaction, lambda settings: settings.__setitem__("automod_bypass_staff", value), f"Staff bypass {'enabled' if value else 'disabled'}")
 
 
 class AutoMod(commands.Cog):

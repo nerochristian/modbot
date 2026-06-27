@@ -1191,18 +1191,21 @@ class GeminiClient:
         max_tokens: int,
         model: Optional[str] = None,
         json_mode: bool = False,
+        allow_multimodal: bool = False,
     ) -> Optional[str]:
+        target_model = model or os.getenv("DO_AUTOMOD_MODEL", "gemma-4")
         return await self._call_openai_compatible(
             messages,
             temperature=temperature,
             max_tokens=max_tokens,
-            model="deepseek-4-flash",
+            model=target_model,
             json_mode=json_mode,
             provider_name="DigitalOcean",
             api_key=DO_API_KEY,
             base_url=DO_BASE_URL,
-            default_model="deepseek-4-flash",
+            default_model=target_model,
             normalize_model=False,
+            allow_multimodal=allow_multimodal,
         )
 
     def _openrouter_headers(self) -> Dict[str, str]:
@@ -1785,11 +1788,14 @@ class GeminiClient:
         image_summary = ""
         image_messages = image_context
         if image_context and self.provider == "DigitalOcean" and not uses_native_search:
-            # The API key is strictly locked to deepseek-v4-flash which lacks vision.
-            image_summary = ""
-            image_messages = []
-            if is_image_question:
-                return "The DigitalOcean API key is strictly locked to DeepSeek-V4-Flash, which does not support processing images."
+            if signals.mode == ConversationMode.RESEARCH:
+                image_summary = ""
+                image_messages = []
+                if is_image_question:
+                    return "DeepSeek-V4-Flash (Research Mode) does not support processing images. Please ask a text-based research question."
+            else:
+                image_messages = image_context
+                image_summary = ""
         elif image_context and self.provider == "galaxy" and not uses_native_search:
             image_summary = await self._summarize_images_with_galaxy_v4(user_content, image_context) or ""
             image_messages = []
@@ -1814,12 +1820,21 @@ class GeminiClient:
         try:
             await self._rate_limiter.record_call(author.id)
             call_model = "expert" if uses_native_search else model
+            if not uses_native_search and self.provider == "DigitalOcean":
+                if signals.mode == ConversationMode.RESEARCH:
+                    call_model = os.getenv("DO_RESEARCH_MODEL", "deepseek-4-flash")
+                else:
+                    call_model = os.getenv("DO_AUTOMOD_MODEL", "gemma-4")
+                    
+            allow_multimodal = (call_model != os.getenv("DO_RESEARCH_MODEL", "deepseek-4-flash"))
+            
             content = await self._call(
                 messages,
                 temperature=plan.temperature,
                 max_tokens=plan.max_tokens,
                 model=call_model,
                 json_mode=False,
+                allow_multimodal=allow_multimodal,
             )
             if not content:
                 return None
