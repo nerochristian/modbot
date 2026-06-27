@@ -1146,6 +1146,10 @@ class GeminiClient:
         self._block_until: Optional[datetime] = None
         self._block_reason: Optional[str] = None
         self._galaxy_vision_rejected = False
+        self._brave_search_api_key = os.getenv("BRAVE_SEARCH_API_KEY")
+        self._tavily_api_key = os.getenv("TAVILY_API_KEY")
+        self._serpapi_api_key = os.getenv("SERPAPI_API_KEY")
+        self._galaxy_api_key = os.getenv("GALAXY_API_KEY")
 
     @property
     def is_available(self) -> bool:
