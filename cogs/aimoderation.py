@@ -1868,73 +1868,7 @@ class GeminiClient:
         messages.append({"role": "user", "content": user_prompt})
         return messages
 
-    async def _summarize_images_with_galaxy_v4(
-        self,
-        user_content: str,
-        images: List[ImageContext],
-    ) -> Optional[str]:
-        """Use Galaxy v4 flash as the vision pass before Gemini 3.5 final response."""
-        if not images:
-            return None
-        if self._galaxy_vision_rejected or not self._galaxy_api_key:
-            return await self._summarize_images_with_gemini_vision(user_content, images)
 
-        parts: List[Dict[str, Any]] = [
-            {
-                "type": "text",
-                "text": (
-                    "Analyze these Discord image(s) accurately for another model. "
-                    "Identify visible characters, objects, text, UI, and any notable context. "
-                    "If the user asks who/what something is, answer that directly when possible. "
-                    "Do not make a game, ask for guesses, or invent hidden information.\n\n"
-                    f"User question: {user_content}\n\n"
-                    + "\n".join(
-                        f"Image {i}: {image.label} ({image.filename})"
-                        for i, image in enumerate(images, start=1)
-                    )
-                ),
-            }
-        ]
-        for image in images[:4]:
-            parts.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": image.data_url, "detail": "auto"},
-                }
-            )
-
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are a precise vision analysis pass. Return only factual visual observations "
-                    "and direct identifications. Keep it concise."
-                ),
-            },
-            {"role": "user", "content": parts},
-        ]
-
-        try:
-            return await self._call_galaxy(
-                messages,
-                temperature=0.1,
-                max_tokens=700,
-                model="deepseek-4-flash",
-                json_mode=False,
-                allow_multimodal=True,
-            )
-        except Exception as exc:
-            if "missing or invalid 'messages' array" in str(exc).lower():
-                self._galaxy_vision_rejected = True
-            logger.warning("Galaxy v4 image analysis failed; trying Gemini vision fallback: %s", exc)
-            return await self._summarize_images_with_gemini_vision(user_content, images)
-
-    async def _summarize_images_with_gemini_vision(
-        self,
-        user_content: str,
-        images: List[ImageContext],
-    ) -> Optional[str]:
-        return None
 
     async def _collect_image_context(
         self,
