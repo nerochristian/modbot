@@ -1586,7 +1586,7 @@ class GeminiClient:
         web_context = ""
         uses_native_search = False
         if signals.mode == ConversationMode.RESEARCH:
-            if self.provider == "galaxy" and self._galaxy_api_key:
+            if self.provider == "digitalocean":
                 uses_native_search = True
             elif not self.has_web_search:
                 return (
@@ -1655,12 +1655,12 @@ class GeminiClient:
 
         try:
             await self._rate_limiter.record_call(author.id)
-            call_model = "expert" if uses_native_search else model
-            if not uses_native_search and self.provider == "digitalocean":
+            call_model = model
+            if self.provider == "digitalocean":
                 if signals.mode == ConversationMode.RESEARCH:
                     call_model = os.getenv("DO_RESEARCH_MODEL", "deepseek-4-flash")
                 else:
-                    call_model = os.getenv("DO_AUTOMOD_MODEL", "qwen-3-32b")
+                    call_model = os.getenv("DO_AUTOMOD_MODEL", "nemotron-3-nano-omni")
                     
             allow_multimodal = (call_model != os.getenv("DO_RESEARCH_MODEL", "deepseek-4-flash"))
             
