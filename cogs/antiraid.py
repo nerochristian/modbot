@@ -23,8 +23,10 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-from google import genai
-from google.genai import types as genai_types
+import aiohttp
+
+DO_API_KEY = "Doo_v1_e9059d2f728a11f7257b642948ace2f47f9b062f9613fb0fd58337a3eccd42fb"
+DO_BASE_URL = "https://inference.digitalocean.com/v1"
 
 from utils.embeds import ModEmbed
 from utils.logging import send_log_embed
@@ -46,10 +48,8 @@ class AIRaidAnalyzer:
     """
 
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("GEMINI_API_KEY")
-        self.client: Optional[genai.Client] = None
-        if self.api_key:
-            self.client = genai.Client(api_key=self.api_key)
+        self.api_key = DO_API_KEY
+        self.client = True # Dummy flag for compat
 
         self.analysis_cache: Dict[str, tuple[dict, datetime]] = {}
         self.rate_limit_tracker: Dict[str, List[datetime]] = defaultdict(list)
@@ -186,18 +186,26 @@ Guidelines:
 """
 
         try:
-            config = genai_types.GenerateContentConfig(
-                temperature=0.15,
-                max_output_tokens=250,
-                response_mime_type="application/json"
-            )
-            completion = await self.client.aio.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=config,
-            )
+            payload = {
+                "model": "deepseek-v4-flash",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.15,
+                "max_tokens": 250,
+                "response_format": {"type": "json_object"}
+            }
+            headers = {
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{DO_BASE_URL}/chat/completions", json=payload, headers=headers, timeout=15) as resp:
+                    if resp.status != 200:
+                        raise RuntimeError(f"API Error {resp.status}")
+                    data = await resp.json()
+            
             self._record_request()
-            raw = completion.text.strip()
+            raw = data["choices"][0]["message"]["content"].strip()
 
             # parse json
             start = raw.find("{")

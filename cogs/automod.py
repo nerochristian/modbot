@@ -23,12 +23,9 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-try:
-    from google import genai
-    from google.genai import types as genai_types
-    GEMINI_AVAILABLE = True
-except ImportError:
-    GEMINI_AVAILABLE = False
+import aiohttp
+DO_API_KEY = "Doo_v1_e9059d2f728a11f7257b642948ace2f47f9b062f9613fb0fd58337a3eccd42fb"
+DO_BASE_URL = "https://inference.digitalocean.com/v1"
 
 from utils.embeds import ModEmbed
 from utils.logging import send_log_embed
@@ -450,13 +447,10 @@ class AIFilter:
     PRIORITY = 70
 
     def __init__(self):
-        api_key = os.getenv("GEMINI_API_KEY")
-        self.client = genai.Client(api_key=api_key) if api_key and GEMINI_AVAILABLE else None
-        self.model = "gemini-2.5-flash"
         self._cache: Dict[str, FilterResult] = {}
 
     async def check(self, message: discord.Message, settings: dict, ctx: dict) -> FilterResult:
-        if not self.client or not settings.get("automod_ai_enabled", False):
+        if not settings.get("automod_ai_enabled", False):
             return FilterResult(False)
         content = message.content.strip()
         if not content or len(content) < 5:
@@ -475,8 +469,7 @@ class AIFilter:
                 recent = [v['reason'] for v in hist.violations[-3:]]
                 hist_ctx = f"\nUser has {len(hist.violations)} prior violations. Recent: {recent}"
 
-            loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(None, self._analyze, content, hist_ctx)
+            result = await self._analyze(content, hist_ctx)
 
             # Maintain cache (cap at 500)
             if len(self._cache) >= 500:
@@ -491,7 +484,7 @@ class AIFilter:
             logger.error(f"AI filter error: {e}")
         return FilterResult(False)
 
-    def _analyze(self, content: str, history: str) -> FilterResult:
+    async def _analyze(self, content: str, history: str) -> FilterResult:
         try:
             prompt = f"""Analyze this Discord message for policy violations.
 
@@ -504,32 +497,44 @@ Be context-aware and lenient with ambiguous cases.
 Respond ONLY with valid JSON:
 {{"violation": true/false, "category": "toxicity|threats|nsfw|spam|scam|other", "severity": 1-10, "confidence": 0.0-1.0, "reason": "concise explanation"}}"""
 
-            config = genai_types.GenerateContentConfig(
-                temperature=0.2,
-                max_output_tokens=200,
-                response_mime_type="application/json"
-            )
-            comp = self.client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=config,
-            )
-            resp = comp.text
-            if "```json" in resp:
-                resp = resp.split("```json")[1].split("```")[0]
-            elif "```" in resp:
-                resp = resp.split("```")[1].split("```")[0]
-            data = json.loads(resp.strip())
+            payload = {
+                "model": "deepseek-v4-flash",
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.2,
+                "max_tokens": 200,
+                "response_format": {"type": "json_object"}
+            }
+            headers = {
+                "Authorization": f"Bearer {DO_API_KEY}",
+                "Content-Type": "application/json"
+            }
+            
+            async with aiohttp.ClientSession() as session:
+                async with session.post(f"{DO_BASE_URL}/chat/completions", json=payload, headers=headers, timeout=15) as resp:
+                    if resp.status != 200:
+                        logger.error(f"AI API error {resp.status}: {await resp.text()}")
+                        return FilterResult(False)
+                    
+                    data = await resp.json()
+                    
+            resp_text = data["choices"][0]["message"]["content"]
+            
+            if "```json" in resp_text:
+                resp_text = resp_text.split("```json")[1].split("```")[0]
+            elif "```" in resp_text:
+                resp_text = resp_text.split("```")[1].split("```")[0]
+            
+            parsed = json.loads(resp_text.strip())
 
-            if data.get("violation"):
-                ai_sev = data.get("severity", 1)
+            if parsed.get("violation"):
+                ai_sev = parsed.get("severity", 1)
                 sev_map = {range(1, 3): Severity.LOW, range(3, 5): Severity.MEDIUM, range(5, 7): Severity.HIGH, range(7, 9): Severity.CRITICAL, range(9, 11): Severity.EXTREME}
                 severity = Severity.MEDIUM
                 for r, s in sev_map.items():
                     if ai_sev in r:
                         severity = s
                         break
-                return FilterResult(True, reason=f"AI: {data.get('reason', 'Policy violation')}", severity=severity, confidence=data.get("confidence", 0.5), category=FilterCategory.CONTENT, metadata={"ai_severity": ai_sev, "ai_category": data.get("category")})
+                return FilterResult(True, reason=f"AI: {parsed.get('reason', 'Policy violation')}", severity=severity, confidence=parsed.get("confidence", 0.5), category=FilterCategory.CONTENT, metadata={"ai_severity": ai_sev, "ai_category": parsed.get("category")})
         except Exception as e:
             logger.error(f"AI analysis failed: {e}")
         return FilterResult(False)
