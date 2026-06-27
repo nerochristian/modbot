@@ -5512,14 +5512,14 @@ class AIModeration(commands.Cog):
         )
         return embed
 
-class _SourcesView(discord.ui.View):
-    def __init__(self, sources_text: str):
-        super().__init__(timeout=None)
-        self.sources_text = sources_text
+    class _SourcesView(discord.ui.View):
+        def __init__(self, sources_text: str):
+            super().__init__(timeout=None)
+            self.sources_text = sources_text
 
-    @discord.ui.button(label="View Sources", style=discord.ButtonStyle.secondary, emoji="🔗")
-    async def view_sources(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.send_message(self.sources_text, ephemeral=True)
+        @discord.ui.button(label="View Sources", style=discord.ButtonStyle.secondary, emoji="🔗")
+        async def view_sources(self, interaction: discord.Interaction, button: discord.ui.Button):
+            await interaction.response.send_message(self.sources_text, ephemeral=True)
 
 
     async def _deliver_response(
@@ -5534,7 +5534,7 @@ class _SourcesView(discord.ui.View):
             response, sources_text = response.split("\n\nSources:\n", 1)
             sources_text = "**Sources:**\n" + sources_text
 
-        view = _SourcesView(sources_text) if sources_text else None
+        view = self._SourcesView(sources_text) if sources_text else None
 
         # Short responses: plain text
         if len(response) <= 1900:
