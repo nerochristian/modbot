@@ -133,27 +133,11 @@ def _looks_like_image_question_text(content: str) -> bool:
 
 
 def _default_ai_provider() -> str:
-    return os.getenv(
-        "AI_PROVIDER",
-        "galaxy"
-        if os.getenv("GALAXY_API_KEY")
-        else ("tokenmix" if os.getenv("TOKENMIX_API_KEY") else ("openrouter" if os.getenv("OPENROUTER_API_KEY") else "gemini")),
-    ).strip().lower()
+    return "digitalocean"
 
 
 def _default_ai_model() -> str:
-    explicit = (os.getenv("AI_MODEL") or "").strip()
-    if explicit:
-        return explicit
-
-    provider = _default_ai_provider()
-    if provider == "galaxy":
-        return (os.getenv("GALAXY_MODEL") or "qwen-3-32b-instruct").strip()
-    if provider == "tokenmix":
-        return (os.getenv("TOKENMIX_MODEL") or "qwen/qwen-3-32b-instruct").strip()
-    if provider == "openrouter":
-        return (os.getenv("OPENROUTER_MODEL") or "qwen/qwen-3-32b-instruct").strip()
-    return (os.getenv("GEMINI_MODEL") or "gemini-2.5-flash").strip()
+    return os.getenv("DO_AUTOMOD_MODEL", "nemotron-3-nano-omni")
 
 
 @dataclass(frozen=True)
@@ -1129,7 +1113,7 @@ class GeminiClient:
     def __init__(self, bot: commands.Bot, config: AIConfig) -> None:
         self.bot = bot
         self.config = config
-        self.provider = os.getenv("AI_PROVIDER", "digitalocean").lower()
+        self.provider = "digitalocean"
         self._rate_limiter = RateLimiter(
             max_calls=config.rate_limit_calls,
             window_seconds=config.rate_limit_window,
@@ -1140,7 +1124,6 @@ class GeminiClient:
         self._brave_search_api_key = os.getenv("BRAVE_SEARCH_API_KEY")
         self._tavily_api_key = os.getenv("TAVILY_API_KEY")
         self._serpapi_api_key = os.getenv("SERPAPI_API_KEY")
-        self._galaxy_api_key = os.getenv("GALAXY_API_KEY")
 
     @property
     def is_available(self) -> bool:
@@ -1188,7 +1171,7 @@ class GeminiClient:
         json_mode: bool = False,
         allow_multimodal: bool = False,
     ) -> Optional[str]:
-        target_model = model or os.getenv("DO_AUTOMOD_MODEL", "qwen-3-32b")
+        target_model = model or os.getenv("DO_AUTOMOD_MODEL", "nemotron-3-nano-omni")
         return await self._call_openai_compatible(
             messages,
             temperature=temperature,
