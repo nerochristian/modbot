@@ -1268,6 +1268,7 @@ class AutoMod(commands.Cog):
         embed.add_field(
             name="Start and inspect",
             value=(
+                "`/automod panel` — open the complete interactive dashboard\n"
                 "`/automod setup` — apply a complete preset\n"
                 "`/automod status` — inspect the live configuration\n"
                 "`/automod enable` / `disable` — master switch\n"
@@ -1295,6 +1296,14 @@ class AutoMod(commands.Cog):
             inline=False,
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @automod.command(name="panel", description="Open the complete interactive AutoMod dashboard")
+    @is_admin()
+    async def automod_panel(self, interaction: discord.Interaction) -> None:
+        settings = await self._get_settings(interaction.guild_id, fresh=True)
+        panel = AutoModPanel(self, interaction.guild, interaction.user.id, settings)
+        await interaction.response.send_message(embed=panel.build_embed(), view=panel, ephemeral=True)
+        panel.message = await interaction.original_response()
 
     @automod.command(name="status", description="Show the active rules, actions and routing")
     @is_mod()
