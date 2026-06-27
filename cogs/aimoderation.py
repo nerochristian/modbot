@@ -1321,11 +1321,11 @@ class GeminiClient:
         return None
 
     async def _generate_search_queries(self, user_content: str, num_queries: int = 5) -> List[str]:
-        """Use the fast automod model to decompose the user's prompt into optimal search queries."""
+        """Use deepseek to decompose the user's prompt into optimal search queries."""
         sys_prompt = (
             "You are a search query generator. The user wants to research a topic. "
             f"Break their request down into exactly {num_queries} highly specific, distinct search engine queries. "
-            "Output ONLY a JSON array of strings, nothing else. "
+            "Output ONLY a raw JSON array of strings. Do not use markdown code blocks. "
             "Example: [\"query 1\", \"query 2\"]"
         )
         messages = [
@@ -1337,19 +1337,22 @@ class GeminiClient:
                 messages,
                 temperature=0.7,
                 max_tokens=150,
-                model=os.getenv("DO_AUTOMOD_MODEL", "nemotron-3-nano-omni"),
-                json_mode=True
+                model=os.getenv("DO_RESEARCH_MODEL", "deepseek-4-flash"),
+                json_mode=False
             )
             if not content:
                 return [user_content]
-            data = json.loads(self._extract_json(content))
-            if isinstance(data, list) and all(isinstance(x, str) for x in data):
-                return data[:num_queries]
-            # Try to extract from a dict if it wrapped it
-            if isinstance(data, dict):
-                for v in data.values():
-                    if isinstance(v, list) and all(isinstance(x, str) for v in data.values()):
-                        return v[:num_queries]
+            
+            # Clean markdown code blocks if the model ignored instructions
+            clean_content = re.sub(r'```json|```', '', content).strip()
+            
+            # Extract array
+            match = re.search(r'\[(.*)\]', clean_content, re.DOTALL)
+            if match:
+                data = json.loads(f"[{match.group(1)}]")
+                if isinstance(data, list) and all(isinstance(x, str) for x in data):
+                    return data[:num_queries]
+            
             return [user_content]
         except Exception as e:
             logger.error(f"Failed to generate search queries: {e}")
