@@ -37,9 +37,9 @@ import aiohttp
 import discord
 from discord import app_commands
 from discord.ext import commands, tasks
-from google import genai
-from google.genai import types as genai_types
 
+DO_API_KEY = "Doo_v1_e9059d2f728a11f7257b642948ace2f47f9b062f9613fb0fd58337a3eccd42fb"
+DO_BASE_URL = "https://inference.digitalocean.com/v1"
 from utils.cache import RateLimiter
 from utils.checks import is_bot_owner_id
 from utils.messages import Messages
@@ -1138,18 +1138,7 @@ class GeminiClient:
     def __init__(self, bot: commands.Bot, config: AIConfig) -> None:
         self.bot = bot
         self.config = config
-        self.provider = (config.provider or "gemini").strip().lower()
-        self._openrouter_api_key = os.getenv("OPENROUTER_API_KEY", "").strip()
-        self._galaxy_api_key = os.getenv("GALAXY_API_KEY", "").strip()
-        self._galaxy_base_url = os.getenv("GALAXY_BASE_URL", "https://llm.galaxyfounded.nl").strip().rstrip("/")
-        self._tokenmix_api_key = os.getenv("TOKENMIX_API_KEY", "").strip()
-        self._tokenmix_base_url = os.getenv("TOKENMIX_BASE_URL", "https://api.tokenmix.ai/v1").strip().rstrip("/")
-        self._brave_search_api_key = os.getenv("BRAVE_SEARCH_API_KEY", "").strip()
-        self._tavily_api_key = os.getenv("TAVILY_API_KEY", "").strip()
-        self._serpapi_api_key = os.getenv("SERPAPI_API_KEY", "").strip()
-        api_key = os.getenv("GEMINI_API_KEY")
-        self._gemini_vision_client = genai.Client(api_key=api_key) if api_key else None
-        self._client = genai.Client(api_key=api_key) if api_key and self.provider not in {"openrouter", "tokenmix", "galaxy"} else None
+        self.provider = "digitalocean"
         self._rate_limiter = RateLimiter(
             max_calls=config.rate_limit_calls,
             window_seconds=config.rate_limit_window,
@@ -1160,13 +1149,7 @@ class GeminiClient:
 
     @property
     def is_available(self) -> bool:
-        if self.provider == "openrouter":
-            return bool(self._openrouter_api_key)
-        if self.provider == "tokenmix":
-            return bool(self._tokenmix_api_key)
-        if self.provider == "galaxy":
-            return bool(self._galaxy_api_key)
-        return self._client is not None
+        return True
 
     @property
     def has_web_search(self) -> bool:
@@ -1207,130 +1190,20 @@ class GeminiClient:
         temperature: float,
         max_tokens: int,
         model: Optional[str] = None,
-        # FIX: explicit flag instead of brittle string-search heuristic
         json_mode: bool = False,
     ) -> Optional[str]:
-        if self.provider == "openrouter":
-            return await self._call_openai_compatible(
-                messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                model=model,
-                json_mode=json_mode,
-                provider_name="OpenRouter",
-                api_key=self._openrouter_api_key,
-                base_url="https://openrouter.ai/api/v1",
-                default_model="google/gemma-4-31b-it:free",
-                normalize_model=True,
-                extra_headers=self._openrouter_headers(),
-            )
-        if self.provider == "tokenmix":
-            return await self._call_openai_compatible(
-                messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                model=model,
-                json_mode=json_mode,
-                provider_name="TokenMix",
-                api_key=self._tokenmix_api_key,
-                base_url=self._tokenmix_base_url,
-                default_model="google/gemma-4-31b-it:free",
-                normalize_model=False,
-            )
-
-        if self.provider == "galaxy":
-            return await self._call_galaxy(
-                messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                model=model,
-                json_mode=json_mode,
-            )
-
-        assert self._client is not None
-
-        system_instruction: Optional[str] = None
-        contents: List[genai_types.Content] = []
-
-        for msg in messages:
-            role = msg["role"]
-            content = msg["content"]
-            if role == "system":
-                system_instruction = str(content)
-                continue
-
-            parts: List[genai_types.Part] = []
-            if isinstance(content, list):
-                for item in content:
-                    if not isinstance(item, dict):
-                        continue
-                    if item.get("type") == "text":
-                        text = str(item.get("text") or "")
-                        if text:
-                            parts.append(genai_types.Part(text=text))
-                    elif item.get("type") == "image_url":
-                        image_url = item.get("image_url")
-                        url = image_url.get("url") if isinstance(image_url, dict) else image_url
-                        if isinstance(url, str) and url.startswith("data:"):
-                            header, _, encoded = url.partition(",")
-                            mime_match = re.match(r"data:([^;]+);base64", header)
-                            if mime_match and encoded:
-                                try:
-                                    parts.append(
-                                        genai_types.Part.from_bytes(
-                                            data=base64.b64decode(encoded),
-                                            mime_type=mime_match.group(1),
-                                        )
-                                    )
-                                except Exception:
-                                    logger.debug("Skipping malformed image data URL for Gemini", exc_info=True)
-            else:
-                text = str(content)
-                if text:
-                    parts.append(genai_types.Part(text=text))
-
-            if not parts:
-                continue
-
-            if role == "assistant":
-                contents.append(genai_types.Content(role="model", parts=parts))
-            else:
-                contents.append(genai_types.Content(role="user", parts=parts))
-
-        # FIX: only pass optional fields when they have actual values so we
-        # don't trigger SDK validation errors on None.
-        config_kwargs: Dict[str, Any] = {
-            "temperature": temperature,
-            "max_output_tokens": max_tokens,
-        }
-        if system_instruction is not None:
-            config_kwargs["system_instruction"] = system_instruction
-        if json_mode:
-            config_kwargs["response_mime_type"] = "application/json"
-
-        config = genai_types.GenerateContentConfig(**config_kwargs)
-
-        try:
-            response = await self._client.aio.models.generate_content(
-                model=model or self.config.model,
-                contents=contents,
-                config=config,
-            )
-        except Exception as exc:
-            exc_str = str(exc).lower()
-            if "403" in exc_str or "permission" in exc_str:
-                self._set_block(seconds=900, reason="Gemini access denied (403).")
-            elif "401" in exc_str or "authentication" in exc_str or "api key" in exc_str:
-                self._set_block(seconds=1800, reason="Gemini authentication failed - check GEMINI_API_KEY.")
-            elif "429" in exc_str or "rate" in exc_str or "quota" in exc_str:
-                self._set_block(seconds=60, reason="Gemini rate limit / quota reached.")
-            elif "timeout" in exc_str or "connection" in exc_str:
-                self._set_block(seconds=120, reason="Cannot reach Gemini (network issue).")
-            raise
-
-        if not response or not response.text:
-            return None
-        return response.text
+        return await self._call_openai_compatible(
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            model="deepseek-v4-flash",
+            json_mode=json_mode,
+            provider_name="DigitalOcean",
+            api_key=DO_API_KEY,
+            base_url=DO_BASE_URL,
+            default_model="deepseek-v4-flash",
+            normalize_model=False,
+        )
 
     def _openrouter_headers(self) -> Dict[str, str]:
         headers = {"X-Title": "ModBot AI Moderation"}
@@ -2200,47 +2073,7 @@ class GeminiClient:
         user_content: str,
         images: List[ImageContext],
     ) -> Optional[str]:
-        """Fallback vision pass when Galaxy rejects multimodal payloads."""
-        if not images or not self._gemini_vision_client:
-            return None
-
-        parts: List[genai_types.Part] = [
-            genai_types.Part(
-                text=(
-                    "Analyze these Discord image(s) accurately for another model. "
-                    "Identify visible characters, objects, text, UI, and any notable context. "
-                    "If the user asks who/what something is, answer that directly when possible. "
-                    "Do not make a game, ask for guesses, or invent hidden information.\n\n"
-                    f"User question: {user_content}\n\n"
-                    + "\n".join(
-                        f"Image {i}: {image.label} ({image.filename})"
-                        for i, image in enumerate(images, start=1)
-                    )
-                )
-            )
-        ]
-        for image in images[:4]:
-            parts.append(genai_types.Part.from_bytes(data=image.data, mime_type=image.mime_type))
-
-        config = genai_types.GenerateContentConfig(
-            temperature=0.1,
-            max_output_tokens=700,
-        )
-        model = os.getenv("GEMINI_VISION_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
-
-        try:
-            response = await self._gemini_vision_client.aio.models.generate_content(
-                model=model,
-                contents=[genai_types.Content(role="user", parts=parts)],
-                config=config,
-            )
-        except Exception as exc:
-            logger.warning("Gemini vision fallback failed: %s", exc)
-            return None
-
-        if not response or not response.text:
-            return None
-        return response.text
+        return None
 
     async def _collect_image_context(
         self,
