@@ -10,6 +10,8 @@ AUTOMOD_SETTINGS = {
     "automod_log_channel": None,
     "automod_notify_users": True,
     "automod_public_feedback": False,
+    "automod_delete_violations": True,
+    "automod_violation_cooldown": 10,
 
     # Bypasses
     "automod_bypass_staff": True,
@@ -20,7 +22,7 @@ AUTOMOD_SETTINGS = {
 
     # Actions. Security rules intentionally have a separate policy.
     "automod_punishment": "warn",
-    "automod_security_punishment": "mute",
+    "automod_security_punishment": "timeout",
     "automod_mute_duration": 3600,
     "automod_tempban_duration": 86400,
     "automod_ban_delete_days": 1,
