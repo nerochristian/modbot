@@ -1320,6 +1320,41 @@ class GeminiClient:
             return Messages.format(Messages.AI_RATE_LIMIT, seconds=int(max(1, retry_after)))
         return None
 
+    async def _generate_search_queries(self, user_content: str, num_queries: int = 5) -> List[str]:
+        """Use the fast automod model to decompose the user's prompt into optimal search queries."""
+        sys_prompt = (
+            "You are a search query generator. The user wants to research a topic. "
+            f"Break their request down into exactly {num_queries} highly specific, distinct search engine queries. "
+            "Output ONLY a JSON array of strings, nothing else. "
+            "Example: [\"query 1\", \"query 2\"]"
+        )
+        messages = [
+            {"role": "system", "content": sys_prompt},
+            {"role": "user", "content": user_content}
+        ]
+        try:
+            content = await self._call(
+                messages,
+                temperature=0.7,
+                max_tokens=150,
+                model=os.getenv("DO_AUTOMOD_MODEL", "nemotron-3-nano-omni"),
+                json_mode=True
+            )
+            if not content:
+                return [user_content]
+            data = json.loads(self._extract_json(content))
+            if isinstance(data, list) and all(isinstance(x, str) for x in data):
+                return data[:num_queries]
+            # Try to extract from a dict if it wrapped it
+            if isinstance(data, dict):
+                for v in data.values():
+                    if isinstance(v, list) and all(isinstance(x, str) for v in data.values()):
+                        return v[:num_queries]
+            return [user_content]
+        except Exception as e:
+            logger.error(f"Failed to generate search queries: {e}")
+            return [user_content]
+
 
 
     async def _web_search(self, query: str, *, max_results: int = 5) -> List[WebSearchResult]:
@@ -1612,14 +1647,38 @@ class GeminiClient:
                     "Add `BRAVE_SEARCH_API_KEY`, `TAVILY_API_KEY`, or `SERPAPI_API_KEY` to enable live research."
                 )
             else:
-                try:
-                    results = await self._web_search(user_content)
-                except Exception:
-                    logger.exception("Web search failed")
-                    return "I tried to search the web, but the search provider failed. Try again in a moment."
+                # --- Multi-Query Deep Research Flow ---
+                queries = await self._generate_search_queries(user_content, num_queries=6)
+                if not queries:
+                    queries = [user_content]
+                
+                results: List[WebSearchResult] = []
+                import asyncio
+                
+                async def fetch_query(q: str):
+                    try:
+                        return await self._web_search(q, max_results=3)
+                    except Exception:
+                        return []
+                        
+                # Gather multiple searches concurrently
+                tasks = [fetch_query(q) for q in queries]
+                search_results = await asyncio.gather(*tasks, return_exceptions=True)
+                
+                # Deduplicate results by URL
+                seen_urls = set()
+                for res_list in search_results:
+                    if isinstance(res_list, list):
+                        for r in res_list:
+                            if r.url not in seen_urls:
+                                seen_urls.add(r.url)
+                                results.append(r)
+                                
                 if not results:
-                    return "I searched but did not find usable results for that query. Try a more specific search."
-                web_context = self._format_web_results(results)
+                    return "I searched thoroughly but did not find usable results. Try a more specific query."
+                    
+                web_context = self._format_web_results(results[:15]) # Limit to 15 best results
+
 
         plan = self._build_conversation_plan(
             signals=signals,
