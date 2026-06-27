@@ -4,7 +4,13 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from cogs.automod import _parse_duration
+from cogs.automod import (
+    PANEL_PAGES,
+    AutoModPanel,
+    _compact_duration,
+    _parse_duration,
+    _parse_threshold_pair,
+)
 from cogs.automod_engine import AutoModEngine, Category, domain_matches, normalize_domain
 
 
@@ -165,6 +171,55 @@ class AutoModUtilityTests(unittest.TestCase):
         self.assertEqual(_parse_duration("1d12h"), 129600)
         self.assertIsNone(_parse_duration("abc1h"))
         self.assertIsNone(_parse_duration("29d"))
+
+    def test_compact_duration_round_trips(self) -> None:
+        for seconds in (60, 3600, 9000, 129600, 2419200):
+            self.assertEqual(_parse_duration(_compact_duration(seconds)), seconds)
+
+    def test_threshold_pair_parser_enforces_both_ranges(self) -> None:
+        self.assertEqual(
+            _parse_threshold_pair("5/30", count_range=(2, 20), window_range=(5, 300)),
+            (5, 30),
+        )
+        self.assertIsNone(_parse_threshold_pair("1/30", count_range=(2, 20), window_range=(5, 300)))
+        self.assertIsNone(_parse_threshold_pair("5/301", count_range=(2, 20), window_range=(5, 300)))
+
+
+class AutoModPanelTests(unittest.IsolatedAsyncioTestCase):
+    async def test_every_panel_page_fits_discord_component_limits(self) -> None:
+        guild = SimpleNamespace(
+            id=1,
+            get_channel=lambda channel_id: None,
+            get_role=lambda role_id: None,
+        )
+        settings = base_settings()
+        settings.update(
+            {
+                "automod_enabled": True,
+                "automod_notify_users": True,
+                "automod_public_feedback": False,
+                "automod_bypass_staff": True,
+                "automod_bypass_roles": [111],
+                "automod_bypass_channels": [222],
+                "automod_mute_duration": 3600,
+            }
+        )
+        panel = AutoModPanel(SimpleNamespace(), guild, 10, settings)
+        try:
+            for page, _, _ in PANEL_PAGES:
+                panel.page = page
+                panel.rebuild()
+                self.assertLessEqual(len(panel.children), 25)
+                widths_by_row: dict[int, int] = {}
+                for item in panel.children:
+                    self.assertIsNotNone(item.row)
+                    widths_by_row[item.row] = widths_by_row.get(item.row, 0) + item.width
+                self.assertTrue(all(width <= 5 for width in widths_by_row.values()))
+                embed = panel.build_embed()
+                self.assertLessEqual(len(embed), 6000)
+                self.assertTrue(all(len(field.value) <= 1024 for field in embed.fields))
+        finally:
+            panel.stop()
 
 
 if __name__ == "__main__":
