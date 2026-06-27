@@ -5333,6 +5333,12 @@ class AIModeration(commands.Cog):
 
         view = self._SourcesView(sources_text) if sources_text else None
 
+        # Handle Research Mode explicitly to preserve embed design
+        if signals.mode == ConversationMode.RESEARCH and len(response) <= 4000:
+            embed = self._build_research_embed(response, "")
+            await self.reply(message, embed=embed, view=view)
+            return
+
         # Short responses: plain text
         if len(response) <= 1900:
             await self.reply(message, content=response, view=view)
@@ -5340,14 +5346,7 @@ class AIModeration(commands.Cog):
 
         # Medium responses (1900-4000): single embed
         if len(response) <= 4000:
-            color = (
-                discord.Color.from_rgb(88, 101, 242)
-                if signals.mode == ConversationMode.RESEARCH
-                else discord.Color.blue()
-            )
-            embed = discord.Embed(description=response, color=color)
-            if signals.mode == ConversationMode.RESEARCH:
-                embed.set_footer(text="Research response")
+            embed = discord.Embed(description=response, color=discord.Color.blue())
             await self.reply(message, embed=embed, view=view)
             return
 
