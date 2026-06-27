@@ -232,7 +232,7 @@ class AutoModPanelTests(unittest.IsolatedAsyncioTestCase):
                     item
                     for root in layout.children
                     for item in walk(root)
-                    if isinstance(item, (discord.ui.Button, discord.ui.Select))
+                    if isinstance(item, (discord.ui.Button, discord.ui.BaseSelect))
                 ]
                 self.assertEqual(len(rendered_controls), expected_controls)
         finally:
