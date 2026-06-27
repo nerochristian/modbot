@@ -148,11 +148,11 @@ def _default_ai_model() -> str:
 
     provider = _default_ai_provider()
     if provider == "galaxy":
-        return (os.getenv("GALAXY_MODEL") or "gemini-3-5-flash").strip()
+        return (os.getenv("GALAXY_MODEL") or "qwen-3-32b-instruct").strip()
     if provider == "tokenmix":
-        return (os.getenv("TOKENMIX_MODEL") or "google/gemma-4-31b-it:free").strip()
+        return (os.getenv("TOKENMIX_MODEL") or "qwen/qwen-3-32b-instruct").strip()
     if provider == "openrouter":
-        return (os.getenv("OPENROUTER_MODEL") or "google/gemma-4-31b-it:free").strip()
+        return (os.getenv("OPENROUTER_MODEL") or "qwen/qwen-3-32b-instruct").strip()
     return (os.getenv("GEMINI_MODEL") or "gemini-2.5-flash").strip()
 
 
@@ -1188,7 +1188,7 @@ class GeminiClient:
         json_mode: bool = False,
         allow_multimodal: bool = False,
     ) -> Optional[str]:
-        target_model = model or os.getenv("DO_AUTOMOD_MODEL", "gemma-4")
+        target_model = model or os.getenv("DO_AUTOMOD_MODEL", "qwen-3-32b")
         return await self._call_openai_compatible(
             messages,
             temperature=temperature,
@@ -1338,9 +1338,9 @@ class GeminiClient:
         json_mode: bool = False,
         allow_multimodal: bool = False,
     ) -> Optional[str]:
-        selected_model = (model or self.config.model or "gemini-3-5-flash").strip()
-        if selected_model == "gemini-3-5":
-            selected_model = "gemini-3-5-flash"
+        selected_model = (model or self.config.model or "qwen-3-32b-instruct").strip()
+        if selected_model == "qwen-3-32b":
+            selected_model = "qwen-3-32b-instruct"
         galaxy_messages = messages if allow_multimodal else self._normalize_galaxy_messages(messages)
         if not galaxy_messages:
             raise RuntimeError("Galaxy request has no text messages.")
@@ -1819,7 +1819,7 @@ class GeminiClient:
                 if signals.mode == ConversationMode.RESEARCH:
                     call_model = os.getenv("DO_RESEARCH_MODEL", "deepseek-4-flash")
                 else:
-                    call_model = os.getenv("DO_AUTOMOD_MODEL", "gemma-4")
+                    call_model = os.getenv("DO_AUTOMOD_MODEL", "qwen-3-32b")
                     
             allow_multimodal = (call_model != os.getenv("DO_RESEARCH_MODEL", "deepseek-4-flash"))
             
