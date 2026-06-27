@@ -38,7 +38,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands, tasks
 
-DO_API_KEY = "Doo_v1_e9059d2f728a11f7257b642948ace2f47f9b062f9613fb0fd58337a3eccd42fb"
+DO_API_KEY = os.getenv("DO_API_KEY", "")
 DO_BASE_URL = "https://inference.digitalocean.com/v1"
 from utils.cache import RateLimiter
 from utils.checks import is_bot_owner_id
