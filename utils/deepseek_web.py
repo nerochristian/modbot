@@ -155,6 +155,12 @@ class DeepSeekWebClient:
                 # Strip out DeepSeek's native Sources block if it exists
                 final = re.sub(r'\n\nSources:\s*(?:[A-Za-z0-9\s]+\[\d+\])+', '', final, flags=re.IGNORECASE).strip()
 
+                # Clean up Perplexity/DeepSeek style inline citations that the LLM ignored the prompt for
+                final = re.sub(r'\[(?:reference:)?\d+\]', '', final, flags=re.IGNORECASE)
+                
+                # Fix weird header generation like --## to just ##
+                final = re.sub(r'^--(#+)\s', r'\1 ', final, flags=re.MULTILINE)
+
                 final_locator = answers.nth((await answers.count()) - 1)
                 links = await final_locator.locator("a[href]").evaluate_all(
                     "elements => [...new Set(elements.map(a => a.href).filter(Boolean))]"
