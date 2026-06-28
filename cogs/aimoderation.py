@@ -3772,7 +3772,9 @@ class AIModeration(commands.Cog):
     async def _build_conversation_signals(self, content: str) -> ConversationSignals:
         low = self._normalize_chat_text(content)
         
-        # Fast-track conversational phrases that shouldn't show the visual search embed
+        # Only trigger research when explicitly asked
+        explicit_research = bool(re.search(r"\b(research|fact[\s-]?check|verify|look\s*up|search|investigate|deep dive|full breakdown|details?)\b", low))
+        
         casual_followup = bool(re.fullmatch(
             r"(?:what'?s new|what is new|what'?s up|what is the ai thingy|what'?s the ai thingy|what do you mean|what is that|what's that|huh|wdym|hi|hey|hello|yo)\??",
             low,
@@ -3781,22 +3783,9 @@ class AIModeration(commands.Cog):
         mode = ConversationMode.STANDARD
         confidence = 0.0
 
-        if not casual_followup:
-            # Domain-specific keywords that definitively require web context
-            domain_keywords = r"\b(best|build|guide|stats?|lore|story|news|update|tier list|meta|dps|nerf|buff|walkthrough|tutorial|history of|origin of)\b"
-            
-            # Information-seeking question starts
-            info_questions = r"\b(who is|who's|whos|what is|what's|whats|where is|where's|wheres|when is|when's|whens|why is|why's|whys|how to|how do|how does|explain|tell me about)\b"
-            
-            needs_search = (
-                bool(re.search(domain_keywords, low)) or 
-                bool(re.search(info_questions, low)) or 
-                len(content.split()) > 20
-            )
-            
-            if needs_search:
-                mode = ConversationMode.RESEARCH
-                confidence = 1.0
+        if not casual_followup and explicit_research:
+            mode = ConversationMode.RESEARCH
+            confidence = 1.0
 
         show_indicator = getattr(self.ai, "has_web_search", True)
 
@@ -5428,6 +5417,21 @@ class AIModeration(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
+    def _build_research_embed(self, text: str) -> discord.Embed:
+        # Extract title from markdown header if present
+        title = "Research Results"
+        if text.startswith("# "):
+            lines = text.split("\n", 1)
+            title = lines[0][2:].strip()
+            text = lines[1].strip() if len(lines) > 1 else ""
+            
+        embed = discord.Embed(
+            title=title,
+            description=text[:4096],
+            color=discord.Color.from_rgb(88, 101, 242)
+        )
+        return embed
+
     async def _deliver_response(
         self,
         message: discord.Message,
@@ -5439,22 +5443,20 @@ class AIModeration(commands.Cog):
 
         is_research = signals.mode == ConversationMode.RESEARCH
 
-        # Dynamically upgrade to research mode if DeepSeek autonomously performed a web search
-        # and provided a reasonably long response, indicating a deep dive.
-        if sources_text and not is_research and len(response) > 500:
-            is_research = True
-
         if is_research and not sources_text:
             sources_text = "No source URLs were returned for this research response."
 
         view = self._SourcesView(sources_text) if sources_text and is_research else None
 
+        if is_research:
+            embed = self._build_research_embed(response)
+            await self.reply(message, embed=embed, view=view)
+            return
 
         # Short responses: plain text
         if len(response) <= 1900:
             await self.reply(message, content=response, view=view)
             return
-
 
         # Very long responses: split into chunks
         chunks = self._split_response(response, max_len=1900)
