@@ -620,6 +620,8 @@ class DeepSeekWebClient:
                     response = await pending_response.value
                     body = await response.body()
                     answer, source_links = self._parse_completion_stream(body)
+                    if len(answer) < 60 and "\n" not in answer:
+                        raise ValueError(f"Caught likely title generation: {answer}")
                 except Exception:
                     logger.warning(
                         "DeepSeek stream capture failed; using DOM fallback",
