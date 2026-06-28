@@ -3770,28 +3770,10 @@ class AIModeration(commands.Cog):
         return None
 
     async def _build_conversation_signals(self, content: str) -> ConversationSignals:
-        low = self._normalize_chat_text(content)
-        
-        casual_followup = bool(re.fullmatch(
-            r"(?:what'?s new|what is new|what'?s up|what is the ai thingy|what'?s the ai thingy|what do you mean|what is that|what's that|huh|wdym|hi|hey|hello|yo)\??",
-            low,
-        ))
+        mode = ConversationMode.RESEARCH
+        confidence = 1.0
 
-        mode = ConversationMode.STANDARD
-        confidence = 0.0
-
-        if not casual_followup:
-            # Activate search for any explicit questions, deep dive keywords, or reasonably long messages
-            is_question = "?" in content or bool(re.search(r"\b(who|what|where|when|why|how|best|build|guide|stats?|lore|explain|story|news|update)\b", low))
-            if is_question or len(content.split()) > 12:
-                mode = ConversationMode.RESEARCH
-                confidence = 1.0
-
-        show_indicator = (
-            mode == ConversationMode.RESEARCH
-            and confidence >= 0.35
-            and getattr(self.ai, "has_web_search", True)
-        )
+        show_indicator = getattr(self.ai, "has_web_search", True)
 
         return ConversationSignals(
             mode=mode,
