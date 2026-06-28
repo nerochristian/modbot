@@ -4590,8 +4590,29 @@ class AIModeration(commands.Cog):
                     ref = await message.channel.fetch_message(message.reference.message_id)
                 except discord.HTTPException:
                     ref = None
-            if isinstance(ref, discord.Message) and not ref.author.bot:
-                return ref.author.id
+            if isinstance(ref, discord.Message):
+                if not ref.author.bot:
+                    return ref.author.id
+                
+                # If replying to a bot log, try to extract the target ID from it
+                non_bot_mentions = [m for m in ref.mentions if not m.bot]
+                if non_bot_mentions:
+                    return non_bot_mentions[0].id
+                
+                search_text = ref.content
+                for embed in ref.embeds:
+                    search_text += f"\n{embed.title}\n{embed.description}"
+                    if embed.author and embed.author.name:
+                        search_text += f"\n{embed.author.name}"
+                    for field in embed.fields:
+                        search_text += f"\n{field.name}\n{field.value}"
+                        
+                if m := _MENTION_RE.search(search_text):
+                    return int(m.group(1))
+                if m := re.search(r'(?i)\b(?:id|user|target)[:\s]+(\d{17,20})\b', search_text):
+                    return int(m.group(1))
+                if m := re.search(r'\b(\d{17,20})\b', search_text):
+                    return int(m.group(1))
 
         if cached := self._get_recent_target(message.author.id):
             return cached
