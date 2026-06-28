@@ -5490,7 +5490,7 @@ class AIModeration(commands.Cog):
         if signals.mode == ConversationMode.RESEARCH and not sources_text:
             sources_text = "No source URLs were returned for this research response."
 
-        view = self._SourcesView(sources_text) if sources_text else None
+        view = self._SourcesView(sources_text) if sources_text and signals.mode == ConversationMode.RESEARCH else None
 
         if signals.mode == ConversationMode.RESEARCH:
             embed = self._build_research_embed(response, message.content or "")
