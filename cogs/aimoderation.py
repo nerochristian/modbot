@@ -1550,8 +1550,6 @@ class GeminiClient:
                     uploads,
                     search=signals.mode == ConversationMode.RESEARCH,
                 )
-            elif signals.mode == ConversationMode.RESEARCH:
-                content = await self._deepseek_web.research(prompt)
             else:
                 channel_id = getattr(
                     getattr(source_message, "channel", None),
@@ -1565,7 +1563,7 @@ class GeminiClient:
                     prompt,
                     session_key=session_key,
                     continue_session=is_continuation,
-                    search=False,
+                    search=signals.mode == ConversationMode.RESEARCH,
                 )
             if not content:
                 return None
@@ -3774,18 +3772,8 @@ class AIModeration(commands.Cog):
     async def _build_conversation_signals(self, content: str) -> ConversationSignals:
         low = self._normalize_chat_text(content)
         
-        research_keywords = (
-            r"\b(news|breaking|headline|updates?|latest|trending)\b",
-            r"\b(world|global|international|politic(?:s|al)|government|geopolitic|war|election|policy|supreme court|legislation)\b",
-            r"\b(stock|market|economy|inflation|interest rates?|crypto|bitcoin)\b",
-            r"\b(research|fact[\s-]?check|verify|look\s*up|search|investigate|deep dive|full breakdown|details?)\b",
-            r"\b(what happened|what's happening|what is going on|whats going on)\b",
-            r"\b(history of|origin of|how did .+ start|when did)\b",
-            r"\b(build for|guide for|tutorial|walkthrough)\b",
-        )
-        
         casual_followup = bool(re.fullmatch(
-            r"(?:what'?s new|what is new|what'?s up|what is the ai thingy|what'?s the ai thingy|what do you mean|what is that|what's that|huh|wdym)\??",
+            r"(?:what'?s new|what is new|what'?s up|what is the ai thingy|what'?s the ai thingy|what do you mean|what is that|what's that|huh|wdym|hi|hey|hello|yo)\??",
             low,
         ))
 
@@ -3793,8 +3781,9 @@ class AIModeration(commands.Cog):
         confidence = 0.0
 
         if not casual_followup:
-            research_hits = sum(1 for p in research_keywords if re.search(p, low))
-            if research_hits > 0 or len(content.split()) > 20:
+            # Activate search for any explicit questions, deep dive keywords, or reasonably long messages
+            is_question = "?" in content or bool(re.search(r"\b(who|what|where|when|why|how|best|build|guide|stats?|lore|explain|story|news|update)\b", low))
+            if is_question or len(content.split()) > 12:
                 mode = ConversationMode.RESEARCH
                 confidence = 1.0
 
@@ -3810,7 +3799,7 @@ class AIModeration(commands.Cog):
             show_research_indicator=show_indicator,
             asks_for_current_info=False,
             asks_for_sources=False,
-            asks_for_long_answer=mode == ConversationMode.RESEARCH,
+            asks_for_long_answer=False,
             mentions_moderation=False,
         )
 
