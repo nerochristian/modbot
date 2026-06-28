@@ -44,6 +44,18 @@ class DeepSeekWebHelperTests(unittest.TestCase):
             "• **Origin and history**\n\nThe project began in 1985.",
         )
 
+    def test_browser_crash_detection_is_specific(self) -> None:
+        self.assertTrue(
+            DeepSeekWebClient._is_browser_crash_error(
+                RuntimeError("Page.goto: Page crashed")
+            )
+        )
+        self.assertFalse(
+            DeepSeekWebClient._is_browser_crash_error(
+                RuntimeError("Locator.evaluate: SyntaxError")
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

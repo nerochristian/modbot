@@ -138,17 +138,48 @@ class DeepSeekWebClient:
                 raise
 
     async def _get_page(self, lane: str) -> Any:
-        await self._start()
-        page = self._pages.get(lane)
-        if page is None or page.is_closed():
-            page = await self._context.new_page()
-            self._pages[lane] = page
-        await page.goto(
-            _DEEPSEEK_URL,
-            wait_until="domcontentloaded",
-            timeout=60_000,
+        for attempt in range(2):
+            await self._start()
+            failed_browser = self._browser
+            page = self._pages.get(lane)
+            if page is None or page.is_closed():
+                page = await self._context.new_page()
+                self._pages[lane] = page
+            try:
+                await page.goto(
+                    _DEEPSEEK_URL,
+                    wait_until="domcontentloaded",
+                    timeout=60_000,
+                )
+                return page
+            except Exception as exc:
+                if attempt > 0 or not self._is_browser_crash_error(exc):
+                    raise
+                logger.warning(
+                    "DeepSeek browser crashed during navigation; restarting once"
+                )
+                await self._restart_browser(failed_browser)
+        raise DeepSeekWebError("DeepSeek browser could not open a chat page.")
+
+    @staticmethod
+    def _is_browser_crash_error(exc: Exception) -> bool:
+        message = str(exc).lower()
+        return any(
+            marker in message
+            for marker in (
+                "page crashed",
+                "browser has been closed",
+                "browser disconnected",
+                "connection closed",
+                "target page, context or browser has been closed",
+            )
         )
-        return page
+
+    async def _restart_browser(self, failed_browser: Any) -> None:
+        async with self._start_lock:
+            if self._browser is not failed_browser:
+                return
+            await self.close()
 
     @staticmethod
     async def _visible_locator(locator: Any) -> Any | None:
