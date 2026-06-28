@@ -5450,7 +5450,7 @@ class AIModeration(commands.Cog):
         if is_research and not sources_text:
             sources_text = "No source URLs were returned for this research response."
 
-        view = self._SourcesView(sources_text) if sources_text else None
+        view = self._SourcesView(sources_text) if sources_text and is_research else None
 
         if is_research:
             embed = self._build_research_embed(response, message.content or "")
