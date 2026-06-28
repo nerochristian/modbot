@@ -345,7 +345,7 @@ class DeepSeekWebClient:
                     sources = "\n".join(
                         f"- <{link}>" for link in source_links[:8]
                     )
-                    answer = f"{answer}\n\n**Sources**\n{sources}"
+                    answer = f"{answer}\n\n__BOT_SOURCES__\n{sources}"
                 return answer[:24_000]
             except (DeepSeekWebAuthError, DeepSeekWebError):
                 await self._discard_page(lane)
@@ -376,8 +376,16 @@ class DeepSeekWebClient:
         request = (
             "Research the request using live web search. Reply in the same language "
             "as the user's latest message; default to English when unclear. Return "
-            "only a concise Discord-ready final answer. Do not expose reasoning or "
-            "emit numeric citation markers; source links are added separately.\n\n"
+            "only the polished Discord-ready final answer. Use this exact visual "
+            "structure: begin with one '# <relevant emoji> <specific title>' heading; "
+            "then a short direct answer; then organize useful details into clearly "
+            "named sections. Format each key section as '• **Section name**' followed "
+            "by its explanation on the next indented line. Put a blank line between "
+            "every paragraph and section so the response never becomes a wall of text. "
+            "Use natural prose, correct punctuation spacing, and bold only the details "
+            "that deserve emphasis. Do not add a generic introduction, conclusion, "
+            "Sources section, raw URLs, or numeric citation markers; source links are "
+            "attached separately by the bot. Do not expose reasoning.\n\n"
             f"{prompt}"
         )
         return await self._run(

@@ -5293,13 +5293,22 @@ class AIModeration(commands.Cog):
 
     def _build_research_embed(self, response: str, query: str) -> discord.Embed:
         """Build a rich embed for research responses."""
-        # Truncate for embed limits (4096 description max)
-        if len(response) > 4000:
-            response = response[:3997] + "..."
+        heading = re.match(r"^\s*#{1,3}\s+(.+?)(?:\n|$)", response)
+        if heading:
+            title = heading.group(1).strip()
+            response = response[heading.end():].lstrip()
+        else:
+            clean_query = re.sub(r"\s+", " ", query).strip()
+            title = f"🔎 {clean_query}" if clean_query else "🔎 Research"
+
+        if len(title) > 256:
+            title = title[:253].rstrip() + "..."
+        if len(response) > 4096:
+            response = response[:4093].rstrip() + "..."
 
         embed = discord.Embed(
-            title="Research Response",
-            description=response,
+            title=title,
+            description=response or "No research summary was returned.",
             color=discord.Color.from_rgb(88, 101, 242),
         )
         return embed
