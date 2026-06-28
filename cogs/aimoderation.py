@@ -1564,6 +1564,7 @@ class GeminiClient:
                     session_key=session_key,
                     continue_session=is_continuation,
                     search=True,
+                    long_answer=signals.asks_for_long_answer,
                 )
             if not content:
                 return None
@@ -3795,7 +3796,7 @@ class AIModeration(commands.Cog):
             show_research_indicator=show_indicator,
             asks_for_current_info=False,
             asks_for_sources=False,
-            asks_for_long_answer=False,
+            asks_for_long_answer=mode == ConversationMode.RESEARCH,
             mentions_moderation=False,
         )
 

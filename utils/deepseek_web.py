@@ -580,18 +580,29 @@ class DeepSeekWebClient:
         session_key: str | None = None,
         continue_session: bool = False,
         search: bool = False,
+        long_answer: bool = False,
     ) -> str:
-        search_instruction = (
-            "Live web search is enabled. Verify factual, current, game-build, patch, "
-            "character, product, and recommendation claims before answering. Do not "
-            "emit citation tokens, a Sources section, or raw source URLs; the bot "
-            "attaches sources separately. For searchable or factual requests, give "
-            "a thorough 250 to 500 word answer when the topic supports it. Lead with "
-            "the answer, then add useful context, key details, practical guidance, "
-            "and caveats in short paragraphs or bullets. Avoid filler and repetition. "
-            if search
-            else "Do not claim live verification or add citations. "
-        )
+        if search:
+            if long_answer:
+                search_instruction = (
+                    "Live web search is enabled. Verify factual, current, game-build, patch, "
+                    "character, product, and recommendation claims before answering. Do not "
+                    "emit citation tokens, a Sources section, or raw source URLs; the bot "
+                    "attaches sources separately. For searchable or factual requests, give "
+                    "a thorough 250 to 500 word answer when the topic supports it. Lead with "
+                    "the answer, then add useful context, key details, practical guidance, "
+                    "and caveats in short paragraphs or bullets. Avoid filler and repetition. "
+                )
+            else:
+                search_instruction = (
+                    "Live web search is enabled. Verify factual claims before answering. Do not "
+                    "emit citation tokens, a Sources section, or raw source URLs. "
+                    "Give a CONCISE, DIRECT answer. Do not write essays or overly long explanations "
+                    "unless explicitly requested. Keep it brief and conversational. "
+                )
+        else:
+            search_instruction = "Do not claim live verification or add citations. Give a concise conversational answer. "
+            
         request = (
             "Reply in the same language as the user's latest message; default to "
             "English when unclear. Return only the final Discord-ready answer. "
