@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 import time
 
 from utils.deepseek_web import DeepSeekWebClient
@@ -17,6 +18,17 @@ def shape(value, depth=0):
     return type(value).__name__
 
 
+def strings(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from strings(item)
+
+
 async def main():
     client = DeepSeekWebClient()
     try:
@@ -24,7 +36,7 @@ async def main():
         textbox = await client._wait_for_textbox(page)
         await client._set_mode(page, "Instant")
         await client._set_toggle(page, "DeepThink", False)
-        await client._set_toggle(page, "Search", False)
+        await client._set_toggle(page, "Search", True)
         started = time.monotonic()
         async with page.expect_response(
             lambda response: (
@@ -33,7 +45,10 @@ async def main():
             ),
             timeout=60_000,
         ) as pending:
-            await textbox.fill("Reply with exactly: STREAM_OK")
+            await textbox.fill(
+                "Who won the Argentina vs Jordan match on June 27, 2026? "
+                "Reply in one sentence after searching."
+            )
             await textbox.press("Enter")
         response = await pending.value
         body = await response.body()
@@ -53,6 +68,18 @@ async def main():
         print(f"BODY_SECONDS={time.monotonic() - started:.2f}")
         print(f"BODY_BYTES={len(body)}")
         print(f"EVENTS={len(events)}")
+        final_contents = [
+            event["content"]
+            for event in events
+            if isinstance(event, dict) and isinstance(event.get("content"), str)
+        ]
+        urls = set()
+        for event in events:
+            for value in strings(event):
+                urls.update(re.findall(r"https?://[^\s\"'<>]+", value))
+        print(f"FINAL_CONTENT_EVENTS={len(final_contents)}")
+        print(f"FINAL_CONTENT_LENGTH={len(final_contents[-1]) if final_contents else 0}")
+        print(f"URLS={len(urls)}")
         unique = []
         for event in events:
             item = repr(shape(event))
