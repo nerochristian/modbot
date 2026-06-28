@@ -1549,7 +1549,19 @@ class GeminiClient:
             elif signals.mode == ConversationMode.RESEARCH:
                 content = await self._deepseek_web.research(prompt)
             else:
-                content = await self._deepseek_web.chat(prompt)
+                channel_id = getattr(
+                    getattr(source_message, "channel", None),
+                    "id",
+                    None,
+                )
+                session_key = (
+                    f"{guild.id}:{channel_id}" if channel_id is not None else None
+                )
+                content = await self._deepseek_web.chat(
+                    prompt,
+                    session_key=session_key,
+                    continue_session=is_continuation,
+                )
             if not content:
                 return None
             content = self._postprocess_chat_response(content)

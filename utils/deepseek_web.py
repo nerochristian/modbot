@@ -60,6 +60,15 @@ class DeepSeekWebClient:
             "research": asyncio.Lock(),
             "vision": asyncio.Lock(),
         }
+        self.chat_session_ttl = min(
+            1_800,
+            max(60, int(os.getenv("DEEPSEEK_WEB_CHAT_SESSION_TTL", "600"))),
+        )
+        self.max_chat_sessions = min(
+            12,
+            max(1, int(os.getenv("DEEPSEEK_WEB_MAX_CHAT_SESSIONS", "6"))),
+        )
+        self._session_last_used: dict[str, float] = {}
         self._playwright: Any = None
         self._browser: Any = None
         self._context: Any = None
@@ -137,16 +146,31 @@ class DeepSeekWebClient:
                 await self.close()
                 raise
 
-    async def _get_page(self, lane: str) -> Any:
+    def _lock_for_lane(self, lane: str) -> asyncio.Lock:
+        lock = self._lane_locks.get(lane)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._lane_locks[lane] = lock
+        return lock
+
+    async def _get_page(self, lane: str, *, reuse_existing: bool = False) -> Any:
         for attempt in range(2):
             await self._start()
             failed_browser = self._browser
             page = self._pages.get(lane)
+            if page is None and lane.startswith("chat:"):
+                async with self._lock_for_lane("chat"):
+                    warm_page = self._pages.pop("chat", None)
+                    if warm_page is not None and not warm_page.is_closed():
+                        page = warm_page
+                        self._pages[lane] = page
             is_new_page = page is None or page.is_closed()
             if is_new_page:
                 page = await self._context.new_page()
                 self._pages[lane] = page
             try:
+                if not is_new_page and reuse_existing:
+                    return page
                 if not is_new_page and await self._start_spa_chat(page):
                     return page
                 await page.goto(
@@ -204,6 +228,31 @@ class DeepSeekWebClient:
                     logger.exception("DeepSeek %s prewarm failed", lane)
         if warmed:
             logger.info("DeepSeek prewarmed lanes: %s", ", ".join(warmed))
+
+    async def _touch_and_prune_chat_sessions(self, keep_lane: str) -> None:
+        now = time.monotonic()
+        self._session_last_used[keep_lane] = now
+        session_lanes = [
+            lane for lane in self._session_last_used if lane.startswith("chat:")
+        ]
+        expired = {
+            lane
+            for lane in session_lanes
+            if lane != keep_lane
+            and now - self._session_last_used[lane] > self.chat_session_ttl
+        }
+        remaining = sorted(
+            (lane for lane in session_lanes if lane not in expired),
+            key=self._session_last_used.__getitem__,
+        )
+        excess = max(0, len(remaining) - self.max_chat_sessions)
+        expired.update(lane for lane in remaining[:excess] if lane != keep_lane)
+        for lane in expired:
+            lock = self._lane_locks.get(lane)
+            if lock is not None and lock.locked():
+                continue
+            await self._discard_page(lane)
+            self._lane_locks.pop(lane, None)
 
     @staticmethod
     def _is_browser_crash_error(exc: Exception) -> bool:
@@ -439,6 +488,7 @@ class DeepSeekWebClient:
         deepthink: bool,
         search: bool,
         images: Sequence[tuple[str, str, bytes]] = (),
+        reuse_existing: bool = False,
     ) -> str:
         if not self.enabled:
             raise DeepSeekWebError("DeepSeek web provider is disabled.")
@@ -446,9 +496,12 @@ class DeepSeekWebClient:
         if not clean_prompt:
             raise DeepSeekWebError("DeepSeek prompt is empty.")
 
-        async with self._lane_locks[lane]:
+        async with self._lock_for_lane(lane):
             try:
-                page = await self._get_page(lane)
+                page = await self._get_page(
+                    lane,
+                    reuse_existing=reuse_existing,
+                )
                 textbox = await self._wait_for_textbox(page)
                 await self._set_mode(page, ui_mode)
                 await self._set_toggle(page, "DeepThink", deepthink)
@@ -472,6 +525,8 @@ class DeepSeekWebClient:
                         f"- <{link}>" for link in source_links[:8]
                     )
                     answer = f"{answer}\n\n__BOT_SOURCES__\n{sources}"
+                if lane.startswith("chat:"):
+                    await self._touch_and_prune_chat_sessions(lane)
                 return answer[:24_000]
             except (DeepSeekWebAuthError, DeepSeekWebError):
                 await self._discard_page(lane)
@@ -483,7 +538,13 @@ class DeepSeekWebClient:
                     f"DeepSeek browser failure: {type(exc).__name__}"
                 ) from exc
 
-    async def chat(self, prompt: str) -> str:
+    async def chat(
+        self,
+        prompt: str,
+        *,
+        session_key: str | None = None,
+        continue_session: bool = False,
+    ) -> str:
         request = (
             "Reply in the same language as the user's latest message; default to "
             "English when unclear. Return only the final Discord-ready answer. "
@@ -492,10 +553,11 @@ class DeepSeekWebClient:
         )
         return await self._run(
             request,
-            lane="chat",
+            lane=f"chat:{session_key}" if session_key else "chat",
             ui_mode="Instant",
             deepthink=False,
             search=False,
+            reuse_existing=bool(session_key and continue_session),
         )
 
     async def research(self, prompt: str) -> str:
@@ -545,6 +607,7 @@ class DeepSeekWebClient:
         )
 
     async def _discard_page(self, lane: str) -> None:
+        self._session_last_used.pop(lane, None)
         page = self._pages.pop(lane, None)
         if page is not None and not page.is_closed():
             try:
@@ -561,6 +624,7 @@ class DeepSeekWebClient:
             self._playwright,
         )
         self._context = self._browser = self._playwright = None
+        self._session_last_used.clear()
         if context is not None:
             try:
                 await context.close()
