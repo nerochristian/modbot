@@ -142,10 +142,13 @@ class DeepSeekWebClient:
             await self._start()
             failed_browser = self._browser
             page = self._pages.get(lane)
-            if page is None or page.is_closed():
+            is_new_page = page is None or page.is_closed()
+            if is_new_page:
                 page = await self._context.new_page()
                 self._pages[lane] = page
             try:
+                if not is_new_page and await self._start_spa_chat(page):
+                    return page
                 await page.goto(
                     _DEEPSEEK_URL,
                     wait_until="domcontentloaded",
@@ -160,6 +163,47 @@ class DeepSeekWebClient:
                 )
                 await self._restart_browser(failed_browser)
         raise DeepSeekWebError("DeepSeek browser could not open a chat page.")
+
+    async def _start_spa_chat(self, page: Any) -> bool:
+        try:
+            candidates = page.get_by_text("New chat", exact=True)
+            button = await self._visible_locator(candidates)
+            if button is None:
+                return False
+            await button.click(timeout=5_000)
+            await page.wait_for_function(
+                "selector => document.querySelectorAll(selector).length === 0",
+                arg=_ANSWER_SELECTOR,
+                timeout=10_000,
+            )
+            await page.get_by_role(
+                "textbox",
+                name="Message DeepSeek",
+            ).wait_for(state="visible", timeout=10_000)
+            return True
+        except Exception as exc:
+            if self._is_browser_crash_error(exc):
+                raise
+            logger.debug("DeepSeek SPA new-chat reset failed", exc_info=True)
+            return False
+
+    async def prewarm(self) -> None:
+        """Open reusable chat and research pages before the first user request."""
+        if not self.enabled:
+            return
+        warmed: list[str] = []
+        for lane in ("chat", "research"):
+            async with self._lane_locks[lane]:
+                try:
+                    page = await self._get_page(lane)
+                    await self._wait_for_textbox(page)
+                    warmed.append(lane)
+                except DeepSeekWebError as exc:
+                    logger.warning("DeepSeek %s prewarm failed: %s", lane, exc)
+                except Exception:
+                    logger.exception("DeepSeek %s prewarm failed", lane)
+        if warmed:
+            logger.info("DeepSeek prewarmed lanes: %s", ", ".join(warmed))
 
     @staticmethod
     def _is_browser_crash_error(exc: Exception) -> bool:

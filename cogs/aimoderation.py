@@ -1070,6 +1070,9 @@ class GeminiClient:
     async def close(self) -> None:
         await self._deepseek_web.close()
 
+    async def prewarm(self) -> None:
+        await self._deepseek_web.prewarm()
+
     # ------------------------------------------------------------------
     # Service-block helpers
     # ------------------------------------------------------------------
@@ -3484,15 +3487,23 @@ class AIModeration(commands.Cog):
         self.config = AIConfig()
         self.ai = GeminiClient(bot, self.config)
         self._target_cache: Dict[int, Tuple[int, datetime]] = {}
+        self._prewarm_task: Optional[asyncio.Task[None]] = None
 
         if not hasattr(bot, "db"):
             logger.warning("Bot.db is missing - database features unavailable.")
 
     def cog_load(self) -> None:
         self._cleanup_cache.start()
+        if self.ai.is_available:
+            self._prewarm_task = asyncio.create_task(
+                self.ai.prewarm(),
+                name="deepseek-prewarm",
+            )
 
     def cog_unload(self) -> None:
         self._cleanup_cache.cancel()
+        if self._prewarm_task and not self._prewarm_task.done():
+            self._prewarm_task.cancel()
         asyncio.create_task(self.ai.close())
 
     # ------------------------------------------------------------------
