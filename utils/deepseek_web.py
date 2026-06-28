@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -10,6 +11,7 @@ import time
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Final
+from urllib.parse import urlsplit, urlunsplit
 
 
 logger = logging.getLogger("ModBot.DeepSeekWeb")
@@ -101,6 +103,12 @@ class DeepSeekWebClient:
         ).strip()
         clean = re.sub(r"^```(?:markdown)?\s*", "", clean, flags=re.IGNORECASE)
         clean = re.sub(r"\s*```$", "", clean)
+        clean = re.sub(
+            r"\s*\[(?:reference|citation|source):?\d+\]",
+            "",
+            clean,
+            flags=re.IGNORECASE,
+        )
         clean = re.sub(r"(?m)^\s*(?:[-–—]\s*)?\d{1,3}\s*$", "", clean)
         clean = re.sub(r"(?m)^\s*[-–—]\s*$", "", clean)
         clean = re.sub(r"[-–—](?=[.,;:!?](?:\s|$))", "", clean)
@@ -113,6 +121,57 @@ class DeepSeekWebClient:
         clean = re.sub(r"(?i)\bSources(?:\s*https?://[^\s]+)+\s*$", "", clean)
         clean = re.sub(r"\n{3,}", "\n\n", clean)
         return clean.strip()
+
+    @classmethod
+    def _parse_completion_stream(cls, body: bytes) -> tuple[str, list[str]]:
+        final_content = ""
+        source_links: list[str] = []
+        seen_links: set[str] = set()
+
+        def collect_urls(value: Any) -> None:
+            if isinstance(value, dict):
+                url = value.get("url")
+                if isinstance(url, str):
+                    clean_url = cls._sanitize_source_url(url)
+                    if clean_url and clean_url not in seen_links:
+                        seen_links.add(clean_url)
+                        source_links.append(clean_url)
+                for child in value.values():
+                    collect_urls(child)
+            elif isinstance(value, list):
+                for child in value:
+                    collect_urls(child)
+
+        for line in body.decode("utf-8", "replace").splitlines():
+            if not line.startswith("data:"):
+                continue
+            payload = line[5:].strip()
+            if not payload or payload == "[DONE]":
+                continue
+            try:
+                event = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(event, dict):
+                continue
+            content = event.get("content")
+            if isinstance(content, str) and content.strip():
+                final_content = content
+            collect_urls(event)
+
+        return cls._clean_answer(final_content), source_links[:12]
+
+    @staticmethod
+    def _sanitize_source_url(url: str) -> str:
+        try:
+            parsed = urlsplit(url.strip())
+        except ValueError:
+            return ""
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            return ""
+        if parsed.netloc.lower().endswith("deepseek.com"):
+            return ""
+        return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
 
     async def _start(self) -> None:
         async with self._start_lock:
@@ -545,14 +604,34 @@ class DeepSeekWebClient:
                     before_fingerprint = (
                         await answers.nth(before_count - 1).inner_text()
                     ).strip()
-                await textbox.fill(clean_prompt)
-                await textbox.press("Enter")
-                answer, source_links = await self._wait_for_answer(
-                    page,
-                    before_count,
-                    before_fingerprint,
-                    stable_reads_required=5 if lane == "research" else 3,
-                )
+                answer = ""
+                source_links: list[str] = []
+                try:
+                    async with page.expect_response(
+                        lambda response: (
+                            "/api/v0/chat/completion" in response.url
+                            and response.request.method == "POST"
+                        ),
+                        timeout=self.timeout_seconds * 1_000,
+                    ) as pending_response:
+                        await textbox.fill(clean_prompt)
+                        await textbox.press("Enter")
+                    response = await pending_response.value
+                    body = await response.body()
+                    answer, source_links = self._parse_completion_stream(body)
+                except Exception:
+                    logger.warning(
+                        "DeepSeek stream capture failed; using DOM fallback",
+                        exc_info=True,
+                    )
+
+                if not answer:
+                    answer, source_links = await self._wait_for_answer(
+                        page,
+                        before_count,
+                        before_fingerprint,
+                        stable_reads_required=5 if lane == "research" else 3,
+                    )
                 if search and source_links and not any(
                     link in answer for link in source_links
                 ):

@@ -5,6 +5,18 @@ from utils.deepseek_web import DeepSeekWebClient
 
 
 class DeepSeekWebHelperTests(unittest.TestCase):
+    def test_completion_stream_returns_final_content_and_source_urls(self) -> None:
+        body = (
+            b'data: {"v":{"results":[{"url":"https://example.com/page?q=1"}]}}\n'
+            b'data: {"content":"Final answer[reference:4]"}\n'
+            b'data: [DONE]\n'
+        )
+
+        answer, sources = DeepSeekWebClient._parse_completion_stream(body)
+
+        self.assertEqual(answer, "Final answer")
+        self.assertEqual(sources, ["https://example.com/page"])
+
     def test_limit_prompt_preserves_newest_and_oldest_context(self) -> None:
         prompt = "A" * 100 + "B" * 100
 
