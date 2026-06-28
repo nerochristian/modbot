@@ -1,20 +1,20 @@
 import unittest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 from utils.deepseek_web import DeepSeekWebClient
 
 
 class DeepSeekWebHelperTests(unittest.TestCase):
-    def test_completion_stream_returns_final_content_and_source_urls(self) -> None:
+    def test_completion_stream_exposes_metadata_and_source_urls(self) -> None:
         body = (
             b'data: {"v":{"results":[{"url":"https://example.com/page?q=1"}]}}\n'
-            b'data: {"content":"Final answer[reference:4]"}\n'
+            b'data: {"content":"Generated conversation title"}\n'
             b'data: [DONE]\n'
         )
 
-        answer, sources = DeepSeekWebClient._parse_completion_stream(body)
+        metadata, sources = DeepSeekWebClient._parse_completion_stream(body)
 
-        self.assertEqual(answer, "Final answer")
+        self.assertEqual(metadata, "Generated conversation title")
         self.assertEqual(sources, ["https://example.com/page"])
 
     def test_limit_prompt_preserves_newest_and_oldest_context(self) -> None:
@@ -89,6 +89,36 @@ class DeepSeekWebHelperTests(unittest.TestCase):
 
 
 class DeepSeekWebChatModeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_fast_copy_uses_new_rendered_assistant_message(self) -> None:
+        client = DeepSeekWebClient()
+        page = MagicMock()
+        answers = MagicMock()
+        latest = MagicMock()
+        page.locator.return_value = answers
+        answers.count = AsyncMock(return_value=2)
+        answers.nth.return_value = latest
+        latest.inner_text = AsyncMock(
+            return_value="Anomaly Hospital released on December 20, 2024."
+        )
+        client._extract_answer = AsyncMock(
+            return_value=(
+                "Anomaly Hospital released on December 20, 2024.",
+                ["https://www.roblox.com/games/example"],
+            )
+        )
+
+        answer, sources = await client._copy_rendered_answer(
+            page,
+            before_count=1,
+            before_fingerprint="Previous answer",
+        )
+
+        self.assertEqual(
+            answer,
+            "Anomaly Hospital released on December 20, 2024.",
+        )
+        self.assertEqual(sources, ["https://www.roblox.com/games/example"])
+
     async def test_normal_chat_can_enable_search_without_deepthink(self) -> None:
         client = DeepSeekWebClient()
         client._run = AsyncMock(return_value="verified answer")

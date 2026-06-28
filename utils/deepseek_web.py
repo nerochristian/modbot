@@ -553,6 +553,34 @@ class DeepSeekWebClient:
             "DeepSeek timed out before a final answer was returned."
         )
 
+    async def _copy_rendered_answer(
+        self,
+        page: Any,
+        before_count: int,
+        before_fingerprint: str,
+        *,
+        timeout_seconds: float = 3.0,
+    ) -> tuple[str, list[str]]:
+        """Copy the completed assistant message immediately after the stream ends."""
+        answers = page.locator(_ANSWER_SELECTOR)
+        deadline = time.monotonic() + timeout_seconds
+        while time.monotonic() < deadline:
+            count = await answers.count()
+            if count:
+                latest = answers.nth(count - 1)
+                fingerprint = (await latest.inner_text()).strip()
+                if self._is_new_answer(
+                    before_count,
+                    before_fingerprint,
+                    count,
+                    fingerprint,
+                ):
+                    text, links = await self._extract_answer(latest)
+                    if text:
+                        return text, links
+            await asyncio.sleep(0.05)
+        return "", []
+
     @staticmethod
     def _is_new_answer(
         before_count: int,
@@ -606,6 +634,7 @@ class DeepSeekWebClient:
                     ).strip()
                 answer = ""
                 source_links: list[str] = []
+                stream_source_links: list[str] = []
                 try:
                     async with page.expect_response(
                         lambda response: (
@@ -619,9 +648,21 @@ class DeepSeekWebClient:
                         await textbox.press("Enter")
                     response = await pending_response.value
                     body = await response.body()
-                    answer, source_links = self._parse_completion_stream(body)
-                    if len(answer) < 60 and "\n" not in answer:
-                        raise ValueError(f"Caught likely title generation: {answer}")
+                    # Top-level stream content can be DeepSeek's generated chat
+                    # title rather than the assistant response. The completed
+                    # stream is only a fast completion signal and source feed;
+                    # the rendered assistant node is the reply authority.
+                    _stream_content, stream_source_links = (
+                        self._parse_completion_stream(body)
+                    )
+                    answer, rendered_source_links = (
+                        await self._copy_rendered_answer(
+                            page,
+                            before_count,
+                            before_fingerprint,
+                        )
+                    )
+                    source_links = rendered_source_links or stream_source_links
                 except Exception:
                     logger.warning(
                         "DeepSeek stream capture failed; using DOM fallback",
@@ -629,12 +670,13 @@ class DeepSeekWebClient:
                     )
 
                 if not answer:
-                    answer, source_links = await self._wait_for_answer(
+                    answer, rendered_source_links = await self._wait_for_answer(
                         page,
                         before_count,
                         before_fingerprint,
                         stable_reads_required=5 if lane == "research" else 3,
                     )
+                    source_links = rendered_source_links or stream_source_links
                 if search and source_links and not any(
                     link in answer for link in source_links
                 ):
