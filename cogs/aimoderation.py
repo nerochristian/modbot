@@ -1668,12 +1668,55 @@ class GeminiClient:
         if current.author.id == author.id and self._is_reply_to_bot(current, bot_id, recent_messages):
             return True
 
-        recent_slice = recent_messages[-4:]
-        for msg in recent_slice:
-            if msg.author.id == bot_id:
-                # Bot spoke recently - likely a continuation
-                return True
-        return False
+        if not any(msg.author.id == bot_id for msg in recent_messages[-4:]):
+            return False
+
+        current_text = re.sub(r"<@!?\d+>", "", current.content or "").strip()
+        if re.match(
+            r"^(?:and\b|also\b|but\b|so\b|why\??$|how so\??$|what about\b|"
+            r"what else\b|then what\b|wdym\b|huh\??$|yes\b|yeah\b|no\b|"
+            r"is that\b|is it\b|should i do (?:that|it)\b|tell me more\b)",
+            current_text,
+            re.IGNORECASE,
+        ):
+            return True
+
+        previous_human = next(
+            (
+                msg
+                for msg in reversed(recent_messages[:-1])
+                if not msg.author.bot and (msg.content or "").strip()
+            ),
+            None,
+        )
+        if previous_human is None:
+            return False
+        current_topics = self._conversation_topic_words(current_text)
+        previous_topics = self._conversation_topic_words(previous_human.content or "")
+        return bool(current_topics & previous_topics)
+
+    @staticmethod
+    def _conversation_topic_words(text: str) -> Set[str]:
+        stopwords = {
+            "about", "after", "again", "also", "and", "are", "can", "could",
+            "did", "does", "for", "from", "game", "have", "how", "into", "is",
+            "it", "like", "me", "my", "not", "of", "on", "or", "should", "that",
+            "the", "their", "them", "then", "this", "to", "valid", "was", "what",
+            "when", "where", "which", "who", "why", "with", "would", "you", "your",
+        }
+        clean = re.sub(r"<[@#][!&]?\d+>", " ", text.lower())
+        words: Set[str] = set()
+        for raw in re.findall(r"[a-z][a-z0-9']{2,}", clean):
+            word = raw.strip("'")
+            if word in stopwords:
+                continue
+            for suffix in ("ing", "ers", "er", "ed", "es", "s"):
+                if word.endswith(suffix) and len(word) - len(suffix) >= 4:
+                    word = word[: -len(suffix)]
+                    break
+            if word and word not in stopwords:
+                words.add(word)
+        return words
 
     def _build_conversation_messages(
         self,

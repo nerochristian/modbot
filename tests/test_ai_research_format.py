@@ -29,6 +29,19 @@ class ResearchFormattingTests(unittest.TestCase):
             "**Sources:**\n- <https://example.com/source>",
         )
 
+    def test_topic_words_match_related_inflections(self) -> None:
+        first = AIModeration._conversation_topic_words("is zzz a gooner game")
+        second = AIModeration._conversation_topic_words("is gooning valid")
+
+        self.assertIn("goon", first & second)
+
+    def test_topic_words_ignore_bot_mentions_and_generic_words(self) -> None:
+        topics = AIModeration._conversation_topic_words(
+            "<@123456789012345678> should I do that?"
+        )
+
+        self.assertEqual(topics, set())
+
 
 if __name__ == "__main__":
     unittest.main()
