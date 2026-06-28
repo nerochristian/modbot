@@ -1,4 +1,6 @@
 import unittest
+from datetime import datetime, timedelta, timezone
+from types import SimpleNamespace
 
 from cogs.aimoderation import AIModeration, GeminiClient
 
@@ -41,6 +43,32 @@ class ResearchFormattingTests(unittest.TestCase):
         )
 
         self.assertEqual(topics, set())
+
+    def test_different_user_can_continue_active_channel_topic(self) -> None:
+        client = object.__new__(GeminiClient)
+        client.bot = SimpleNamespace(user=SimpleNamespace(id=99))
+        first_user = SimpleNamespace(id=1, bot=False)
+        second_user = SimpleNamespace(id=2, bot=False)
+        bot_user = SimpleNamespace(id=99, bot=True)
+        messages = [
+            SimpleNamespace(author=first_user, content="roleplay as my friend", reference=None),
+            SimpleNamespace(author=bot_user, content="I can chat like a friend", reference=None),
+            SimpleNamespace(author=second_user, content="so can you be my gf", reference=None),
+        ]
+
+        self.assertTrue(
+            client._is_conversation_continuation(second_user, messages)
+        )
+
+    def test_active_chat_window_expires(self) -> None:
+        cog = object.__new__(AIModeration)
+        cog._active_chat_channels = {}
+        cog._mark_chat_active(123)
+        self.assertTrue(cog._is_chat_active(123))
+
+        cog._active_chat_channels[123] = datetime.now(timezone.utc) - timedelta(seconds=1)
+        self.assertFalse(cog._is_chat_active(123))
+        self.assertNotIn(123, cog._active_chat_channels)
 
 
 if __name__ == "__main__":
