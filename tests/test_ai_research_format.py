@@ -31,6 +31,41 @@ class ResearchFormattingTests(unittest.TestCase):
             "**Sources:**\n- <https://example.com/source>",
         )
 
+    def test_research_embed_removes_redundant_blank_lines(self) -> None:
+        embed = AIModeration._build_research_embed(
+            None,
+            "# Animal Hospital Roblox Release Date\n\n"
+            "Released in early 2026.\n\n"
+            "## Key Context\n\n"
+            "• First detail.\n\n"
+            "• Second detail.\n\n"
+            "## Game Overview\n\n"
+            "The core loop involves:\n\n"
+            "• Checking patients.",
+            "research animal hospital",
+        )
+
+        self.assertEqual(
+            embed.description,
+            "Released in early 2026.\n"
+            "## Key Context\n"
+            "• First detail.\n"
+            "• Second detail.\n"
+            "## Game Overview\n"
+            "The core loop involves:\n"
+            "• Checking patients.",
+        )
+
+    def test_research_spacing_preserves_fenced_code(self) -> None:
+        response = "Intro.\n\n```py\nfirst = 1\n\nsecond = 2\n```\n\nDone."
+
+        result = AIModeration._compact_research_spacing(response)
+
+        self.assertEqual(
+            result,
+            "Intro.\n```py\nfirst = 1\n\nsecond = 2\n```\nDone.",
+        )
+
     def test_topic_words_match_related_inflections(self) -> None:
         first = GeminiClient._conversation_topic_words("is zzz a gooner game")
         second = GeminiClient._conversation_topic_words("is gooning valid")
