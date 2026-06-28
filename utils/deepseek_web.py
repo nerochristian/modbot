@@ -255,7 +255,51 @@ class DeepSeekWebClient:
                     const text = (anchor.innerText || '').trim();
                     if (/^[\\s\\-–—\\d]+$/.test(text)) anchor.remove();
                 });
-                return clone.innerText;
+
+                const render = node => {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        return node.textContent || '';
+                    }
+                    if (node.nodeType !== Node.ELEMENT_NODE) return '';
+
+                    const tag = node.tagName.toLowerCase();
+                    const children = [...node.childNodes].map(render).join('');
+                    const trimmed = children.trim();
+                    if (!trimmed && tag !== 'br') return '';
+
+                    if (/^h[1-6]$/.test(tag)) {
+                        const level = Number(tag.slice(1));
+                        return `${'#'.repeat(level)} ${trimmed}\n\n`;
+                    }
+                    if (tag === 'p') return `${trimmed}\n\n`;
+                    if (tag === 'br') return '\n';
+                    if (tag === 'strong' || tag === 'b') return `**${trimmed}**`;
+                    if (tag === 'em' || tag === 'i') return `*${trimmed}*`;
+                    if (tag === 'code' && node.parentElement?.tagName.toLowerCase() !== 'pre') {
+                        return `\`${trimmed}\``;
+                    }
+                    if (tag === 'pre') return `\`\`\`\n${node.innerText.trim()}\n\`\`\`\n\n`;
+                    if (tag === 'blockquote') {
+                        return `${trimmed.split('\n').map(line => `> ${line}`).join('\n')}\n\n`;
+                    }
+                    if (tag === 'li') {
+                        const parent = node.parentElement;
+                        let marker = '•';
+                        if (parent?.tagName.toLowerCase() === 'ol') {
+                            marker = `${[...parent.children].indexOf(node) + 1}.`;
+                        }
+                        return `${marker} ${trimmed}\n\n`;
+                    }
+                    if (tag === 'ul' || tag === 'ol') return `${children.trim()}\n\n`;
+                    if (tag === 'a') return trimmed;
+                    if (tag === 'hr') return '\n---\n\n';
+                    return children;
+                };
+
+                return render(clone)
+                    .replace(/[ \\t]+\n/g, '\n')
+                    .replace(/\n{3,}/g, '\n\n')
+                    .trim();
             }"""
         )
         links = await answer.evaluate(
