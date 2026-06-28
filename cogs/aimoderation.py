@@ -3774,7 +3774,7 @@ class AIModeration(commands.Cog):
     async def _build_conversation_signals(self, content: str) -> ConversationSignals:
         low = self._normalize_chat_text(content)
         
-        explicit_research = bool(re.search(r"\b(research|fact[\s-]?check|verify|look\s*up|search|investigate|deep dive|full breakdown)\b", low))
+        explicit_research = bool(re.search(r"\b(research|fact[\s-]?check|verify|look\s*up|search|investigate|deep dive|full breakdown|details?)\b", low))
         
         casual_followup = bool(re.fullmatch(
             r"(?:what'?s new|what is new|what'?s up|what is the ai thingy|what'?s the ai thingy|what do you mean|what is that|what's that|huh|wdym)\??",
@@ -3783,40 +3783,14 @@ class AIModeration(commands.Cog):
 
         mode = ConversationMode.STANDARD
         confidence = 0.0
-        asks_for_sources = False
-        asks_current = False
 
         if not casual_followup:
             if explicit_research:
                 mode = ConversationMode.RESEARCH
                 confidence = 1.0
-            elif len(content) > 10:
-                try:
-                    import google.generativeai as genai
-                    api_key = os.getenv("GEMINI_API_KEY")
-                    if api_key:
-                        genai.configure(api_key=api_key)
-                        model = genai.GenerativeModel("gemini-2.5-flash")
-                        
-                        prompt = (
-                            "Analyze this user query to an AI bot. Does it require deep web research, factual deep-dives, "
-                            "or comprehensive breakdowns (e.g., game character builds, global news, deep technical explanations)? "
-                            "Return JSON: {\"requires_research\": bool, \"asks_for_sources\": bool}\n\n"
-                            f"Query: \"{content}\""
-                        )
-                        
-                        resp = await model.generate_content_async(
-                            prompt,
-                            generation_config={"response_mime_type": "application/json"}
-                        )
-                        data = json.loads(resp.text)
-                        if data.get("requires_research", False):
-                            mode = ConversationMode.RESEARCH
-                            confidence = 0.8
-                        if data.get("asks_for_sources", False):
-                            asks_for_sources = True
-                except Exception as e:
-                    logger.error(f"Intent classification failed: {e}")
+
+        # We will dynamically upgrade to RESEARCH in _deliver_response if DeepSeek autonomously 
+        # performed a web search (sources present) and gave a detailed answer.
 
         show_indicator = (
             mode == ConversationMode.RESEARCH
@@ -3828,8 +3802,8 @@ class AIModeration(commands.Cog):
             mode=mode,
             confidence=confidence,
             show_research_indicator=show_indicator,
-            asks_for_current_info=asks_current,
-            asks_for_sources=asks_for_sources,
+            asks_for_current_info=False,
+            asks_for_sources=False,
             asks_for_long_answer=mode == ConversationMode.RESEARCH,
             mentions_moderation=False,
         )
