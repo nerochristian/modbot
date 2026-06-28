@@ -95,6 +95,11 @@ class DeepSeekWebClient:
         clean = re.sub(r"(?m)^\s*(?:[-–—]\s*)?\d{1,3}\s*$", "", clean)
         clean = re.sub(r"(?m)^\s*[-–—]\s*$", "", clean)
         clean = re.sub(r"[-–—](?=[.,;:!?](?:\s|$))", "", clean)
+        clean = re.sub(
+            r"(?m)^(• \*\*[^\n]+\*\*)\n(?=\S)",
+            r"\1\n\n",
+            clean,
+        )
         # Strip trailing sources block (DeepSeek native UI)
         clean = re.sub(r"(?i)\bSources(?:\s*https?://[^\s]+)+\s*$", "", clean)
         clean = re.sub(r"\n{3,}", "\n\n", clean)

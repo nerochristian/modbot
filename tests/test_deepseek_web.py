@@ -34,6 +34,16 @@ class DeepSeekWebHelperTests(unittest.TestCase):
             DeepSeekWebClient._looks_like_challenge("Start chatting with Instant")
         )
 
+    def test_clean_answer_spaces_research_sections(self) -> None:
+        result = DeepSeekWebClient._clean_answer(
+            "• **Origin and history**\nThe project began in 1985."
+        )
+
+        self.assertEqual(
+            result,
+            "• **Origin and history**\n\nThe project began in 1985.",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
