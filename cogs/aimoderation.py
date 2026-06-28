@@ -3542,6 +3542,7 @@ class AIModeration(commands.Cog):
         self.config = AIConfig()
         self.ai = GeminiClient(bot, self.config)
         self._target_cache: Dict[int, Tuple[int, datetime]] = {}
+        self._active_chat_channels: Dict[int, datetime] = {}
         self._prewarm_task: Optional[asyncio.Task[None]] = None
 
         if not hasattr(bot, "db"):
@@ -3572,6 +3573,25 @@ class AIModeration(commands.Cog):
         stale = [k for k, (_, exp) in self._target_cache.items() if exp <= now]
         for k in stale:
             del self._target_cache[k]
+        inactive_channels = [
+            channel_id
+            for channel_id, expires_at in self._active_chat_channels.items()
+            if expires_at <= now
+        ]
+        for channel_id in inactive_channels:
+            del self._active_chat_channels[channel_id]
+
+    def _mark_chat_active(self, channel_id: int) -> None:
+        self._active_chat_channels[channel_id] = _now() + timedelta(minutes=3)
+
+    def _is_chat_active(self, channel_id: int) -> bool:
+        expires_at = self._active_chat_channels.get(channel_id)
+        if expires_at is None:
+            return False
+        if expires_at <= _now():
+            self._active_chat_channels.pop(channel_id, None)
+            return False
+        return True
 
     # ------------------------------------------------------------------
     # Guild settings helpers
@@ -5082,17 +5102,35 @@ class AIModeration(commands.Cog):
 
         settings = await self.get_guild_settings(message.guild.id)
 
+        implicit_continuation = False
         if not is_mentioned and not is_reply_to_bot:
-            if not settings.enabled:
-                return
             if not settings.chat_enabled:
                 return
-            if settings.proactive_chance <= 0 or random.random() > settings.proactive_chance:
-                return
+            if self._is_chat_active(message.channel.id):
+                recent = await self.fetch_recent_messages(
+                    message.channel,
+                    limit=min(settings.context_messages, 12),
+                )
+                implicit_continuation = self.ai._is_conversation_continuation(
+                    message.author,
+                    recent,
+                )
+            if not implicit_continuation:
+                if not settings.enabled:
+                    return
+                if (
+                    settings.proactive_chance <= 0
+                    or random.random() > settings.proactive_chance
+                ):
+                    return
 
         content = self.clean_content(message)
         if not content:
-            if (is_mentioned or is_reply_to_bot) and await self._message_has_image_context(message):
+            if (
+                is_mentioned
+                or is_reply_to_bot
+                or implicit_continuation
+            ) and await self._message_has_image_context(message):
                 content = "What is in this image?"
             else:
                 if (is_mentioned or is_reply_to_bot) and settings.chat_enabled:
@@ -5105,6 +5143,11 @@ class AIModeration(commands.Cog):
             return
 
         is_mod_request = self._looks_like_mod_request(content) or self._looks_like_advanced_action_request(content)
+
+        if implicit_continuation:
+            if not is_mod_request:
+                await self._handle_conversation(message, content, settings)
+            return
 
         # --- Mentioned but AI mod disabled: chat-only mode ---
         if (is_mentioned or is_reply_to_bot) and not settings.enabled:
@@ -5295,10 +5338,12 @@ class AIModeration(commands.Cog):
         lookup_reply = await self._answer_recent_user_message_lookup(message, content, settings)
         if lookup_reply:
             await self.reply(message, content=lookup_reply)
+            self._mark_chat_active(message.channel.id)
             return
         quick_reply = self._quick_conversation_reply(content)
         if quick_reply:
             await self.reply(message, content=quick_reply)
+            self._mark_chat_active(message.channel.id)
             return
 
         # --- Research indicator ---
@@ -5353,6 +5398,8 @@ class AIModeration(commands.Cog):
 
         # Normal delivery
         await self._deliver_response(message, response, signals)
+        if signals.mode != ConversationMode.RESEARCH:
+            self._mark_chat_active(message.channel.id)
 
     @staticmethod
     def _is_ai_status_message(response: str) -> bool:
