@@ -5313,6 +5313,17 @@ class AIModeration(commands.Cog):
         )
         return embed
 
+    @staticmethod
+    def _split_research_sources(response: str) -> Tuple[str, Optional[str]]:
+        for marker in ("\n\n__BOT_SOURCES__\n", "\n\n**Sources**\n"):
+            if marker in response:
+                answer, sources = response.split(marker, 1)
+                clean_sources = sources.strip()
+                return answer.rstrip(), (
+                    f"**Sources:**\n{clean_sources}" if clean_sources else None
+                )
+        return response, None
+
     class _SourcesView(discord.ui.View):
         def __init__(self, sources_text: str):
             super().__init__(timeout=None)
@@ -5335,16 +5346,16 @@ class AIModeration(commands.Cog):
         signals: ConversationSignals,
     ) -> None:
         """Deliver a conversation response with smart formatting."""
-        sources_text = None
-        if "\n\n__BOT_SOURCES__\n" in response:
-            response, sources_text = response.split("\n\n__BOT_SOURCES__\n", 1)
-            sources_text = "**Sources:**\n" + sources_text
+        response, sources_text = self._split_research_sources(response)
+
+        if signals.mode == ConversationMode.RESEARCH and not sources_text:
+            sources_text = "No source URLs were returned for this research response."
 
         view = self._SourcesView(sources_text) if sources_text else None
 
         # Handle Research Mode explicitly to preserve embed design
         if signals.mode == ConversationMode.RESEARCH and len(response) <= 4000:
-            embed = self._build_research_embed(response, "")
+            embed = self._build_research_embed(response, message.content or "")
             await self.reply(message, embed=embed, view=view)
             return
 
