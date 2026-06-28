@@ -1474,21 +1474,6 @@ class GeminiClient:
         if error:
             return error
 
-        # --- Retrieve persistent memory ---
-        past_memory = ""
-        try:
-            db = getattr(self.bot, "db", None)
-            if db:
-                past_memory = await db.get_ai_memory(author.id) or ""
-        except Exception:
-            pass
-
-        # --- Detect conversation continuity ---
-        is_continuation = self._is_conversation_continuation(
-            author, recent_messages
-        )
-        thread_context = self._format_conversation_history(recent_messages)
-
         signals = signals or ConversationSignals(
             mode=ConversationMode.STANDARD,
             confidence=0.0,
@@ -1498,6 +1483,24 @@ class GeminiClient:
             asks_for_long_answer=False,
             mentions_moderation=False,
         )
+
+        # Research is intentionally isolated from prior conversations. Only
+        # the current request and explicitly attached/replied media are sent.
+        past_memory = ""
+        is_continuation = False
+        thread_context = "No recent messages"
+        if signals.mode != ConversationMode.RESEARCH:
+            try:
+                db = getattr(self.bot, "db", None)
+                if db:
+                    past_memory = await db.get_ai_memory(author.id) or ""
+            except Exception:
+                pass
+            is_continuation = self._is_conversation_continuation(
+                author,
+                recent_messages,
+            )
+            thread_context = self._format_conversation_history(recent_messages)
 
         if not self._deepseek_web.enabled:
             return "DeepSeek is not configured on this deployment."
