@@ -5315,16 +5315,36 @@ class AIModeration(commands.Cog):
 
     def _build_research_embed(self, response: str, query: str) -> discord.Embed:
         """Build a rich embed for research responses."""
-        # Truncate for embed limits (4096 description max)
-        if len(response) > 4000:
-            response = response[:3997] + "..."
+        heading = re.match(r"^\s*#{1,3}\s+(.+?)(?:\n|$)", response)
+        if heading:
+            title = heading.group(1).strip()
+            response = response[heading.end():].lstrip()
+        else:
+            clean_query = re.sub(r"\s+", " ", query).strip()
+            title = f"🔎 {clean_query}" if clean_query else "🔎 Research"
+
+        if len(title) > 256:
+            title = title[:253].rstrip() + "..."
+        if len(response) > 4096:
+            response = response[:4093].rstrip() + "..."
 
         embed = discord.Embed(
-            title="Research Response",
-            description=response,
+            title=title,
+            description=response or "No research summary was returned.",
             color=discord.Color.from_rgb(88, 101, 242),
         )
         return embed
+
+    @staticmethod
+    def _split_research_sources(response: str) -> Tuple[str, Optional[str]]:
+        for marker in ("\n\n__BOT_SOURCES__\n", "\n\n**Sources**\n"):
+            if marker in response:
+                answer, sources = response.split(marker, 1)
+                clean_sources = sources.strip()
+                return answer.rstrip(), (
+                    f"**Sources:**\n{clean_sources}" if clean_sources else None
+                )
+        return response, None
 
     class _SourcesView(discord.ui.View):
         def __init__(self, sources_text: str):
@@ -5348,12 +5368,17 @@ class AIModeration(commands.Cog):
         signals: ConversationSignals,
     ) -> None:
         """Deliver a conversation response with smart formatting."""
-        sources_text = None
-        if "\n\n__BOT_SOURCES__\n" in response:
-            response, sources_text = response.split("\n\n__BOT_SOURCES__\n", 1)
-            sources_text = "**Sources:**\n" + sources_text
+        response, sources_text = self._split_research_sources(response)
+
+        if signals.mode == ConversationMode.RESEARCH and not sources_text:
+            sources_text = "No source URLs were returned for this research response."
 
         view = self._SourcesView(sources_text) if sources_text else None
+
+        if signals.mode == ConversationMode.RESEARCH:
+            embed = self._build_research_embed(response, message.content or "")
+            await self.reply(message, embed=embed, view=view)
+            return
 
         # Short responses: plain text
         if len(response) <= 1900:
