@@ -451,6 +451,7 @@ class DeepSeekWebClient:
         self,
         page: Any,
         before_count: int,
+        before_fingerprint: str,
         *,
         stable_reads_required: int,
     ) -> tuple[str, list[str]]:
@@ -462,9 +463,18 @@ class DeepSeekWebClient:
         while time.monotonic() < deadline:
             await asyncio.sleep(0.75)
             count = await answers.count()
-            if count <= before_count:
+            if count == 0:
                 continue
-            text, links = await self._extract_answer(answers.nth(count - 1))
+            latest = answers.nth(count - 1)
+            fingerprint = (await latest.inner_text()).strip()
+            if not self._is_new_answer(
+                before_count,
+                before_fingerprint,
+                count,
+                fingerprint,
+            ):
+                continue
+            text, links = await self._extract_answer(latest)
             if not text:
                 continue
             if text == last_text:
@@ -475,8 +485,27 @@ class DeepSeekWebClient:
                 stable_reads = 0
             if stable_reads >= stable_reads_required:
                 return text, last_links
+        if last_text:
+            logger.warning(
+                "DeepSeek answer did not stabilize before timeout; returning latest text"
+            )
+            return last_text, last_links
         raise DeepSeekWebError(
             "DeepSeek timed out before a final answer was returned."
+        )
+
+    @staticmethod
+    def _is_new_answer(
+        before_count: int,
+        before_fingerprint: str,
+        current_count: int,
+        current_fingerprint: str,
+    ) -> bool:
+        if not current_fingerprint:
+            return False
+        return (
+            current_count > before_count
+            or current_fingerprint != before_fingerprint
         )
 
     async def _run(
@@ -511,11 +540,17 @@ class DeepSeekWebClient:
 
                 answers = page.locator(_ANSWER_SELECTOR)
                 before_count = await answers.count()
+                before_fingerprint = ""
+                if before_count:
+                    before_fingerprint = (
+                        await answers.nth(before_count - 1).inner_text()
+                    ).strip()
                 await textbox.fill(clean_prompt)
                 await textbox.press("Enter")
                 answer, source_links = await self._wait_for_answer(
                     page,
                     before_count,
+                    before_fingerprint,
                     stable_reads_required=5 if lane == "research" else 3,
                 )
                 if search and source_links and not any(

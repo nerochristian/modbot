@@ -56,6 +56,24 @@ class DeepSeekWebHelperTests(unittest.TestCase):
             )
         )
 
+    def test_recycled_answer_node_is_detected_by_changed_text(self) -> None:
+        self.assertTrue(
+            DeepSeekWebClient._is_new_answer(
+                before_count=2,
+                before_fingerprint="Old answer",
+                current_count=2,
+                current_fingerprint="New answer",
+            )
+        )
+        self.assertFalse(
+            DeepSeekWebClient._is_new_answer(
+                before_count=2,
+                before_fingerprint="Old answer",
+                current_count=2,
+                current_fingerprint="Old answer",
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
