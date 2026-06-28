@@ -595,13 +595,17 @@ class DeepSeekWebClient:
                 )
             else:
                 search_instruction = (
-                    "Live web search is enabled. Verify factual claims before answering. Do not "
-                    "emit citation tokens, a Sources section, or raw source URLs. "
-                    "Give a CONCISE, DIRECT answer. Do not write essays or overly long explanations "
-                    "unless explicitly requested. Keep it brief and conversational. "
+                    "Live web search is enabled to verify facts, but this is a CASUAL CHAT. "
+                    "You MUST give an EXTREMELY CONCISE 1-to-2 sentence answer. "
+                    "NEVER write essays, multiple paragraphs, or bulleted lists. "
+                    "Do not emit citation tokens or URLs. Be brief, punchy, and direct."
                 )
         else:
-            search_instruction = "Do not claim live verification or add citations. Give a concise conversational answer. "
+            search_instruction = (
+                "Do not claim live verification or add citations. "
+                "You MUST give an EXTREMELY CONCISE 1-to-2 sentence answer. "
+                "NEVER write essays, multiple paragraphs, or bulleted lists."
+            )
             
         request = (
             "Reply in the same language as the user's latest message; default to "
