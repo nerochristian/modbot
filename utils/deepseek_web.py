@@ -251,11 +251,11 @@ class DeepSeekWebClient:
 
     async def _extract_answer(self, answer: Any) -> tuple[str, list[str]]:
         text = await answer.evaluate(
-            """element => {
+            r"""element => {
                 const clone = element.cloneNode(true);
                 clone.querySelectorAll('a').forEach(anchor => {
                     const text = (anchor.innerText || '').trim();
-                    if (/^[\\s\\-–—\\d]+$/.test(text)) anchor.remove();
+                    if (/^[\s\d\u002d\u2013\u2014]+$/.test(text)) anchor.remove();
                 });
 
                 const render = node => {

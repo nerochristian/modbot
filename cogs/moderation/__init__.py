@@ -332,33 +332,24 @@ class Moderation(
     })
 
     def _extract_user_id(self, embed: discord.Embed) -> int | None:
-        """Extract target user ID from a mod embed."""
-        # Check User-like fields first (standard mod embeds)
-        for field in embed.fields:
-            if field.name and field.value and field.name.lower() in {"user", "member", "target"}:
-                match = re.search(r'(\d{17,20})', field.value)
-                if match:
-                    return int(match.group(1))
-
-        # Some embeds store target in footer: "Case #5 • User ID: 123..."
+        """Extract target user ID from a mod embed robustly."""
+        search_text = f"{embed.title or ''}\n{embed.description or ''}"
+        if embed.author and embed.author.name:
+            search_text += f"\n{embed.author.name}"
         if embed.footer and embed.footer.text:
-            match = re.search(r"user\s*id\s*[:#]?\s*(\d{17,20})", embed.footer.text, flags=re.IGNORECASE)
-            if match:
-                return int(match.group(1))
-
-        # Fallback: scan every field value for a snowflake-like ID.
+            search_text += f"\n{embed.footer.text}"
         for field in embed.fields:
-            if not field.value:
-                continue
-            match = re.search(r'(\d{17,20})', field.value)
-            if match:
-                return int(match.group(1))
-
-        # Check description (quarantine embeds use mention in description)
-        if embed.description:
-            match = re.search(r'<@!?(\d{17,20})>', embed.description)
-            if match:
-                return int(match.group(1))
+            search_text += f"\n{field.name}\n{field.value}"
+            
+        if match := re.search(r'<@!?(\d{17,20})>', search_text):
+            return int(match.group(1))
+            
+        if match := re.search(r'(?i)\b(?:user\s*id|target|member)[:\s#]*(\d{17,20})\b', search_text):
+            return int(match.group(1))
+            
+        if match := re.search(r'\b(\d{17,20})\b', search_text):
+            return int(match.group(1))
+            
         return None
 
     def _detect_action(self, embed: discord.Embed) -> str | None:
