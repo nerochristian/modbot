@@ -5392,6 +5392,24 @@ class AIModeration(commands.Cog):
             color=discord.Color.orange(),
         )
 
+    def _build_research_embed(self, response: str, query: str) -> discord.Embed:
+        heading = re.match(r"^\s*#{1,3}\s+(.+?)(?:\n|$)", response)
+        if heading:
+            title = heading.group(1).strip()
+            response = response[heading.end():].lstrip()
+        else:
+            clean_query = re.sub(r"\s+", " ", query).strip()
+            title = f"🔎 {clean_query}" if clean_query else "🔎 Research"
+        if len(title) > 256:
+            title = title[:253].rstrip() + "..."
+        if len(response) > 4096:
+            response = response[:4093].rstrip() + "..."
+        return discord.Embed(
+            title=title,
+            description=response or "No research summary was returned.",
+            color=discord.Color.from_rgb(88, 101, 242),
+        )
+
     @staticmethod
     def _split_research_sources(response: str) -> Tuple[str, Optional[str]]:
         for marker in ("\n\n__BOT_SOURCES__\n", "\n\n**Sources**\n"):
@@ -5432,7 +5450,12 @@ class AIModeration(commands.Cog):
         if is_research and not sources_text:
             sources_text = "No source URLs were returned for this research response."
 
-        view = self._SourcesView(sources_text) if sources_text and is_research else None
+        view = self._SourcesView(sources_text) if sources_text else None
+
+        if is_research:
+            embed = self._build_research_embed(response, message.content or "")
+            await self.reply(message, embed=embed, view=view)
+            return
 
         # Short responses: plain text
         if len(response) <= 1900:
