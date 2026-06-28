@@ -640,7 +640,6 @@ class DeepSeekWebClient:
                         lambda response: (
                             "/api/v0/chat/completion" in response.url
                             and response.request.method == "POST"
-                            and "INSTRUCTIONS" in (response.request.post_data or "")
                         ),
                         timeout=self.timeout_seconds * 1_000,
                     ) as pending_response:
