@@ -3788,7 +3788,7 @@ class AIModeration(commands.Cog):
             mode = ConversationMode.RESEARCH
             confidence = 1.0
 
-        show_indicator = getattr(self.ai, "has_web_search", True)
+        show_indicator = getattr(self.ai, "has_web_search", True) and mode == ConversationMode.RESEARCH
 
         return ConversationSignals(
             mode=mode,
@@ -5418,21 +5418,6 @@ class AIModeration(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
-    def _build_research_embed(self, text: str) -> discord.Embed:
-        # Extract title from markdown header if present
-        title = "Research Results"
-        if text.startswith("# "):
-            lines = text.split("\n", 1)
-            title = lines[0][2:].strip()
-            text = lines[1].strip() if len(lines) > 1 else ""
-            
-        embed = discord.Embed(
-            title=title,
-            description=text[:4096],
-            color=discord.Color.from_rgb(88, 101, 242)
-        )
-        return embed
-
     async def _deliver_response(
         self,
         message: discord.Message,
@@ -5448,11 +5433,6 @@ class AIModeration(commands.Cog):
             sources_text = "No source URLs were returned for this research response."
 
         view = self._SourcesView(sources_text) if sources_text and is_research else None
-
-        if is_research:
-            embed = self._build_research_embed(response)
-            await self.reply(message, embed=embed, view=view)
-            return
 
         # Short responses: plain text
         if len(response) <= 1900:
