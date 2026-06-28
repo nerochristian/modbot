@@ -585,7 +585,10 @@ class DeepSeekWebClient:
             "Live web search is enabled. Verify factual, current, game-build, patch, "
             "character, product, and recommendation claims before answering. Do not "
             "emit citation tokens, a Sources section, or raw source URLs; the bot "
-            "attaches sources separately. "
+            "attaches sources separately. For searchable or factual requests, give "
+            "a thorough 250 to 500 word answer when the topic supports it. Lead with "
+            "the answer, then add useful context, key details, practical guidance, "
+            "and caveats in short paragraphs or bullets. Avoid filler and repetition. "
             if search
             else "Do not claim live verification or add citations. "
         )
