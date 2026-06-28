@@ -1,6 +1,6 @@
 import unittest
 
-from cogs.aimoderation import AIModeration
+from cogs.aimoderation import AIModeration, GeminiClient
 
 
 class ResearchFormattingTests(unittest.TestCase):
@@ -30,13 +30,13 @@ class ResearchFormattingTests(unittest.TestCase):
         )
 
     def test_topic_words_match_related_inflections(self) -> None:
-        first = AIModeration._conversation_topic_words("is zzz a gooner game")
-        second = AIModeration._conversation_topic_words("is gooning valid")
+        first = GeminiClient._conversation_topic_words("is zzz a gooner game")
+        second = GeminiClient._conversation_topic_words("is gooning valid")
 
         self.assertIn("goon", first & second)
 
     def test_topic_words_ignore_bot_mentions_and_generic_words(self) -> None:
-        topics = AIModeration._conversation_topic_words(
+        topics = GeminiClient._conversation_topic_words(
             "<@123456789012345678> should I do that?"
         )
 
