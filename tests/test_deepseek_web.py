@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import AsyncMock
 
 from utils.deepseek_web import DeepSeekWebClient
 
@@ -73,6 +74,25 @@ class DeepSeekWebHelperTests(unittest.TestCase):
                 current_fingerprint="Old answer",
             )
         )
+
+
+class DeepSeekWebChatModeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_normal_chat_can_enable_search_without_deepthink(self) -> None:
+        client = DeepSeekWebClient()
+        client._run = AsyncMock(return_value="verified answer")
+
+        result = await client.chat(
+            "What is the current build?",
+            session_key="guild:channel",
+            continue_session=True,
+            search=True,
+        )
+
+        self.assertEqual(result, "verified answer")
+        call = client._run.await_args
+        self.assertTrue(call.kwargs["search"])
+        self.assertFalse(call.kwargs["deepthink"])
+        self.assertTrue(call.kwargs["reuse_existing"])
 
 
 if __name__ == "__main__":

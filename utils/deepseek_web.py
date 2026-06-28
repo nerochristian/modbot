@@ -579,19 +579,27 @@ class DeepSeekWebClient:
         *,
         session_key: str | None = None,
         continue_session: bool = False,
+        search: bool = False,
     ) -> str:
+        search_instruction = (
+            "Live web search is enabled. Verify factual, current, game-build, patch, "
+            "character, product, and recommendation claims before answering. Do not "
+            "emit citation tokens, a Sources section, or raw source URLs; the bot "
+            "attaches sources separately. "
+            if search
+            else "Do not claim live verification or add citations. "
+        )
         request = (
             "Reply in the same language as the user's latest message; default to "
             "English when unclear. Return only the final Discord-ready answer. "
-            "Do not expose reasoning, add citations, or claim live verification.\n\n"
-            f"{prompt}"
+            f"{search_instruction}Do not expose reasoning.\n\n{prompt}"
         )
         return await self._run(
             request,
             lane=f"chat:{session_key}" if session_key else "chat",
             ui_mode="Instant",
             deepthink=False,
-            search=False,
+            search=search,
             reuse_existing=bool(session_key and continue_session),
         )
 

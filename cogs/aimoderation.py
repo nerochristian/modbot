@@ -1561,6 +1561,7 @@ class GeminiClient:
                     prompt,
                     session_key=session_key,
                     continue_session=is_continuation,
+                    search=True,
                 )
             if not content:
                 return None
