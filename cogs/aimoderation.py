@@ -1565,7 +1565,7 @@ class GeminiClient:
                     prompt,
                     session_key=session_key,
                     continue_session=is_continuation,
-                    search=True,
+                    search=False,
                 )
             if not content:
                 return None
@@ -3774,7 +3774,15 @@ class AIModeration(commands.Cog):
     async def _build_conversation_signals(self, content: str) -> ConversationSignals:
         low = self._normalize_chat_text(content)
         
-        explicit_research = bool(re.search(r"\b(research|fact[\s-]?check|verify|look\s*up|search|investigate|deep dive|full breakdown|details?)\b", low))
+        research_keywords = (
+            r"\b(news|breaking|headline|updates?|latest|trending)\b",
+            r"\b(world|global|international|politic(?:s|al)|government|geopolitic|war|election|policy|supreme court|legislation)\b",
+            r"\b(stock|market|economy|inflation|interest rates?|crypto|bitcoin)\b",
+            r"\b(research|fact[\s-]?check|verify|look\s*up|search|investigate|deep dive|full breakdown|details?)\b",
+            r"\b(what happened|what's happening|what is going on|whats going on)\b",
+            r"\b(history of|origin of|how did .+ start|when did)\b",
+            r"\b(build for|guide for|tutorial|walkthrough)\b",
+        )
         
         casual_followup = bool(re.fullmatch(
             r"(?:what'?s new|what is new|what'?s up|what is the ai thingy|what'?s the ai thingy|what do you mean|what is that|what's that|huh|wdym)\??",
@@ -3785,12 +3793,10 @@ class AIModeration(commands.Cog):
         confidence = 0.0
 
         if not casual_followup:
-            if explicit_research:
+            research_hits = sum(1 for p in research_keywords if re.search(p, low))
+            if research_hits > 0 or len(content.split()) > 20:
                 mode = ConversationMode.RESEARCH
                 confidence = 1.0
-
-        # We will dynamically upgrade to RESEARCH in _deliver_response if DeepSeek autonomously 
-        # performed a web search (sources present) and gave a detailed answer.
 
         show_indicator = (
             mode == ConversationMode.RESEARCH
