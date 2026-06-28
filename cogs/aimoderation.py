@@ -3770,8 +3770,33 @@ class AIModeration(commands.Cog):
         return None
 
     async def _build_conversation_signals(self, content: str) -> ConversationSignals:
-        mode = ConversationMode.RESEARCH
-        confidence = 1.0
+        low = self._normalize_chat_text(content)
+        
+        # Fast-track conversational phrases that shouldn't trigger search
+        casual_followup = bool(re.fullmatch(
+            r"(?:what'?s new|what is new|what'?s up|what is the ai thingy|what'?s the ai thingy|what do you mean|what is that|what's that|huh|wdym|hi|hey|hello|yo)\??",
+            low,
+        ))
+
+        mode = ConversationMode.STANDARD
+        confidence = 0.0
+
+        if not casual_followup:
+            # Domain-specific keywords that definitively require web context
+            domain_keywords = r"\b(best|build|guide|stats?|lore|story|news|update|tier list|meta|dps|nerf|buff|walkthrough|tutorial|history of|origin of)\b"
+            
+            # Information-seeking question starts
+            info_questions = r"\b(who is|who's|whos|what is|what's|whats|where is|where's|wheres|when is|when's|whens|why is|why's|whys|how to|how do|how does|explain|tell me about)\b"
+            
+            needs_search = (
+                bool(re.search(domain_keywords, low)) or 
+                bool(re.search(info_questions, low)) or 
+                len(content.split()) > 20
+            )
+            
+            if needs_search:
+                mode = ConversationMode.RESEARCH
+                confidence = 1.0
 
         show_indicator = getattr(self.ai, "has_web_search", True)
 
