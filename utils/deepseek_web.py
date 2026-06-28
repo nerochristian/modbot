@@ -596,14 +596,14 @@ class DeepSeekWebClient:
             else:
                 search_instruction = (
                     "Live web search is enabled to verify facts, but this is a CASUAL CHAT. "
-                    "You MUST give an EXTREMELY CONCISE 1-to-2 sentence answer. "
+                    "You MUST give a concise, direct answer (1 to 4 sentences maximum). "
                     "NEVER write essays, multiple paragraphs, or bulleted lists. "
-                    "Do not emit citation tokens or URLs. Be brief, punchy, and direct."
+                    "Do not emit citation tokens or URLs. Be brief, punchy, and conversational."
                 )
         else:
             search_instruction = (
                 "Do not claim live verification or add citations. "
-                "You MUST give an EXTREMELY CONCISE 1-to-2 sentence answer. "
+                "You MUST give a concise, direct answer (1 to 4 sentences maximum). "
                 "NEVER write essays, multiple paragraphs, or bulleted lists."
             )
             
