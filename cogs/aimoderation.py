@@ -1563,7 +1563,7 @@ class GeminiClient:
                     prompt,
                     session_key=session_key,
                     continue_session=is_continuation,
-                    search=signals.mode == ConversationMode.RESEARCH,
+                    search=True,
                 )
             if not content:
                 return None
@@ -3772,7 +3772,7 @@ class AIModeration(commands.Cog):
     async def _build_conversation_signals(self, content: str) -> ConversationSignals:
         low = self._normalize_chat_text(content)
         
-        # Fast-track conversational phrases that shouldn't trigger search
+        # Fast-track conversational phrases that shouldn't show the visual search embed
         casual_followup = bool(re.fullmatch(
             r"(?:what'?s new|what is new|what'?s up|what is the ai thingy|what'?s the ai thingy|what do you mean|what is that|what's that|huh|wdym|hi|hey|hello|yo)\??",
             low,
