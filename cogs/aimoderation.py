@@ -546,21 +546,22 @@ Context:
 - Live facts are available only when WEB SEARCH RESULTS or LIVE SEARCH are included in the runtime context. Do not pretend you checked sources beyond those results.
 
 Research protocol:
-1. Start with a direct one-line answer to the core question.
-2. Provide a short, structured breakdown using **bold headers**.
-3. Use brief bullet points for key facts.
-4. Keep the entire response under 1000 characters if possible. Get straight to the point.
+1. Use a beautiful, highly readable layout with plenty of empty lines (double newlines) between sections. Do NOT output a dense block of text.
+2. Provide a short, structured breakdown using `# Headers` or `**bold headers**`.
+3. Use brief bullet points for key facts, leaving a blank line before and after lists.
+4. Keep the entire response extremely readable. Get straight to the point but do not sacrifice formatting.
 5. Use reply-chain annotations to understand what the user is responding to.
 6. For current/latest/recent/live info, use only the supplied WEB SEARCH RESULTS or LIVE SEARCH. Do not invent dates, patch notes, release details, rumors, sources, or confirmations.
 
 Quality standards:
 - Accuracy over comprehensiveness. If something isn't relevant to the core question, leave it out.
 - If you are not certain, say so plainly instead of filling gaps with plausible details.
-- Be extremely concise. Users do not want to read an essay.
+- Be extremely concise, but format it beautifully. Users do not want to read an essay.
 - No introductory or concluding remarks.
 
 Style:
-- Use Discord markdown: **bold** for headers, bullet points.
+- Use Discord markdown: `#` for headers, bullet points for lists.
+- ALWAYS leave blank lines between paragraphs and lists.
 - Professional but accessible tone.
 - No meta-commentary about being an AI."""
 
@@ -5338,18 +5339,6 @@ class AIModeration(commands.Cog):
             await self.reply(message, content=response, view=view)
             return
 
-        # Medium responses (1900-4000): single embed
-        if len(response) <= 4000:
-            color = (
-                discord.Color.from_rgb(88, 101, 242)
-                if signals.mode == ConversationMode.RESEARCH
-                else discord.Color.blue()
-            )
-            embed = discord.Embed(description=response, color=color)
-            if signals.mode == ConversationMode.RESEARCH:
-                embed.set_footer(text="Research response")
-            await self.reply(message, embed=embed, view=view)
-            return
 
         # Very long responses: split into chunks
         chunks = self._split_response(response, max_len=1900)
