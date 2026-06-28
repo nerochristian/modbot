@@ -1,5 +1,7 @@
 import asyncio
 from utils.deepseek_web import DeepSeekWebClient
+from dotenv import load_dotenv
+load_dotenv()
 
 async def main():
     scraper = DeepSeekWebClient()
