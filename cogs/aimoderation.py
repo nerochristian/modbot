@@ -3771,65 +3771,57 @@ class AIModeration(commands.Cog):
             return "i'm good. what you need?"
         return None
 
-    def _build_conversation_signals(self, content: str) -> ConversationSignals:
+    async def _build_conversation_signals(self, content: str) -> ConversationSignals:
         low = self._normalize_chat_text(content)
-
-        research_keywords = (
-            r"\b(news|breaking|headline|updates?|latest|trending)\b",
-            r"\b(world|global|international|politic(?:s|al)|government|geopolitic|war|election|policy|supreme court|legislation)\b",
-            r"\b(stock|market|economy|inflation|interest rates?|crypto|bitcoin)\b",
-            r"\b(research|fact[\s-]?check|verify|look\s*up|search|investigate)\b",
-            r"\b(what happened|what's happening|what is going on|whats going on)\b",
-            r"\b(tell me (?:about|everything)|deep dive|breakdown|rundown)\b",
-            r"\b(history of|origin of|how did .+ start|when did)\b",
-            r"\b(climate|pandemic|outbreak|disaster|crisis)\b",
-        )
-        moderation_keywords = (
-            r"\b(timeout|mute|ban|kick|purge|warn|lock|unlock|role|channel|appeal)\b",
-            r"\b(mod|moderation|admin|staff|server rules?|permissions?)\b",
-            r"\b(how (?:do|can) (?:i|you|we) .+(?:ban|kick|mute|timeout|warn|purge))\b",
-        )
-        source_keywords = (
-            r"\b(source|sources|citation|cite|proof|link|references?|according to)\b",
-        )
-        depth_keywords = (
-            r"\b(deep|detailed|thorough|comprehensive|full breakdown|long answer|explain (?:in )?detail|elaborate)\b",
-        )
-
-        research_hits = sum(1 for p in research_keywords if re.search(p, low))
-        moderation_hits = sum(1 for p in moderation_keywords if re.search(p, low))
-        asks_for_sources = any(re.search(p, low) for p in source_keywords)
-        asks_for_long = any(re.search(p, low) for p in depth_keywords)
-        # We track time modifiers, but they don't count as primary research hits anymore
-        asks_current = bool(re.search(r"\b(today|latest|right now|current(?:ly)?|this week|recent(?:ly)?|just happened)\b", low))
-
+        
         explicit_research = bool(re.search(r"\b(research|fact[\s-]?check|verify|look\s*up|search|investigate|deep dive|full breakdown)\b", low))
-
+        
         casual_followup = bool(re.fullmatch(
             r"(?:what'?s new|what is new|what'?s up|what is the ai thingy|what'?s the ai thingy|what do you mean|what is that|what's that|huh|wdym)\??",
             low,
         ))
 
-        # A single word like "latest" or "news" should stay conversational.
-        # Research mode is reserved for explicit research/source/depth requests.
-        if moderation_hits > 0 and research_hits == 0:
-            mode = ConversationMode.MOD_GUIDANCE
-        elif not casual_followup and (
-            asks_for_sources
-            or asks_for_long
-            or explicit_research
-            or (asks_current and research_hits >= 1)
-            or research_hits >= 3
-        ):
-            mode = ConversationMode.RESEARCH
-        else:
-            mode = ConversationMode.STANDARD
+        mode = ConversationMode.STANDARD
+        confidence = 0.0
+        asks_for_sources = False
+        asks_current = False
 
-        confidence = min(1.0, (research_hits * 0.12) + (0.25 if explicit_research else 0.0) + (0.2 if asks_for_sources else 0.0) + (0.15 if asks_for_long else 0.0))
+        if not casual_followup:
+            if explicit_research:
+                mode = ConversationMode.RESEARCH
+                confidence = 1.0
+            elif len(content) > 10:
+                try:
+                    import google.generativeai as genai
+                    api_key = os.getenv("GEMINI_API_KEY")
+                    if api_key:
+                        genai.configure(api_key=api_key)
+                        model = genai.GenerativeModel("gemini-2.5-flash")
+                        
+                        prompt = (
+                            "Analyze this user query to an AI bot. Does it require deep web research, factual deep-dives, "
+                            "or comprehensive breakdowns (e.g., game character builds, global news, deep technical explanations)? "
+                            "Return JSON: {\"requires_research\": bool, \"asks_for_sources\": bool}\n\n"
+                            f"Query: \"{content}\""
+                        )
+                        
+                        resp = await model.generate_content_async(
+                            prompt,
+                            generation_config={"response_mime_type": "application/json"}
+                        )
+                        data = json.loads(resp.text)
+                        if data.get("requires_research", False):
+                            mode = ConversationMode.RESEARCH
+                            confidence = 0.8
+                        if data.get("asks_for_sources", False):
+                            asks_for_sources = True
+                except Exception as e:
+                    logger.error(f"Intent classification failed: {e}")
+
         show_indicator = (
             mode == ConversationMode.RESEARCH
             and confidence >= 0.35
-            and self.ai.has_web_search
+            and getattr(self.ai, "has_web_search", True)
         )
 
         return ConversationSignals(
@@ -3838,8 +3830,8 @@ class AIModeration(commands.Cog):
             show_research_indicator=show_indicator,
             asks_for_current_info=asks_current,
             asks_for_sources=asks_for_sources,
-            asks_for_long_answer=asks_for_long,
-            mentions_moderation=moderation_hits > 0,
+            asks_for_long_answer=mode == ConversationMode.RESEARCH,
+            mentions_moderation=False,
         )
 
     def _friendly_error_reply(self, content: str, reason: str) -> str:
@@ -5339,7 +5331,7 @@ class AIModeration(commands.Cog):
         """Handle AI conversation with research indicator and smart response delivery."""
         recent = await self.fetch_recent_messages(message.channel, limit=settings.context_messages)
         recent = await self._include_referenced_message(message, recent)
-        signals = self._build_conversation_signals(content)
+        signals = await self._build_conversation_signals(content)
         lookup_reply = await self._answer_recent_user_message_lookup(message, content, settings)
         if lookup_reply:
             await self.reply(message, content=lookup_reply)
@@ -5434,28 +5426,6 @@ class AIModeration(commands.Cog):
             color=discord.Color.orange(),
         )
 
-    def _build_research_embed(self, response: str, query: str) -> discord.Embed:
-        """Build a rich embed for research responses."""
-        heading = re.match(r"^\s*#{1,3}\s+(.+?)(?:\n|$)", response)
-        if heading:
-            title = heading.group(1).strip()
-            response = response[heading.end():].lstrip()
-        else:
-            clean_query = re.sub(r"\s+", " ", query).strip()
-            title = f"🔎 {clean_query}" if clean_query else "🔎 Research"
-
-        if len(title) > 256:
-            title = title[:253].rstrip() + "..."
-        if len(response) > 4096:
-            response = response[:4093].rstrip() + "..."
-
-        embed = discord.Embed(
-            title=title,
-            description=response or "No research summary was returned.",
-            color=discord.Color.from_rgb(88, 101, 242),
-        )
-        return embed
-
     @staticmethod
     def _split_research_sources(response: str) -> Tuple[str, Optional[str]]:
         for marker in ("\n\n__BOT_SOURCES__\n", "\n\n**Sources**\n"):
@@ -5496,10 +5466,6 @@ class AIModeration(commands.Cog):
 
         view = self._SourcesView(sources_text) if sources_text and signals.mode == ConversationMode.RESEARCH else None
 
-        if signals.mode == ConversationMode.RESEARCH:
-            embed = self._build_research_embed(response, message.content or "")
-            await self.reply(message, embed=embed, view=view)
-            return
 
         # Short responses: plain text
         if len(response) <= 1900:
