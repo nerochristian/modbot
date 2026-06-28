@@ -5435,10 +5435,17 @@ class AIModeration(commands.Cog):
         """Deliver a conversation response with smart formatting."""
         response, sources_text = self._split_research_sources(response)
 
-        if signals.mode == ConversationMode.RESEARCH and not sources_text:
+        is_research = signals.mode == ConversationMode.RESEARCH
+
+        # Dynamically upgrade to research mode if DeepSeek autonomously performed a web search
+        # and provided a reasonably long response, indicating a deep dive.
+        if sources_text and not is_research and len(response) > 500:
+            is_research = True
+
+        if is_research and not sources_text:
             sources_text = "No source URLs were returned for this research response."
 
-        view = self._SourcesView(sources_text) if sources_text and signals.mode == ConversationMode.RESEARCH else None
+        view = self._SourcesView(sources_text) if sources_text and is_research else None
 
 
         # Short responses: plain text
