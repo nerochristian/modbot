@@ -1637,7 +1637,7 @@ class ModBot(commands.Bot):
             "cogs.blacklist",
             "cogs.forum_moderation",
             "cogs.prefix_commands",
-            "cogs.moderation.ai.aimoderation",
+            "cogs.aimoderation",
             "cogs.ai_scheduler",
             "cogs.automod",
             "cogs.antiraid",
