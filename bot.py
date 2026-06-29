@@ -1652,6 +1652,7 @@ class ModBot(commands.Bot):
             "cogs.court",
             "cogs.whitelist",
             "cogs.server_backup",
+            "cogs.risk_scoring",
         ]
 
         loaded: list[str] = []
