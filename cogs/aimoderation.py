@@ -80,30 +80,6 @@ class ToolType(str, Enum):
     DELETE_CHANNEL = "delete_channel"
     EDIT_CHANNEL = "edit_channel"
     LOCK_CHANNEL = "lock_channel"
-
-
-# =============================================================================
-# CONSTANTS & ENUMS
-# =============================================================================
-
-
-class ToolType(str, Enum):
-    WARN = "warn_member"
-    TIMEOUT = "timeout_member"
-    UNTIMEOUT = "untimeout_member"
-    KICK = "kick_member"
-    BAN = "ban_member"
-    UNBAN = "unban_member"
-    PURGE = "purge_messages"
-    ADD_ROLE = "add_role"
-    REMOVE_ROLE = "remove_role"
-    CREATE_ROLE = "create_role"
-    DELETE_ROLE = "delete_role"
-    EDIT_ROLE = "edit_role"
-    CREATE_CHANNEL = "create_channel"
-    DELETE_CHANNEL = "delete_channel"
-    EDIT_CHANNEL = "edit_channel"
-    LOCK_CHANNEL = "lock_channel"
     UNLOCK_CHANNEL = "unlock_channel"
     SET_NICKNAME = "set_nickname"
     LOCK_THREAD = "lock_thread"
@@ -119,7 +95,6 @@ class ToolType(str, Enum):
     EXECUTE_RAW_API = "execute_raw_api"
     EXECUTE_PYTHON = "execute_python"
     HELP = "show_help"
-    GET_WARNINGS = "get_warnings"
 
 
 class DecisionType(str, Enum):
@@ -368,10 +343,6 @@ Schema:
 AVAILABLE TOOLS
 ================================================================================
 
-Formatting rules for moderation tools (warn, timeout, kick, ban, purge):
-The `reason` string must be a concise, direct, grammatically correct phrase describing the offense (e.g., 'Spamming chat', 'Being disrespectful', 'Posting NSFW content').
-CRITICAL: Do NOT prepend the reason with prepositions like 'for ' or 'because '. Keep it short and professional.
-
 - show_help: no args
 - warn_member: target_user_id (int), reason (str)
 - timeout_member: target_user_id (int), seconds (int), reason (str)
@@ -380,7 +351,6 @@ CRITICAL: Do NOT prepend the reason with prepositions like 'for ' or 'because '.
 - ban_member: target_user_id (int), delete_message_days (int), reason (str)
 - unban_member: target_user_id (int), reason (str)
 - purge_messages: amount (int), reason (str)
-- get_warnings: target_user_id (int)
 
 ### Role Management
 - add_role: target_user_id (int), role_name (str), reason (str)
@@ -401,7 +371,6 @@ CRITICAL: Do NOT prepend the reason with prepositions like 'for ' or 'because '.
 - move_member: target_user_id (int), channel_name (str)
 - disconnect_member: target_user_id (int)
 - dm_user: target_user_id (int), message (str)
-- get_warnings: target_user_id (int)
 
 ### Server/Misc
 - edit_guild: name (str, opt)
@@ -2586,12 +2555,169 @@ class GeminiClient:
             show_research_indicator=False,
         )
 
+    @staticmethod
+    def _postprocess_chat_response(content: str) -> str:
+        """Normalize assistant chat output so Discord replies stay clean and readable."""
+        text = (content or "").strip()
+        if not text:
+            return ""
+
+        # Strip wrapping code fences the model sometimes adds
+        text = re.sub(r"^```(?:\w+)?\s*", "", text).strip()
+        text = re.sub(r"\s*```$", "", text).strip()
+
+        # Collapse excessive whitespace
+        text = re.sub(r"\n{3,}", "\n\n", text)
+        text = GeminiClient._strip_citation_tokens(text)
+        text = GeminiClient._convert_simple_markdown_table(text)
+        text = GeminiClient._strip_consumer_app_footers(text)
+
+        # The user requested to stop using long dash separators and use commas instead.
+        text = text.replace(" \u2014 ", ", ").replace("\u2014", ", ")
+        text = text.replace(" \u2013 ", ", ").replace("\u2013", ", ")
+        text = text.replace(" -- ", ", ").replace("--", ", ")
+
+        # Strip meta-commentary the model sometimes prepends
+        meta_patterns = [
+            r"^(?:Sure(?:,|!)?\s*)?(?:Here(?:'s| is)?\s*)?(?:my )?(?:response|answer|reply)\s*[:!]\s*\n*",
+            r"^(?:Of course(?:,|!)?\s*)",
+            r"^(?:Absolutely(?:,|!)?\s*)",
+            r"^(?:What (?:a )?great question(?:!|\.|,)?\s*)",
+            r"^(?:Great question(?:!|\.|,)?\s*)",
+        ]
+        for pattern in meta_patterns:
+            text = re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
+
+        # Strip trailing "Let me know if..." type endings
+        trailing_patterns = [
+            r"\n+(?:Let me know|Feel free to ask|Hope (?:this|that) helps|Don't hesitate).*$",
+        ]
+        for pattern in trailing_patterns:
+            text = re.sub(pattern, "", text, flags=re.IGNORECASE).strip()
+
+        # If the model wrapped the entire response in quotes, unwrap
+        if text.startswith('"') and text.endswith('"') and text.count('"') == 2:
+            text = text[1:-1].strip()
+
+        return text
+
+    @staticmethod
+    def _strip_consumer_app_footers(content: str) -> str:
+        """Remove Gemini/Google consumer-app enablement footers from API replies."""
+        text = content or ""
+        patterns = (
+            r"(?:^|\n)\s*(?:By the way,\s*)?to unlock the full functionality of all apps,?\s*enable\s+Gemini Apps Activity\.?\s*$",
+            r"(?:^|\n)\s*(?:By the way,\s*)?(?:please\s+)?enable\s+Gemini Apps Activity\b.*$",
+            r"(?:^|\n)\s*(?:By the way,\s*)?.*\bGemini Apps Activity\b.*$",
+            r"(?:^|\n)\s*(?:By the way,\s*)?.*\bGoogle Apps Activity\b.*$",
+            r"(?:^|\n)\s*(?:By the way,\s*)?.*\bGoogle app activity\b.*$",
+        )
+        for pattern in patterns:
+            text = re.sub(pattern, "", text, flags=re.IGNORECASE | re.MULTILINE).strip()
+        return text
+
+    @staticmethod
+    def _is_local_context_question(content: str) -> bool:
+        low = (content or "").strip().lower()
+        if not low:
+            return False
+        if re.search(r"\b(what|when|where|who|which)\b", low) and re.search(
+            r"\b(time|date|day|place|location|channel|room|event|dinner|meeting|class|game|party|plan|thing|it|that|this)\b",
+            low,
+        ):
+            return True
+        return bool(re.search(r"\b(what time|when is|where is|who is|what is (?:it|that|this|the))\b", low))
+
+    @staticmethod
+    def _strip_citation_tokens(text: str) -> str:
+        text = re.sub(r"\s*\[citation:\d+\]", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s*\[source:\d+\]", "", text, flags=re.IGNORECASE)
+        text = re.sub(r"\s+([,.;:])", r"\1", text)
+        return text
+
+    @staticmethod
+    def _convert_simple_markdown_table(text: str) -> str:
+        lines = text.splitlines()
+        output: List[str] = []
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            if (
+                line.strip().startswith("|")
+                and i + 1 < len(lines)
+                and re.match(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$", lines[i + 1])
+            ):
+                headers = [cell.strip() for cell in line.strip().strip("|").split("|")]
+                i += 2
+                bullets: List[str] = []
+                while i < len(lines) and lines[i].strip().startswith("|"):
+                    cells = [cell.strip() for cell in lines[i].strip().strip("|").split("|")]
+                    if len(cells) >= 2:
+                        label = cells[0].strip("* ")
+                        detail = " | ".join(cells[1:]).strip()
+                        bullets.append(f"- **{label}:** {detail}")
+                    i += 1
+                if bullets:
+                    if headers and headers[0]:
+                        output.append(f"**{headers[0]}**")
+                    output.extend(bullets)
+                    continue
+            output.append(line)
+            i += 1
+        return "\n".join(output)
+
+    async def _update_memory_smart(
+        self, user_id: int, user_msg: str, bot_response: str, past_memory: str
+    ) -> None:
+        """Update per-user conversation memory with smart truncation.
+
+        Keeps the most recent exchanges and trims at entry boundaries
+        to avoid cutting mid-thought.
+        """
+        try:
+            db = getattr(self.bot, "db", None)
+            if not db:
+                return
+
+            # Build new entry
+            user_snippet = user_msg[:1000].strip()
+            bot_snippet = bot_response[:1000].strip()
+            entry = f"\n[user]: {user_snippet}\n[bot]: {bot_snippet}"
+
+            new_memory = (past_memory + entry).strip()
+
+            # Smart truncation: keep within limit but don't break mid-entry
+            max_chars = self.config.memory_max_chars
+            if len(new_memory) > max_chars:
+                # Find the first complete entry boundary after the cutoff point
+                cutoff = len(new_memory) - max_chars
+                # Search for the next "\n[user]:" or "\n[bot]:" after cutoff
+                next_entry = new_memory.find("\n[user]:", cutoff)
+                if next_entry == -1:
+                    next_entry = new_memory.find("\n[bot]:", cutoff)
+                if next_entry > 0:
+                    new_memory = new_memory[next_entry:].strip()
+                else:
+                    new_memory = new_memory[-max_chars:]
+
+            await db.update_ai_memory(user_id, new_memory)
+        except Exception:
+            logger.debug("Failed to update AI memory for user %d", user_id, exc_info=True)
+
+    # Keep old method name as alias for compatibility
+    async def _update_memory(
+        self, user_id: int, user_msg: str, bot_response: str, past_memory: str
+    ) -> None:
+        await self._update_memory_smart(user_id, user_msg, bot_response, past_memory)
+
+
 # =============================================================================
 # TOOL HANDLERS
 # =============================================================================
 
+
 @ToolRegistry.register(ToolType.WARN, display_name="Warn Member", color=discord.Color.gold(), emoji="Warning", required_permission="moderate_members")
-async def handle_warn_member(ctx: ToolContext) -> ToolResult:
+async def handle_warn(ctx: ToolContext) -> ToolResult:
     target = await ctx.resolve_target()
     if not target:
         return ToolResult.fail("Could not resolve target member.")
@@ -2619,6 +2745,37 @@ async def handle_warn_member(ctx: ToolContext) -> ToolResult:
         actor=ctx.actor, target=target, reason=reason, decision=ctx.decision,
     )
     return ToolResult.ok("Warning issued.", embed=embed)
+
+
+@ToolRegistry.register(ToolType.GET_WARNINGS, display_name="Get Warnings", color=discord.Color.blue(), emoji="📋", required_permission="moderate_members")
+async def handle_get_warnings(ctx: ToolContext) -> ToolResult:
+    target = await ctx.resolve_target()
+    if not target:
+        return ToolResult.fail("Could not resolve target member.")
+    
+    db = getattr(ctx.cog.bot, "db", None)
+    if not db:
+        return ToolResult.fail("Database not available.")
+        
+    try:
+        warnings = await db.get_warnings(ctx.guild.id, target.id)
+    except Exception:
+        logger.exception("Failed to fetch warnings")
+        return ToolResult.fail("Database error while fetching warnings.")
+        
+    if not warnings:
+        return ToolResult.ok(f"{target.display_name} has no warnings.")
+        
+    lines = [f"**Total Warnings:** {len(warnings)}\n"]
+    for i, w in enumerate(warnings[:5], 1):
+        mod = ctx.guild.get_member(w.get("moderator_id", 0))
+        mod_name = mod.display_name if mod else "Unknown Mod"
+        lines.append(f"**#{i}** | {w.get('reason', 'No reason')} - By {mod_name}")
+        
+    if len(warnings) > 5:
+        lines.append(f"...and {len(warnings) - 5} more.")
+        
+    return ToolResult.ok("\n".join(lines))
 
 
 @ToolRegistry.register(ToolType.TIMEOUT, display_name="Timeout Member", color=discord.Color.orange(), emoji="Muted", required_permission="moderate_members")
@@ -3042,30 +3199,6 @@ async def handle_disconnect_member(ctx: ToolContext) -> ToolResult:
 
     await target.move_to(None, reason=f"AI Mod ({ctx.actor})")
     return ToolResult.ok(f"Disconnected **{target.display_name}** from voice.")
-
-
-@ToolRegistry.register(ToolType.GET_WARNINGS, display_name="Get Warnings", color=discord.Color.blue(), emoji="Warning")
-async def handle_get_warnings(ctx: ToolContext) -> ToolResult:
-    target = await ctx.resolve_target()
-    if not target:
-        return ToolResult.fail("Target user not found.")
-
-    # In aimoderation.py, we can access the warnings logic via the database
-    warnings = await ctx.cog.bot.db.get_warnings(ctx.message.guild.id, target.id)
-    if not warnings:
-        return ToolResult.ok(f"{target.mention} has no warnings on record.")
-
-    warning_lines = []
-    for w in warnings[:5]:
-        reason = w.get("reason", "No reason provided")
-        mod_id = w.get("moderator_id", "Unknown")
-        warning_lines.append(f"- ID {w['id']}: {reason} (by <@{mod_id}>)")
-
-    summary = "\n".join(warning_lines)
-    if len(warnings) > 5:
-        summary += f"\n... and {len(warnings) - 5} more."
-
-    return ToolResult.ok(f"{target.mention} has {len(warnings)} warning(s):\n{summary}")
 
 
 @ToolRegistry.register(ToolType.DM_USER, display_name="DM User", color=discord.Color.green(), emoji="DM")
@@ -5038,9 +5171,6 @@ class AIModeration(commands.Cog):
             reason = self._extract_moderation_reason(content, tool.value.removesuffix("_member"))
             if reason:
                 args["reason"] = reason
-        elif "reason" in args and isinstance(args["reason"], str):
-            # Strip generated 'for ' prefix from AI responses
-            args["reason"] = re.sub(r"^(?:for|because)\s+", "", args["reason"], flags=re.IGNORECASE)
 
         if tool == ToolType.DM_USER:
             if not args.get("target_user_id"):
