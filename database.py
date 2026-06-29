@@ -1302,6 +1302,42 @@ class Database:
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
+
+                # ===== SERVER BACKUPS =====
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS server_backups (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        guild_id INTEGER NOT NULL,
+                        created_by INTEGER NOT NULL,
+                        triggered_by TEXT DEFAULT 'manual',
+                        backup_data TEXT NOT NULL,
+                        summary TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
+                # ===== USER RISK SCORES =====
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS user_risk_scores (
+                        guild_id INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        score INTEGER DEFAULT 0,
+                        factors TEXT DEFAULT '{}',
+                        last_calculated TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        PRIMARY KEY (guild_id, user_id)
+                    )
+                """)
+
+                # ===== BANNED USER PROFILES (alt detection) =====
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS banned_user_profiles (
+                        user_id INTEGER PRIMARY KEY,
+                        username TEXT NOT NULL DEFAULT '',
+                        avatar_hash TEXT,
+                        banned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        banned_from_guilds TEXT DEFAULT '[]'
+                    )
+                """)
                 
                 # Auto-migrate missing columns
                 await self._migrate_schema(db)
@@ -3099,6 +3135,283 @@ class Database:
                 )
                 await db.commit()
                 return cursor.rowcount
+
+    # ==================== SERVER BACKUPS ====================
+
+    async def create_server_backup(
+        self,
+        guild_id: int,
+        created_by: int,
+        backup_data: Dict[str, Any],
+        triggered_by: str = "manual",
+        summary: Optional[str] = None,
+    ) -> int:
+        """Store a server backup snapshot. Returns the backup id."""
+        self._validate_guild_id(guild_id)
+        async with self._lock:
+            async with self.get_connection() as db:
+                cursor = await db.execute(
+                    """
+                    INSERT INTO server_backups
+                    (guild_id, created_by, triggered_by, backup_data, summary)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        guild_id,
+                        created_by,
+                        triggered_by,
+                        json.dumps(backup_data, ensure_ascii=False),
+                        summary or "",
+                    ),
+                )
+                await db.commit()
+                return cursor.lastrowid
+
+    async def get_server_backup(self, backup_id: int) -> Optional[Dict[str, Any]]:
+        """Retrieve a single server backup by id."""
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT * FROM server_backups WHERE id = ?",
+                (backup_id,),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "id": row[0],
+                "guild_id": row[1],
+                "created_by": row[2],
+                "triggered_by": row[3],
+                "backup_data": json.loads(row[4]) if row[4] else {},
+                "summary": row[5],
+                "created_at": row[6],
+            }
+
+    async def list_server_backups(
+        self, guild_id: int, limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """List recent server backups for a guild."""
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                """
+                SELECT id, guild_id, created_by, triggered_by, summary, created_at
+                FROM server_backups
+                WHERE guild_id = ?
+                ORDER BY created_at DESC
+                LIMIT ?
+                """,
+                (guild_id, limit),
+            )
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "id": r[0],
+                    "guild_id": r[1],
+                    "created_by": r[2],
+                    "triggered_by": r[3],
+                    "summary": r[4],
+                    "created_at": r[5],
+                }
+                for r in rows
+            ]
+
+    async def prune_old_backups(self, guild_id: int, keep: int = 10) -> int:
+        """Keep only the most recent N backups for a guild. Returns count removed."""
+        async with self._lock:
+            async with self.get_connection() as db:
+                cursor = await db.execute(
+                    """
+                    SELECT id FROM server_backups
+                    WHERE guild_id = ?
+                    ORDER BY created_at DESC
+                    LIMIT -1 OFFSET ?
+                    """,
+                    (guild_id, keep),
+                )
+                old_ids = [r[0] for r in await cursor.fetchall()]
+                if old_ids:
+                    placeholders = ",".join("?" for _ in old_ids)
+                    await db.execute(
+                        f"DELETE FROM server_backups WHERE id IN ({placeholders})",
+                        old_ids,
+                    )
+                await db.commit()
+                return len(old_ids)
+
+    # ==================== USER RISK SCORES ====================
+
+    async def upsert_risk_score(
+        self, guild_id: int, user_id: int, score: int, factors: Dict[str, int]
+    ) -> None:
+        """Insert or update a user's risk score in a guild."""
+        self._validate_guild_id(guild_id)
+        self._validate_user_id(user_id)
+        now = datetime.now(timezone.utc).isoformat()
+        async with self._lock:
+            async with self.get_connection() as db:
+                if QueryBuilder and hasattr(QueryBuilder, "upsert"):
+                    builder = QueryBuilder("user_risk_scores")
+                    builder.insert(
+                        guild_id=guild_id,
+                        user_id=user_id,
+                        score=score,
+                        factors=json.dumps(factors, ensure_ascii=False),
+                        last_calculated=now,
+                    )
+                    sql, params = builder.on_conflict_do_update(
+                        conflict_columns=["guild_id", "user_id"],
+                        update_columns=["score", "factors", "last_calculated"],
+                    )
+                    await db.execute(sql, params)
+                else:
+                    await db.execute(
+                        """
+                        INSERT INTO user_risk_scores (guild_id, user_id, score, factors, last_calculated)
+                        VALUES (?, ?, ?, ?, ?)
+                        ON CONFLICT(guild_id, user_id) DO UPDATE SET
+                            score = excluded.score,
+                            factors = excluded.factors,
+                            last_calculated = excluded.last_calculated
+                        """,
+                        (guild_id, user_id, score, json.dumps(factors, ensure_ascii=False), now),
+                    )
+                await db.commit()
+
+    async def get_risk_score(
+        self, guild_id: int, user_id: int
+    ) -> Optional[Dict[str, Any]]:
+        """Get risk score and factor breakdown for a user."""
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                """
+                SELECT score, factors, last_calculated
+                FROM user_risk_scores
+                WHERE guild_id = ? AND user_id = ?
+                """,
+                (guild_id, user_id),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "score": row[0],
+                "factors": json.loads(row[1]) if row[1] else {},
+                "last_calculated": row[2],
+            }
+
+    async def get_top_risky_users(
+        self, guild_id: int, limit: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Get the highest-risk users in a guild."""
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                """
+                SELECT user_id, score, factors, last_calculated
+                FROM user_risk_scores
+                WHERE guild_id = ?
+                ORDER BY score DESC
+                LIMIT ?
+                """,
+                (guild_id, limit),
+            )
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "user_id": r[0],
+                    "score": r[1],
+                    "factors": json.loads(r[2]) if r[2] else {},
+                    "last_calculated": r[3],
+                }
+                for r in rows
+            ]
+
+    # ==================== BANNED USER PROFILES ====================
+
+    async def store_banned_profile(
+        self, user_id: int, username: str, avatar_hash: Optional[str], guild_id: int
+    ) -> None:
+        """Store or update a banned user's profile for alt detection."""
+        self._validate_user_id(user_id)
+        async with self._lock:
+            async with self.get_connection() as db:
+                existing = await db.execute_fetchall(
+                    "SELECT banned_from_guilds FROM banned_user_profiles WHERE user_id = ?",
+                    (user_id,),
+                )
+                guilds = []
+                if existing:
+                    guilds = json.loads(existing[0][0]) if existing[0][0] else []
+                if guild_id not in guilds:
+                    guilds.append(guild_id)
+
+                if existing:
+                    await db.execute(
+                        """
+                        UPDATE banned_user_profiles
+                        SET username = ?, avatar_hash = ?,
+                            banned_at = ?, banned_from_guilds = ?
+                        WHERE user_id = ?
+                        """,
+                        (
+                            username,
+                            avatar_hash,
+                            datetime.now(timezone.utc).isoformat(),
+                            json.dumps(guilds, ensure_ascii=False),
+                            user_id,
+                        ),
+                    )
+                else:
+                    await db.execute(
+                        """
+                        INSERT INTO banned_user_profiles
+                        (user_id, username, avatar_hash, banned_at, banned_from_guilds)
+                        VALUES (?, ?, ?, ?, ?)
+                        """,
+                        (
+                            user_id,
+                            username,
+                            avatar_hash,
+                            datetime.now(timezone.utc).isoformat(),
+                            json.dumps(guilds, ensure_ascii=False),
+                        ),
+                    )
+                await db.commit()
+
+    async def get_banned_profile(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Retrieve a banned user's stored profile."""
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT * FROM banned_user_profiles WHERE user_id = ?",
+                (user_id,),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "user_id": row[0],
+                "username": row[1],
+                "avatar_hash": row[2],
+                "banned_at": row[3],
+                "banned_from_guilds": json.loads(row[4]) if row[4] else [],
+            }
+
+    async def get_all_banned_profiles(self) -> List[Dict[str, Any]]:
+        """Get all stored banned user profiles."""
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT * FROM banned_user_profiles ORDER BY banned_at DESC"
+            )
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "user_id": r[0],
+                    "username": r[1],
+                    "avatar_hash": r[2],
+                    "banned_at": r[3],
+                    "banned_from_guilds": json.loads(r[4]) if r[4] else [],
+                }
+                for r in rows
+            ]
 
     # ==================== LIFECYCLE ====================
 
