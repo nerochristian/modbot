@@ -10,6 +10,7 @@ from datetime import timedelta
 from typing import Any, ClassVar, Dict, FrozenSet, List, Optional, Set, Union
 
 import discord
+from discord.ext import commands
 
 
 _MENTION_RE = re.compile(r"<@!?(\d+)>")
@@ -54,8 +55,8 @@ class TextParsers:
     Extracted so the thin cog can inherit or compose them.
     """
 
-class AIModeration(commands.Cog):
-    """AI-powered moderation cog for Discord."""
+class TextParsers:
+    """Collection of regex constants and text-parsing methods.
 
     _REPLY_ACTION_WORDS: ClassVar[frozenset] = frozenset({
         "undo", "reverse", "revert", "unban", "unmute", "untimeout",
