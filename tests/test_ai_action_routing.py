@@ -279,12 +279,17 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         with patch(
             "cogs.aimoderation.apply_status_emoji_overrides",
             new=AsyncMock(return_value=embed),
-        ) as formatter:
+        ) as formatter, patch(
+            "cogs.aimoderation.send_classic_message",
+            new=AsyncMock(return_value=sent_message),
+        ) as classic_sender:
             await cog.reply(message, embed=embed, use_v2=False)
 
         formatter.assert_awaited_once_with(embed, guild)
-        self.assertIs(channel.send.await_args.kwargs["embed"], embed)
-        self.assertIsNone(channel.send.await_args.kwargs["view"])
+        classic_sender.assert_awaited_once()
+        self.assertIs(classic_sender.await_args.kwargs["embed"], embed)
+        self.assertIsNone(classic_sender.await_args.kwargs["view"])
+        channel.send.assert_not_awaited()
 
 
 if __name__ == "__main__":

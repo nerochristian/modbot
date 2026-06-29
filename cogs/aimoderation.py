@@ -44,6 +44,7 @@ from utils.deepseek_web import (
     DeepSeekWebError,
 )
 from utils.cache import RateLimiter
+from utils.classic_send import send_classic_message
 from utils.checks import is_bot_owner_id
 from utils.embeds import Colors, compact_kv_lines
 from utils.components_v2 import ensure_layout_view_action_rows, layout_view_from_embeds
@@ -5498,10 +5499,17 @@ class AIModeration(commands.Cog):
                     embed = await apply_status_emoji_overrides(embed, message.guild)
                 except Exception:
                     logger.debug("Failed to apply status emoji to classic AI response", exc_info=True)
-            sent = await message.channel.send(
-                content=content, embed=embed, view=view,
-                reference=message, allowed_mentions=allowed_mentions,
-            )
+            send_kwargs = {
+                "content": content,
+                "embed": embed,
+                "view": view,
+                "reference": message,
+                "allowed_mentions": allowed_mentions,
+            }
+            if use_v2:
+                sent = await message.channel.send(**send_kwargs)
+            else:
+                sent = await send_classic_message(message.channel, **send_kwargs)
             if delete_after:
                 await sent.delete(delay=delete_after)
             return sent
