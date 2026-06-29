@@ -14,3 +14,6 @@
 - Research responses should include a "View Sources" button at the bottom of the embed. Confidence: 0.60
 - Avoid forced slang in bot responses; keep the tone natural and unforced. Confidence: 0.65
 
+# aimoderation
+- The aimoderation module (cogs/moderation/ai/aimoderation.py, ~6,400 line monolith) should be fully rewritten — the user finds the current code quality unacceptable. Keep the same functionality but with clean, modular architecture. Confidence: 0.85
+
