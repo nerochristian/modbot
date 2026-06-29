@@ -478,7 +478,7 @@ class Logging(commands.Cog):
                             channel.guild.name,
                         )
                         return False
-                elif source_is_mod:
+                elif not destination_id and source_is_mod:
                     logger.warning(
                         "Dropping %s log in %s: destination channel is not configured.",
                         destination_type,

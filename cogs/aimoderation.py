@@ -2524,6 +2524,15 @@ class GeminiClient:
                 if signals.focus_entities:
                     sys_prompt += f"- Focus on these entities: {', '.join(signals.focus_entities)}\n"
 
+        return sys_prompt
+
+# =============================================================================
+# TOOL HANDLERS
+# =============================================================================
+
+@ToolRegistry.register(ToolType.WARN, display_name="Warn Member", color=discord.Color.gold(), emoji="Warning", required_permission="moderate_members")
+async def handle_warn_member(ctx: ToolContext) -> ToolResult:
+    target = await ctx.resolve_target()
     if not target:
         return ToolResult.fail("Could not resolve target member.")
     if not ctx.cog.can_moderate(ctx.actor, target):
