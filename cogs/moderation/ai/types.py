@@ -51,6 +51,14 @@ class ToolType(str, Enum):
     EXECUTE_RAW_API = "execute_raw_api"
     EXECUTE_PYTHON = "execute_python"
     HELP = "show_help"
+    FIND_INACTIVE_MEMBERS = "find_inactive_members"
+    SCAN_CHANNEL = "scan_channel"
+    SUMMARIZE_ACTIONS = "summarize_actions"
+    SAFETY_CHECK = "server_safety_check"
+    CHECK_ALT = "check_alt_account"
+    GENERATE_REPORT = "generate_report"
+    SERVER_BACKUP = "server_backup"
+    SERVER_RESTORE = "server_restore"
 
 
 class DecisionType(str, Enum):

@@ -46,3 +46,9 @@ from .admin import (  # noqa: F401
     handle_execute_raw_api,
     handle_execute_python,
 )
+from .query_handlers import (  # noqa: F401
+    handle_find_inactive,
+    handle_scan_channel,
+    handle_summarize_today,
+    handle_safety_check,
+)
