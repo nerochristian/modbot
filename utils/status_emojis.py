@@ -277,13 +277,11 @@ async def _emoji_matches_payload(
     if require_animated and not bool(getattr(emoji, "animated", False)):
         return False
 
-    existing_bytes = await _read_emoji_bytes(emoji)
-    if existing_bytes is None:
-        # If we cannot fetch bytes, keep an existing non-animated requirement emoji
-        # to avoid deleting/re-uploading on transient CDN/network failures.
-        return not require_animated
-
-    return _sha256_bytes(existing_bytes) == payload_hash
+    # Discord transcodes uploaded emojis (e.g. compressing GIFs), which changes their bytes
+    # and invalidates the SHA256 hash. If we strictly check the hash, the bot will delete
+    # and recreate the emoji on every startup, breaking all previously sent messages.
+    # Therefore, if the emoji exists and matches the animated requirement, we consider it valid.
+    return True
 
 
 async def _delete_application_emoji(bot: discord.Client, emoji: Any) -> bool:

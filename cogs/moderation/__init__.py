@@ -431,7 +431,13 @@ class Moderation(
             # Replying to a bot embed — detect action for undo, always extract target
             embed = ref_msg.embeds[0]
             original_action = self._detect_action(embed)
-            target_id = self._extract_user_id(embed)
+            
+            # Check for direct mentions in the message content first
+            non_bot_mentions = [m for m in ref_msg.mentions if not m.bot]
+            if non_bot_mentions:
+                target_id = non_bot_mentions[0].id
+            else:
+                target_id = self._extract_user_id(embed)
         
         if target_id is None and ref_msg.author.id != self.bot.user.id:
             # Replying to a regular user's message — target is that user

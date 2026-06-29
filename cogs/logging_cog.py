@@ -450,7 +450,7 @@ class Logging(commands.Cog):
         Args:
             channel: The channel to send to
             embed: The embed to send
-            use_v2: Deprecated, ignored. Logs always use classic embeds.
+            use_v2: Automatically convert the log to a V2 branded panel
             view: Optional view to attach to the log message
             mirror_to_audit: Also send this log to the configured audit log channel
         """
@@ -491,7 +491,7 @@ class Logging(commands.Cog):
         sent_primary = False
         try:
             normalized = await prepare_log_embed(routed_channel, embed)
-            await send_classic_message(routed_channel, embed=normalized, view=view)
+            await routed_channel.send(embed=normalized, view=view, use_v2=True)
             sent_primary = True
         except discord.Forbidden:
             logger.warning(f"Missing permissions to log in {routed_channel.guild.name} #{routed_channel.name}")
@@ -516,7 +516,7 @@ class Logging(commands.Cog):
                 try:
                     # Do not reuse the same View object across multiple messages.
                     normalized_audit = await prepare_log_embed(audit_channel, embed)
-                    await send_classic_message(audit_channel, embed=normalized_audit)
+                    await audit_channel.send(embed=normalized_audit, use_v2=True)
                     sent_audit = True
                 except discord.Forbidden:
                     logger.warning(f"Missing permissions to log in {audit_channel.guild.name} #{audit_channel.name}")
@@ -1271,7 +1271,7 @@ class Logging(commands.Cog):
             send_kwargs: dict[str, Any] = {"embeds": normalized_embeds}
             if message.content:
                 send_kwargs["content"] = message.content
-            await send_classic_message(destination_channel, **send_kwargs)
+            await destination_channel.send(**send_kwargs, use_v2=True)
             await message.delete()
         except discord.Forbidden:
             logger.warning(

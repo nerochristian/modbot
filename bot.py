@@ -1941,9 +1941,9 @@ class ModBot(commands.Bot):
         self.messages_seen += 1
 
         ctx = await self.get_context(message)
-        if ctx.command is None or self._starts_with_bot_mention(message):
-            # Mention-prefix messages are often natural chat for AIModeration.
-            # Avoid treating "@bot how are u" as an unknown command named "how".
+        if ctx.command is None:
+            # Mention-prefix messages without a valid command are often natural chat for AIModeration.
+            # Avoid treating "@bot how are u" as an unknown command error.
             if self._starts_with_bot_mention(message):
                 aimod = self.get_cog("AIModeration")
                 if aimod and hasattr(aimod, "handle_casual_mention"):
