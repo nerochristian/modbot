@@ -1,21 +1,41 @@
-"""Extract sections from the aimoderation monolith into modular files."""
-import re
+#!/usr/bin/env python3
+"""Extract modular files from the aimoderation monolith."""
+import re, os
 
-with open('cogs/aimoderation/aimoderation.py', 'r', encoding='utf-8') as f:
+MONOLITH = 'cogs/aimoderation/aimoderation.py'
+OUT_DIR = 'cogs/aimoderation'
+
+with open(MONOLITH, 'r', encoding='utf-8') as f:
     text = f.read()
 
-# Extract lines 1-1112 (imports, enums, config, prompts, ToolRegistry, mod-level helpers)
-# These go into types.py + prompts.py + context.py + registry.py (already done)
-# Lines 1113-3870: GeminiClient → ai_client.py
-gemini_start = text.index('class GeminiClient:')
+# --- FIND BOUNDARIES ---
+gc_start = text.index('class GeminiClient:')
+gc_end = text.index('\n\n# =============================================================================\n# TOOL HANDLERS')
 aimod_start = text.index('class AIModeration(commands.Cog):')
-gemini_code = text[gemini_start:aimod_start].strip()
+setup_pos = text.index('async def setup(bot: commands.Bot) -> None:')
 
-# Prepend imports needed by GeminiClient
-ai_client_imports = '''"""
+# Find where AIModeration class body starts (after ClassVar block + __init__)
+init_pos = text.index('    def __init__(self, bot: commands.Bot) -> None:', aimod_start)
+# Find where text parsers end (before decision pipeline)
+_quick_pos = text.index('    def _quick_route(self, message: discord.Message, content: str)', aimod_start)
+# Find where decision pipeline ends and member resolution begins
+_polish_end = text.index('    async def resolve_member(', aimod_start)
+
+print(f"GeminiClient: {gc_start}-{gc_end}")
+print(f"Text parsers: {init_pos}-{_quick_pos}")
+print(f"Decision pipeline: {_quick_pos}-{_polish_end}")
+print(f"AIModeration: {aimod_start}-{setup_pos}")
+print(f"Setup: {setup_pos}")
+
+# ==========================================================================
+# 1. Write ai_client.py — GeminiClient class
+# ==========================================================================
+gc_code = text[gc_start:gc_end].lstrip()
+ai_imports = '''"""
 AI Client — provider-agnostic AI interface with rate limiting, web search, and memory.
 
-Uses DeepSeek Web as the default provider. Falls back to DigitalOcean inference API.
+Uses DeepSeek Web as the default provider (browser-based, no API key). 
+Falls back to DigitalOcean inference API if configured.
 """
 from __future__ import annotations
 
@@ -38,12 +58,20 @@ from discord.ext import commands
 from utils.deepseek_web import DeepSeekWebAuthError, DeepSeekWebClient, DeepSeekWebError
 from utils.cache import RateLimiter
 from utils.embeds import Colors, compact_kv_lines
-from utils.components_v2 import ensure_layout_view_action_rows, layout_view_from_embeds
+from utils.messages import Messages
 
+from .types import (
+    ToolType, DecisionType, ConversationMode, AIConfig,
+    TARGETED_TOOLS, REASONED_MODERATION_TOOLS, MAX_MODERATION_REASON_LENGTH,
+    Decision, ConversationSignals, ConversationPlan,
+    WebSearchResult, ImageContext, PermissionFlags, MentionInfo,
+)
+from .prompts import (
+    ROUTING_SYSTEM_PROMPT, CONVERSATION_SYSTEM_PROMPT,
+    DEEP_RESEARCH_SYSTEM_PROMPT, MOD_GUIDANCE_SYSTEM_PROMPT,
+)
 
-# =============================================================================
-# MODULE-LEVEL HELPERS
-# =============================================================================
+logger = logging.getLogger("ModBot.AIModeration.Client")
 
 _DO_API_KEY: Final[str] = os.getenv("DO_API_KEY", "").strip()
 _DO_BASE_URL: Final[str] = os.getenv("DO_INFERENCE_BASE_URL", "https://inference.do-ai.run/v1").strip().rstrip("/")
@@ -53,104 +81,44 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _looks_like_image_question_text(content: str) -> bool:
+    low = re.sub(r"\\s+", " ", (content or "").strip().lower())
+    return bool(
+        re.search(r"\\b(?:who|what)\\s+(?:is|are)\\s+(?:this|that|it|these|those)\\b", low)
+        or re.search(r"\\b(?:who|what)'s\\s+(?:this|that|it)\\b", low)
+        or re.search(r"\\b(?:what|which)\\s+(?:game|pokemon|character|anime|show|movie|app|site|website)\\s+(?:is|are)\\s+(?:this|that|it|these|those)\\b", low)
+        or re.search(r"\\b(?:who|what)\\s+(?:is|are)\\s+(?:this|that|it|these|those)\\s+(?:pokemon|character|person|game)\\b", low)
+    )
+
+
 '''
 
-# Strip the module-level docstring from GeminiClient section
-gemini_code = re.sub(r'^"""\n.*?ModBot\.AIModeration".*?\n"""\n', '', gemini_code)
+with open(f'{OUT_DIR}/ai_client.py', 'w', encoding='utf-8') as f:
+    f.write(ai_imports)
+    f.write(gc_code)
+    f.write('\n')
 
-# Write ai_client.py
-with open('cogs/aimoderation/ai_client.py', 'w', encoding='utf-8') as f:
-    f.write(ai_client_imports)
-    f.write(gemini_code)
-    # Add the _strip_code_fences helper used by execute_python
-    f.write('''
+print(f"  Wrote ai_client.py")
 
-def _strip_code_fences(raw: str) -> str:
-    """Remove ```python``` markers from AI-generated code."""
-    cleaned = raw.strip()
-    if cleaned.startswith("```"):
-        lines = cleaned.split("\\n")
-        lines = [l for l in lines if not l.strip().startswith("```")]
-        cleaned = "\\n".join(lines)
-    return cleaned.strip()
+# ==========================================================================
+# 2. Write text_parser.py — class-level regexes + text methods
+# ==========================================================================
+classvar_code = text[aimod_start:text.index('\n    def __init__(', aimod_start)]
+text_methods = text[init_pos:_quick_pos]
 
-
-def _contains_forbidden_raw_api_key(value: Any) -> bool:
-    if not isinstance(value, str):
-        return False
-    low = value.lower()
-    for token_like in ("discord.com/api", "bot ", "mfa.", "oauth2", "token"):
-        if token_like in low:
-            return True
-    if re.search(r"[a-zA-Z0-9_-]{23,}\\.{1,3}[a-zA-Z0-9_-]{6,}", low):
-        return True
-    return False
-
-
-def _raw_api_safety_error(
-    ctx: Any, method: str, endpoint: str, payload: Any
-) -> Optional[str]:
-    if re.search(r"(delete|destroy|remove)", method, re.IGNORECASE) and re.search(
-        r"/(guilds/\\d+|channels/\\d+|roles/\\d+|webhooks/\\d+)", endpoint
-    ):
-        return None
-    return None
-
-
-def _normalize_scheduled_event_payload(
-    endpoint: str, method: str, payload: Any
-) -> Dict[str, Any]:
-    if not isinstance(payload, dict) or "create" not in endpoint.lower():
-        return payload if isinstance(payload, dict) else {}
-    p = dict(payload)
-    p.setdefault("privacy_level", 2)
-    p.setdefault("entity_type", 3)
-    return p
-''')
-
-print(f"Wrote ai_client.py: {len(gemini_code)} chars")
-
-# Extract the text parser section from AIModeration class (ClassVars + text methods)
-init_line_pos = text.index('    def __init__(self, bot: commands.Bot) -> None:', aimod_start)
-class_header = text[aimod_start:text.index('\n', aimod_start)+1]
-classvar_section = text[text.index('\n', aimod_start)+1:init_line_pos]
-
-# Extract text parser methods (lines between ClassVars and _quick_route)
-# from the AIModeration class body
-text_methods_start = init_line_pos
-# Find where the text methods end (before _quick_route)
-_quick_pos = text.index('    def _quick_route(self', aimod_start)
-_enrich_pos = text.index('    async def _enrich(\n', aimod_start)
-
-# Get everything from __init__ to _quick_route (text parsing methods)
-text_methods = text[init_line_pos:_quick_pos]
-
-# Find the end of _enrich section (the decision pipeline)
-_polish_end = text.index('    # -----------------------------------------', _enrich_pos)
-_polish_end = text.index('\n    # -', _polish_end + 5)
-# Get everything from _quick_route through _polish_decision (decision pipeline)
-pipeline_code = text[_quick_pos:_polish_end]
-
-print(f"Text methods + decision pipeline: {len(text_methods) + len(pipeline_code)} chars")
-
-# Now create the text_parser.py
-text_parser_imports = '''"""
+tp_imports = '''"""
 Text parsers and regex helpers for natural language moderation commands.
 
-Extracted from the AIModeration cog as pure functions.
+Pure functions extracted from the AIModeration cog.
 """
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta
+from datetime import timedelta
 from typing import Any, ClassVar, Dict, FrozenSet, List, Optional, Set, Union
 
 import discord
 
-
-# =============================================================================
-# MODULE-LEVEL REGEX
-# =============================================================================
 
 _MENTION_RE = re.compile(r"<@!?(\\d+)>")
 _ROLE_MENTION_RE = re.compile(r"<@&(\\d+)>")
@@ -187,43 +155,118 @@ def _looks_like_image_question_text(content: str) -> bool:
     )
 
 
-# =============================================================================
-# AIModeration Class-level regex constants
-# =============================================================================
+class TextParsers:
+    """Collection of regex constants and text-parsing methods.
+
+    These were originally class attributes on the AIModeration cog.
+    Extracted so the thin cog can inherit or compose them.
+    """
 
 '''
 
-# Convert ClassVar section to plain class attributes
-classvar_code = classvar_section.strip()
-# Replace ClassVar[re.Pattern] with plain assignment for a non-cog file
-classvar_code = re.sub(r': ClassVar\[re\.Pattern\] =', ' =', classvar_code)
-classvar_code = re.sub(r': ClassVar\[Dict\[str, int\]\] =', ' =', classvar_code)
-classvar_code = re.sub(r': ClassVar\[frozenset\] =', ' =', classvar_code)
+# Convert ClassVar assignments to plain class attrs
+cvar = classvar_code.strip()
+cvar = re.sub(r'    _MOD_REQUEST_RE: ClassVar\[re\.Pattern\] = ', '    _MOD_REQUEST_RE: ClassVar[re.Pattern] = ', cvar)
+# Actually make them plain attrs by removing ClassVar annotation
+cvar = re.sub(r': ClassVar\[\w+\[\w+(?:,\s*\w+)*\]\]\s*=', ' =', cvar)
 
-# Write text_parser.py
-with open('cogs/aimoderation/text_parser.py', 'w', encoding='utf-8') as f:
-    f.write(text_parser_imports)
-    f.write(classvar_code)
-    f.write('\n\n# =============================================================================\n# TEXT PARSING METHODS\n# =============================================================================\n\n')
-    # Strip the ClassVar wrapping
-    methods_code = text_methods.strip()
-    f.write(methods_code)
+with open(f'{OUT_DIR}/text_parser.py', 'w', encoding='utf-8') as f:
+    f.write(tp_imports)
+    f.write(cvar)
+    f.write('\n\n')
+    f.write(text_methods)
     f.write('\n')
-    # Add pipeline section
-    f.write('\n\n# =============================================================================\n# DECISION PIPELINE\n# =============================================================================\n\n')
+
+print(f"  Wrote text_parser.py")
+
+# ==========================================================================
+# 3. Write decision_pipeline.py
+# ==========================================================================
+pipeline_code = text[_quick_pos:_polish_end]
+
+dp_imports = '''"""
+Decision routing pipeline — quick_route, recover, enrich, polish.
+
+Handles deterministic rule-based routing and AI-assisted enrichment
+before tool execution.
+"""
+from __future__ import annotations
+
+import asyncio
+import re
+from typing import Any, ClassVar, Dict, FrozenSet, List, Optional, Set, Union, Tuple
+
+import discord
+from discord.ext import commands
+
+from .types import (
+    ToolType, DecisionType, Decision, AIConfig, GuildSettings,
+    TARGETED_TOOLS, REASONED_MODERATION_TOOLS, MAX_MODERATION_REASON_LENGTH,
+    PermissionFlags, MentionInfo,
+)
+
+from .text_parser import TextParsers
+
+logger = logging.getLogger("ModBot.AIModeration.Pipeline")
+
+
+def _now() -> datetime:
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc)
+
+
+def _strip_code_fences(raw: str) -> str:
+    cleaned = raw.strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.split("\\n")
+        lines = [l for l in lines if not l.strip().startswith("```")]
+        cleaned = "\\n".join(lines)
+    return cleaned.strip()
+
+
+class DecisionPipeline(TextParsers):
+    """Handles natural language → Decision routing and enrichment."""
+
+    def __init__(self, bot: commands.Bot, config: AIConfig, ai_client):
+        self.bot = bot
+        self.config = config
+        self.ai = ai_client
+        self._target_cache: Dict[int, Tuple[int, object]] = {}
+        self._active_chat_channels: Dict[int, object] = {}
+
+    def clean_content(self, message: discord.Message) -> str:
+        content = message.content or ""
+        if self.bot.user:
+            content = re.sub(
+                rf"^\\s*<@!?{self.bot.user.id}>\\s*[:,]?\\s*",
+                "",
+                content,
+                count=1,
+            )
+        return content.strip()
+
+'''
+
+with open(f'{OUT_DIR}/decision_pipeline.py', 'w', encoding='utf-8') as f:
+    f.write(dp_imports)
+    # Replace `self.config` references in the pipeline code (they were cog attributes)
+    # The pipeline code uses `self.config`, `self.bot.user`, `self.ai` — these will work 
+    # since DecisionPipeline has those attributes
     f.write(pipeline_code)
+    f.write('\n')
 
-print("Wrote text_parser.py")
+print(f"  Wrote decision_pipeline.py")
 
-# Now create decision_pipeline.py by copying specific methods
-# The decision pipeline methods need the cog's helpers
-print("Wrote decision_pipeline in text_parser (bundled for now)")
+# ==========================================================================
+# 4. Verify: can we import the new modules?
+# ==========================================================================
+print("\nVerifying imports...")
+import subprocess, sys
+for mod in ['ai_client', 'text_parser', 'decision_pipeline']:
+    try:
+        exec(f'from cogs.aimoderation.{mod} import *')
+        print(f"  {mod}: OK")
+    except Exception as e:
+        print(f"  {mod}: FAILED - {e}")
 
-# Count total rewritten content
-with open('cogs/aimoderation/ai_client.py', 'r') as f:
-    ai_lines = len(f.readlines())
-with open('cogs/aimoderation/text_parser.py', 'r') as f:
-    tp_lines = len(f.readlines())
-print(f"ai_client.py: {ai_lines} lines")
-print(f"text_parser.py: {tp_lines} lines")
-print("Ready for thin cog rewrite")
+print("\nDone! Next step: rewrite aimoderation.py as thin cog.")
