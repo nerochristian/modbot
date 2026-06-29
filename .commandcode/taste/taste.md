@@ -16,4 +16,6 @@
 
 # aimoderation
 - The aimoderation module (cogs/moderation/ai/aimoderation.py, ~6,400 line monolith) should be fully rewritten — the user finds the current code quality unacceptable. Keep the same functionality but with clean, modular architecture. Confidence: 0.85
+- Use DeepSeek Web as the AI provider for the aimoderation system (not DigitalOcean). Confidence: 0.70
+- All aimoderation files should live under cogs/aimoderation/ (not cogs/moderation/ai/). Confidence: 0.70
 
