@@ -64,6 +64,7 @@ DO_BASE_URL: Final[str] = os.getenv(
 
 
 class ToolType(str, Enum):
+    GET_WARNINGS = "get_warnings"
     WARN = "warn_member"
     TIMEOUT = "timeout_member"
     UNTIMEOUT = "untimeout_member"
