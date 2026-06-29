@@ -45,9 +45,10 @@ from utils.deepseek_web import (
 )
 from utils.cache import RateLimiter
 from utils.checks import is_bot_owner_id
-from utils.embeds import compact_kv_lines
+from utils.embeds import Colors, compact_kv_lines
 from utils.components_v2 import ensure_layout_view_action_rows, layout_view_from_embeds
 from utils.messages import Messages
+from utils.status_emojis import apply_status_emoji_overrides
 from utils.transcript import EphemeralTranscriptView, generate_html_transcript
 
 logger = logging.getLogger("ModBot.AIModeration")
@@ -2807,7 +2808,7 @@ async def handle_get_warnings(ctx: ToolContext) -> ToolResult:
     embed = discord.Embed(
         title=f"⚠️ Warnings for {target.display_name}",
         description=f"Total: **{len(warnings)}** warning(s)",
-        color=discord.Color.gold(),
+        color=Colors.WARNING,
         timestamp=_now(),
     )
     embed.set_thumbnail(url=target.display_avatar.url)
@@ -2815,7 +2816,7 @@ async def handle_get_warnings(ctx: ToolContext) -> ToolResult:
         moderator_id = warning.get("moderator_id")
         moderator = ctx.guild.get_member(moderator_id) if moderator_id else None
         moderator_name = moderator.display_name if moderator else f"ID: {moderator_id or 'Unknown'}"
-        reason = str(warning.get("reason") or "No reason provided")[:300]
+        reason = str(warning.get("reason") or "No reason provided")[:100]
         created_at = str(warning.get("created_at") or "Unknown time")
         embed.add_field(
             name=f"Warning #{warning.get('id', '?')}",
@@ -5492,6 +5493,11 @@ class AIModeration(commands.Cog):
                 content = None
                 embed = None
                 view = ensure_layout_view_action_rows(layout)
+            elif embed is not None:
+                try:
+                    embed = await apply_status_emoji_overrides(embed, message.guild)
+                except Exception:
+                    logger.debug("Failed to apply status emoji to classic AI response", exc_info=True)
             sent = await message.channel.send(
                 content=content, embed=embed, view=view,
                 reference=message, allowed_mentions=allowed_mentions,

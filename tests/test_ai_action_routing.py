@@ -1,8 +1,10 @@
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from pathlib import Path
+
+import discord
 
 from cogs.aimoderation import (
     AIModeration,
@@ -265,6 +267,24 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             delete_after=None,
             use_v2=False,
         )
+
+    async def test_classic_reply_applies_shared_status_emoji_formatting(self) -> None:
+        cog = object.__new__(AIModeration)
+        sent_message = SimpleNamespace(delete=AsyncMock())
+        channel = SimpleNamespace(send=AsyncMock(return_value=sent_message))
+        guild = SimpleNamespace()
+        message = SimpleNamespace(channel=channel, guild=guild)
+        embed = discord.Embed(title="⚠️ Warnings for gabb")
+
+        with patch(
+            "cogs.aimoderation.apply_status_emoji_overrides",
+            new=AsyncMock(return_value=embed),
+        ) as formatter:
+            await cog.reply(message, embed=embed, use_v2=False)
+
+        formatter.assert_awaited_once_with(embed, guild)
+        self.assertIs(channel.send.await_args.kwargs["embed"], embed)
+        self.assertIsNone(channel.send.await_args.kwargs["view"])
 
 
 if __name__ == "__main__":
