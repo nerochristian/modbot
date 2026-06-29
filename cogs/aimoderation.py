@@ -473,6 +473,7 @@ Understand slang, typos, shorthand, and casual phrasing.
 - "get him out forever" -> ban_member
 - "nuke 50 msgs" -> purge_messages amount=50
 - "delete @user messages" -> purge_messages target_user_id=<id>
+- "what are his warnings", "check @user history" -> get_warnings target_user_id=<id>
 - "delete everything containing 'apple'" -> execute_python only if no standard purge filter can handle it
 - "ban everyone who joined today" -> execute_python (mass action)
 - "give everyone the member role" -> execute_python (mass action)
@@ -2972,6 +2973,30 @@ async def handle_disconnect_member(ctx: ToolContext) -> ToolResult:
 
     await target.move_to(None, reason=f"AI Mod ({ctx.actor})")
     return ToolResult.ok(f"Disconnected **{target.display_name}** from voice.")
+
+
+@ToolRegistry.register(ToolType.GET_WARNINGS, display_name="Get Warnings", color=discord.Color.blue(), emoji="Warning")
+async def handle_get_warnings(ctx: ToolContext) -> ToolResult:
+    target = await ctx.resolve_target()
+    if not target:
+        return ToolResult.fail("Target user not found.")
+
+    # In aimoderation.py, we can access the warnings logic via the database
+    warnings = await ctx.cog.bot.db.get_warnings(ctx.message.guild.id, target.id)
+    if not warnings:
+        return ToolResult.ok(f"{target.mention} has no warnings on record.")
+
+    warning_lines = []
+    for w in warnings[:5]:
+        reason = w.get("reason", "No reason provided")
+        mod_id = w.get("moderator_id", "Unknown")
+        warning_lines.append(f"- ID {w['id']}: {reason} (by <@{mod_id}>)")
+
+    summary = "\n".join(warning_lines)
+    if len(warnings) > 5:
+        summary += f"\n... and {len(warnings) - 5} more."
+
+    return ToolResult.ok(f"{target.mention} has {len(warnings)} warning(s):\n{summary}")
 
 
 @ToolRegistry.register(ToolType.DM_USER, display_name="DM User", color=discord.Color.green(), emoji="DM")
