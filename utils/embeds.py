@@ -4,7 +4,7 @@ Custom Embed Templates
 
 import discord
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Iterable, Optional
 
 from config import Config
 from utils.status_emojis import status_embed_pad_line, get_app_emoji
@@ -19,6 +19,34 @@ def _count_lines(text: Optional[str]) -> int:
         return 0
     lines = str(text).splitlines()
     return max(1, len(lines))
+
+
+def compact_text(value: object, *, max_length: int = 900) -> str:
+    """Normalize short embed text without creating visual dead space."""
+    text = str(value or "").strip()
+    if not text:
+        return "`None`"
+
+    lines = [" ".join(line.split()) for line in text.splitlines()]
+    text = "\n".join(line for line in lines if line)
+    if len(text) > max_length:
+        text = text[: max(0, max_length - 3)].rstrip() + "..."
+    return text or "`None`"
+
+
+def compact_kv_lines(
+    rows: Iterable[tuple[str, object]],
+    *,
+    max_value_length: int = 220,
+) -> str:
+    """Render short facts as dense one-line label/value rows."""
+    lines: list[str] = []
+    for label, value in rows:
+        clean_label = str(label or "").strip().rstrip(":")
+        if not clean_label:
+            continue
+        lines.append(f"**{clean_label}:** {compact_text(value, max_length=max_value_length)}")
+    return "\n".join(lines)
 
 
 def _strip_existing_log_padding(description: Optional[str]) -> Optional[str]:
@@ -62,7 +90,9 @@ def force_log_embed_size(embed: discord.Embed, *, target_lines: Optional[int] = 
     invisible lines until the embed reaches a consistent minimum height.
     """
     if target_lines is None:
-        target_lines = int(getattr(Config, "LOG_EMBED_TARGET_LINES", 24))
+        target_lines = int(getattr(Config, "LOG_EMBED_TARGET_LINES", 0))
+    if target_lines <= 0:
+        return embed
 
     embed.description = _strip_existing_log_padding(getattr(embed, "description", None))
 
@@ -383,8 +413,6 @@ class ModEmbed:
             value=f"`{staff.id}`",
             inline=True
         )
-        embed.add_field(name="", value="", inline=False)
-        
         # Status text
         status = ModEmbed._get_status_text(warn_count, strike_count)
         embed.add_field(name="Status:", value=status, inline=False)

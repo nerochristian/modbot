@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from discord.ext import tasks
 
-from utils.embeds import ModEmbed, Colors
+from utils.embeds import ModEmbed, Colors, compact_kv_lines
 from utils.checks import is_admin
 from utils.cache import ChannelCache
 from utils.transcript import generate_html_transcript, EphemeralTranscriptView
@@ -1313,7 +1313,7 @@ class Logging(commands.Cog):
         )
 
         if details_lines:
-            embed.add_field(name="\u200b", value=self._quote_lines(details_lines), inline=False)
+            embed.description = self._quote_lines(details_lines)
 
         if message_text is not None:
             value = (message_text or "").strip() or "*No content*"
@@ -1740,7 +1740,7 @@ class Logging(commands.Cog):
             f"**Message created:** <t:{created_ts}:R>",
             f"**Jump:** [Open message]({after.jump_url})",
         ]
-        embed.add_field(name="\u200b", value="> " + "\n> ".join(details_lines), inline=False)
+        embed.description = "> " + "\n> ".join(details_lines)
 
         before_content = (before.content or "").strip() or "*Empty*"
         if len(before_content) > 1024:
@@ -2617,14 +2617,8 @@ class Logging(commands.Cog):
         try:
             settings = await self.bot.db.get_settings(interaction.guild_id)
             
-            embed = discord.Embed(
-                title="📋 Logging Configuration",
-                color=Colors.INFO,
-                timestamp=datetime.now(timezone.utc)
-            )
-            
             log_types = ['mod', 'audit', 'message', 'voice', 'automod', 'report', 'ticket']
-            
+            rows: list[tuple[str, object]] = []
             for log_type in log_types:
                 channel_id = self._resolve_log_channel_id(settings, log_type)
                 if channel_id:
@@ -2632,13 +2626,16 @@ class Logging(commands.Cog):
                     value = channel.mention if channel else "❌ Channel not found"
                 else:
                     value = "*Not configured*"
-                
-                embed.add_field(
-                    name=f"{log_type.title()} Logs",
-                    value=value,
-                    inline=True
-                )
-            
+
+                rows.append((f"{log_type.title()} Logs", value))
+
+            embed = discord.Embed(
+                title="📋 Logging Configuration",
+                description=compact_kv_lines(rows),
+                color=Colors.INFO,
+                timestamp=datetime.now(timezone.utc)
+            )
+
             await interaction.response.send_message(embed=embed)
             
         except Exception as e:

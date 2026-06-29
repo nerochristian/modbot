@@ -45,6 +45,7 @@ from utils.deepseek_web import (
 )
 from utils.cache import RateLimiter
 from utils.checks import is_bot_owner_id
+from utils.embeds import compact_kv_lines
 from utils.messages import Messages
 from utils.transcript import EphemeralTranscriptView, generate_html_transcript
 
@@ -886,16 +887,18 @@ def action_embed(
 ) -> discord.Embed:
     """Build a standardised moderation action embed."""
     embed = discord.Embed(title=title, color=color, timestamp=_now())
+    rows: list[tuple[str, object]] = []
     if target:
         embed.set_author(name=target.name, icon_url=target.display_avatar.url)
         embed.set_thumbnail(url=target.display_avatar.url)
-        embed.add_field(name="User", value=f"{target.mention} (`{target.name}`)", inline=True)
+        rows.append(("User", f"{target.mention} (`{target.name}`)"))
         embed.set_footer(text=f"User ID: {target.id}")
-    embed.add_field(name="Moderator", value=actor.mention, inline=True)
+    rows.append(("Moderator", actor.mention))
     if extra:
         for k, v in extra.items():
-            embed.add_field(name=k, value=v, inline=True)
-    embed.add_field(name="Reason", value=reason, inline=False)
+            rows.append((k, v))
+    rows.append(("Reason", reason))
+    embed.description = compact_kv_lines(rows)
     return embed
 
 
@@ -2850,16 +2853,19 @@ async def handle_unban(ctx: ToolContext) -> ToolResult:
     await ctx.guild.unban(discord.Object(id=target_id), reason=f"AI Mod ({ctx.actor}): {reason}")
 
     embed = discord.Embed(title="User Unbanned", color=discord.Color.green(), timestamp=_now())
-    embed.add_field(name="Moderator", value=ctx.actor.mention, inline=True)
-    embed.add_field(name="Reason", value=reason, inline=False)
+    rows: list[tuple[str, object]] = [
+        ("Moderator", ctx.actor.mention),
+        ("Reason", reason),
+    ]
     embed.set_footer(text=f"User ID: {target_id}")
     try:
         user = await ctx.cog.bot.fetch_user(target_id)
         embed.set_author(name=user.name, icon_url=user.display_avatar.url)
-        embed.add_field(name="User", value=f"{user.mention} (`{user.name}`)", inline=True)
+        rows.insert(0, ("User", f"{user.mention} (`{user.name}`)"))
         embed.set_thumbnail(url=user.display_avatar.url)
     except discord.HTTPException:
-        embed.add_field(name="User", value=f"<@{target_id}> (ID: `{target_id}`)", inline=True)
+        rows.insert(0, ("User", f"<@{target_id}> (ID: `{target_id}`)"))
+    embed.description = compact_kv_lines(rows)
 
     await ctx.cog.log_action(
         message=ctx.message, action="unban_member",
@@ -3483,10 +3489,22 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
                     color=discord.Color.red(),
                     timestamp=_now(),
                 )
-                log_embed.add_field(name="Moderator", value=f"{ctx.actor.mention} (`{ctx.actor.id}`)", inline=False)
-                log_embed.add_field(name="Human Messages", value=str(deleted_count - bot_count), inline=True)
-                log_embed.add_field(name="Bot Messages", value=str(bot_count), inline=True)
-                log_embed.add_field(name="Unique Authors", value=str(len(unique_authors)), inline=True)
+                log_embed.description = "\n".join(
+                    filter(
+                        None,
+                        [
+                            log_embed.description or "",
+                            compact_kv_lines(
+                                [
+                                    ("Moderator", f"{ctx.actor.mention} (`{ctx.actor.id}`)"),
+                                    ("Human Messages", deleted_count - bot_count),
+                                    ("Bot Messages", bot_count),
+                                    ("Unique Authors", len(unique_authors)),
+                                ]
+                            ),
+                        ],
+                    )
+                )
                 log_embed.add_field(name="Purged Message Preview", value=preview_text[:1024], inline=False)
 
                 transcript_bytes.seek(0)
@@ -3501,11 +3519,23 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
                     color=discord.Color.red(),
                     timestamp=_now(),
                 )
-                mod_embed.add_field(name="Moderator", value=f"{ctx.actor.mention} (`{ctx.actor.id}`)", inline=False)
-                mod_embed.add_field(name="Reason", value=reason, inline=False)
-                mod_embed.add_field(name="Human Messages", value=str(deleted_count - bot_count), inline=True)
-                mod_embed.add_field(name="Bot Messages", value=str(bot_count), inline=True)
-                mod_embed.add_field(name="Unique Authors", value=str(len(unique_authors)), inline=True)
+                mod_embed.description = "\n".join(
+                    filter(
+                        None,
+                        [
+                            mod_embed.description or "",
+                            compact_kv_lines(
+                                [
+                                    ("Moderator", f"{ctx.actor.mention} (`{ctx.actor.id}`)"),
+                                    ("Reason", reason),
+                                    ("Human Messages", deleted_count - bot_count),
+                                    ("Bot Messages", bot_count),
+                                    ("Unique Authors", len(unique_authors)),
+                                ]
+                            ),
+                        ],
+                    )
+                )
 
                 transcript_bytes.seek(0)
                 mod_view = EphemeralTranscriptView(io.BytesIO(transcript_bytes.read()), filename=transcript_name)
@@ -5421,14 +5451,14 @@ class AIModeration(commands.Cog):
             color=discord.Color.blurple(),
             timestamp=_now(),
         )
-        embed.add_field(name="Actor", value=f"{actor.mention} (`{actor.id}`)", inline=True)
+        rows: list[tuple[str, object]] = [("Actor", f"{actor.mention} (`{actor.id}`)")]
         if target:
-            embed.add_field(name="Target", value=f"{target.mention} (`{target.id}`)", inline=True)
-        embed.add_field(name="Channel", value=message.channel.mention, inline=True)
-        embed.add_field(name="Reason", value=reason, inline=False)
+            rows.append(("Target", f"{target.mention} (`{target.id}`)"))
+        rows.extend([("Channel", message.channel.mention), ("Reason", reason)])
         if extra:
             for k, v in extra.items():
-                embed.add_field(name=k, value=v, inline=True)
+                rows.append((k, v))
+        embed.description = compact_kv_lines(rows)
         if message.content:
             preview = message.content[:400]
             if len(message.content) > 400:
@@ -6016,15 +6046,18 @@ class AIModeration(commands.Cog):
         await self.update_guild_setting(guild_id, "aimod_context_messages", int(context_messages))
         await self.update_guild_setting(guild_id, "aimod_proactive_chance", float(proactive_percent) / 100)
 
-        embed = discord.Embed(title="AI Moderation Setup", color=discord.Color.blurple())
-        embed.add_field(name="Enabled", value="Yes" if enabled else "No", inline=True)
-        embed.add_field(name="Talking", value="On" if talking else "Off", inline=True)
-        embed.add_field(name="Context", value=f"{int(context_messages)} messages", inline=True)
-        embed.add_field(name="Proactive Replies", value=f"{int(proactive_percent)}%", inline=True)
-        embed.add_field(
-            name="Try It",
-            value="Mention the bot: `timeout @User 1h for spam` or use `/aihelp` for examples.",
-            inline=False,
+        embed = discord.Embed(
+            title="AI Moderation Setup",
+            description=compact_kv_lines(
+                [
+                    ("Enabled", "Yes" if enabled else "No"),
+                    ("Talking", "On" if talking else "Off"),
+                    ("Context", f"{int(context_messages)} messages"),
+                    ("Proactive Replies", f"{int(proactive_percent)}%"),
+                    ("Try It", "Mention the bot: `timeout @User 1h for spam` or use `/aihelp`."),
+                ]
+            ),
+            color=discord.Color.blurple(),
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
@@ -6038,15 +6071,23 @@ class AIModeration(commands.Cog):
 
         settings = await self.get_guild_settings(interaction.guild.id)
         color = discord.Color.blurple() if settings.enabled else discord.Color.greyple()
-        embed = discord.Embed(title="AI Moderation Status", color=color)
-        embed.add_field(name="Enabled", value="Yes" if settings.enabled else "No", inline=True)
-        embed.add_field(name="Talking", value="On" if settings.chat_enabled else "Off", inline=True)
-        embed.add_field(name="Model", value=f"`{settings.model or self.config.model}`", inline=True)
-        embed.add_field(name="Context Messages", value=str(settings.context_messages), inline=True)
-        embed.add_field(name="Proactive Chance", value=f"{settings.proactive_chance * 100:.1f}%", inline=True)
-        embed.add_field(name="Provider Available", value="Yes" if self.ai.is_available else "No", inline=True)
-        embed.add_field(name="Provider", value=f"`{self.ai.provider}`", inline=True)
-        embed.add_field(name="Health", value=self.ai.availability_message()[:1024], inline=False)
+        embed = discord.Embed(
+            title="AI Moderation Status",
+            description=compact_kv_lines(
+                [
+                    ("Enabled", "Yes" if settings.enabled else "No"),
+                    ("Talking", "On" if settings.chat_enabled else "Off"),
+                    ("Model", f"`{settings.model or self.config.model}`"),
+                    ("Context Messages", settings.context_messages),
+                    ("Proactive Chance", f"{settings.proactive_chance * 100:.1f}%"),
+                    ("Provider Available", "Yes" if self.ai.is_available else "No"),
+                    ("Provider", f"`{self.ai.provider}`"),
+                    ("Health", self.ai.availability_message()),
+                ],
+                max_value_length=480,
+            ),
+            color=color,
+        )
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @aimod_group.command(name="doctor")
@@ -6071,10 +6112,13 @@ class AIModeration(commands.Cog):
         )
         embed = discord.Embed(
             title="AI Moderation Doctor",
-            description="\n".join(f"- {line}" for line in checks)[:4000],
+            description=(
+                "\n".join(f"- {line}" for line in checks)
+                + "\n"
+                + compact_kv_lines([("Important", direct_action_note)], max_value_length=700)
+            )[:4000],
             color=discord.Color.blurple() if self.ai.is_available else discord.Color.orange(),
         )
-        embed.add_field(name="Important", value=direct_action_note, inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
     @aimod_group.command(name="toggle")

@@ -5,7 +5,7 @@ from typing import Optional, Union, Tuple
 import logging
 import json
 
-from utils.embeds import ModEmbed, Colors
+from utils.embeds import ModEmbed, Colors, compact_kv_lines
 from utils.checks import is_bot_owner_id, get_owner_ids
 from utils.logging import send_log_embed
 from utils.status_emojis import apply_status_emoji_overrides
@@ -222,19 +222,17 @@ class HelperCommands:
         else:
             user_ref = user_primary
 
-        details_lines = [
-            f"**User:** {user_ref}",
-            f"**Reason:** {reason or 'No reason provided'}",
+        details_rows: list[tuple[str, object]] = [
+            ("User", user_ref),
+            ("Reason", reason or "No reason provided"),
         ]
+        if case_num is not None:
+            details_rows.append(("Case", f"#{case_num}"))
         if extra_fields:
             for field_name, field_value in extra_fields.items():
-                details_lines.append(f"**{field_name}:** {field_value}")
+                details_rows.append((field_name, field_value))
 
-        embed.add_field(
-            name="\u200b",
-            value="\n".join(f"> {line}" for line in details_lines),
-            inline=False,
-        )
+        embed.description = compact_kv_lines(details_rows)
         embed.set_thumbnail(url=user.display_avatar.url)
 
         moderator_name = getattr(moderator, "name", str(moderator))

@@ -18,7 +18,7 @@ import io
 import logging
 
 from config import Config
-from utils.embeds import ModEmbed, Colors
+from utils.embeds import ModEmbed, Colors, compact_kv_lines
 from utils.components_v2 import branded_panel_container
 from utils.logging import send_log_embed
 
@@ -2428,24 +2428,26 @@ class Modmail(commands.Cog):
             except Exception as e:
                 logger.error(f"Error getting blocks: {e}")
         
-        embed = discord.Embed(
-            title="📊 Modmail Statistics",
-            color=Colors.INFO,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.add_field(name="Active Threads", value=f"``````", inline=True)
-        embed.add_field(name="Total Opened", value=f"``````", inline=True)
-        embed.add_field(name="Total Closed", value=f"``````", inline=True)
-        embed.add_field(name="Total Messages", value=f"``````", inline=True)
-        embed.add_field(name="Blocked Users", value=f"``````", inline=True)
-        
         avg_rating = "N/A"
         if self.stats["ratings_total"] > 0:
             avg = self.stats['ratings_sum'] / self.stats['ratings_total']
             avg_rating = f"{avg:.2f}/5 ⭐ ({self.stats['ratings_total']} ratings)"
-        
-        embed.add_field(name="Average Rating", value=f"``````", inline=True)
+
+        embed = discord.Embed(
+            title="📊 Modmail Statistics",
+            description=compact_kv_lines(
+                [
+                    ("Active Threads", len(self.active_threads)),
+                    ("Total Opened", self.stats["total_threads"]),
+                    ("Total Closed", self.stats["threads_closed"]),
+                    ("Total Messages", self.stats["total_messages"]),
+                    ("Blocked Users", blocked_count),
+                    ("Average Rating", avg_rating),
+                ]
+            ),
+            color=Colors.INFO,
+            timestamp=datetime.now(timezone.utc)
+        )
         
         # Category breakdown
         if self.active_threads:
@@ -2479,29 +2481,39 @@ class Modmail(commands.Cog):
         user_id = thread_data["user_id"]
         user = self.bot.get_user(user_id)
         
-        embed = discord.Embed(
-            title="📋 Thread Information",
-            color=PRIORITY_COLORS[thread_data.get('priority', 'normal')],
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.add_field(name="User", value=f"{user.mention if user else f'<@{user_id}>'} (`{user_id}`)", inline=True)
-        embed.add_field(name="Category", value=f"{CATEGORY_EMOJIS.get(thread_data['category'], '📩')} {thread_data['category'].capitalize()}", inline=True)
-        embed.add_field(name="Priority", value=f"{PRIORITY_EMOJIS[thread_data['priority']]} {thread_data['priority'].capitalize()}", inline=True)
-        embed.add_field(name="Messages", value=f"``````", inline=True)
-        embed.add_field(name="Duration", value=f"``````", inline=True)
-        
+        opened_at = datetime.fromisoformat(thread_data['opened_at'].replace('Z', '+00:00'))
+        last_message_at = datetime.fromisoformat(thread_data['last_message_at'].replace('Z', '+00:00'))
+        duration = datetime.now(timezone.utc) - opened_at
+        duration_hours = int(duration.total_seconds() // 3600)
+        duration_minutes = int((duration.total_seconds() % 3600) // 60)
+        duration_text = f"{duration_hours}h {duration_minutes}m" if duration_hours else f"{duration_minutes}m"
+
         claimed_by = thread_data.get('claimed_by')
         if claimed_by:
             claimer = interaction.guild.get_member(claimed_by)
-            embed.add_field(name="Claimed By", value=f"{claimer.mention if claimer else f'<@{claimed_by}>'}", inline=True)
+            claimed_text = f"{claimer.mention if claimer else f'<@{claimed_by}>'}"
         else:
-            embed.add_field(name="Claimed By", value="``````", inline=True)
-        
-        embed.add_field(name="Opened", value=f"<t:{int(datetime.fromisoformat(thread_data['opened_at'].replace('Z', '+00:00')).timestamp())}:R>", inline=True)
-        embed.add_field(name="Last Message", value=f"<t:{int(datetime.fromisoformat(thread_data['last_message_at'].replace('Z', '+00:00')).timestamp())}:R>", inline=True)
-        embed.add_field(name="Thread ID", value=f"``````", inline=True)
-        
+            claimed_text = "`Unclaimed`"
+
+        embed = discord.Embed(
+            title="📋 Thread Information",
+            description=compact_kv_lines(
+                [
+                    ("User", f"{user.mention if user else f'<@{user_id}>'} (`{user_id}`)"),
+                    ("Category", f"{CATEGORY_EMOJIS.get(thread_data['category'], '📩')} {thread_data['category'].capitalize()}"),
+                    ("Priority", f"{PRIORITY_EMOJIS[thread_data['priority']]} {thread_data['priority'].capitalize()}"),
+                    ("Messages", thread_data.get("message_count", 0)),
+                    ("Duration", duration_text),
+                    ("Claimed By", claimed_text),
+                    ("Opened", f"<t:{int(opened_at.timestamp())}:R>"),
+                    ("Last Message", f"<t:{int(last_message_at.timestamp())}:R>"),
+                    ("Thread ID", thread_data.get("thread_id") or interaction.channel.id),
+                ],
+                max_value_length=360,
+            ),
+            color=PRIORITY_COLORS[thread_data.get('priority', 'normal')],
+            timestamp=datetime.now(timezone.utc)
+        )
         if user:
             embed.set_thumbnail(url=user.display_avatar.url)
         

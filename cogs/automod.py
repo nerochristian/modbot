@@ -27,7 +27,7 @@ from cogs.automod_engine import (
 from config import Config
 from utils.checks import get_owner_ids, is_admin, is_mod
 from utils.components_v2 import layout_view_from_embeds
-from utils.embeds import ModEmbed
+from utils.embeds import ModEmbed, compact_kv_lines
 from utils.logging import send_log_embed
 
 
@@ -1199,22 +1199,27 @@ class AutoMod(commands.Cog):
         incident_id = f"AM-{message.id % 1_000_000:06d}"
         embed = discord.Embed(
             title=f"AutoMod Incident · {rule_name}",
-            description=_truncate(match.reason, 240),
+            description=compact_kv_lines(
+                [
+                    ("Incident", f"`{incident_id}`"),
+                    ("Severity", match.severity.name.title()),
+                    ("Rule", rule_name),
+                    ("Member", f"{message.author.mention} (`{message.author.id}`)"),
+                    ("Channel", message.channel.mention),
+                    ("Policy", match.category.value.title()),
+                    ("Reason", _truncate(match.reason, 240)),
+                ],
+                max_value_length=360,
+            ),
             color=colors[match.severity.name],
             timestamp=datetime.now(timezone.utc),
         )
-        embed.add_field(name="Incident", value=f"`{incident_id}`", inline=True)
-        embed.add_field(name="Severity", value=match.severity.name.title(), inline=True)
-        embed.add_field(name="Rule", value=rule_name, inline=True)
-        embed.add_field(name="Member", value=f"{message.author.mention}\n`{message.author.id}`", inline=True)
-        embed.add_field(name="Channel", value=message.channel.mention, inline=True)
-        embed.add_field(name="Policy", value=match.category.value.title(), inline=True)
         action_text = outcome.details
         if outcome.case_number is not None:
             action_text += f"\nCase: `#{outcome.case_number}`"
         if not outcome.success:
             action_text = f"FAILED: {action_text}"
-        embed.add_field(name="Action", value=_truncate(action_text, 1024), inline=False)
+        embed.description += "\n" + compact_kv_lines([("Action", _truncate(action_text, 1024))], max_value_length=600)
         if match.evidence:
             evidence = ", ".join(f"||{_truncate(item, 80)}||" for item in match.evidence)
             embed.add_field(name="Matched", value=_truncate(evidence, 1024), inline=False)
@@ -1237,11 +1242,16 @@ class AutoMod(commands.Cog):
             return
         embed = discord.Embed(
             title=f"Moderation action in {message.guild.name}",
-            description="An automated rule was triggered by your message.",
+            description=compact_kv_lines(
+                [
+                    ("Notice", "An automated rule was triggered by your message."),
+                    ("Reason", _truncate(match.reason, 1024)),
+                    ("Action", _truncate(outcome.details, 1024)),
+                ],
+                max_value_length=650,
+            ),
             color=Config.COLOR_WARNING,
         )
-        embed.add_field(name="Reason", value=_truncate(match.reason, 1024), inline=False)
-        embed.add_field(name="Action", value=_truncate(outcome.details, 1024), inline=False)
         embed.set_footer(text="Contact the server's moderators if you believe this was a mistake.")
         try:
             await message.author.send(embed=embed)
@@ -1702,11 +1712,19 @@ class AutoMod(commands.Cog):
             embed = ModEmbed.success("No violation", "The sample passed every enabled content rule.")
         else:
             action = self.engine.resolve_action(match, settings)
-            embed = discord.Embed(title="Violation detected", color=Config.COLOR_WARNING)
-            embed.add_field(name="Rule", value=match.rule.replace("_", " ").title(), inline=True)
-            embed.add_field(name="Severity", value=match.severity.name.title(), inline=True)
-            embed.add_field(name="Action", value=action.value.title(), inline=True)
-            embed.add_field(name="Reason", value=match.reason, inline=False)
+            embed = discord.Embed(
+                title="Violation detected",
+                description=compact_kv_lines(
+                    [
+                        ("Rule", match.rule.replace("_", " ").title()),
+                        ("Severity", match.severity.name.title()),
+                        ("Action", action.value.title()),
+                        ("Reason", match.reason),
+                    ],
+                    max_value_length=500,
+                ),
+                color=Config.COLOR_WARNING,
+            )
             if match.evidence:
                 embed.add_field(name="Matched", value=", ".join(f"||{item}||" for item in match.evidence), inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1717,18 +1735,19 @@ class AutoMod(commands.Cog):
         stats = self.engine.stats
         hits = self.engine.rule_hits
         hit_text = "\n".join(f"{name.replace('_', ' ').title()}: **{count:,}**" for name, count in hits.most_common()) or "`No violations yet`"
-        embed = discord.Embed(title="AutoMod runtime stats", color=Config.COLOR_INFO)
-        embed.add_field(
-            name="Totals",
-            value=(
-                f"Messages checked: **{stats['messages_checked']:,}**\n"
-                f"Violations: **{stats['violations_detected']:,}**\n"
-                f"Actions succeeded: **{stats['actions_succeeded']:,}**\n"
-                f"Actions failed: **{stats['actions_failed']:,}**"
+        embed = discord.Embed(
+            title="AutoMod runtime stats",
+            description=compact_kv_lines(
+                [
+                    ("Messages checked", f"**{stats['messages_checked']:,}**"),
+                    ("Violations", f"**{stats['violations_detected']:,}**"),
+                    ("Actions succeeded", f"**{stats['actions_succeeded']:,}**"),
+                    ("Actions failed", f"**{stats['actions_failed']:,}**"),
+                ]
             ),
-            inline=True,
+            color=Config.COLOR_INFO,
         )
-        embed.add_field(name="Rule hits", value=_truncate(hit_text, 1024), inline=True)
+        embed.add_field(name="Rule hits", value=_truncate(hit_text, 1024), inline=False)
         embed.set_footer(text="Runtime counters reset when the bot restarts")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 

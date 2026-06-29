@@ -55,8 +55,8 @@ class Config:
     COLOR_ADMIN = EMBED_ACCENT_COLOR
     COLOR_OWNER = EMBED_ACCENT_COLOR
 
-    # Log embed sizing (best-effort padding; higher = taller)
-    LOG_EMBED_TARGET_LINES = int(os.getenv("LOG_EMBED_TARGET_LINES", "24"))
+    # Log embed sizing (best-effort padding; 0 keeps embeds compact)
+    LOG_EMBED_TARGET_LINES = int(os.getenv("LOG_EMBED_TARGET_LINES", "0"))
 
     # Welcome system
     # NOTE: In multi-server mode, per-guild settings in the database should be preferred.

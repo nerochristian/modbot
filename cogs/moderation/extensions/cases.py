@@ -48,7 +48,7 @@ class CaseCommands:
         
         embed = ModEmbed.success(
             "Case Updated",
-            f"Case #{case_number} reason has been updated to:\n``````"
+            f"Case #{case_number} reason has been updated to:\n`{reason}`"
         )
         
         await self._respond(source, embed=embed)
@@ -198,7 +198,7 @@ class CaseCommands:
         
         embed = ModEmbed.success(
             "Note Added",
-            f"Added note to {user.mention}:\n``````"
+            f"Added note to {user.mention}:\n`{note}`"
         )
         
         await self._respond(source, embed=embed)
