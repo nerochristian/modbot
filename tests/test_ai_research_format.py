@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
-from cogs.moderation.ai.aimoderation import AIModeration, GeminiClient
+from cogs.aimoderation.aimoderation import AIModeration, GeminiClient
 
 
 class ResearchFormattingTests(unittest.TestCase):

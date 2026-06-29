@@ -80,7 +80,7 @@ class RiskEngine:
 
         # Scam links from cases
         try:
-            from cogs.moderation.ai.aimoderation import ToolType
+            from cogs.aimoderation.aimoderation import ToolType
             scam_count = await self._count_cases_by_action(guild.id, member.id, "ban", "scam")
             factors["scam_history"] = min(scam_count * 20, 20)
             details["scam_cases"] = scam_count

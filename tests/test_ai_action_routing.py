@@ -6,7 +6,7 @@ from pathlib import Path
 
 import discord
 
-from cogs.moderation.ai.aimoderation import (
+from cogs.aimoderation.aimoderation import (
     AIModeration,
     Decision,
     DecisionType,
@@ -277,10 +277,10 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         embed = discord.Embed(title="⚠️ Warnings for gabb")
 
         with patch(
-            "cogs.moderation.ai.aimoderation.apply_status_emoji_overrides",
+            "cogs.aimoderation.aimoderation.apply_status_emoji_overrides",
             new=AsyncMock(return_value=embed),
         ) as formatter, patch(
-            "cogs.moderation.ai.aimoderation.send_classic_message",
+            "cogs.aimoderation.aimoderation.send_classic_message",
             new=AsyncMock(return_value=sent_message),
         ) as classic_sender:
             await cog.reply(message, embed=embed, use_v2=False)
