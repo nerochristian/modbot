@@ -91,7 +91,6 @@ class HelperCommands:
         **kwargs,
     ):
         """Send a response or followup depending on whether the interaction/context is already acknowledged."""
-        kwargs.setdefault("use_v2", True)
         if embed is not None:
             try:
                 embed = await apply_status_emoji_overrides(embed, getattr(source, "guild", None))

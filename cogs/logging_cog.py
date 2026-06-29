@@ -491,7 +491,7 @@ class Logging(commands.Cog):
         sent_primary = False
         try:
             normalized = await prepare_log_embed(routed_channel, embed)
-            await routed_channel.send(embed=normalized, view=view, use_v2=True)
+            await routed_channel.send(embed=normalized, view=view)
             sent_primary = True
         except discord.Forbidden:
             logger.warning(f"Missing permissions to log in {routed_channel.guild.name} #{routed_channel.name}")
@@ -516,7 +516,7 @@ class Logging(commands.Cog):
                 try:
                     # Do not reuse the same View object across multiple messages.
                     normalized_audit = await prepare_log_embed(audit_channel, embed)
-                    await audit_channel.send(embed=normalized_audit, use_v2=True)
+                    await audit_channel.send(embed=normalized_audit)
                     sent_audit = True
                 except discord.Forbidden:
                     logger.warning(f"Missing permissions to log in {audit_channel.guild.name} #{audit_channel.name}")
@@ -1271,7 +1271,7 @@ class Logging(commands.Cog):
             send_kwargs: dict[str, Any] = {"embeds": normalized_embeds}
             if message.content:
                 send_kwargs["content"] = message.content
-            await destination_channel.send(**send_kwargs, use_v2=True)
+            await destination_channel.send(**send_kwargs)
             await message.delete()
         except discord.Forbidden:
             logger.warning(
