@@ -1038,24 +1038,100 @@ class Logging(commands.Cog):
         if raw_changes is None:
             return []
 
-        try:
-            changes = list(raw_changes)
-        except TypeError:
+        before_values = self._audit_diff_mapping(getattr(raw_changes, "before", None))
+        after_values = self._audit_diff_mapping(getattr(raw_changes, "after", None))
+        if not before_values and not after_values:
             return []
 
+        ordered_keys = list(dict.fromkeys([*before_values, *after_values]))
+        changes: list[tuple[str, Any, Any]] = []
+        for key in ordered_keys:
+            before = before_values.get(key)
+            after = after_values.get(key)
+            if before != after:
+                changes.append((key, before, after))
+
         lines: list[str] = []
-        for change in changes[:max_items]:
-            key = str(getattr(change, "key", "change")).replace("_", " ").title()
-            before = self._format_audit_value(getattr(change, "before", None))
-            after = self._format_audit_value(getattr(change, "after", None))
-            if before == after:
+        for key, before, after in changes[:max_items]:
+            label = self._audit_change_label(key)
+            if isinstance(before, discord.Permissions) and isinstance(after, discord.Permissions):
+                value = self._format_permission_delta(before, after)
+                lines.append(f"**{label}:** {value}")
                 continue
-            lines.append(f"**{key}:** {before} -> {after}")
+            before_text = self._format_audit_value(before)
+            after_text = self._format_audit_value(after)
+            lines.append(f"**{label}:** {before_text} → {after_text}")
 
         if len(changes) > max_items:
             lines.append(f"**Additional changes:** +{len(changes) - max_items} more")
 
         return lines
+
+    @staticmethod
+    def _audit_diff_mapping(diff: Any) -> dict[str, Any]:
+        if diff is None:
+            return {}
+        try:
+            values = dict(diff)
+        except (TypeError, ValueError):
+            try:
+                values = dict(vars(diff))
+            except TypeError:
+                return {}
+
+        aliases = {
+            "colour": "color",
+            "secondary_colour": "secondary_color",
+            "tertiary_colour": "tertiary_color",
+            "expire_behaviour": "expire_behavior",
+        }
+        normalized: dict[str, Any] = {}
+        for key, value in values.items():
+            normalized.setdefault(aliases.get(str(key), str(key)), value)
+        return normalized
+
+    @staticmethod
+    def _audit_change_label(key: str) -> str:
+        labels = {
+            "color": "Color",
+            "secondary_color": "Secondary color",
+            "tertiary_color": "Tertiary color",
+            "hoist": "Displayed separately",
+            "mentionable": "Mentionable",
+            "permissions": "Permissions changed",
+            "icon": "Role icon",
+            "unicode_emoji": "Role emoji",
+            "position": "Position",
+        }
+        return labels.get(key, key.replace("_", " ").title())
+
+    def _format_permission_delta(
+        self,
+        before: discord.Permissions,
+        after: discord.Permissions,
+    ) -> str:
+        before_flags = dict(before)
+        after_flags = dict(after)
+        enabled: list[str] = []
+        disabled: list[str] = []
+        for name in dict.fromkeys([*before_flags, *after_flags]):
+            old_value = before_flags.get(name, False)
+            new_value = after_flags.get(name, False)
+            if old_value == new_value:
+                continue
+            label = {
+                "read_messages": "View Channels",
+                "external_emojis": "Use External Emoji",
+                "external_stickers": "Use External Stickers",
+            }.get(name, name.replace("_", " ").title())
+            (enabled if new_value else disabled).append(label)
+
+        parts: list[str] = []
+        if enabled:
+            parts.append(f"Enabled: {', '.join(enabled)}")
+        if disabled:
+            parts.append(f"Disabled: {', '.join(disabled)}")
+        return self._shorten("; ".join(parts) or "No effective permission changes", 900)
 
     @staticmethod
     def _should_skip_generic_audit_action(action: discord.AuditLogAction) -> bool:

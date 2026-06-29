@@ -52,11 +52,18 @@ class DeepSeekWebClient:
                 "/root/.config/modbot/deepseek-storage.json",
             )
         )
+        self.session_index_path = Path(
+            os.getenv(
+                "DEEPSEEK_WEB_SESSION_INDEX",
+                str(self.storage_state_path.with_name("deepseek-channel-sessions.json")),
+            )
+        )
         self.timeout_seconds = min(
             300,
             max(30, int(os.getenv("DEEPSEEK_WEB_TIMEOUT", "150"))),
         )
         self._start_lock = asyncio.Lock()
+        self._cookie_choice_lock = asyncio.Lock()
         self._lane_locks = {
             "chat": asyncio.Lock(),
             "research": asyncio.Lock(),
@@ -71,6 +78,8 @@ class DeepSeekWebClient:
             max(1, int(os.getenv("DEEPSEEK_WEB_MAX_CHAT_SESSIONS", "6"))),
         )
         self._session_last_used: dict[str, float] = {}
+        self._session_index_lock = asyncio.Lock()
+        self._channel_sessions = self._load_channel_sessions()
         self._playwright: Any = None
         self._browser: Any = None
         self._context: Any = None
@@ -173,6 +182,83 @@ class DeepSeekWebClient:
             return ""
         return urlunsplit((parsed.scheme, parsed.netloc, parsed.path, "", ""))
 
+    @staticmethod
+    def _clean_session_name(name: str) -> str:
+        clean = re.sub(r"[\x00-\x1f\x7f]+", " ", str(name or ""))
+        return re.sub(r"\s+", " ", clean).strip()[:100]
+
+    @staticmethod
+    def _normalize_session_url(url: str) -> str:
+        try:
+            parsed = urlsplit(str(url or "").strip())
+        except ValueError:
+            return ""
+        if parsed.scheme != "https" or parsed.netloc.lower() != "chat.deepseek.com":
+            return ""
+        if not re.fullmatch(r"/a/chat/s/[A-Za-z0-9-]{16,80}", parsed.path):
+            return ""
+        return urlunsplit(("https", "chat.deepseek.com", parsed.path, "", ""))
+
+    def _load_channel_sessions(self) -> dict[str, dict[str, Any]]:
+        try:
+            raw = json.loads(self.session_index_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, TypeError):
+            return {}
+        if not isinstance(raw, dict):
+            return {}
+
+        sessions: dict[str, dict[str, Any]] = {}
+        for key, value in raw.items():
+            if not isinstance(key, str) or not isinstance(value, dict):
+                continue
+            url = self._normalize_session_url(value.get("url", ""))
+            if not url:
+                continue
+            sessions[key] = {
+                "url": url,
+                "name": self._clean_session_name(value.get("name", "")),
+                "renamed": value.get("renamed") is True,
+            }
+        return sessions
+
+    def _write_channel_sessions(self) -> None:
+        self.session_index_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = self.session_index_path.with_suffix(
+            self.session_index_path.suffix + ".tmp"
+        )
+        temporary.write_text(
+            json.dumps(self._channel_sessions, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        try:
+            os.chmod(temporary, 0o600)
+        except OSError:
+            pass
+        temporary.replace(self.session_index_path)
+
+    async def _save_channel_sessions(self) -> None:
+        try:
+            await asyncio.to_thread(self._write_channel_sessions)
+        except OSError:
+            logger.warning("Could not persist DeepSeek channel sessions", exc_info=True)
+
+    @staticmethod
+    def _session_key_from_lane(lane: str) -> str:
+        return lane[5:] if lane.startswith("chat:") else ""
+
+    def _saved_session_url(self, lane: str) -> str:
+        key = self._session_key_from_lane(lane)
+        value = self._channel_sessions.get(key, {})
+        return self._normalize_session_url(value.get("url", ""))
+
+    async def _forget_channel_session(self, lane: str) -> None:
+        key = self._session_key_from_lane(lane)
+        if not key:
+            return
+        async with self._session_index_lock:
+            if self._channel_sessions.pop(key, None) is not None:
+                await self._save_channel_sessions()
+
     async def _start(self) -> None:
         async with self._start_lock:
             if self._browser is not None and self._browser.is_connected():
@@ -228,7 +314,22 @@ class DeepSeekWebClient:
                 page = await self._context.new_page()
                 self._pages[lane] = page
             try:
-                if not is_new_page and reuse_existing:
+                if reuse_existing:
+                    saved_url = self._saved_session_url(lane)
+                    if saved_url and self._normalize_session_url(page.url) != saved_url:
+                        await page.goto(
+                            saved_url,
+                            wait_until="domcontentloaded",
+                            timeout=60_000,
+                        )
+                        if self._normalize_session_url(page.url) != saved_url:
+                            await self._forget_channel_session(lane)
+                    elif is_new_page:
+                        await page.goto(
+                            _DEEPSEEK_URL,
+                            wait_until="domcontentloaded",
+                            timeout=60_000,
+                        )
                     return page
                 if not is_new_page and await self._start_spa_chat(page):
                     return page
@@ -345,6 +446,7 @@ class DeepSeekWebClient:
         textbox = page.get_by_role("textbox", name="Message DeepSeek")
         try:
             await textbox.wait_for(state="visible", timeout=30_000)
+            await self._ensure_cookie_choice(page)
             return textbox
         except Exception as exc:
             body_text = ""
@@ -359,6 +461,21 @@ class DeepSeekWebClient:
                 else "DeepSeek login expired or the saved browser session is invalid."
             )
             raise DeepSeekWebAuthError(reason) from exc
+
+    async def _ensure_cookie_choice(self, page: Any) -> None:
+        """Dismiss DeepSeek's consent overlay using necessary cookies only."""
+        async with self._cookie_choice_lock:
+            candidates = page.get_by_text("Necessary cookies only", exact=True)
+            button = await self._visible_locator(candidates)
+            if button is None:
+                return
+            await button.click(timeout=5_000)
+            try:
+                await candidates.first.wait_for(state="hidden", timeout=5_000)
+            except Exception:
+                pass
+            if self._context is not None:
+                await self._context.storage_state(path=str(self.storage_state_path))
 
     async def _set_mode(self, page: Any, label: str) -> None:
         option = await self._visible_locator(page.get_by_text(label, exact=True))
@@ -415,27 +532,71 @@ class DeepSeekWebClient:
         if not payloads:
             raise DeepSeekWebError("No valid image data was supplied.")
         await file_input.first.set_input_files(payloads)
+        await self._wait_for_image_ready(page)
 
-        # DeepSeek initially treats image uploads as documents for OCR. Once
-        # that pass finishes, the UI exposes a "Try Vision" handoff that must
-        # be selected before the message can be submitted as an image request.
-        vision_link = page.get_by_text("Vision", exact=True)
+    async def _wait_for_image_ready(self, page: Any) -> None:
+        """Wait until DeepSeek has uploaded and processed every attachment."""
+        ready_button = page.locator(
+            "div.ds-button--primary.ds-button--circle"
+            ":not(.ds-button--disabled)"
+        ).first
         try:
-            await vision_link.first.wait_for(state="visible", timeout=30_000)
-            visible_link = await self._visible_locator(vision_link)
-            if visible_link is None:
-                raise DeepSeekWebError("DeepSeek Vision handoff was not visible.")
-            await visible_link.click()
-            await page.get_by_text(
-                re.compile(r"Start Chatting with Vision", re.IGNORECASE)
-            ).first.wait_for(state="visible", timeout=15_000)
-            await asyncio.sleep(3)
-        except DeepSeekWebError:
-            raise
+            await ready_button.wait_for(
+                state="visible",
+                timeout=min(30, self.timeout_seconds) * 1_000,
+            )
         except Exception as exc:
             raise DeepSeekWebError(
-                "DeepSeek did not make the image available to Vision."
+                "DeepSeek did not finish processing the attached image."
             ) from exc
+
+    async def _configure_request_mode(
+        self,
+        page: Any,
+        *,
+        ui_mode: str,
+        reuse_existing: bool,
+    ) -> None:
+        # A restored Vision conversation is already permanently in Vision mode.
+        # Its visible "Vision" text is a header label, not the mode picker.
+        restored_vision = (
+            ui_mode == "Vision"
+            and reuse_existing
+            and bool(self._normalize_session_url(page.url))
+        )
+        if not restored_vision:
+            await self._set_mode(page, ui_mode)
+
+    async def _prepare_image_submission(
+        self,
+        page: Any,
+        textbox: Any,
+        prompt: str,
+        images: Sequence[tuple[str, str, bytes]],
+    ) -> None:
+        # Filling after an upload makes DeepSeek discard the image preview.
+        await textbox.fill(prompt)
+        await self._attach_images(page, images)
+
+    async def _submit_prompt(
+        self,
+        page: Any,
+        textbox: Any,
+        *,
+        has_images: bool,
+    ) -> None:
+        if not has_images:
+            await textbox.press("Enter")
+            return
+        send_button = await self._visible_locator(
+            page.locator(
+                "div.ds-button--primary.ds-button--circle"
+                ":not(.ds-button--disabled)"
+            )
+        )
+        if send_button is None:
+            raise DeepSeekWebError("DeepSeek image send button was not available.")
+        await send_button.click(timeout=5_000)
 
     async def _extract_answer(self, answer: Any) -> tuple[str, list[str]]:
         text = await answer.evaluate(
@@ -605,6 +766,7 @@ class DeepSeekWebClient:
         search: bool,
         images: Sequence[tuple[str, str, bytes]] = (),
         reuse_existing: bool = False,
+        session_name: str | None = None,
     ) -> str:
         if not self.enabled:
             raise DeepSeekWebError("DeepSeek web provider is disabled.")
@@ -619,11 +781,21 @@ class DeepSeekWebClient:
                     reuse_existing=reuse_existing,
                 )
                 textbox = await self._wait_for_textbox(page)
-                await self._set_mode(page, ui_mode)
+                await self._configure_request_mode(
+                    page,
+                    ui_mode=ui_mode,
+                    reuse_existing=reuse_existing,
+                )
                 await self._set_toggle(page, "DeepThink", deepthink)
-                await self._set_toggle(page, "Search", search)
+                if not images:
+                    await self._set_toggle(page, "Search", search)
                 if images:
-                    await self._attach_images(page, images)
+                    await self._prepare_image_submission(
+                        page,
+                        textbox,
+                        clean_prompt,
+                        images,
+                    )
 
                 answers = page.locator(_ANSWER_SELECTOR)
                 before_count = await answers.count()
@@ -643,8 +815,13 @@ class DeepSeekWebClient:
                         ),
                         timeout=self.timeout_seconds * 1_000,
                     ) as pending_response:
-                        await textbox.fill(clean_prompt)
-                        await textbox.press("Enter")
+                        if not images:
+                            await textbox.fill(clean_prompt)
+                        await self._submit_prompt(
+                            page,
+                            textbox,
+                            has_images=bool(images),
+                        )
                     response = await pending_response.value
                     body = await response.body()
                     # Top-level stream content can be DeepSeek's generated chat
@@ -684,6 +861,11 @@ class DeepSeekWebClient:
                     )
                     answer = f"{answer}\n\n__BOT_SOURCES__\n{sources}"
                 if lane.startswith("chat:"):
+                    await self._remember_channel_session(
+                        lane,
+                        page,
+                        session_name=session_name,
+                    )
                     await self._touch_and_prune_chat_sessions(lane)
                 return answer[:24_000]
             except (DeepSeekWebAuthError, DeepSeekWebError):
@@ -700,48 +882,55 @@ class DeepSeekWebClient:
         self,
         prompt: str,
         *,
-        session_key: str | None = None,
-        continue_session: bool = False,
         search: bool = False,
+        session_key: str | None = None,
+        session_name: str | None = None,
+        continue_session: bool = False,
         long_answer: bool = False,
+        deepthink: bool = False,
     ) -> str:
-        if search:
-            if long_answer:
-                search_instruction = (
-                    "Live web search is enabled. Verify factual, current, game-build, patch, "
-                    "character, product, and recommendation claims before answering. Do not "
-                    "emit citation tokens, a Sources section, or raw source URLs; the bot "
-                    "attaches sources separately. For searchable or factual requests, give "
-                    "a thorough 250 to 500 word answer when the topic supports it. Lead with "
-                    "the answer, then add useful context, key details, practical guidance, "
-                    "and caveats in short paragraphs or bullets. Avoid filler and repetition. "
-                )
+        if not continue_session:
+            if search:
+                if long_answer:
+                    search_instruction = (
+                        "Live web search is enabled. Verify factual, current, game-build, patch, "
+                        "character, product, and recommendation claims before answering. Do not "
+                        "emit citation tokens, a Sources section, or raw source URLs; the bot "
+                        "attaches sources separately. For searchable or factual requests, give "
+                        "a thorough 250 to 500 word answer when the topic supports it. Lead with "
+                        "the answer, then add useful context, key details, practical guidance, "
+                        "and caveats in short paragraphs or bullets. Avoid filler and repetition. "
+                    )
+                else:
+                    search_instruction = (
+                        "Live web search is enabled to verify facts, but this is a CASUAL CHAT. "
+                        "You MUST give a concise, direct answer (1 to 4 sentences maximum). "
+                        "NEVER write essays, multiple paragraphs, or bulleted lists. "
+                        "Do not emit citation tokens or URLs. Be brief, punchy, and conversational."
+                    )
             else:
                 search_instruction = (
-                    "Live web search is enabled to verify facts, but this is a CASUAL CHAT. "
+                    "Do not claim live verification or add citations. "
                     "You MUST give a concise, direct answer (1 to 4 sentences maximum). "
-                    "NEVER write essays, multiple paragraphs, or bulleted lists. "
-                    "Do not emit citation tokens or URLs. Be brief, punchy, and conversational."
+                    "NEVER write essays, multiple paragraphs, or bulleted lists."
                 )
-        else:
-            search_instruction = (
-                "Do not claim live verification or add citations. "
-                "You MUST give a concise, direct answer (1 to 4 sentences maximum). "
-                "NEVER write essays, multiple paragraphs, or bulleted lists."
+
+            request = (
+                "Reply in the same language as the user's latest message; default to "
+                "English when unclear. Return only the final Discord-ready answer. "
+                f"{search_instruction}Do not expose reasoning.\n\n{prompt}"
             )
-            
-        request = (
-            "Reply in the same language as the user's latest message; default to "
-            "English when unclear. Return only the final Discord-ready answer. "
-            f"{search_instruction}Do not expose reasoning.\n\n{prompt}"
-        )
+        else:
+            request = prompt
+
         return await self._run(
             request,
             lane=f"chat:{session_key}" if session_key else "chat",
             ui_mode="Instant",
-            deepthink=False,
+            deepthink=deepthink,
             search=search,
-            reuse_existing=bool(session_key and continue_session),
+            reuse_existing=bool(session_key),
+            session_name=session_name,
         )
 
     async def research(self, prompt: str) -> str:
@@ -774,6 +963,8 @@ class DeepSeekWebClient:
         images: Sequence[tuple[str, str, bytes]],
         *,
         search: bool = False,
+        session_key: str | None = None,
+        session_name: str | None = None,
     ) -> str:
         request = (
             "Analyze the attached image(s) and answer the user's request. Reply in "
@@ -783,12 +974,99 @@ class DeepSeekWebClient:
         )
         return await self._run(
             request,
-            lane="vision",
-            ui_mode="Instant",
+            lane=f"chat:{session_key}" if session_key else "vision",
+            ui_mode="Vision",
             deepthink=False,
             search=search,
             images=images,
+            reuse_existing=bool(session_key),
+            session_name=session_name,
         )
+
+    async def _rename_current_chat(self, page: Any, session_name: str) -> bool:
+        clean_name = self._clean_session_name(session_name)
+        current_url = self._normalize_session_url(page.url)
+        if not clean_name or not current_url:
+            return False
+
+        path = urlsplit(current_url).path
+        link = page.locator(f'a[href="{path}"]')
+        link_count = await link.count()
+        if link_count != 1 or not await link.is_visible():
+            await page.keyboard.press("Control+J")
+            await asyncio.sleep(0.2)
+            link = page.locator(f'a[href="{path}"]')
+        if await link.count() != 1 or not await link.is_visible():
+            return False
+
+        await link.hover()
+        menu_button = link.locator('[role="button"]')
+        if await menu_button.count() != 1:
+            return False
+        await menu_button.click(timeout=5_000)
+
+        rename_option = await self._visible_locator(
+            page.get_by_text("Rename", exact=True)
+        )
+        if rename_option is None:
+            return False
+        await rename_option.click(timeout=5_000)
+
+        rename_input = await self._visible_locator(
+            page.locator('input.ds-input__input[maxlength="1024"]')
+        )
+        if rename_input is None:
+            return False
+        await rename_input.fill(clean_name)
+        await rename_input.press("Enter")
+        await page.wait_for_function(
+            """({path, title}) => [...document.querySelectorAll('a[href]')].some(
+                link => link.getAttribute('href') === path
+                    && (link.innerText || '').trim() === title
+            )""",
+            arg={"path": path, "title": clean_name},
+            timeout=5_000,
+        )
+        return True
+
+    async def _remember_channel_session(
+        self,
+        lane: str,
+        page: Any,
+        *,
+        session_name: str | None,
+    ) -> None:
+        key = self._session_key_from_lane(lane)
+        url = self._normalize_session_url(page.url)
+        if not key or not url:
+            return
+
+        clean_name = self._clean_session_name(session_name or "")
+        previous = self._channel_sessions.get(key, {})
+        already_renamed = (
+            previous.get("url") == url
+            and previous.get("name") == clean_name
+            and previous.get("renamed") is True
+        )
+        renamed = already_renamed
+        if clean_name and not already_renamed:
+            try:
+                renamed = await self._rename_current_chat(page, clean_name)
+            except Exception:
+                renamed = False
+                logger.warning(
+                    "Could not rename DeepSeek channel session %s",
+                    key,
+                    exc_info=True,
+                )
+
+        async with self._session_index_lock:
+            self._channel_sessions[key] = {
+                "url": url,
+                "name": clean_name,
+                "renamed": renamed,
+            }
+            await self._save_channel_sessions()
 
     async def _discard_page(self, lane: str) -> None:
         self._session_last_used.pop(lane, None)

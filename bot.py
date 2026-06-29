@@ -91,7 +91,7 @@ def _acquire_single_instance_lock() -> None:
     global _LOCK_HANDLE
     import atexit
 
-    lock_path = Path(".modbot.lock")
+    lock_path = Path(__file__).resolve().parent / ".modbot.lock"
 
     if sys.platform == "win32":
         try:

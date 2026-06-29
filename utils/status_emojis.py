@@ -365,9 +365,17 @@ def _cache_application_mention(
 
 
 def _get_client_from_guild(guild: discord.Guild) -> Optional[discord.Client]:
+    explicit_client = getattr(guild, "client", None)
+    if explicit_client is not None:
+        return explicit_client
+
     state = getattr(guild, "_state", None)
     if state is None:
         return None
+
+    explicit_client = getattr(state, "_client", None) or getattr(state, "client", None)
+    if explicit_client is not None:
+        return explicit_client
 
     getter = getattr(state, "_get_client", None)
     if callable(getter):
@@ -726,16 +734,24 @@ async def apply_status_emoji_overrides(
 
         if updated_description and updated_description.startswith(prefix):
             if mention is None:
-                mention = await _ensure_custom_status_emoji(guild, kind)
-            if mention:
-                updated_description = updated_description.replace(prefix, f"{mention} ", 1)
+                try:
+                    mention = await _ensure_custom_status_emoji(guild, kind)
+                except Exception:
+                    mention = None
+            replacement = mention or str(meta.get("default_icon") or "").strip()
+            if replacement:
+                updated_description = updated_description.replace(prefix, f"{replacement} ", 1)
                 changed = True
 
         if updated_title and updated_title.startswith(prefix):
             if mention is None:
-                mention = await _ensure_custom_status_emoji(guild, kind)
-            if mention:
-                updated_title = updated_title.replace(prefix, f"{mention} ", 1)
+                try:
+                    mention = await _ensure_custom_status_emoji(guild, kind)
+                except Exception:
+                    mention = None
+            replacement = mention or str(meta.get("default_icon") or "").strip()
+            if replacement:
+                updated_title = updated_title.replace(prefix, f"{replacement} ", 1)
                 changed = True
 
     if changed:

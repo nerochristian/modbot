@@ -105,6 +105,66 @@ class ResearchFormattingTests(unittest.TestCase):
         self.assertFalse(cog._is_chat_active(123))
         self.assertNotIn(123, cog._active_chat_channels)
 
+    def test_deepseek_session_is_named_for_server_and_channel(self) -> None:
+        guild = SimpleNamespace(id=10, name="Soul")
+        message = SimpleNamespace(
+            channel=SimpleNamespace(id=20, name="general-chat")
+        )
+
+        key, name = GeminiClient._deepseek_session_identity(guild, message)
+
+        self.assertEqual(key, "10:20")
+        self.assertEqual(name, "Soul -> General Chat")
+
+        research_key, research_name = GeminiClient._deepseek_session_identity(
+            guild,
+            message,
+            research=True,
+        )
+
+        self.assertEqual(research_key, "10:20:research")
+        self.assertEqual(research_name, "Soul -> General Chat [Research]")
+
+        vision_key, vision_name = GeminiClient._deepseek_session_identity(
+            guild,
+            message,
+            vision=True,
+        )
+
+        self.assertEqual(vision_key, "10:20:vision")
+        self.assertEqual(vision_name, "Soul -> General Chat [Vision]")
+
+
+class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_call_passes_moderation_session_name_to_deepseek_web(self) -> None:
+        class FakeDeepSeek:
+            enabled = True
+
+            def __init__(self) -> None:
+                self.kwargs = {}
+
+            async def chat(self, prompt: str, **kwargs):
+                self.kwargs = kwargs
+                return "{}"
+
+        fake = FakeDeepSeek()
+        client = object.__new__(GeminiClient)
+        client.provider = "deepseek-web"
+        client._deepseek_web = fake
+
+        result = await client._call(
+            [{"role": "user", "content": "warn <@20>"}],
+            temperature=0.2,
+            max_tokens=100,
+            json_mode=True,
+            session_key="10:moderation",
+            session_name="Soul -> moderation",
+        )
+
+        self.assertEqual(result, "{}")
+        self.assertEqual(fake.kwargs["session_key"], "10:moderation")
+        self.assertEqual(fake.kwargs["session_name"], "Soul -> moderation")
+
 
 if __name__ == "__main__":
     unittest.main()

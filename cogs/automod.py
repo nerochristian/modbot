@@ -1195,15 +1195,20 @@ class AutoMod(commands.Cog):
             "HIGH": 0xEF4444,
             "CRITICAL": 0x991B1B,
         }
+        rule_name = match.rule.replace("_", " ").title()
+        incident_id = f"AM-{message.id % 1_000_000:06d}"
         embed = discord.Embed(
-            title=f"AutoMod: {match.rule.replace('_', ' ').title()}",
+            title=f"AutoMod Incident · {rule_name}",
+            description=_truncate(match.reason, 240),
             color=colors[match.severity.name],
             timestamp=datetime.now(timezone.utc),
         )
+        embed.add_field(name="Incident", value=f"`{incident_id}`", inline=True)
+        embed.add_field(name="Severity", value=match.severity.name.title(), inline=True)
+        embed.add_field(name="Rule", value=rule_name, inline=True)
         embed.add_field(name="Member", value=f"{message.author.mention}\n`{message.author.id}`", inline=True)
         embed.add_field(name="Channel", value=message.channel.mention, inline=True)
-        embed.add_field(name="Severity", value=match.severity.name.title(), inline=True)
-        embed.add_field(name="Reason", value=_truncate(match.reason, 1024), inline=False)
+        embed.add_field(name="Policy", value=match.category.value.title(), inline=True)
         action_text = outcome.details
         if outcome.case_number is not None:
             action_text += f"\nCase: `#{outcome.case_number}`"
@@ -1216,6 +1221,7 @@ class AutoMod(commands.Cog):
         content = (message.content or "").replace("```", "'''" )
         if content:
             embed.add_field(name="Message", value=f"```\n{_truncate(content, 900)}\n```", inline=False)
+        embed.set_footer(text=f"Message ID: {message.id}")
         try:
             await send_log_embed(channel, embed)
         except (discord.Forbidden, discord.HTTPException):

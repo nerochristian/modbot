@@ -112,6 +112,27 @@ def _parameter_lines(cmd: app_commands.Command | app_commands.Group | commands.C
     return "\n".join(lines)
 
 
+def _shorten(text: str, limit: int) -> str:
+    text = " ".join(str(text or "").split())
+    if len(text) <= limit:
+        return text
+    return text[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _command_summary(cmd: app_commands.Command | app_commands.Group | commands.Command) -> str:
+    return _shorten(getattr(cmd, "description", None) or getattr(cmd, "help", None) or "No description.", 78)
+
+
+def _command_type_label(cmd: app_commands.Command | app_commands.Group | commands.Command) -> str:
+    if isinstance(cmd, app_commands.Group):
+        return "Slash group"
+    if isinstance(cmd, app_commands.Command):
+        return "Slash command"
+    if isinstance(cmd, commands.Group):
+        return "Prefix group"
+    return "Prefix command"
+
+
 @dataclass(frozen=True)
 class _HelpIndex:
     categories: dict[str, list[app_commands.Command | app_commands.Group | commands.Command]]
@@ -168,24 +189,24 @@ class _HelpIndex:
 # =============================================================================
 
 CATEGORY_ICONS = {
-    "Moderation": "🛡️",
-    "Admin": "⚙️",
-    "Roles": "🎭",
-    "Voice": "🎤",
-    "Tickets": "🎫",
-    "Staff": "👮",
-    "Court": "⚖️",
-    "AutoMod": "🤖",
-    "AI Moderation": "🧠",
-    "Utility": "🔧",
-    "Fun": "🎉",
-    "Core": "💠",
-    "Whitelist": "🔒",
+    "Moderation": "Mod",
+    "Admin": "Admin",
+    "Roles": "Roles",
+    "Voice": "Voice",
+    "Tickets": "Tickets",
+    "Staff": "Staff",
+    "Court": "Court",
+    "AutoMod": "AutoMod",
+    "AI Moderation": "AI",
+    "Utility": "Utility",
+    "Fun": "Fun",
+    "Core": "Core",
+    "Whitelist": "Whitelist",
 }
 
-def get_category_icon(category: str) -> str:
-    return CATEGORY_ICONS.get(category, "📁")
 
+def get_category_icon(category: str) -> str:
+    return CATEGORY_ICONS.get(category, "Other")
 
 # =============================================================================
 # QUICK REFERENCE DATA
@@ -300,7 +321,7 @@ class HelpView(discord.ui.View):
         self.page_idx: int = 0
 
         self._select = discord.ui.Select(
-            placeholder="📚 Choose a category...",
+            placeholder="Choose a help section...",
             options=self._build_category_options(),
             min_values=1,
             max_values=1,
@@ -313,7 +334,7 @@ class HelpView(discord.ui.View):
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
-            await interaction.response.send_message("❌ This menu isn't yours.", ephemeral=True)
+            await interaction.response.send_message("This help menu belongs to someone else. Use /help or ,help to open your own.", ephemeral=True)
             return False
         return True
 
@@ -329,17 +350,32 @@ class HelpView(discord.ui.View):
 
     def _build_category_options(self) -> list[discord.SelectOption]:
         opts: list[discord.SelectOption] = [
-            discord.SelectOption(label="Overview", value="Overview", description="Bot overview and quick start"),
-            discord.SelectOption(label="All Commands", value="__all__", description="Complete command list"),
-            discord.SelectOption(label="Search Tips", value="__search__", description="How to find commands"),
+            discord.SelectOption(
+                label="Start Here",
+                value="Overview",
+                description="Best commands, workflows, and how help works",
+            ),
+            discord.SelectOption(
+                label="All Commands",
+                value="__all__",
+                description="Complete slash and prefix command index",
+            ),
+            discord.SelectOption(
+                label="Search & Examples",
+                value="__search__",
+                description="How to find a command quickly",
+            ),
         ]
         for category in sorted(self.index.categories.keys()):
             count = len(self.index.categories[category])
-            opts.append(discord.SelectOption(
-                label=f"{category} ({count})",
-                value=category,
-                description=f"{count} commands in this category",
-            ))
+            label = f"{get_category_icon(category)} ({count})"
+            opts.append(
+                discord.SelectOption(
+                    label=label[:100],
+                    value=category,
+                    description=f"Browse {count} {category} command{'s' if count != 1 else ''}",
+                )
+            )
         return opts[:25]
 
     def _help_label(self) -> str:
@@ -350,106 +386,142 @@ class HelpView(discord.ui.View):
 
     def _build_overview_embed(self) -> discord.Embed:
         total = sum(len(v) for v in self.index.categories.values())
-        quick_access = (
-            "`/mod guide` - Moderation shortcuts\n"
-            "`/automod help` - AutoMod setup and tuning\n"
-            "`/aimod status` - AI moderation settings\n"
-            "`/ticket create` or `,ticket create` - Open a ticket\n"
-            "`/help command:<name>` or `,help <name>` - Detailed command info\n"
+        slash_count = sum(
+            1
+            for commands_list in self.index.categories.values()
+            for cmd in commands_list
+            if isinstance(cmd, (app_commands.Command, app_commands.Group))
         )
+        prefix_count = total - slash_count
+        top_categories = sorted(
+            self.index.categories.items(),
+            key=lambda item: (-len(item[1]), item[0].lower()),
+        )[:8]
 
         embed = discord.Embed(
-            title="Command Help",
+            title="Ass Moderation Help",
             description=(
-                f"Browse **{total}** commands across **{len(self.index.categories)}** categories.\n"
-                "Slash and prefix commands are shown together so `/help` and `,help` match.\n\n"
-                "**Quick Access:**\n"
-                f"{quick_access}"
+                "Use `/help` or `,help` to browse the same command index. "
+                "Pick a category below, or search a command directly with "
+                "`/help command:<name>` / `,help <name>`."
             ),
             color=Config.COLOR_EMBED,
             timestamp=datetime.now(timezone.utc),
         )
-
-        cat_lines = []
-        for category in sorted(self.index.categories.keys()):
-            emoji = get_category_icon(category)
-            count = len(self.index.categories[category])
-            cat_lines.append(f"{emoji} **{category}** - {count} commands")
-
         embed.add_field(
-            name="Categories",
-            value="\n".join(cat_lines[:10]) if cat_lines else "No categories found.",
-            inline=False,
-        )
-        embed.add_field(
-            name="Tips",
+            name="Fast Start",
             value=(
-                "Use the dropdown menu to browse categories.\n"
-                "Use `/help command:ban` or `,help ban` for details.\n"
-                "Group commands use subcommands, for example `/automod setup`."
+                "`/setup` - Build the basic server roles/channels\n"
+                "`/modpanel` - Open moderator quick actions\n"
+                "`/adminpanel` - Toggle major server systems\n"
+                "`/automod help` - Configure content filters\n"
+                "`/aimod status` - Check AI moderation\n"
+                "`/ticket create` or `,ticket create` - Open support"
             ),
             inline=False,
         )
-
-        embed.set_footer(text="Use the dropdown menu below to navigate")
+        embed.add_field(
+            name="Common Moderator Flow",
+            value=(
+                "`/warn user:<member> reason:<reason>`\n"
+                "`/timeout user:<member> duration:30m reason:<reason>`\n"
+                "`/history user:<member>`\n"
+                "`/purge amount:25`"
+            ),
+            inline=True,
+        )
+        embed.add_field(
+            name="Natural AI Actions",
+            value=(
+                "Mention the bot with a clear action:\n"
+                "`@Ass Moderation warn @user spamming`\n"
+                "`@Ass Moderation lock this channel`\n"
+                "`@Ass Moderation summarize recent activity`"
+            ),
+            inline=True,
+        )
+        if top_categories:
+            embed.add_field(
+                name="Largest Categories",
+                value="\n".join(
+                    f"`{category}` - {len(commands_list)} commands"
+                    for category, commands_list in top_categories
+                ),
+                inline=False,
+            )
+        embed.add_field(
+            name="Index Size",
+            value=f"{total} commands: {slash_count} slash, {prefix_count} prefix.",
+            inline=False,
+        )
+        embed.set_footer(text="Dropdown: browse categories | Buttons: page through results")
         return embed
 
     def _build_command_list_pages(
-        self, 
-        *, 
-        title: str, 
+        self,
+        *,
+        title: str,
         commands_list: list[app_commands.Command | app_commands.Group | commands.Command]
     ) -> list[discord.Embed]:
         lines: list[str] = []
         for cmd in commands_list:
-            desc = (getattr(cmd, "description", None) or "No description").strip()
-            if len(desc) > 50:
-                desc = desc[:47] + "..."
-            lines.append(f"`{_format_invocation(cmd)}` - {desc}")
+            invocation = _format_invocation(cmd)
+            kind = "slash" if isinstance(cmd, (app_commands.Command, app_commands.Group)) else "prefix"
+            lines.append(f"`{invocation}` [{kind}] - {_command_summary(cmd)}")
 
         pages: list[discord.Embed] = []
-        chunks = list(_chunked(lines, size=10)) or [[]]
+        chunks = list(_chunked(lines, size=9)) or [[]]
         for idx, chunk in enumerate(chunks, start=1):
             embed = discord.Embed(
                 title=title,
                 description="\n".join(chunk) if chunk else "No commands found.",
                 color=Config.COLOR_EMBED,
             )
-            embed.set_footer(text=f"Page {idx}/{len(chunks)} | {self._details_hint()}")
+            embed.add_field(
+                name="Need details?",
+                value="Use `/help command:<name>` or `,help <name>`.",
+                inline=False,
+            )
+            embed.set_footer(text=f"Page {idx}/{len(chunks)}")
             pages.append(embed)
         return pages
-
     def _build_search_embed(self) -> discord.Embed:
         embed = discord.Embed(
-            title="Finding Commands",
-            description="Use either help command. Both show the same command index.",
+            title="Search & Examples",
+            description="The help system accepts slash names, prefix names, aliases, and subcommands.",
             color=Config.COLOR_INFO,
         )
         embed.add_field(
-            name="By Name",
-            value="`/help command:ban` or `,help ban` - Get detailed info about a command",
-            inline=False,
-        )
-        embed.add_field(
-            name="By Category",
-            value="Use the dropdown menu above to browse by category.",
-            inline=False,
-        )
-        embed.add_field(
-            name="All Commands",
-            value="Select 'All Commands' from the dropdown for a complete list.",
-            inline=False,
-        )
-        embed.add_field(
-            name="Command Patterns",
+            name="Direct Lookup",
             value=(
-                "`/automod setup` - Configure AutoMod quickly\n"
-                "`/mod ban` or `,ban` - Moderate a user\n"
-                "`/ticket close` or `,ticket close` - Close a ticket\n"
-                "`/help command:ticket close` or `,help ticket close` - Command details"
+                "`/help command:ban`\n"
+                "`,help ban`\n"
+                "`/help command:automod setup`\n"
+                "`,help ticket close`"
+            ),
+            inline=True,
+        )
+        embed.add_field(
+            name="Browse",
+            value=(
+                "Use the dropdown for categories.\n"
+                "Choose **All Commands** for the full index.\n"
+                "Use buttons to move between pages."
+            ),
+            inline=True,
+        )
+        embed.add_field(
+            name="Useful Starting Points",
+            value=(
+                "`/automod help` - filter setup\n"
+                "`/aimod status` - AI moderation state\n"
+                "`/modpanel` - quick moderation controls\n"
+                "`/adminpanel` - server systems\n"
+                "`/setup` - missing roles/channels"
             ),
             inline=False,
         )
+        embed.set_footer(text="Tip: command lookup is fuzzy, so partial names work too.")
         return embed
 
     async def _on_category_selected(self, interaction: discord.Interaction) -> None:
@@ -465,7 +537,7 @@ class HelpView(discord.ui.View):
             for cat in sorted(self.index.categories.keys()):
                 all_cmds.extend(self.index.categories[cat])
             all_cmds.sort(key=lambda c: c.qualified_name)
-            self.pages = self._build_command_list_pages(title="📋 All Commands", commands_list=all_cmds)
+            self.pages = self._build_command_list_pages(title="All Commands", commands_list=all_cmds)
         elif value == "__search__":
             self.category = "Search"
             self.pages = [self._build_search_embed()]
@@ -486,13 +558,13 @@ class HelpView(discord.ui.View):
         self.last_button.disabled = self.page_idx >= last
         self.page_counter.label = f"{self.page_idx + 1}/{len(self.pages)}"
 
-    @discord.ui.button(label="⏮", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="First", style=discord.ButtonStyle.secondary, row=1)
     async def first_button(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         self.page_idx = 0
         self._refresh_buttons()
         await interaction.response.edit_message(embed=self.pages[self.page_idx], view=self)
 
-    @discord.ui.button(label="◀", style=discord.ButtonStyle.primary, row=1)
+    @discord.ui.button(label="Prev", style=discord.ButtonStyle.primary, row=1)
     async def prev_button(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         self.page_idx = max(0, self.page_idx - 1)
         self._refresh_buttons()
@@ -502,13 +574,13 @@ class HelpView(discord.ui.View):
     async def page_counter(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         await interaction.response.defer()
 
-    @discord.ui.button(label="▶", style=discord.ButtonStyle.primary, row=1)
+    @discord.ui.button(label="Next", style=discord.ButtonStyle.primary, row=1)
     async def next_button(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         self.page_idx = min(len(self.pages) - 1, self.page_idx + 1)
         self._refresh_buttons()
         await interaction.response.edit_message(embed=self.pages[self.page_idx], view=self)
 
-    @discord.ui.button(label="⏭", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="Last", style=discord.ButtonStyle.secondary, row=1)
     async def last_button(self, interaction: discord.Interaction, _: discord.ui.Button) -> None:
         self.page_idx = len(self.pages) - 1
         self._refresh_buttons()
@@ -1164,9 +1236,8 @@ class Help(commands.Cog):
         cmd: app_commands.Command | app_commands.Group | commands.Command,
     ) -> discord.Embed:
         category = _category_for_command(cmd)
-        emoji = get_category_icon(category)
-        title = f"{emoji} {_format_invocation(cmd)}"
-        desc = (getattr(cmd, "description", None) or "No description").strip()
+        title = f"Help: {_format_invocation(cmd)}"
+        desc = _command_summary(cmd)
         is_slash = isinstance(cmd, (app_commands.Command, app_commands.Group))
 
         embed = discord.Embed(
@@ -1175,9 +1246,9 @@ class Help(commands.Cog):
             color=Config.COLOR_EMBED,
         )
         embed.add_field(name="Category", value=category, inline=True)
-        embed.add_field(name="Type", value="Slash" if is_slash else "Prefix", inline=True)
-        embed.add_field(name="Usage", value=f"`{_usage_line(cmd)}`", inline=False)
-        embed.add_field(name="Parameters", value=_parameter_lines(cmd), inline=False)
+        embed.add_field(name="Type", value=_command_type_label(cmd), inline=True)
+        embed.add_field(name="Run it", value=f"`{_usage_line(cmd)}`", inline=False)
+        embed.add_field(name="Inputs", value=_parameter_lines(cmd), inline=False)
 
         if isinstance(cmd, commands.Command) and cmd.aliases:
             aliases = ", ".join(f"`{alias}`" for alias in cmd.aliases[:15])
@@ -1186,32 +1257,29 @@ class Help(commands.Cog):
         if isinstance(cmd, app_commands.Group):
             subcommands = sorted(child.qualified_name for child in cmd.commands)
             if subcommands:
-                lines = [f"`/{name}`" for name in subcommands[:10]]
-                if len(subcommands) > 10:
-                    lines.append(f"... and {len(subcommands) - 10} more")
+                lines = [f"`/{name}`" for name in subcommands[:12]]
+                if len(subcommands) > 12:
+                    lines.append(f"... and {len(subcommands) - 12} more")
                 embed.add_field(name="Subcommands", value="\n".join(lines), inline=False)
         elif isinstance(cmd, commands.Group):
             subcommands = sorted(child.qualified_name for child in cmd.commands)
             if subcommands:
-                lines = [f"`,{name}`" for name in subcommands[:10]]
-                if len(subcommands) > 10:
-                    lines.append(f"... and {len(subcommands) - 10} more")
+                lines = [f"`,{name}`" for name in subcommands[:12]]
+                if len(subcommands) > 12:
+                    lines.append(f"... and {len(subcommands) - 12} more")
                 embed.add_field(name="Subcommands", value="\n".join(lines), inline=False)
 
         examples: list[str] = []
         if cmd.qualified_name.startswith("ticket"):
-            if is_slash:
-                examples = [
-                    "`/ticket create`",
-                    "`/ticket close reason:resolved`",
-                    "`/ticket transcript`",
-                ]
-            else:
-                examples = [
-                    "`,ticket create general Need help with appeals`",
-                    "`,ticket close issue resolved`",
-                    "`,ticket transcript`",
-                ]
+            examples = [
+                "`/ticket create`" if is_slash else "`,ticket create general Need help`",
+                "`/ticket close reason:resolved`" if is_slash else "`,ticket close resolved`",
+                "`/ticket transcript`" if is_slash else "`,ticket transcript`",
+            ]
+        elif cmd.qualified_name.startswith("automod"):
+            examples = ["`/automod help`", "`/automod status`", "`/automod setup`"]
+        elif cmd.qualified_name.startswith("aimod"):
+            examples = ["`/aimod status`", "`/aimod configure enabled:True talking:True`"]
         elif is_slash:
             examples.append(f"`/{cmd.qualified_name}`")
             if isinstance(cmd, app_commands.Command):
@@ -1223,16 +1291,13 @@ class Help(commands.Cog):
             if cmd.clean_params:
                 parts = []
                 for name, param in cmd.clean_params.items():
-                    if param.default is param.empty:
-                        parts.append(f"<{name}>")
-                    else:
-                        parts.append(f"[{name}]")
+                    parts.append(f"<{name}>" if param.default is param.empty else f"[{name}]")
                 examples.append(f"`,{cmd.qualified_name} {' '.join(parts)}`")
 
         if examples:
             embed.add_field(name="Examples", value="\n".join(examples), inline=False)
 
-        embed.set_footer(text="/help and ,help use the same command index")
+        embed.set_footer(text="Same lookup works through /help and ,help")
         return embed
 
     def _build_unified_index(self) -> _HelpIndex:
@@ -1253,8 +1318,8 @@ class Help(commands.Cog):
         matches = [name for name in index.by_name.keys() if key and key in name]
         if matches:
             suggestions = ", ".join([f"`{m}`" for m in matches[:5]])
-            return f"Command `{command}` not found. Did you mean: {suggestions}?"
-        return f"Command `{command}` not found. Try `{help_label}` to browse categories."
+            return f"I could not find `{command}` exactly. Closest matches: {suggestions}."
+        return f"I could not find `{command}`. Try `{help_label}` to browse categories or search a shorter name."
 
     @commands.command(name="help", help="Browse commands and get detailed help")
     async def help_prefix(self, ctx: commands.Context, *, command: Optional[str] = None):
@@ -1272,7 +1337,7 @@ class Help(commands.Cog):
         view = HelpView(bot=self.bot, author_id=ctx.author.id, index=index, mode="unified")
         view.message = await ctx.send(embed=view.pages[0], view=view)
 
-    @app_commands.command(name="help", description="📚 Browse commands and get detailed help")
+    @app_commands.command(name="help", description="Browse commands and get detailed help")
     @app_commands.describe(command="Specific command to view (example: ban, warn, vc)")
     async def help_slash(self, interaction: discord.Interaction, command: Optional[str] = None) -> None:
         index = self._build_unified_index()

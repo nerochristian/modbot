@@ -1430,6 +1430,59 @@ class Database:
         settings[key] = value
         await self.update_settings(guild_id, settings)
 
+    # ==================== AI MEMORY ====================
+
+    async def get_ai_memory(self, user_id: int) -> Optional[str]:
+        """Get stored AI memory for a user."""
+        self._validate_user_id(int(user_id))
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT memory_text FROM ai_memory WHERE user_id = ?",
+                (int(user_id),),
+            )
+            row = await cursor.fetchone()
+            return row[0] if row and row[0] else None
+
+    async def get_ai_memory_record(self, user_id: int) -> Optional[Dict[str, Any]]:
+        """Get stored AI memory plus metadata for admin inspection."""
+        self._validate_user_id(int(user_id))
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT user_id, memory_text, last_updated FROM ai_memory WHERE user_id = ?",
+                (int(user_id),),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            return {"user_id": row[0], "memory_text": row[1] or "", "last_updated": row[2]}
+
+    async def update_ai_memory(self, user_id: int, memory_text: str) -> None:
+        """Replace stored AI memory for a user."""
+        self._validate_user_id(int(user_id))
+        text = str(memory_text or "")
+        async with self._lock:
+            async with self.get_connection() as db:
+                await db.execute(
+                    """
+                    INSERT OR REPLACE INTO ai_memory (user_id, memory_text, last_updated)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    (int(user_id), text),
+                )
+                await db.commit()
+
+    async def clear_ai_memory(self, user_id: int) -> bool:
+        """Delete stored AI memory for a user. Returns True if a row was removed."""
+        self._validate_user_id(int(user_id))
+        async with self._lock:
+            async with self.get_connection() as db:
+                cursor = await db.execute(
+                    "DELETE FROM ai_memory WHERE user_id = ?",
+                    (int(user_id),),
+                )
+                await db.commit()
+                return cursor.rowcount > 0
+
     # ==================== QUARANTINE ====================
 
     async def add_quarantine(self, guild_id: int, user_id: int, moderator_id: int, reason: str, expires_at=None, role_ids: list = None) -> None:
