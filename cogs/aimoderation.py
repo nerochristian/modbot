@@ -336,7 +336,7 @@ Schema:
 {
   "type": "tool_call" | "chat" | "error",
   "reason": "short reason explaining the routing decision",
-  "tool": "<tool_name_or_null>",
+  "tool": "get_warnings|warn_member|timeout_member|untimeout_member|kick_member|ban_member|unban_member|purge_messages|add_role|remove_role|create_role|delete_role|edit_role|create_channel|delete_channel|edit_channel|dm_user|execute_python|chat|mod_guidance|error|<null>",
   "arguments": {}
 }
 
@@ -345,6 +345,7 @@ AVAILABLE TOOLS
 ================================================================================
 
 - show_help: no args
+- get_warnings: target_user_id (int)
 - warn_member: target_user_id (int), reason (str)
 - timeout_member: target_user_id (int), seconds (int), reason (str)
 - untimeout_member: target_user_id (int), reason (str)
