@@ -5171,6 +5171,8 @@ class AIModeration(commands.Cog):
             reason = self._extract_moderation_reason(content, tool.value.removesuffix("_member"))
             if reason:
                 args["reason"] = reason
+        elif "reason" in args and isinstance(args["reason"], str):
+            args["reason"] = re.sub(r"^(?:for|because)\s+", "", args["reason"], flags=re.IGNORECASE)
 
         if tool == ToolType.DM_USER:
             if not args.get("target_user_id"):
