@@ -6,7 +6,7 @@ from typing import Any, Optional
 import discord
 
 from config import Config
-from utils.classic_send import send_classic_message
+from utils.components_v2 import ensure_layout_view_action_rows, layout_view_from_embeds
 
 _ZWS = "\u200b"
 _MAX_FIELD_VALUE = 1024
@@ -279,4 +279,12 @@ async def send_log_embed(
     normalized = await prepare_log_embed(channel, embed, include_banner=include_banner)
 
     kwargs.pop("use_v2", None)
-    await send_classic_message(channel, embed=normalized, **kwargs)
+    existing_view = kwargs.pop("view", None)
+    content = kwargs.pop("content", None)
+    layout = await layout_view_from_embeds(
+        content=content,
+        embed=normalized,
+        existing_view=existing_view,
+    )
+    kwargs.setdefault("allowed_mentions", discord.AllowedMentions.none())
+    await channel.send(view=ensure_layout_view_action_rows(layout), **kwargs)

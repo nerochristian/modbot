@@ -22,7 +22,7 @@ from utils.checks import is_admin
 from utils.cache import ChannelCache
 from utils.transcript import generate_html_transcript, EphemeralTranscriptView
 from utils.logging import prepare_log_embed
-from utils.classic_send import send_classic_message
+from utils.components_v2 import ensure_layout_view_action_rows, layout_view_from_embeds
 
 CACHE_DIR = Path(tempfile.gettempdir()) / "modbot_images"
 try:
@@ -450,7 +450,7 @@ class Logging(commands.Cog):
         Args:
             channel: The channel to send to
             embed: The embed to send
-            use_v2: Automatically convert the log to a V2 branded panel
+            use_v2: Retained for API compatibility; logs always use Components V2
             view: Optional view to attach to the log message
             mirror_to_audit: Also send this log to the configured audit log channel
         """
@@ -491,7 +491,14 @@ class Logging(commands.Cog):
         sent_primary = False
         try:
             normalized = await prepare_log_embed(routed_channel, embed)
-            await routed_channel.send(embed=normalized, view=view)
+            layout = await layout_view_from_embeds(
+                embed=normalized,
+                existing_view=view,
+            )
+            await routed_channel.send(
+                view=ensure_layout_view_action_rows(layout),
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
             sent_primary = True
         except discord.Forbidden:
             logger.warning(f"Missing permissions to log in {routed_channel.guild.name} #{routed_channel.name}")
@@ -516,7 +523,11 @@ class Logging(commands.Cog):
                 try:
                     # Do not reuse the same View object across multiple messages.
                     normalized_audit = await prepare_log_embed(audit_channel, embed)
-                    await audit_channel.send(embed=normalized_audit)
+                    layout = await layout_view_from_embeds(embed=normalized_audit)
+                    await audit_channel.send(
+                        view=ensure_layout_view_action_rows(layout),
+                        allowed_mentions=discord.AllowedMentions.none(),
+                    )
                     sent_audit = True
                 except discord.Forbidden:
                     logger.warning(f"Missing permissions to log in {audit_channel.guild.name} #{audit_channel.name}")
@@ -1268,10 +1279,14 @@ class Logging(commands.Cog):
                 await prepare_log_embed(destination_channel, embed)
                 for embed in message.embeds[:10]
             ]
-            send_kwargs: dict[str, Any] = {"embeds": normalized_embeds}
-            if message.content:
-                send_kwargs["content"] = message.content
-            await destination_channel.send(**send_kwargs)
+            layout = await layout_view_from_embeds(
+                content=message.content or None,
+                embeds=normalized_embeds,
+            )
+            await destination_channel.send(
+                view=ensure_layout_view_action_rows(layout),
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
             await message.delete()
         except discord.Forbidden:
             logger.warning(

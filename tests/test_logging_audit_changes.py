@@ -1,5 +1,6 @@
 import unittest
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, patch
 
 import discord
 
@@ -56,6 +57,28 @@ class AuditChangeFormattingTests(unittest.TestCase):
         lines = self.logging._audit_change_lines(entry)
 
         self.assertEqual(lines, ["**Color:** #e74c3c → #2ecc71"])
+
+
+class LoggingComponentsV2Tests(unittest.IsolatedAsyncioTestCase):
+    async def test_safe_send_log_sends_layout_view_instead_of_embed(self) -> None:
+        logging_cog = object.__new__(Logging)
+        channel = SimpleNamespace(
+            guild=SimpleNamespace(name="Test Guild"),
+            name="mod-logs",
+            send=AsyncMock(),
+        )
+        embed = discord.Embed(title="Test Log", description="Details")
+
+        with patch(
+            "cogs.logging_cog.prepare_log_embed",
+            new=AsyncMock(return_value=embed),
+        ):
+            sent = await logging_cog.safe_send_log(channel, embed)
+
+        self.assertTrue(sent)
+        kwargs = channel.send.await_args.kwargs
+        self.assertIsInstance(kwargs["view"], discord.ui.LayoutView)
+        self.assertNotIn("embed", kwargs)
 
 
 if __name__ == "__main__":

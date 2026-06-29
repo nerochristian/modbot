@@ -1,9 +1,17 @@
 import unittest
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from pathlib import Path
 
-from cogs.aimoderation import AIModeration, GeminiClient, ToolType
+from cogs.aimoderation import (
+    AIModeration,
+    Decision,
+    DecisionType,
+    GeminiClient,
+    GuildSettings,
+    ToolType,
+)
 
 
 class AIActionRoutingTests(unittest.TestCase):
@@ -156,6 +164,29 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertEqual(decision.arguments["seconds"], 900)
         self.assertEqual(decision.arguments["reason"], "spam")
 
+    def test_warning_history_question_is_a_moderation_query(self) -> None:
+        self.assertTrue(
+            self.cog._looks_like_mod_request("what are <@20> warnings?")
+        )
+        self.assertTrue(
+            self.cog._looks_like_advanced_action_request("show his warnings")
+        )
+
+    def test_warning_history_question_routes_without_model(self) -> None:
+        bot_user = SimpleNamespace(id=10, bot=True)
+        target = SimpleNamespace(id=20, bot=False)
+        self.cog.bot = SimpleNamespace(user=bot_user)
+        message = SimpleNamespace(mentions=[bot_user, target])
+
+        decision = self.cog._quick_route(
+            message,
+            "what are <@20> warnings?",
+        )
+
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision.tool, ToolType.GET_WARNINGS)
+        self.assertEqual(decision.arguments["target_user_id"], 20)
+
     def test_staff_with_manage_messages_can_use_ai_tools(self) -> None:
         perms = SimpleNamespace(
             administrator=False,
@@ -183,6 +214,40 @@ class AIActionRoutingTests(unittest.TestCase):
 
         self.assertIn("DEEPSEEK_WEB_ENABLED", client.availability_message())
         self.assertIn("Available now: no", client.diagnostic_lines())
+
+
+class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
+    async def test_reason_is_rewritten_once_and_cleaned(self) -> None:
+        cog = object.__new__(AIModeration)
+        cog.ai = SimpleNamespace(
+            is_available=True,
+            _call=AsyncMock(return_value="Reason: Repeated spam in chat"),
+        )
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="rule: warn",
+            tool=ToolType.WARN,
+            arguments={"reason": "for spamming a ton"},
+        )
+
+        result = await cog._polish_decision_reason(decision, GuildSettings())
+
+        self.assertEqual(result.arguments["reason"], "Repeated spam in chat")
+        cog.ai._call.assert_awaited_once()
+
+    async def test_reason_falls_back_to_clean_original_when_ai_is_unavailable(self) -> None:
+        cog = object.__new__(AIModeration)
+        cog.ai = SimpleNamespace(is_available=False)
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="rule: ban",
+            tool=ToolType.BAN,
+            arguments={"reason": "because repeated ban evasion"},
+        )
+
+        result = await cog._polish_decision_reason(decision, GuildSettings())
+
+        self.assertEqual(result.arguments["reason"], "repeated ban evasion")
 
 
 if __name__ == "__main__":

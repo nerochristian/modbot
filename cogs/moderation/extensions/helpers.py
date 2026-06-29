@@ -9,6 +9,7 @@ from utils.embeds import ModEmbed, Colors, compact_kv_lines
 from utils.checks import is_bot_owner_id, get_owner_ids
 from utils.logging import send_log_embed
 from utils.status_emojis import apply_status_emoji_overrides
+from utils.components_v2 import ensure_layout_view_action_rows, layout_view_from_embeds
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +97,16 @@ class HelperCommands:
                 embed = await apply_status_emoji_overrides(embed, getattr(source, "guild", None))
             except Exception:
                 pass
+
+            existing_view = kwargs.pop("view", None)
+            layout = await layout_view_from_embeds(
+                content=content,
+                embed=embed,
+                existing_view=existing_view,
+            )
+            kwargs["view"] = ensure_layout_view_action_rows(layout)
+            content = None
+            embed = None
 
         try:
             if isinstance(source, discord.Interaction):
