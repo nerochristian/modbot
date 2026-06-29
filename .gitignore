@@ -16,3 +16,5 @@ venv/
 website/dist/
 scratch/
 vps_bot.py
+.pytest_cache/
+.ruff_cache/
