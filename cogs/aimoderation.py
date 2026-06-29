@@ -2524,7 +2524,67 @@ class GeminiClient:
                 if signals.focus_entities:
                     sys_prompt += f"- Focus on these entities: {', '.join(signals.focus_entities)}\n"
 
-        return sys_prompt
+            return ConversationPlan(
+                system_prompt=sys_prompt,
+                user_prompt=user_content,
+                temperature=0.35,
+                max_tokens=max(self.config.max_tokens_chat, 2048),
+                show_research_indicator=signals.show_research_indicator,
+            )
+
+        # --- MOD GUIDANCE MODE ---
+        if signals.mode == ConversationMode.MOD_GUIDANCE:
+            bot_mention = self.bot.user.mention if self.bot.user else "@bot"
+            sys_prompt = ""
+            if not is_continuation:
+                sys_prompt = f"{MOD_GUIDANCE_SYSTEM_PROMPT}\n\n"
+            sys_prompt += f"{full_context}"
+            sys_prompt += "Provide practical moderation guidance.\n"
+            sys_prompt += f"Use `{bot_mention}` in command examples so they can copy-paste.\n"
+            sys_prompt += "If the user is missing info (target, reason, duration), ask ONE question.\n"
+            
+            return ConversationPlan(
+                system_prompt=sys_prompt,
+                user_prompt=user_content,
+                temperature=0.5,
+                max_tokens=self.config.max_tokens_chat,
+                show_research_indicator=False,
+            )
+
+        # --- STANDARD CONVERSATION ---
+        task_instruction = (
+            "Reply naturally for this Discord conversation. Lead with the answer and keep it concise. "
+            "Do not use canned acknowledgements or summarize what you are about to do."
+        )
+        if is_continuation:
+            task_instruction += (
+                " This continues an active conversation. "
+                "Pick up naturally from where you left off - don't re-introduce yourself."
+            )
+
+        if self._is_local_context_question(user_content):
+            task_instruction += (
+                " The user is asking for a detail that may already be in the current thread. "
+                "Check CURRENT THREAD first and answer from it. If it is not there, say you don't see that detail."
+            )
+
+        task_instruction += (
+            " Do not use long dash characters to separate clauses. Use normal punctuation instead. "
+            "Hyphens inside compound words are fine."
+        )
+
+        sys_prompt = ""
+        if not is_continuation:
+            sys_prompt = f"{CONVERSATION_SYSTEM_PROMPT}\n\n"
+        sys_prompt += f"{full_context}### INSTRUCTIONS ###\n{task_instruction}"
+        
+        return ConversationPlan(
+            system_prompt=sys_prompt,
+            user_prompt=user_content,
+            temperature=self.config.temperature_chat,
+            max_tokens=self.config.max_tokens_chat,
+            show_research_indicator=False,
+        )
 
 # =============================================================================
 # TOOL HANDLERS
