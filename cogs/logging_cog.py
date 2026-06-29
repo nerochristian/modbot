@@ -1808,11 +1808,11 @@ class Logging(commands.Cog):
                 else:
                     continue
             raw = " ".join(raw.split())
-            if len(raw) > 80:
-                raw = raw[:77].rstrip() + "..."
+            if len(raw) > 60:
+                raw = raw[:57].rstrip() + "..."
             author_name = getattr(msg.author, "display_name", None) or getattr(msg.author, "name", "unknown")
             preview_lines.append(f"`{author_name}`: {raw}")
-            if len(preview_lines) >= 8:
+            if len(preview_lines) >= 3:
                 break
         preview_text = "\n".join(preview_lines) if preview_lines else "*No text content available*"
 
@@ -1847,6 +1847,7 @@ class Logging(commands.Cog):
             message_text=preview_text,
             footer_user=actor,
         )
+        embed.timestamp = None
 
         transcript_bytes = None
         transcript_name = None
@@ -2650,6 +2651,7 @@ class Logging(commands.Cog):
                 color=Colors.INFO,
                 timestamp=datetime.now(timezone.utc)
             )
+            mod_embed.timestamp = None
 
             await interaction.response.send_message(embed=embed)
             

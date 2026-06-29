@@ -462,11 +462,11 @@ class ChatCommands:
                         else:
                             continue
                     raw = " ".join(raw.split())
-                    if len(raw) > 80:
-                        raw = raw[:77].rstrip() + "..."
+                    if len(raw) > 60:
+                        raw = raw[:57].rstrip() + "..."
                     author_name = getattr(msg.author, "display_name", None) or getattr(msg.author, "name", "unknown")
                     preview_lines.append(f"`{author_name}`: {raw}")
-                    if len(preview_lines) >= 8:
+                    if len(preview_lines) >= 3:
                         break
                 preview_text = "\n".join(preview_lines) if preview_lines else "*No text content available*"
 
@@ -489,18 +489,17 @@ class ChatCommands:
                 if message_log_channel:
                     log_embed = discord.Embed(
                         title="Bulk Message Delete",
-                        description=f"**{count}** messages were deleted in {channel.mention}",
+                        description=(
+                            f"**{count}** messages deleted in {channel.mention}\n"
+                            f"**Moderator:** {author.mention} (`{author.id}`)\n"
+                            f"**Breakdown:** {count - bot_count} human · {bot_count} bot · "
+                            f"{len(authors)} author(s)"
+                        ),
                         color=Colors.ERROR,
-                        timestamp=datetime.now(timezone.utc),
                     )
-
-                    log_embed.add_field(name="Moderator", value=f"{author.mention} (`{author.id}`)", inline=False)
-                    log_embed.add_field(name="Human Messages", value=str(count - bot_count), inline=True)
-                    log_embed.add_field(name="Bot Messages", value=str(bot_count), inline=True)
-                    log_embed.add_field(name="Unique Authors", value=str(len(authors)), inline=True)
                     if user:
-                        log_embed.add_field(name="Filter", value=f"Only {user.mention}", inline=False)
-                    log_embed.add_field(name="Purged Message Preview", value=preview_text[:1024], inline=False)
+                        log_embed.description += f"\n**Filter:** {user.mention}"
+                    log_embed.add_field(name="Preview", value=preview_text[:500], inline=False)
 
                     view = None
                     if transcript_bytes and transcript_name:
@@ -510,16 +509,15 @@ class ChatCommands:
                 # Purges are moderation actions, so also emit a dedicated mod-log card.
                 mod_log_embed = discord.Embed(
                     title="Moderator Purge",
-                    description=f"{author.mention} purged **{count}** message(s) in {channel.mention}.",
+                    description=(
+                        f"{author.mention} purged **{count}** message(s) in {channel.mention}.\n"
+                        f"**Breakdown:** {count - bot_count} human · {bot_count} bot · "
+                        f"{len(authors)} author(s)"
+                    ),
                     color=Colors.ERROR,
-                    timestamp=datetime.now(timezone.utc),
                 )
-                mod_log_embed.add_field(name="Moderator", value=f"{author.mention} (`{author.id}`)", inline=False)
-                mod_log_embed.add_field(name="Human Messages", value=str(count - bot_count), inline=True)
-                mod_log_embed.add_field(name="Bot Messages", value=str(bot_count), inline=True)
-                mod_log_embed.add_field(name="Unique Authors", value=str(len(authors)), inline=True)
                 if user:
-                    mod_log_embed.add_field(name="Filter", value=f"Only {user.mention}", inline=False)
+                    mod_log_embed.description += f"\n**Filter:** {user.mention}"
 
                 mod_view = None
                 if transcript_bytes and transcript_name:

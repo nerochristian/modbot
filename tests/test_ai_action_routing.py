@@ -10,6 +10,7 @@ from cogs.aimoderation import (
     DecisionType,
     GeminiClient,
     GuildSettings,
+    ToolResult,
     ToolType,
 )
 
@@ -248,6 +249,22 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         result = await cog._polish_decision_reason(decision, GuildSettings())
 
         self.assertEqual(result.arguments["reason"], "repeated ban evasion")
+
+    async def test_classic_tool_result_skips_v2_conversion(self) -> None:
+        cog = object.__new__(AIModeration)
+        cog.reply = AsyncMock()
+        message = SimpleNamespace()
+        embed = SimpleNamespace()
+        result = ToolResult.ok("warnings", embed=embed, use_v2=False)
+
+        await cog.reply_tool_result(message, result)
+
+        cog.reply.assert_awaited_once_with(
+            message,
+            embed=embed,
+            delete_after=None,
+            use_v2=False,
+        )
 
 
 if __name__ == "__main__":

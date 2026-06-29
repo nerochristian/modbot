@@ -797,10 +797,17 @@ class ToolResult:
     message: str
     embed: Optional[discord.Embed] = None
     delete_after: Optional[float] = None
+    use_v2: bool = True
 
     @classmethod
-    def ok(cls, message: str, embed: Optional[discord.Embed] = None) -> "ToolResult":
-        return cls(success=True, message=message, embed=embed)
+    def ok(
+        cls,
+        message: str,
+        embed: Optional[discord.Embed] = None,
+        *,
+        use_v2: bool = True,
+    ) -> "ToolResult":
+        return cls(success=True, message=message, embed=embed, use_v2=use_v2)
 
     @classmethod
     def fail(cls, message: str, delete_after: float = 15.0) -> "ToolResult":
@@ -2786,15 +2793,19 @@ async def handle_get_warnings(ctx: ToolContext) -> ToolResult:
         
     if not warnings:
         embed = discord.Embed(
-            title=f"Warnings for {target.display_name}",
+            title=f"⚠️ Warnings for {target.display_name}",
             description=f"{target.mention} has no warnings.",
             color=discord.Color.green(),
         )
         embed.set_thumbnail(url=target.display_avatar.url)
-        return ToolResult.ok(f"{target.display_name} has no warnings.", embed=embed)
+        return ToolResult.ok(
+            f"{target.display_name} has no warnings.",
+            embed=embed,
+            use_v2=False,
+        )
 
     embed = discord.Embed(
-        title=f"Warnings for {target.display_name}",
+        title=f"⚠️ Warnings for {target.display_name}",
         description=f"Total: **{len(warnings)}** warning(s)",
         color=discord.Color.gold(),
         timestamp=_now(),
@@ -2813,7 +2824,11 @@ async def handle_get_warnings(ctx: ToolContext) -> ToolResult:
         )
     if len(warnings) > 10:
         embed.set_footer(text=f"Showing 10 of {len(warnings)} warnings")
-    return ToolResult.ok(f"Found {len(warnings)} warning(s).", embed=embed)
+    return ToolResult.ok(
+        f"Found {len(warnings)} warning(s).",
+        embed=embed,
+        use_v2=False,
+    )
 
 
 @ToolRegistry.register(ToolType.TIMEOUT, display_name="Timeout Member", color=discord.Color.orange(), emoji="Muted", required_permission="moderate_members")
@@ -5459,6 +5474,7 @@ class AIModeration(commands.Cog):
         embed: Optional[discord.Embed] = None,
         view: Optional[discord.ui.View] = None,
         delete_after: Optional[float] = None,
+        use_v2: bool = True,
     ) -> Optional[discord.Message]:
         try:
             allowed_mentions = discord.AllowedMentions(
@@ -5467,7 +5483,7 @@ class AIModeration(commands.Cog):
                 users=False,
                 replied_user=False
             )
-            if embed is not None:
+            if embed is not None and use_v2:
                 layout = await layout_view_from_embeds(
                     content=content,
                     embed=embed,
@@ -5491,7 +5507,12 @@ class AIModeration(commands.Cog):
         self, message: discord.Message, result: ToolResult
     ) -> Optional[discord.Message]:
         if result.embed:
-            return await self.reply(message, embed=result.embed, delete_after=result.delete_after)
+            return await self.reply(
+                message,
+                embed=result.embed,
+                delete_after=result.delete_after,
+                use_v2=result.use_v2,
+            )
         return await self.reply(message, content=result.message, delete_after=result.delete_after)
 
     async def _generate_execute_python_code(
