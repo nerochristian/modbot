@@ -12,9 +12,9 @@ from typing import Any, Dict, List, Optional
 
 import discord
 
-from .context import ToolContext, ToolResult
-from .registry import ToolRegistry
-from .types import ToolType
+from ..context import ToolContext, ToolResult
+from ..registry import ToolRegistry
+from ..types import ToolType
 
 logger = logging.getLogger("ModBot.AIModeration.Handlers.Queries")
 
