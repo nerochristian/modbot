@@ -756,13 +756,38 @@ class GeminiClient:
             return content
         except DeepSeekWebAuthError as exc:
             logger.warning("DeepSeek browser session needs renewal: %s", exc)
-            return (
-                "DeepSeek needs a human session renewal before I can answer. "
-                "The saved login expired or an interactive verification appeared."
-            )
+            try:
+                content = await self._call_digitalocean_conversation(
+                    prompt,
+                    model=model,
+                    long_answer=signals.asks_for_long_answer,
+                )
+                if content:
+                    content = self._postprocess_chat_response(content)
+                    asyncio.create_task(
+                        self._update_memory_smart(author.id, user_content, content, stored_memory)
+                    )
+                    return content
+            except Exception:
+                logger.warning("DigitalOcean fallback after DeepSeek auth failure failed", exc_info=True)
+            return "DeepSeek needs a human session renewal and the fallback model is unavailable right now."
         except DeepSeekWebError as exc:
             logger.warning("DeepSeek browser request failed: %s", exc)
-            return "DeepSeek is temporarily unavailable. Try again shortly."
+            try:
+                content = await self._call_digitalocean_conversation(
+                    prompt,
+                    model=model,
+                    long_answer=signals.asks_for_long_answer,
+                )
+                if content:
+                    content = self._postprocess_chat_response(content)
+                    asyncio.create_task(
+                        self._update_memory_smart(author.id, user_content, content, stored_memory)
+                    )
+                    return content
+            except Exception:
+                logger.warning("DigitalOcean fallback after DeepSeek browser failure failed", exc_info=True)
+            return "DeepSeek is temporarily unavailable and the fallback model is unavailable right now."
         except Exception:
             block_msg = self._get_block_message()
             if block_msg:
