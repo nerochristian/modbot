@@ -35,10 +35,10 @@ class BehaviorProfiling(commands.Cog):
             # Fallback: pull from channel history
             fallback_msgs = []
             channels = [c for c in interaction.guild.text_channels if c.permissions_for(interaction.guild.me).read_message_history]
-            # Try to gather messages from the first 5 text channels
-            for channel in channels[:5]:
+            # Try to gather messages from the first 10 text channels
+            for channel in channels[:10]:
                 try:
-                    async for msg in channel.history(limit=200):
+                    async for msg in channel.history(limit=1000):
                         if msg.author.id == target.id and msg.content.strip():
                             fallback_msgs.append({
                                 'timestamp': msg.created_at.strftime("%Y-%m-%d %H:%M:%S"),
@@ -67,7 +67,7 @@ class BehaviorProfiling(commands.Cog):
         )
 
         try:
-            profile_content = await aimod_cog.ai._call(
+            profile_content = await aimod_cog.ai._call_digitalocean(
                 [
                     {
                         "role": "system",
@@ -77,9 +77,7 @@ class BehaviorProfiling(commands.Cog):
                 ],
                 temperature=0.3,
                 max_tokens=600,
-                model=None,
-                session_key=f"profile-{target.id}",
-                session_name=f"Profile: {target.display_name}",
+                model="deepseek-4-flash",
             )
 
             embed = discord.Embed(
