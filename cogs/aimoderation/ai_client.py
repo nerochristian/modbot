@@ -44,6 +44,11 @@ def _now() -> datetime:
 
 def _looks_like_image_question_text(content: str) -> bool:
     low = re.sub(r"\s+", " ", (content or "").strip().lower())
+    
+    # Do not treat hypothetical/conditional questions as image lookups
+    if re.search(r"\b(if|when|imagine|suppose|say)\b", low):
+        return False
+        
     return bool(
         re.search(r"\b(?:who|what)\s+(?:is|are)\s+(?:this|that|it|these|those)\b", low)
         or re.search(r"\b(?:who|what)'s\s+(?:this|that|it)\b", low)
