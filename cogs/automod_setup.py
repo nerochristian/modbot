@@ -184,7 +184,7 @@ class SetupQuestionView(discord.ui.View):
                 await interaction.response.send_message("This setup belongs to another admin.", ephemeral=True)
                 return
             self.value = option
-            await interaction.response.edit_message(view=None)
+            await interaction.response.defer()
             self.stop()
 
         return callback
@@ -227,22 +227,23 @@ class ProfilePaginatorView(discord.ui.View):
     async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.current = max(0, self.current - 1)
         self._sync_buttons()
-        await interaction.response.edit_message(embed=self.build_embed(interaction.guild), view=self)
+        await interaction.response.defer()
+        if interaction.message:
+            await interaction.message.edit(embed=self.build_embed(interaction.guild), view=self)
 
     @discord.ui.button(label="Select this profile", style=discord.ButtonStyle.primary, row=0)
     async def select_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.selected_profile = self.profiles[self.current]
-        embed = self.build_embed(interaction.guild)
-        embed.color = Config.COLOR_SUCCESS
-        embed.set_footer(text="Selected. Generating setup questions from this profile.")
-        await interaction.response.edit_message(embed=embed, view=None)
+        await interaction.response.defer()
         self.stop()
 
     @discord.ui.button(label=">", style=discord.ButtonStyle.secondary, row=0)
     async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
         self.current = min(len(self.profiles) - 1, self.current + 1)
         self._sync_buttons()
-        await interaction.response.edit_message(embed=self.build_embed(interaction.guild), view=self)
+        await interaction.response.defer()
+        if interaction.message:
+            await interaction.message.edit(embed=self.build_embed(interaction.guild), view=self)
 
 
 class AutoModChangeModal(discord.ui.Modal, title="Change AutoMod"):
@@ -416,7 +417,15 @@ def validate_automod_update(candidate: Mapping[str, Any], *, require_changes: bo
     return update
 
 
-async def call_deepseek_json(cog: Any, system_prompt: str, user_prompt: str, *, max_tokens: int = 1400) -> dict[str, Any]:
+async def call_deepseek_json(
+    cog: Any,
+    system_prompt: str,
+    user_prompt: str,
+    *,
+    max_tokens: int = 1400,
+    session_key: Optional[str] = None,
+    session_name: Optional[str] = None,
+) -> dict[str, Any]:
     ai_cog = cog.bot.get_cog("AIModeration")
     ai_client = getattr(ai_cog, "ai", None) if ai_cog else None
     web_client = getattr(ai_client, "_deepseek_web", None) if ai_client else None
@@ -429,7 +438,14 @@ async def call_deepseek_json(cog: Any, system_prompt: str, user_prompt: str, *, 
 
     if web_client and getattr(web_client, "enabled", False):
         try:
-            response = await web_client.chat(prompt, search=False, deepthink=False, long_answer=False)
+            response = await web_client.chat(
+                prompt,
+                search=False,
+                deepthink=False,
+                long_answer=False,
+                session_key=session_key,
+                session_name=session_name,
+            )
             return _extract_json_object(response)
         except Exception as exc:
             failures.append(f"DeepSeek Web: {type(exc).__name__}: {str(exc)[:200]}")
