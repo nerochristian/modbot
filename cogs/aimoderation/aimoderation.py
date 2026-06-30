@@ -7,12 +7,11 @@ from __future__ import annotations
 
 import asyncio
 import difflib
-import json
 import logging
 import random
 import re
 from datetime import datetime, timedelta, timezone
-from typing import Any, ClassVar, Dict, FrozenSet, List, Optional, Set, Tuple, Union
+from typing import Any, ClassVar, Dict, List, Optional, Tuple, Union
 
 import discord
 from discord import app_commands
@@ -20,24 +19,17 @@ from discord.ext import commands, tasks
 
 from utils.classic_send import send_classic_message
 from utils.checks import is_bot_owner_id
-from utils.embeds import Colors, compact_kv_lines
+from utils.embeds import compact_kv_lines
 from utils.components_v2 import ensure_layout_view_action_rows, layout_view_from_embeds
-from utils.messages import Messages
 from utils.status_emojis import apply_status_emoji_overrides
-from utils.transcript import EphemeralTranscriptView, generate_html_transcript
 
 from .types import (
     ToolType, DecisionType, ConversationMode,
     TARGETED_TOOLS, REASONED_MODERATION_TOOLS, MAX_MODERATION_REASON_LENGTH,
-    AIConfig, GuildSettings, Decision, ConversationSignals, ConversationPlan,
-    WebSearchResult, ImageContext, PermissionFlags, MentionInfo,
-    _default_ai_provider, _default_ai_model,
+    AIConfig, GuildSettings, Decision, ConversationSignals,
+    PermissionFlags, MentionInfo,
 )
-from .prompts import (
-    ROUTING_SYSTEM_PROMPT, CONVERSATION_SYSTEM_PROMPT,
-    DEEP_RESEARCH_SYSTEM_PROMPT, MOD_GUIDANCE_SYSTEM_PROMPT,
-)
-from .context import ToolResult, ToolContext, action_embed, parse_hex_color
+from .context import ToolResult
 from .registry import ToolRegistry
 from .ai_client import GeminiClient
 
@@ -82,46 +74,9 @@ def _strip_code_fences(raw: str) -> str:
     cleaned = raw.strip()
     if cleaned.startswith("```"):
         lns = cleaned.split("\n")
-        lns = [l for l in lns if not l.strip().startswith("```")]
+        lns = [line for line in lns if not line.strip().startswith("```")]
         cleaned = "\n".join(lns)
     return cleaned.strip()
-
-
-def _contains_forbidden_raw_api_key(value: object) -> bool:
-    if isinstance(value, dict):
-        for key, inner in value.items():
-            if str(key).lower() in {"token", "authorization", "client_secret", "bot_token"}:
-                return True
-            if _contains_forbidden_raw_api_key(inner):
-                return True
-    elif isinstance(value, (list, tuple)):
-        return any(_contains_forbidden_raw_api_key(inner) for inner in value)
-    return False
-
-
-def _raw_api_safety_error(ctx: "ToolContext", method: str, endpoint: str, payload: object) -> Optional[str]:
-    from utils.checks import is_bot_owner_id as _owner
-    if not _owner(ctx.actor.id) and not ctx.actor.guild_permissions.administrator:
-        return "Raw Discord API access requires the Administrator permission."
-    if not endpoint.startswith("/"):
-        return "Raw API endpoint must start with /."
-    if method not in {"GET", "POST", "PATCH", "PUT", "DELETE"}:
-        return "Unsupported HTTP method."
-    if _contains_forbidden_raw_api_key(payload):
-        return "Payload cannot contain token or authorization fields."
-    return None
-
-
-def _normalize_scheduled_event_payload(endpoint: str, method: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    normalized_endpoint = endpoint.lower().split("?", 1)[0].rstrip("/")
-    if method != "POST" or not re.fullmatch(r"/guilds/\d{15,22}/scheduled-events", normalized_endpoint):
-        return payload
-    fixed = dict(payload)
-    fixed.setdefault("privacy_level", 2)
-    fixed.setdefault("entity_type", 3)
-    if "entity_metadata" not in fixed:
-        fixed["entity_metadata"] = {"location": "Server"}
-    return fixed
 
 
 # =============================================================================
@@ -149,7 +104,8 @@ class AIModeration(commands.Cog):
         r"archive|signup|give\s+everyone|remove\s+everyone|mass\s|bulk\s|"
         r"make\s+(?:a\s+)?(?:private|project|category|group)|create\s+(?:a\s+)?project|homework|assignment|deadline|attendance|"
         r"delete\s+(?:the\s+)?(?:group|category|project)|ticket|support|faq|"
-        r"report|stats|analytics|activity|inactive|leaderboard|xp|"
+        r"report|stats|analytics|activity|inactive|find\s+inactive|scan\s+(?:this\s+)?channel|"
+        r"safety\s+(?:check|audit)|summarize\s+(?:mod(?:eration)?\s+)?actions?|leaderboard|xp|"
         r"verify|verification|captcha|raid|anti[-\s]?raid|anti[-\s]?nuke|"
         r"queue|matchmaking|tournament|team\s+balanc|voice|vc|afk|"
         r"turn\s+this|"
@@ -585,11 +541,6 @@ class AIModeration(commands.Cog):
             "no api key", "service unavailable", "routing failed",
             "unexpected error", "authentication failed", "access denied",
         )):
-            service_errors = [
-                "my brain glitched for a sec - try that again in a moment.",
-                "hit a connection issue on my end. give it another shot.",
-                "something broke behind the scenes. try again in a few seconds.",
-            ]
             reply = "I hit a service issue on my end. Try again in a moment."
             if self._looks_like_mod_request(content):
                 reply += f"\nfor mod actions, try the direct format: `{mention} timeout @User 30m reason`"
@@ -597,19 +548,9 @@ class AIModeration(commands.Cog):
 
         # Mod request but missing info
         if self._looks_like_mod_request(content):
-            mod_errors = [
-                f"i need a target and reason for that. example: `{mention} warn @User spamming links`",
-                f"missing some details - try: `{mention} timeout @User 30m reason here`",
-                f"can you be more specific? format: `{mention} [action] @User [reason]`",
-            ]
             return f"I need a bit more detail. Example: `{mention} timeout @User 30m reason here`"
 
         # Generic parsing failure
-        generic_errors = [
-            "didn't quite catch that. could you rephrase?",
-            "not sure what you're asking - try again or check `/aihelp` for examples.",
-            "i couldn't figure out what to do with that. try rephrasing?",
-        ]
         return "I could not figure out what to do with that. Could you rephrase?"
 
     def extract_mentions(self, message: discord.Message) -> List[MentionInfo]:
@@ -881,11 +822,13 @@ class AIModeration(commands.Cog):
         tool: ToolType,
     ) -> Optional[str]:
         metadata = ToolRegistry.get_metadata(tool)
-        required = metadata.get("required_permission")
+        required = metadata.required_permission
         if not required:
             return None
         if is_bot_owner_id(actor.id):
             return None
+        if required == "bot_owner":
+            return "This action is restricted to the bot owner."
         if not isinstance(actor, discord.Member):
             return "Could not verify your guild permissions."
         if actor.guild_permissions.administrator:
@@ -1137,7 +1080,7 @@ class AIModeration(commands.Cog):
 
     def _extract_simple_name_after(self, text: str, object_words: str) -> Optional[str]:
         m = re.search(
-            rf"\b(?:named|called|as)\s+([#@\w][\w\- ]{{0,90}})$",
+            r"\b(?:named|called|as)\s+([#@\w][\w\- ]{0,90})$",
             text,
             re.IGNORECASE,
         )
@@ -1404,6 +1347,28 @@ class AIModeration(commands.Cog):
             if re.search(r"\b(?:create|make|add|steal)\b", low):
                 name = self._extract_simple_name_after(content, r"(?:emoji|emote)")
                 return decision(ToolType.CREATE_EMOJI, "create_emoji", {"name": name} if name else {})
+
+        if re.search(r"\b(?:find|list|show)\b.*\binactive\b|^inactive\b", low):
+            args: Dict[str, Any] = {}
+            if days_match := re.search(r"\b(\d+)\s*days?\b", low):
+                args["days"] = int(days_match.group(1))
+            if limit_match := re.search(r"\b(?:limit|show)\s+(\d+)\b", low):
+                args["limit"] = int(limit_match.group(1))
+            return decision(ToolType.FIND_INACTIVE_MEMBERS, "find_inactive_members", args)
+
+        if re.search(r"\bscan\b.*\b(?:channel|messages?)\b", low):
+            args = {}
+            if amount_match := re.search(r"\b(?:last|scan)\s+(\d+)\b", low):
+                args["amount"] = int(amount_match.group(1))
+            if channel_match := _CHANNEL_MENTION_RE.search(content):
+                args["channel_id"] = int(channel_match.group(1))
+            return decision(ToolType.SCAN_CHANNEL, "scan_channel", args)
+
+        if re.search(r"\b(?:summarize|summary|report)\b.*\b(?:mod(?:eration)?\s+)?actions?\b", low):
+            return decision(ToolType.SUMMARIZE_ACTIONS, "summarize_actions")
+
+        if re.search(r"\b(?:server\s+)?safety\s+(?:check|audit)\b", low):
+            return decision(ToolType.SAFETY_CHECK, "server_safety_check")
 
         if self._looks_like_advanced_action_request(content):
             return decision(ToolType.EXECUTE_PYTHON, "advanced_discord_action")
@@ -2137,9 +2102,7 @@ class AIModeration(commands.Cog):
         elif decision.type == DecisionType.CHAT:
             # If this looks like an action request from an admin, the AI may have
             # incorrectly classified it as chat. Escalate to execute_python.
-            if is_mod_request and isinstance(message.author, discord.Member) and (
-                self._can_use_ai_tools(message.author)
-            ):
+            if is_mod_request and self._can_use_owner_tools(message.author):
                 decision = Decision(
                     type=DecisionType.TOOL_CALL,
                     reason="Auto-escalated action request to execute_python",
@@ -2168,9 +2131,7 @@ class AIModeration(commands.Cog):
 
         else:  # ERROR
             # Same auto-escalation for error responses on action requests from admins
-            if is_mod_request and isinstance(message.author, discord.Member) and (
-                self._can_use_ai_tools(message.author)
-            ):
+            if is_mod_request and self._can_use_owner_tools(message.author):
                 async with message.channel.typing():
                     code_response = await self._generate_execute_python_code(
                         content=content,
@@ -2314,7 +2275,7 @@ class AIModeration(commands.Cog):
             response = response[heading.end():].lstrip()
         else:
             clean_query = re.sub(r"\s+", " ", query).strip()
-            title = f"ðŸ”Ž {clean_query}" if clean_query else "ðŸ”Ž Research"
+            title = f"🔍 {clean_query}" if clean_query else "🔍 Research"
         response = AIModeration._compact_research_spacing(response)
         if len(title) > 256:
             title = title[:253].rstrip() + "..."
@@ -2342,7 +2303,7 @@ class AIModeration(commands.Cog):
             super().__init__(timeout=None)
             self.sources_text = sources_text
 
-        @discord.ui.button(label="View Sources", style=discord.ButtonStyle.secondary, emoji="ðŸ”—")
+        @discord.ui.button(label="View Sources", style=discord.ButtonStyle.secondary, emoji="🔗")
         async def view_sources(self, interaction: discord.Interaction, button: discord.ui.Button):
             embed = discord.Embed(
                 title="Research Sources",
@@ -2477,6 +2438,10 @@ class AIModeration(commands.Cog):
             )
         )
 
+    @staticmethod
+    def _can_use_owner_tools(user: Union[discord.Member, discord.User]) -> bool:
+        return is_bot_owner_id(user.id)
+
     async def _require_manage(self, interaction: discord.Interaction) -> bool:
         if not interaction.guild:
             await interaction.response.send_message("Use this command in a server.", ephemeral=True)
@@ -2577,7 +2542,7 @@ class AIModeration(commands.Cog):
         checks = [
             f"AI moderation toggle: {'on' if settings.enabled else 'off'}",
             f"AI talking toggle: {'on' if settings.chat_enabled else 'off'}",
-            f"Staff mention actions: available for members with mod/server permissions",
+            "Staff mention actions: available for members with mod/server permissions",
             *self.ai.diagnostic_lines(),
         ]
         direct_action_note = (
