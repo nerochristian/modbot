@@ -1,10 +1,9 @@
 """
 AI Client — provider-agnostic AI interface with rate limiting, web search, and memory.
 
-Uses DeepSeek Web as the default provider (browser-based, no API key).
+Uses DeepSeek Web as the default provider (browser-based, no API key). 
 Falls back to DigitalOcean inference API if configured.
 """
-
 from __future__ import annotations
 
 import asyncio
@@ -24,31 +23,19 @@ from utils.cache import RateLimiter
 from utils.messages import Messages
 
 from .types import (
-    ConversationMode,
-    AIConfig,
-    Decision,
-    ConversationSignals,
-    ConversationPlan,
-    WebSearchResult,
-    ImageContext,
-    PermissionFlags,
-    MentionInfo,
+    ConversationMode, AIConfig,
+    Decision, ConversationSignals, ConversationPlan,
+    WebSearchResult, ImageContext, PermissionFlags, MentionInfo,
 )
 from .prompts import (
-    ROUTING_SYSTEM_PROMPT,
-    CONVERSATION_SYSTEM_PROMPT,
-    DEEP_RESEARCH_SYSTEM_PROMPT,
-    MOD_GUIDANCE_SYSTEM_PROMPT,
+    ROUTING_SYSTEM_PROMPT, CONVERSATION_SYSTEM_PROMPT,
+    DEEP_RESEARCH_SYSTEM_PROMPT, MOD_GUIDANCE_SYSTEM_PROMPT,
 )
 
 logger = logging.getLogger("ModBot.AIModeration.Client")
 
 _DO_API_KEY: Final[str] = os.getenv("DO_API_KEY", "").strip()
-_DO_BASE_URL: Final[str] = (
-    os.getenv("DO_INFERENCE_BASE_URL", "https://inference.do-ai.run/v1")
-    .strip()
-    .rstrip("/")
-)
+_DO_BASE_URL: Final[str] = os.getenv("DO_INFERENCE_BASE_URL", "https://inference.do-ai.run/v1").strip().rstrip("/")
 
 
 def _now() -> datetime:
@@ -57,31 +44,23 @@ def _now() -> datetime:
 
 def _looks_like_image_question_text(content: str) -> bool:
     low = re.sub(r"\s+", " ", (content or "").strip().lower())
-
+    
     # Do not treat hypothetical/conditional questions as image lookups
     if re.search(r"\b(if|when|imagine|suppose|say)\b", low):
         return False
-
+        
     return bool(
         re.search(r"\b(?:who|what)\s+(?:is|are)\s+(?:this|that|it|these|those)\b", low)
         or re.search(r"\b(?:who|what)'s\s+(?:this|that|it)\b", low)
-        or re.search(
-            r"\b(?:what|which)\s+(?:game|pokemon|character|anime|show|movie|app|site|website)\s+(?:is|are)\s+(?:this|that|it|these|those)\b",
-            low,
-        )
-        or re.search(
-            r"\b(?:who|what)\s+(?:is|are)\s+(?:this|that|it|these|those)\s+(?:pokemon|character|person|game)\b",
-            low,
-        )
+        or re.search(r"\b(?:what|which)\s+(?:game|pokemon|character|anime|show|movie|app|site|website)\s+(?:is|are)\s+(?:this|that|it|these|those)\b", low)
+        or re.search(r"\b(?:who|what)\s+(?:is|are)\s+(?:this|that|it|these|those)\s+(?:pokemon|character|person|game)\b", low)
     )
 
 
 class GeminiClient:
     """Async wrapper around the configured AI provider with rate limiting and memory."""
 
-    _CODE_FENCE_RE: ClassVar[re.Pattern] = re.compile(
-        r"^```[a-zA-Z]*\s*|\s*```$", re.MULTILINE
-    )
+    _CODE_FENCE_RE: ClassVar[re.Pattern] = re.compile(r"^```[a-zA-Z]*\s*|\s*```$", re.MULTILINE)
     _JSON_RE: ClassVar[re.Pattern] = re.compile(r"(\{.*\})", re.DOTALL)
 
     def __init__(self, bot: commands.Bot, config: AIConfig) -> None:
@@ -104,9 +83,7 @@ class GeminiClient:
 
     def availability_message(self) -> str:
         if not self._deepseek_web.enabled:
-            return (
-                "`DEEPSEEK_WEB_ENABLED` is off, so DeepSeek web requests are disabled."
-            )
+            return "`DEEPSEEK_WEB_ENABLED` is off, so DeepSeek web requests are disabled."
         return "DeepSeek web is enabled. If requests still fail, refresh the saved browser session."
 
     def diagnostic_lines(self) -> List[str]:
@@ -116,12 +93,8 @@ class GeminiClient:
         lines.extend(
             [
                 f"DeepSeek web enabled: {'yes' if self._deepseek_web.enabled else 'no'}",
-                f"Storage state: `{storage_path}`"
-                if storage_path
-                else "Storage state: `unknown`",
-                f"Session index: `{session_index}`"
-                if session_index
-                else "Session index: `unknown`",
+                f"Storage state: `{storage_path}`" if storage_path else "Storage state: `unknown`",
+                f"Session index: `{session_index}`" if session_index else "Session index: `unknown`",
                 f"Timeout: `{getattr(self._deepseek_web, 'timeout_seconds', 'unknown')}s`",
             ]
         )
@@ -222,9 +195,7 @@ class GeminiClient:
         selected_model = (model or self.config.model or "").strip()
         if selected_model.lower() in {"", "deepseek-web", "digitalocean"}:
             selected_model = os.getenv("DO_PROFILE_MODEL", "deepseek-4-flash").strip()
-        request_messages = (
-            messages if allow_multimodal else self._normalize_text_messages(messages)
-        )
+        request_messages = messages if allow_multimodal else self._normalize_text_messages(messages)
         if not request_messages:
             raise RuntimeError("DigitalOcean request has no message content.")
 
@@ -260,9 +231,7 @@ class GeminiClient:
                             seconds=60,
                             reason="DigitalOcean inference rate limit or quota reached.",
                         )
-                    raise RuntimeError(
-                        f"DigitalOcean HTTP {resp.status}: {str(detail)[:500]}"
-                    )
+                    raise RuntimeError(f"DigitalOcean HTTP {resp.status}: {str(detail)[:500]}")
         finally:
             if owned_session:
                 await session.close()
@@ -281,9 +250,7 @@ class GeminiClient:
         return None
 
     @classmethod
-    def _normalize_text_messages(
-        cls, messages: List[Dict[str, Any]]
-    ) -> List[Dict[str, str]]:
+    def _normalize_text_messages(cls, messages: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         normalized: List[Dict[str, str]] = []
         for message in messages:
             role = str(message.get("role") or "user")
@@ -312,11 +279,7 @@ class GeminiClient:
 
                 if item_type == "image_url":
                     image_url = item.get("image_url")
-                    url = (
-                        image_url.get("url")
-                        if isinstance(image_url, dict)
-                        else image_url
-                    )
+                    url = image_url.get("url") if isinstance(image_url, dict) else image_url
                     if isinstance(url, str) and url.strip():
                         if url.startswith("data:"):
                             parts.append("[Image omitted from this text-only request]")
@@ -331,6 +294,8 @@ class GeminiClient:
 
         return str(content or "").strip()
 
+
+
     # ------------------------------------------------------------------
     # Pre-call checks (rate limit + service block)
     # ------------------------------------------------------------------
@@ -342,17 +307,12 @@ class GeminiClient:
             return blocked
         is_limited, retry_after = await self._rate_limiter.is_rate_limited(user_id)
         if is_limited:
-            return Messages.format(
-                Messages.AI_RATE_LIMIT, seconds=int(max(1, retry_after))
-            )
+            return Messages.format(Messages.AI_RATE_LIMIT, seconds=int(max(1, retry_after)))
         return None
 
-    async def _generate_search_queries(
-        self, user_content: str, num_queries: int = 5
-    ) -> List[str]:
+    async def _generate_search_queries(self, user_content: str, num_queries: int = 5) -> List[str]:
         """Use deepseek to decompose the user's prompt into optimal search queries."""
         import datetime
-
         current_date = datetime.datetime.now().strftime("%B %Y")
         sys_prompt = (
             "You are a search query generator. The user wants to research a topic. "
@@ -360,95 +320,83 @@ class GeminiClient:
             f"you MUST append '{current_date}' or the current year to the search queries to ensure fresh results.\n"
             f"Break their request down into exactly {num_queries} highly specific, distinct search engine queries. "
             "Output ONLY a raw JSON array of strings. Do not use markdown code blocks. "
-            'Example: ["query 1", "query 2"]'
+            "Example: [\"query 1\", \"query 2\"]"
         )
         messages = [
             {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": user_content},
+            {"role": "user", "content": user_content}
         ]
         try:
             content = await self._call(
-                messages, temperature=0.7, max_tokens=150, json_mode=False
+                messages,
+                temperature=0.7,
+                max_tokens=150,
+                json_mode=False
             )
             if not content:
                 return [user_content]
-
+            
             # Clean markdown code blocks if the model ignored instructions
-            clean_content = re.sub(r"```json|```", "", content).strip()
-
+            clean_content = re.sub(r'```json|```', '', content).strip()
+            
             # Extract array
-            match = re.search(r"\[(.*)\]", clean_content, re.DOTALL)
+            match = re.search(r'\[(.*)\]', clean_content, re.DOTALL)
             if match:
                 data = json.loads(f"[{match.group(1)}]")
                 if isinstance(data, list) and all(isinstance(x, str) for x in data):
                     return data[:num_queries]
-
+            
             return [user_content]
         except Exception as e:
             logger.error(f"Failed to generate search queries: {e}")
             return [user_content]
 
-    async def _web_search(
-        self, query: str, *, max_results: int = 5
-    ) -> List[WebSearchResult]:
+
+
+    async def _web_search(self, query: str, *, max_results: int = 5) -> List[WebSearchResult]:
         if self._brave_search_api_key:
             return await self._search_brave(query, max_results=max_results)
         if self._tavily_api_key:
             return await self._search_tavily(query, max_results=max_results)
         if self._serpapi_api_key:
             return await self._search_serpapi(query, max_results=max_results)
-
+        
         # Fallback to free DuckDuckGo search if no API keys are present
         try:
             from duckduckgo_search import DDGS
-
             def _sync_search():
                 with DDGS() as ddgs:
                     return list(ddgs.text(query, max_results=max_results))
-
             loop = asyncio.get_running_loop()
             raw_results = await loop.run_in_executor(None, _sync_search)
             results = []
             for r in raw_results:
-                results.append(
-                    WebSearchResult(
-                        title=str(r.get("title", "")),
-                        url=str(r.get("href", "")),
-                        snippet=str(r.get("body", "")),
-                    )
-                )
+                results.append(WebSearchResult(
+                    title=str(r.get("title", "")),
+                    url=str(r.get("href", "")),
+                    snippet=str(r.get("body", ""))
+                ))
             return results
         except Exception as e:
             logger.error(f"DDG Search fallback failed: {e}")
             return []
 
-    async def _search_brave(
-        self, query: str, *, max_results: int
-    ) -> List[WebSearchResult]:
+    async def _search_brave(self, query: str, *, max_results: int) -> List[WebSearchResult]:
         session, owned_session = self._get_http_session(timeout=20)
         try:
             async with session.get(
                 "https://api.search.brave.com/res/v1/web/search",
-                headers={
-                    "X-Subscription-Token": self._brave_search_api_key,
-                    "Accept": "application/json",
-                },
+                headers={"X-Subscription-Token": self._brave_search_api_key, "Accept": "application/json"},
                 params={"q": query, "count": max_results, "freshness": "pm"},
             ) as resp:
                 data = await resp.json(content_type=None)
                 if resp.status >= 400:
-                    raise RuntimeError(
-                        f"Brave Search HTTP {resp.status}: {str(data)[:300]}"
-                    )
+                    raise RuntimeError(f"Brave Search HTTP {resp.status}: {str(data)[:300]}")
         finally:
             if owned_session:
                 await session.close()
 
-        items = (
-            ((data or {}).get("web") or {}).get("results")
-            if isinstance(data, dict)
-            else None
-        )
+        items = ((data or {}).get("web") or {}).get("results") if isinstance(data, dict) else None
         return [
             WebSearchResult(
                 title=str(item.get("title") or "Untitled")[:180],
@@ -459,9 +407,7 @@ class GeminiClient:
             if isinstance(item, dict) and item.get("url")
         ]
 
-    async def _search_tavily(
-        self, query: str, *, max_results: int
-    ) -> List[WebSearchResult]:
+    async def _search_tavily(self, query: str, *, max_results: int) -> List[WebSearchResult]:
         session, owned_session = self._get_http_session(timeout=20)
         try:
             async with session.post(
@@ -492,19 +438,12 @@ class GeminiClient:
             if isinstance(item, dict) and item.get("url")
         ]
 
-    async def _search_serpapi(
-        self, query: str, *, max_results: int
-    ) -> List[WebSearchResult]:
+    async def _search_serpapi(self, query: str, *, max_results: int) -> List[WebSearchResult]:
         session, owned_session = self._get_http_session(timeout=20)
         try:
             async with session.get(
                 "https://serpapi.com/search.json",
-                params={
-                    "engine": "google",
-                    "q": query,
-                    "api_key": self._serpapi_api_key,
-                    "num": max_results,
-                },
+                params={"engine": "google", "q": query, "api_key": self._serpapi_api_key, "num": max_results},
             ) as resp:
                 data = await resp.json(content_type=None)
                 if resp.status >= 400:
@@ -527,9 +466,7 @@ class GeminiClient:
     def _get_http_session(self, *, timeout: int) -> Tuple[aiohttp.ClientSession, bool]:
         session: Optional[aiohttp.ClientSession] = getattr(self.bot, "session", None)
         if not session or getattr(session, "closed", False):
-            return aiohttp.ClientSession(
-                timeout=aiohttp.ClientTimeout(total=timeout)
-            ), True
+            return aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=timeout)), True
         return session, False
 
     @staticmethod
@@ -565,28 +502,21 @@ class GeminiClient:
             else:
                 label = "user"
             content = self._message_preview(m, limit=200)
-            reply_tag = (
-                self._get_reply_context(m, bot_id, recent_messages) if bot_id else None
-            )
+            reply_tag = self._get_reply_context(m, bot_id, recent_messages) if bot_id else None
             reply_suffix = f" {reply_tag}" if reply_tag else ""
             return f"[{label}] {m.author} ({m.author.id}): {content}{reply_suffix}"
 
-        history = "\n".join(_format_line(m) for m in recent_messages[-10:]) or "None"
-        mention_lines = (
-            "\n".join(
-                f"- index={m.index} is_bot={m.is_bot} name={m.display_name} id={m.user_id}"
-                for m in mentions
-            )
-            or "None"
-        )
+        history = "\n".join(
+            _format_line(m) for m in recent_messages[-10:]
+        ) or "None"
+        mention_lines = "\n".join(
+            f"- index={m.index} is_bot={m.is_bot} name={m.display_name} id={m.user_id}"
+            for m in mentions
+        ) or "None"
         perm_lines = "\n".join(
             f"- {k}: {v}" for k, v in sorted(permissions.to_dict().items())
         )
-        context_channel_id = (
-            getattr(getattr(recent_messages[-1], "channel", None), "id", "Unknown")
-            if recent_messages
-            else "Unknown"
-        )
+        context_channel_id = getattr(getattr(recent_messages[-1], "channel", None), "id", "Unknown") if recent_messages else "Unknown"
         bot_id_str = str(bot_id) if bot_id else "Unknown"
         return (
             f"Server: {guild.name} (ID: {guild.id}, Members: {guild.member_count or '?'})\n"
@@ -701,9 +631,7 @@ class GeminiClient:
             if db:
                 stored_memory = await db.get_ai_memory(author.id) or ""
         except Exception:
-            logger.debug(
-                "Failed to load AI memory for user %d", author.id, exc_info=True
-            )
+            logger.debug("Failed to load AI memory for user %d", author.id, exc_info=True)
         past_memory = stored_memory if signals.mode != ConversationMode.RESEARCH else ""
         if signals.mode != ConversationMode.RESEARCH:
             is_continuation = self._is_conversation_continuation(
@@ -714,7 +642,8 @@ class GeminiClient:
 
         web_context = ""
         uses_native_search = (
-            signals.mode == ConversationMode.RESEARCH and self._deepseek_web.enabled
+            signals.mode == ConversationMode.RESEARCH
+            and self._deepseek_web.enabled
         )
         if (
             signals.mode == ConversationMode.RESEARCH
@@ -722,9 +651,7 @@ class GeminiClient:
             and self.has_web_search
         ):
             try:
-                queries = await self._generate_search_queries(
-                    user_content, num_queries=3
-                )
+                queries = await self._generate_search_queries(user_content, num_queries=3)
                 seen_urls: Set[str] = set()
                 results: List[WebSearchResult] = []
                 for query in queries[:3]:
@@ -800,9 +727,7 @@ class GeminiClient:
 
             # Fire-and-forget memory update with summarization
             asyncio.create_task(
-                self._update_memory_smart(
-                    author.id, user_content, content, stored_memory
-                )
+                self._update_memory_smart(author.id, user_content, content, stored_memory)
             )
             return content
         except DeepSeekWebAuthError as exc:
@@ -854,13 +779,12 @@ class GeminiClient:
 
         lines: List[str] = []
         bot_id = self.bot.user.id if self.bot.user else None
-
         def record_field(record: Any, name: str, default: Any = None) -> Any:
             if isinstance(record, dict):
                 return record.get(name, default)
             return getattr(record, name, default)
 
-        for m in recent_messages[-self.config.memory_window :]:
+        for m in recent_messages[-self.config.memory_window:]:
             if bot_id and m.author.id == bot_id:
                 author_label = "assistant"
             elif m.author.bot:
@@ -879,9 +803,7 @@ class GeminiClient:
                     if self._is_supported_image_attachment(a)
                 ]
                 if image_names:
-                    extras.append(
-                        f"[image attachment(s): {', '.join(image_names[:3])}]"
-                    )
+                    extras.append(f"[image attachment(s): {', '.join(image_names[:3])}]")
                 else:
                     extras.append(f"[{len(m.attachments)} attachment(s)]")
             if m.embeds:
@@ -896,15 +818,10 @@ class GeminiClient:
                     if self._is_supported_image_attachment(a)
                 ]
                 if snapshot_images:
-                    extras.append(
-                        f"[forwarded image attachment(s): {', '.join(snapshot_images[:3])}]"
-                    )
+                    extras.append(f"[forwarded image attachment(s): {', '.join(snapshot_images[:3])}]")
                     continue
                 snapshot_embeds = record_field(snapshot, "embeds", []) or []
-                if any(
-                    record_field(embed, "image") or record_field(embed, "thumbnail")
-                    for embed in snapshot_embeds
-                ):
+                if any(record_field(embed, "image") or record_field(embed, "thumbnail") for embed in snapshot_embeds):
                     extras.append("[forwarded embed image]")
 
             display = content[:2000]
@@ -913,9 +830,7 @@ class GeminiClient:
             if not display:
                 display = " ".join(extras) if extras else "[empty message]"
 
-            reply_context = (
-                self._get_reply_context(m, bot_id, recent_messages) if bot_id else None
-            )
+            reply_context = self._get_reply_context(m, bot_id, recent_messages) if bot_id else None
             reply_prefix = f"{reply_context} " if reply_context else ""
             lines.append(f"[{author_label}] {name}: {reply_prefix}{display}")
 
@@ -936,9 +851,7 @@ class GeminiClient:
             return False
 
         current = recent_messages[-1]
-        if current.author.id == author.id and self._is_reply_to_bot(
-            current, bot_id, recent_messages
-        ):
+        if current.author.id == author.id and self._is_reply_to_bot(current, bot_id, recent_messages):
             return True
 
         if not any(msg.author.id == bot_id for msg in recent_messages[-4:]):
@@ -971,51 +884,11 @@ class GeminiClient:
     @staticmethod
     def _conversation_topic_words(text: str) -> Set[str]:
         stopwords = {
-            "about",
-            "after",
-            "again",
-            "also",
-            "and",
-            "are",
-            "can",
-            "could",
-            "did",
-            "does",
-            "for",
-            "from",
-            "game",
-            "have",
-            "how",
-            "into",
-            "is",
-            "it",
-            "like",
-            "me",
-            "my",
-            "not",
-            "of",
-            "on",
-            "or",
-            "should",
-            "that",
-            "the",
-            "their",
-            "them",
-            "then",
-            "this",
-            "to",
-            "valid",
-            "was",
-            "what",
-            "when",
-            "where",
-            "which",
-            "who",
-            "why",
-            "with",
-            "would",
-            "you",
-            "your",
+            "about", "after", "again", "also", "and", "are", "can", "could",
+            "did", "does", "for", "from", "game", "have", "how", "into", "is",
+            "it", "like", "me", "my", "not", "of", "on", "or", "should", "that",
+            "the", "their", "them", "then", "this", "to", "valid", "was", "what",
+            "when", "where", "which", "who", "why", "with", "would", "you", "your",
         }
         clean = re.sub(r"<[@#][!&]?\d+>", " ", text.lower())
         words: Set[str] = set()
@@ -1052,49 +925,31 @@ class GeminiClient:
                 content = (msg.content or "").strip()
                 if not content or len(content) < 2:
                     continue
-
+                    
                 name = getattr(msg.author, "display_name", None) or str(msg.author)
                 if msg.author.id == bot_id:
                     messages.append({"role": "assistant", "content": content[:2000]})
                 elif msg.author.id == author.id:
                     # Detect if this user message is a reply to the bot's message
-                    reply_context = self._get_reply_context(
-                        msg, bot_id, recent_messages
-                    )
+                    reply_context = self._get_reply_context(msg, bot_id, recent_messages)
                     if reply_context:
-                        messages.append(
-                            {
-                                "role": "user",
-                                "content": f"{reply_context}: {content[:2000]}",
-                            }
-                        )
+                        messages.append({"role": "user", "content": f"{reply_context}: {content[:2000]}"})
                     else:
                         messages.append({"role": "user", "content": content[:2000]})
                 else:
                     # Inject other users' context as a user turn prefixed with their name
                     speaker = f"[other bot {name}]" if msg.author.bot else f"[{name}]"
-                    reply_context = self._get_reply_context(
-                        msg, bot_id, recent_messages
-                    )
+                    reply_context = self._get_reply_context(msg, bot_id, recent_messages)
                     if reply_context:
-                        messages.append(
-                            {
-                                "role": "user",
-                                "content": f"{reply_context} {speaker}: {content[:2000]}",
-                            }
-                        )
+                        messages.append({"role": "user", "content": f"{reply_context} {speaker}: {content[:2000]}"})
                     else:
-                        messages.append(
-                            {"role": "user", "content": f"{speaker}: {content[:2000]}"}
-                        )
+                        messages.append({"role": "user", "content": f"{speaker}: {content[:2000]}"})
 
         user_prompt = plan.user_prompt
         # For the current (last) message, also detect reply context
         if recent_messages and bot_id:
             current_msg = recent_messages[-1]
-            reply_context = self._get_reply_context(
-                current_msg, bot_id, recent_messages
-            )
+            reply_context = self._get_reply_context(current_msg, bot_id, recent_messages)
             if reply_context and current_msg.author.id == author.id:
                 user_prompt = f"{reply_context}: {user_prompt}"
 
@@ -1137,6 +992,8 @@ class GeminiClient:
 
         messages.append({"role": "user", "content": user_prompt})
         return messages
+
+
 
     async def _collect_image_context(
         self,
@@ -1191,9 +1048,7 @@ class GeminiClient:
                         return None
                     return data
             except Exception:
-                logger.debug(
-                    "Could not download Discord embed image %s", url, exc_info=True
-                )
+                logger.debug("Could not download Discord embed image %s", url, exc_info=True)
                 return None
             finally:
                 if owned_session:
@@ -1211,11 +1066,7 @@ class GeminiClient:
                 if callable(read_method):
                     return await read_method(use_cached=True)
             except Exception:
-                logger.debug(
-                    "Could not read Discord image attachment %s directly",
-                    filename,
-                    exc_info=True,
-                )
+                logger.debug("Could not read Discord image attachment %s directly", filename, exc_info=True)
 
             for attr_name in ("url", "proxy_url"):
                 url = str(field(attachment, attr_name, "") or "")
@@ -1275,18 +1126,9 @@ class GeminiClient:
                         data = await read_image_url(url)
                         if not data:
                             continue
-                        filename = (
-                            url.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1]
-                            or f"{attr_name}.png"
-                        )
+                        filename = url.split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1] or f"{attr_name}.png"
                         mime_type = self._mime_type_from_url(url)
-                        if await add_image(
-                            msg=msg,
-                            filename=filename,
-                            mime_type=mime_type,
-                            data=data,
-                            label=label,
-                        ):
+                        if await add_image(msg=msg, filename=filename, mime_type=mime_type, data=data, label=label):
                             return True
                         break
             return False
@@ -1313,17 +1155,11 @@ class GeminiClient:
             if reference and getattr(reference, "message_id", None):
                 replied_message = getattr(reference, "resolved", None)
                 if not isinstance(replied_message, discord.Message):
-                    fetch_message = getattr(
-                        source_message.channel, "fetch_message", None
-                    )
+                    fetch_message = getattr(source_message.channel, "fetch_message", None)
                     if callable(fetch_message):
                         try:
                             replied_message = await fetch_message(reference.message_id)
-                        except (
-                            discord.HTTPException,
-                            discord.NotFound,
-                            discord.Forbidden,
-                        ):
+                        except (discord.HTTPException, discord.NotFound, discord.Forbidden):
                             replied_message = None
                 if isinstance(replied_message, discord.Message):
                     await collect_message(replied_message)
@@ -1401,20 +1237,20 @@ class GeminiClient:
         ref = msg.reference.resolved
         if isinstance(ref, discord.Message) and ref.author.id == bot_id:
             ref_content = self._message_preview(ref, limit=1000)
-            return f'[replying to your message: "{ref_content}"]'
+            return f"[replying to your message: \"{ref_content}\"]"
         for m in all_messages:
             if m.id == ref_id and m.author.id == bot_id:
                 ref_content = self._message_preview(m, limit=1000)
-                return f'[replying to your message: "{ref_content}"]'
+                return f"[replying to your message: \"{ref_content}\"]"
         if isinstance(ref, discord.Message):
             ref_name = getattr(ref.author, "display_name", None) or str(ref.author)
             ref_content = self._message_preview(ref, limit=1000)
-            return f'[replying to {ref_name}: "{ref_content}"]'
+            return f"[replying to {ref_name}: \"{ref_content}\"]"
         for m in all_messages:
             if m.id == ref_id:
                 ref_name = getattr(m.author, "display_name", None) or str(m.author)
                 ref_content = self._message_preview(m, limit=1000)
-                return f'[replying to {ref_name}: "{ref_content}"]'
+                return f"[replying to {ref_name}: \"{ref_content}\"]"
         return None
 
     def _is_reply_to_bot(
@@ -1463,15 +1299,10 @@ class GeminiClient:
                     if GeminiClient._is_supported_image_attachment(a)
                 ]
                 if snapshot_images:
-                    extras.append(
-                        f"forwarded image attachment(s): {', '.join(snapshot_images[:3])}"
-                    )
+                    extras.append(f"forwarded image attachment(s): {', '.join(snapshot_images[:3])}")
                     continue
                 snapshot_embeds = record_field(snapshot, "embeds", []) or []
-                if any(
-                    record_field(embed, "image") or record_field(embed, "thumbnail")
-                    for embed in snapshot_embeds
-                ):
+                if any(record_field(embed, "image") or record_field(embed, "thumbnail") for embed in snapshot_embeds):
                     extras.append("forwarded embed image")
             text = ", ".join(extras) if extras else "non-text message"
         return text[:limit]
@@ -1490,9 +1321,7 @@ class GeminiClient:
         web_context: str = "",
         uses_native_search: bool = False,
     ) -> ConversationPlan:
-        display_name = (
-            author.display_name if isinstance(author, discord.Member) else str(author)
-        )
+        display_name = author.display_name if isinstance(author, discord.Member) else str(author)
         role_snippet = ""
         if isinstance(author, discord.Member):
             top = [r.name for r in author.roles[1:4]]
@@ -1506,15 +1335,13 @@ class GeminiClient:
             f"Time: {_now().astimezone().strftime('%Y-%m-%d %H:%M %Z')}",
         ]
         if is_continuation:
-            context_parts.append(
-                "Context: This is a continuation of an active conversation."
-            )
+            context_parts.append("Context: This is a continuation of an active conversation.")
         if location_context.strip():
             context_parts.append(f"Server location context: {location_context.strip()}")
-
+        
         full_context = "### CURRENT STATE & CONTEXT ###\n"
         full_context += "\n".join(context_parts) + "\n\n"
-
+        
         # Keep creator identity available in every mode without forcing unnatural replies.
         full_context += (
             "### CREATOR CONTEXT ###\n"
@@ -1536,7 +1363,7 @@ class GeminiClient:
             full_context += f"### WEB SEARCH RESULTS ###\n{web_context}\n\n"
         elif uses_native_search:
             full_context += "### LIVE SEARCH ###\nDeepSeek web search is enabled for this request. Use current search results and include source URLs when available.\n\n"
-
+        
         # Memory section
         if past_memory.strip():
             # Trim to last meaningful chunk
@@ -1571,7 +1398,9 @@ class GeminiClient:
                     )
                 sys_prompt += "- Provide a brief, direct answer.\n- If there are key points, use a short bulleted list. Do not use markdown tables.\n- Keep it extremely concise.\n"
                 if signals.asks_for_current_info:
-                    sys_prompt += "- The user is asking for current/latest information. Use only the web search results for current claims.\n"
+                    sys_prompt += (
+                        "- The user is asking for current/latest information. Use only the web search results for current claims.\n"
+                    )
                 if signals.asks_for_sources:
                     sys_prompt += "- The user asked for sources. Include the result numbers and URLs where useful.\n"
                 if signals.asks_for_long_answer:
@@ -1595,11 +1424,9 @@ class GeminiClient:
                 sys_prompt = f"{MOD_GUIDANCE_SYSTEM_PROMPT}\n\n"
             sys_prompt += f"{full_context}"
             sys_prompt += "Provide practical moderation guidance.\n"
-            sys_prompt += (
-                f"Use `{bot_mention}` in command examples so they can copy-paste.\n"
-            )
+            sys_prompt += f"Use `{bot_mention}` in command examples so they can copy-paste.\n"
             sys_prompt += "If the user is missing info (target, reason, duration), ask ONE question.\n"
-
+            
             return ConversationPlan(
                 system_prompt=sys_prompt,
                 user_prompt=user_content,
@@ -1634,7 +1461,7 @@ class GeminiClient:
         if not is_continuation:
             sys_prompt = f"{CONVERSATION_SYSTEM_PROMPT}\n\n"
         sys_prompt += f"{full_context}### INSTRUCTIONS ###\n{task_instruction}"
-
+        
         return ConversationPlan(
             system_prompt=sys_prompt,
             user_prompt=user_content,
@@ -1714,12 +1541,7 @@ class GeminiClient:
             low,
         ):
             return True
-        return bool(
-            re.search(
-                r"\b(what time|when is|where is|who is|what is (?:it|that|this|the))\b",
-                low,
-            )
-        )
+        return bool(re.search(r"\b(what time|when is|where is|who is|what is (?:it|that|this|the))\b", low))
 
     @staticmethod
     def _strip_citation_tokens(text: str) -> str:
@@ -1738,17 +1560,13 @@ class GeminiClient:
             if (
                 line.strip().startswith("|")
                 and i + 1 < len(lines)
-                and re.match(
-                    r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$", lines[i + 1]
-                )
+                and re.match(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$", lines[i + 1])
             ):
                 headers = [cell.strip() for cell in line.strip().strip("|").split("|")]
                 i += 2
                 bullets: List[str] = []
                 while i < len(lines) and lines[i].strip().startswith("|"):
-                    cells = [
-                        cell.strip() for cell in lines[i].strip().strip("|").split("|")
-                    ]
+                    cells = [cell.strip() for cell in lines[i].strip().strip("|").split("|")]
                     if len(cells) >= 2:
                         label = cells[0].strip("* ")
                         detail = " | ".join(cells[1:]).strip()
@@ -1799,12 +1617,11 @@ class GeminiClient:
 
             await db.update_ai_memory(user_id, new_memory)
         except Exception:
-            logger.debug(
-                "Failed to update AI memory for user %d", user_id, exc_info=True
-            )
+            logger.debug("Failed to update AI memory for user %d", user_id, exc_info=True)
 
     # Keep old method name as alias for compatibility
     async def _update_memory(
         self, user_id: int, user_msg: str, bot_response: str, past_memory: str
     ) -> None:
         await self._update_memory_smart(user_id, user_msg, bot_response, past_memory)
+

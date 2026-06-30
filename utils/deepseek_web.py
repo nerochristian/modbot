@@ -55,9 +55,7 @@ class DeepSeekWebClient:
         self.session_index_path = Path(
             os.getenv(
                 "DEEPSEEK_WEB_SESSION_INDEX",
-                str(
-                    self.storage_state_path.with_name("deepseek-channel-sessions.json")
-                ),
+                str(self.storage_state_path.with_name("deepseek-channel-sessions.json")),
             )
         )
         self.timeout_seconds = min(
@@ -504,7 +502,9 @@ class DeepSeekWebClient:
             updated = await toggle.get_attribute("aria-pressed") == "true"
             if updated != enabled:
                 state = "enabled" if enabled else "disabled"
-                raise DeepSeekWebError(f"DeepSeek {label} could not be {state}.")
+                raise DeepSeekWebError(
+                    f"DeepSeek {label} could not be {state}."
+                )
 
     async def _attach_images(
         self,
@@ -537,7 +537,8 @@ class DeepSeekWebClient:
     async def _wait_for_image_ready(self, page: Any) -> None:
         """Wait until DeepSeek has uploaded and processed every attachment."""
         ready_button = page.locator(
-            "div.ds-button--primary.ds-button--circle:not(.ds-button--disabled)"
+            "div.ds-button--primary.ds-button--circle"
+            ":not(.ds-button--disabled)"
         ).first
         try:
             await ready_button.wait_for(
@@ -589,7 +590,8 @@ class DeepSeekWebClient:
             return
         send_button = await self._visible_locator(
             page.locator(
-                "div.ds-button--primary.ds-button--circle:not(.ds-button--disabled)"
+                "div.ds-button--primary.ds-button--circle"
+                ":not(.ds-button--disabled)"
             )
         )
         if send_button is None:
@@ -708,7 +710,9 @@ class DeepSeekWebClient:
                 "DeepSeek answer did not stabilize before timeout; returning latest text"
             )
             return last_text, last_links
-        raise DeepSeekWebError("DeepSeek timed out before a final answer was returned.")
+        raise DeepSeekWebError(
+            "DeepSeek timed out before a final answer was returned."
+        )
 
     async def _copy_rendered_answer(
         self,
@@ -747,7 +751,10 @@ class DeepSeekWebClient:
     ) -> bool:
         if not current_fingerprint:
             return False
-        return current_count > before_count or current_fingerprint != before_fingerprint
+        return (
+            current_count > before_count
+            or current_fingerprint != before_fingerprint
+        )
 
     async def _run(
         self,
@@ -824,10 +831,12 @@ class DeepSeekWebClient:
                     _stream_content, stream_source_links = (
                         self._parse_completion_stream(body)
                     )
-                    answer, rendered_source_links = await self._copy_rendered_answer(
-                        page,
-                        before_count,
-                        before_fingerprint,
+                    answer, rendered_source_links = (
+                        await self._copy_rendered_answer(
+                            page,
+                            before_count,
+                            before_fingerprint,
+                        )
                     )
                     source_links = rendered_source_links or stream_source_links
                 except Exception:
@@ -844,12 +853,12 @@ class DeepSeekWebClient:
                         stable_reads_required=5 if lane == "research" else 3,
                     )
                     source_links = rendered_source_links or stream_source_links
-                if (
-                    search
-                    and source_links
-                    and not any(link in answer for link in source_links)
+                if search and source_links and not any(
+                    link in answer for link in source_links
                 ):
-                    sources = "\n".join(f"- <{link}>" for link in source_links[:8])
+                    sources = "\n".join(
+                        f"- <{link}>" for link in source_links[:8]
+                    )
                     answer = f"{answer}\n\n__BOT_SOURCES__\n{sources}"
                 if lane.startswith("chat:"):
                     await self._remember_channel_session(

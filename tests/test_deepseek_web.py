@@ -10,7 +10,7 @@ class DeepSeekWebHelperTests(unittest.TestCase):
         body = (
             b'data: {"v":{"results":[{"url":"https://example.com/page?q=1"}]}}\n'
             b'data: {"content":"Generated conversation title"}\n'
-            b"data: [DONE]\n"
+            b'data: [DONE]\n'
         )
 
         metadata, sources = DeepSeekWebClient._parse_completion_stream(body)
@@ -29,7 +29,10 @@ class DeepSeekWebHelperTests(unittest.TestCase):
         self.assertIn("[older context trimmed]", result)
 
     def test_clean_answer_removes_citation_ui_artifacts(self) -> None:
-        raw = "markdown\nCopy\n**Answer**\n-\n2\n\nReleased on June 10, 2026-.\n```"
+        raw = (
+            "markdown\nCopy\n**Answer**\n-\n2\n\n"
+            "Released on June 10, 2026-.\n```"
+        )
 
         result = DeepSeekWebClient._clean_answer(raw)
 
@@ -133,7 +136,8 @@ class DeepSeekWebChatModeTests(unittest.IsolatedAsyncioTestCase):
         await client._wait_for_image_ready(page)
 
         page.locator.assert_called_once_with(
-            "div.ds-button--primary.ds-button--circle:not(.ds-button--disabled)"
+            "div.ds-button--primary.ds-button--circle"
+            ":not(.ds-button--disabled)"
         )
         ready_button.wait_for.assert_awaited_once_with(
             state="visible",
@@ -242,7 +246,7 @@ class DeepSeekWebChatModeTests(unittest.IsolatedAsyncioTestCase):
         rename_input = MagicMock()
 
         def locator(selector: str) -> MagicMock:
-            if selector.startswith("a[href="):
+            if selector.startswith('a[href='):
                 return link
             if selector.startswith("input.ds-input__input"):
                 return input_candidates
@@ -341,9 +345,9 @@ class DeepSeekWebChatModeTests(unittest.IsolatedAsyncioTestCase):
     def test_channel_session_index_round_trips_only_safe_urls(self) -> None:
         with TemporaryDirectory() as directory:
             client = DeepSeekWebClient()
-            client.session_index_path = (
-                client.session_index_path.__class__(directory) / "sessions.json"
-            )
+            client.session_index_path = client.session_index_path.__class__(
+                directory
+            ) / "sessions.json"
             client._channel_sessions = {
                 "1:2": {
                     "url": "https://chat.deepseek.com/a/chat/s/abc1234567890-def",

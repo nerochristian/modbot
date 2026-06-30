@@ -87,18 +87,14 @@ class ResearchFormattingTests(unittest.TestCase):
         second_user = SimpleNamespace(id=2, bot=False)
         bot_user = SimpleNamespace(id=99, bot=True)
         messages = [
-            SimpleNamespace(
-                author=first_user, content="roleplay as my friend", reference=None
-            ),
-            SimpleNamespace(
-                author=bot_user, content="I can chat like a friend", reference=None
-            ),
-            SimpleNamespace(
-                author=second_user, content="so can you be my gf", reference=None
-            ),
+            SimpleNamespace(author=first_user, content="roleplay as my friend", reference=None),
+            SimpleNamespace(author=bot_user, content="I can chat like a friend", reference=None),
+            SimpleNamespace(author=second_user, content="so can you be my gf", reference=None),
         ]
 
-        self.assertTrue(client._is_conversation_continuation(second_user, messages))
+        self.assertTrue(
+            client._is_conversation_continuation(second_user, messages)
+        )
 
     def test_active_chat_window_expires(self) -> None:
         cog = object.__new__(AIModeration)
@@ -106,15 +102,15 @@ class ResearchFormattingTests(unittest.TestCase):
         cog._mark_chat_active(123)
         self.assertTrue(cog._is_chat_active(123))
 
-        cog._active_chat_channels[123] = datetime.now(timezone.utc) - timedelta(
-            seconds=1
-        )
+        cog._active_chat_channels[123] = datetime.now(timezone.utc) - timedelta(seconds=1)
         self.assertFalse(cog._is_chat_active(123))
         self.assertNotIn(123, cog._active_chat_channels)
 
     def test_deepseek_session_is_named_for_server_and_channel(self) -> None:
         guild = SimpleNamespace(id=10, name="Soul")
-        message = SimpleNamespace(channel=SimpleNamespace(id=20, name="general-chat"))
+        message = SimpleNamespace(
+            channel=SimpleNamespace(id=20, name="general-chat")
+        )
 
         key, name = GeminiClient._deepseek_session_identity(guild, message)
 
