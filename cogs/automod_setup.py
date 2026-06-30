@@ -256,6 +256,227 @@ class ProfilePaginatorView(discord.ui.View):
             await interaction.message.edit(embed=self.build_embed(interaction.guild), view=self)
 
 
+def _format_duration(seconds: Any) -> str:
+    value = _coerce_int(seconds) or 0
+    if value <= 0:
+        return "off"
+    if value % 86400 == 0:
+        amount = value // 86400
+        unit = "day" if amount == 1 else "days"
+        return f"{amount} {unit}"
+    if value % 3600 == 0:
+        amount = value // 3600
+        unit = "hour" if amount == 1 else "hours"
+        return f"{amount} {unit}"
+    if value % 60 == 0:
+        amount = value // 60
+        unit = "minute" if amount == 1 else "minutes"
+        return f"{amount} {unit}"
+    return f"{value}s"
+
+
+def _preview_values(values: Any, *, empty: str = "None", limit: int = 8) -> str:
+    if not isinstance(values, list) or not values:
+        return empty
+    shown = [str(value) for value in values[:limit]]
+    extra = len(values) - len(shown)
+    preview = ", ".join(shown)
+    if extra > 0:
+        preview = f"{preview}, +{extra} more"
+    return preview[:900]
+
+
+def _review_description(settings: Mapping[str, Any], summary: str) -> str:
+    badwords = settings.get("automod_badwords", [])
+    link_mode = str(settings.get("automod_links_mode", "dangerous")).title()
+    return (
+        f"{summary[:500]}\n\n"
+        "Review the generated setup before I save it. Use the buttons below to edit the panels that need changes.\n\n"
+        f"**Blocked Words**\n"
+        f"Status: **{'On' if settings.get('automod_badwords_enabled', False) else 'Off'}**\n"
+        f"Words: `{_preview_values(badwords)}`\n\n"
+        f"**Links**\n"
+        f"Status: **{'On' if settings.get('automod_links_enabled', False) else 'Off'}**\n"
+        f"Mode: **{link_mode}**\n"
+        f"Allowed links: `{_preview_values(settings.get('automod_links_whitelist', []))}`\n"
+        f"Safe domains: `{_preview_values(settings.get('automod_whitelisted_domains', []))}`\n\n"
+        f"**Invites and Security**\n"
+        f"Invites: **{'On' if settings.get('automod_invites_enabled', False) else 'Off'}**\n"
+        f"Allowed invite codes: `{_preview_values(settings.get('automod_allowed_invites', []))}`\n"
+        f"Scam protection: **{'On' if settings.get('automod_scam_protection', False) else 'Off'}**\n\n"
+        f"**Limits and Actions**\n"
+        f"Spam: **{settings.get('automod_spam_threshold', 5)} messages / {settings.get('automod_spam_window', 5)}s**\n"
+        f"Mentions: **{settings.get('automod_max_mentions', 5)} max**\n"
+        f"Regular action: **{str(settings.get('automod_punishment', 'warn')).title()}**\n"
+        f"Security action: **{str(settings.get('automod_security_punishment', 'timeout')).title()}**"
+    )
+
+
+def _modal_update_from_fields(fields: Mapping[str, str]) -> dict[str, Any]:
+    return validate_automod_update({"settings": dict(fields)}, require_changes=False)
+
+
+class SetupReviewModal(discord.ui.Modal):
+    def __init__(
+        self,
+        view: "SetupReviewView",
+        title: str,
+        fields: list[tuple[str, str, str, discord.TextStyle]],
+    ) -> None:
+        super().__init__(title=title, timeout=300)
+        self.review_view = view
+        self.field_keys: list[str] = []
+        for key, label, value, style in fields:
+            text_input = discord.ui.TextInput(
+                label=label,
+                default=str(value or "")[:4000],
+                style=style,
+                required=False,
+                max_length=4000,
+            )
+            self.field_keys.append(key)
+            self.add_item(text_input)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        values = {
+            key: str(item.value)
+            for key, item in zip(self.field_keys, self.children)
+            if isinstance(item, discord.ui.TextInput)
+        }
+        update = _modal_update_from_fields(values)
+        self.review_view.settings.update(update)
+        await interaction.response.defer(ephemeral=True)
+        await self.review_view.refresh_message(interaction.guild)
+
+
+class SetupReviewView(discord.ui.View):
+    def __init__(self, owner_id: int, settings: Mapping[str, Any], icons: Mapping[str, str], summary: str) -> None:
+        super().__init__(timeout=600)
+        self.owner_id = owner_id
+        self.settings = copy.deepcopy(dict(settings))
+        self.icons = icons
+        self.summary = summary
+        self.confirmed = False
+        self.cancelled = False
+        self.message: Optional[discord.Message] = None
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id == self.owner_id:
+            return True
+        await interaction.response.send_message("This setup belongs to another admin.", ephemeral=True)
+        return False
+
+    async def build_embed(self, guild: Optional[discord.Guild]) -> discord.Embed:
+        return await _setup_embed(
+            guild,
+            kind="info",
+            title="Review AutoMod Setup",
+            description=_review_description(self.settings, self.summary),
+        )
+
+    async def refresh_message(self, guild: Optional[discord.Guild]) -> None:
+        if self.message is not None:
+            await self.message.edit(embed=await self.build_embed(guild), view=self)
+
+    def _csv(self, key: str) -> str:
+        value = self.settings.get(key, [])
+        return "\n".join(str(item) for item in value) if isinstance(value, list) else ""
+
+    @discord.ui.button(label="Blocked Words", style=discord.ButtonStyle.secondary, row=0)
+    async def blocked_words_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await interaction.response.send_modal(
+            SetupReviewModal(
+                self,
+                "Blocked Words",
+                [
+                    ("automod_badwords_enabled", "Bad words on/off", "on" if self.settings.get("automod_badwords_enabled") else "off", discord.TextStyle.short),
+                    ("automod_badwords", "Blocked words, one per line", self._csv("automod_badwords"), discord.TextStyle.paragraph),
+                ],
+            )
+        )
+
+    @discord.ui.button(label="Links", style=discord.ButtonStyle.secondary, row=0)
+    async def links_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await interaction.response.send_modal(
+            SetupReviewModal(
+                self,
+                "Link Rules",
+                [
+                    ("automod_links_enabled", "Links on/off", "on" if self.settings.get("automod_links_enabled") else "off", discord.TextStyle.short),
+                    ("automod_links_mode", "Mode: dangerous or allowlist", self.settings.get("automod_links_mode", "dangerous"), discord.TextStyle.short),
+                    ("automod_links_whitelist", "Allowed links, one domain per line", self._csv("automod_links_whitelist"), discord.TextStyle.paragraph),
+                    ("automod_whitelisted_domains", "Safe domains, one per line", self._csv("automod_whitelisted_domains"), discord.TextStyle.paragraph),
+                ],
+            )
+        )
+
+    @discord.ui.button(label="Invites", style=discord.ButtonStyle.secondary, row=0)
+    async def invites_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await interaction.response.send_modal(
+            SetupReviewModal(
+                self,
+                "Invite Rules",
+                [
+                    ("automod_invites_enabled", "Invites on/off", "on" if self.settings.get("automod_invites_enabled") else "off", discord.TextStyle.short),
+                    ("automod_allowed_invites", "Allowed invite codes, one per line", self._csv("automod_allowed_invites"), discord.TextStyle.paragraph),
+                    ("automod_scam_protection", "Scam protection on/off", "on" if self.settings.get("automod_scam_protection") else "off", discord.TextStyle.short),
+                ],
+            )
+        )
+
+    @discord.ui.button(label="Limits", style=discord.ButtonStyle.secondary, row=1)
+    async def limits_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await interaction.response.send_modal(
+            SetupReviewModal(
+                self,
+                "Limits",
+                [
+                    ("automod_spam_threshold", "Spam messages", str(self.settings.get("automod_spam_threshold", 5)), discord.TextStyle.short),
+                    ("automod_spam_window", "Spam window seconds", str(self.settings.get("automod_spam_window", 5)), discord.TextStyle.short),
+                    ("automod_max_mentions", "Max mentions", str(self.settings.get("automod_max_mentions", 5)), discord.TextStyle.short),
+                    ("automod_newaccount_days", "New account days", str(self.settings.get("automod_newaccount_days", 7)), discord.TextStyle.short),
+                ],
+            )
+        )
+
+    @discord.ui.button(label="Actions", style=discord.ButtonStyle.secondary, row=1)
+    async def actions_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await interaction.response.send_modal(
+            SetupReviewModal(
+                self,
+                "Actions",
+                [
+                    ("automod_punishment", "Regular action", self.settings.get("automod_punishment", "warn"), discord.TextStyle.short),
+                    ("automod_security_punishment", "Security action", self.settings.get("automod_security_punishment", "timeout"), discord.TextStyle.short),
+                    ("automod_mute_duration", "Timeout seconds", str(self.settings.get("automod_mute_duration", 3600)), discord.TextStyle.short),
+                    ("automod_violation_cooldown", "Violation cooldown seconds", str(self.settings.get("automod_violation_cooldown", 10)), discord.TextStyle.short),
+                ],
+            )
+        )
+
+    @discord.ui.button(label="Save Setup", style=discord.ButtonStyle.success, row=2)
+    async def save_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.confirmed = True
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
+        await interaction.response.defer()
+        if interaction.message:
+            await interaction.message.edit(view=self)
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.danger, row=2)
+    async def cancel_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.cancelled = True
+        for item in self.children:
+            if isinstance(item, discord.ui.Button):
+                item.disabled = True
+        await interaction.response.defer()
+        if interaction.message:
+            await interaction.message.edit(view=self)
+        self.stop()
+
+
 class AutoModChangeModal(discord.ui.Modal, title="Change AutoMod"):
     def __init__(self, cog: Any) -> None:
         super().__init__(timeout=300)
@@ -980,6 +1201,37 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
         settings_update = copy.deepcopy(AUTOMOD_SETTINGS)
         settings_update.update(model_update)
         settings_update["automod_enabled"] = True
+        summary = str(response.get("summary") or "AutoMod has been configured from your answers.").strip()
+
+        review_view = SetupReviewView(interaction.user.id, settings_update, icons, summary)
+        review_view.message = working
+        await working.edit(embed=await review_view.build_embed(guild), view=review_view)
+        await review_view.wait()
+        if review_view.cancelled:
+            await working.edit(
+                embed=await _setup_embed(
+                    guild,
+                    kind="warning",
+                    title="Setup Cancelled",
+                    description="No AutoMod settings were saved.",
+                    color=Config.COLOR_WARNING,
+                ),
+                view=None,
+            )
+            return
+        if not review_view.confirmed:
+            await working.edit(
+                embed=await _setup_embed(
+                    guild,
+                    kind="warning",
+                    title="Setup Timed Out",
+                    description="No AutoMod settings were saved. Run `/automod setup` again when you are ready.",
+                    color=Config.COLOR_WARNING,
+                ),
+                view=None,
+            )
+            return
+        settings_update = copy.deepcopy(review_view.settings)
 
         def apply_update(settings: dict[str, Any]) -> None:
             for key in list(settings):
@@ -988,7 +1240,6 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
             settings.update(settings_update)
 
         saved = await cog._edit_settings(guild.id, apply_update)
-        summary = str(response.get("summary") or "AutoMod has been configured from your answers.").strip()
         complete = await _setup_embed(
             guild,
             kind="success",
