@@ -183,6 +183,23 @@ class SetupQuestionView(discord.ui.View):
         return callback
 
 
+class AutoModChangeModal(discord.ui.Modal, title="Change AutoMod"):
+    def __init__(self, cog: Any) -> None:
+        super().__init__(timeout=300)
+        self.cog = cog
+        self.request = discord.ui.TextInput(
+            label="What would you like to change?",
+            placeholder="Example: make spam stricter and timeout spammers for 10 minutes",
+            style=discord.TextStyle.paragraph,
+            min_length=3,
+            max_length=1000,
+        )
+        self.add_item(self.request)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await _apply_automod_change(self.cog, interaction, str(self.request))
+
+
 def _extract_json_object(raw: str) -> dict[str, Any]:
     content = (raw or "").strip()
     if content.startswith("```"):
@@ -555,7 +572,7 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
             _ACTIVE_SETUPS.discard(guild.id)
 
 
-async def handle_automod_change(cog: Any, interaction: discord.Interaction, request: str) -> None:
+async def _apply_automod_change(cog: Any, interaction: discord.Interaction, request: str) -> None:
     if interaction.guild_id is None:
         await interaction.response.send_message("AutoMod can only be changed inside a server.", ephemeral=True)
         return
@@ -592,3 +609,10 @@ async def handle_automod_change(cog: Any, interaction: discord.Interaction, requ
             embed=ModEmbed.error("AutoMod change failed", f"`{type(exc).__name__}: {str(exc)[:900]}`"),
             ephemeral=True,
         )
+
+
+async def handle_automod_change(cog: Any, interaction: discord.Interaction, request: Optional[str] = None) -> None:
+    if not (request or "").strip():
+        await interaction.response.send_modal(AutoModChangeModal(cog))
+        return
+    await _apply_automod_change(cog, interaction, request)

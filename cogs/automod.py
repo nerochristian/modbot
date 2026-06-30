@@ -1341,9 +1341,9 @@ class AutoMod(commands.Cog):
         await start_setup_wizard(self, interaction)
 
     @automod.command(name="change", description="Modify your AutoMod configuration using natural language")
-    @app_commands.describe(request="What would you like to change?")
+    @app_commands.describe(request="Optional. Leave blank to open a change prompt.")
     @is_admin()
-    async def automod_change(self, interaction: discord.Interaction, request: str) -> None:
+    async def automod_change(self, interaction: discord.Interaction, request: Optional[str] = None) -> None:
         from cogs.automod_setup import handle_automod_change
         await handle_automod_change(self, interaction, request)
 
