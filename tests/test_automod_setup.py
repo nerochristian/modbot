@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import unittest
 
-from cogs.automod_setup import _extract_json_object, validate_automod_update
+from types import SimpleNamespace
+
+from cogs.automod_setup import _extract_json_object, _setup_user_prompt, validate_automod_update
 
 
 class AutoModSetupValidationTests(unittest.TestCase):
@@ -48,6 +50,16 @@ class AutoModSetupValidationTests(unittest.TestCase):
     def test_validate_update_rejects_empty_valid_payload(self) -> None:
         with self.assertRaises(ValueError):
             validate_automod_update({"settings": {"not_a_setting": True}})
+
+    def test_setup_prompt_does_not_send_default_bad_word_list(self) -> None:
+        prompt = _setup_user_prompt(
+            SimpleNamespace(id=1, name="Test Guild", member_count=100),
+            [{"key": "bad_words", "question": "How should blocked words be handled?", "answer": "Common slurs only"}],
+        )
+        self.assertNotIn('"defaults"', prompt)
+        self.assertNotIn('"nigger"', prompt)
+        self.assertNotIn('"kill yourself"', prompt)
+        self.assertIn('"schema"', prompt)
 
 
 if __name__ == "__main__":
