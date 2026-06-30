@@ -767,7 +767,8 @@ def _questions_prompt() -> str:
         "`questions` must contain 8 to 10 objects. Each object must have `key`, `question`, `type`, and optional `options` and `helper`. "
         "`type` must be `choice` or `text`. At least 7 questions must be `choice`; at most 2 may be `text`. "
         "Choice questions must have 2 to 5 short options. Questions must be specific to the admin goal and selected profile, not generic boilerplate. "
-        "Ask about the actual risks mentioned by the admin, punishments, links/invites, spam limits (e.g. how many messages trigger a penalty), warning escalation thresholds (e.g. how many warnings until mute/kick/ban), raids/new accounts, and any custom allow/block lists that matter. "
+        "Ask about the actual risks mentioned by the admin, punishments, links/invites, spam limits (e.g. how many messages trigger a penalty), raids/new accounts, and any custom allow/block lists that matter. "
+        "You MUST include an open-ended `text` question asking for warning escalation thresholds, and provide this exact example in the question or helper: 'e.g., 3 warnings = mute, 5 = kick, 8 = ban'. "
         "Do not ask for raw setting keys. Do not include markdown."
     )
 
