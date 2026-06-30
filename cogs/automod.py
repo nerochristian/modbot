@@ -1292,8 +1292,8 @@ class AutoMod(commands.Cog):
     @is_mod()
     async def automod_help(self, interaction: discord.Interaction) -> None:
         embed = discord.Embed(
-            title="AutoMod commands",
-            description="All configuration responses are private to the moderator.",
+            title="AutoMod",
+            description="Use setup for first-time configuration, then change what you need in plain language.",
             color=Config.COLOR_INFO,
         )
         embed.add_field(
