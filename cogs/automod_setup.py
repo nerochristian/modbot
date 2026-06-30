@@ -1,4 +1,4 @@
-"""Conversational AutoMod setup and natural-language change flow."""
+"""Modal-based AutoMod setup and natural-language change flow."""
 
 from __future__ import annotations
 
@@ -8,8 +8,7 @@ import json
 import logging
 import os
 import re
-from dataclasses import dataclass
-from typing import Any, Callable, Iterable, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional
 
 import discord
 
@@ -34,24 +33,6 @@ def _deepseek_web_primary_timeout() -> float:
         timeout = 25.0
     return min(90.0, max(0.1, timeout))
 
-
-@dataclass(frozen=True)
-class SetupQuestion:
-    key: str
-    prompt: str
-    options: tuple[str, ...] = ()
-    helper: str = ""
-
-    @property
-    def is_closed(self) -> bool:
-        return bool(self.options)
-
-
-@dataclass(frozen=True)
-class SetupProfile:
-    name: str
-    description: str
-    focus: str = ""
 
 _BOOL_KEYS = {
     "automod_enabled",
@@ -169,91 +150,6 @@ def _permission_denied_embed() -> discord.Embed:
         "Permission Denied",
         "You need Administrator, Manager, or a configured admin role to change AutoMod.",
     )
-
-
-class SetupQuestionView(discord.ui.View):
-    def __init__(self, owner_id: int, options: Iterable[str], icons: Mapping[str, str]) -> None:
-        super().__init__(timeout=300)
-        self.owner_id = owner_id
-        self.value: Optional[str] = None
-        option_list = list(options)
-        for index, option in enumerate(option_list):
-            button = discord.ui.Button(
-                label=option,
-                emoji=icons.get("success") if index == 0 else None,
-                style=discord.ButtonStyle.primary if index == 0 else discord.ButtonStyle.secondary,
-                row=index // 5,
-                custom_id=f"automod_setup_answer:{index}",
-            )
-            button.callback = self._make_callback(option)
-            self.add_item(button)
-
-    def _make_callback(self, option: str) -> Callable[[discord.Interaction], Any]:
-        async def callback(interaction: discord.Interaction) -> None:
-            if interaction.user.id != self.owner_id:
-                await interaction.response.send_message("This setup belongs to another admin.", ephemeral=True)
-                return
-            self.value = option
-            await interaction.response.defer()
-            self.stop()
-
-        return callback
-
-
-class ProfilePaginatorView(discord.ui.View):
-    def __init__(self, owner_id: int, profiles: list[SetupProfile], icons: Mapping[str, str]) -> None:
-        super().__init__(timeout=300)
-        self.owner_id = owner_id
-        self.profiles = profiles
-        self.icons = icons
-        self.current = 0
-        self.selected_profile: Optional[SetupProfile] = None
-        self._sync_buttons()
-
-    def _sync_buttons(self) -> None:
-        self.previous_button.disabled = self.current <= 0
-        self.next_button.disabled = self.current >= len(self.profiles) - 1
-
-    def build_embed(self, guild: Optional[discord.Guild]) -> discord.Embed:
-        profile = self.profiles[self.current]
-        icon = self.icons.get("info", "")
-        embed = discord.Embed(
-            title=f"{icon} Profile {self.current + 1}/{len(self.profiles)}: {profile.name}",
-            description=profile.description,
-            color=Config.COLOR_INFO,
-        )
-        if profile.focus:
-            embed.add_field(name="Focus", value=profile.focus[:1024], inline=False)
-        embed.set_footer(text="Use the arrows to compare profiles, then select one.")
-        return embed
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id == self.owner_id:
-            return True
-        await interaction.response.send_message("This setup belongs to another admin.", ephemeral=True)
-        return False
-
-    @discord.ui.button(label="<", style=discord.ButtonStyle.secondary, row=0)
-    async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        self.current = max(0, self.current - 1)
-        self._sync_buttons()
-        await interaction.response.defer()
-        if interaction.message:
-            await interaction.message.edit(embed=self.build_embed(interaction.guild), view=self)
-
-    @discord.ui.button(label="Select this profile", style=discord.ButtonStyle.primary, row=0)
-    async def select_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        self.selected_profile = self.profiles[self.current]
-        await interaction.response.defer()
-        self.stop()
-
-    @discord.ui.button(label=">", style=discord.ButtonStyle.secondary, row=0)
-    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        self.current = min(len(self.profiles) - 1, self.current + 1)
-        self._sync_buttons()
-        await interaction.response.defer()
-        if interaction.message:
-            await interaction.message.edit(embed=self.build_embed(interaction.guild), view=self)
 
 
 def _format_duration(seconds: Any) -> str:
@@ -482,6 +378,64 @@ class SetupReviewView(discord.ui.View):
         if interaction.message:
             await interaction.message.edit(view=self)
         self.stop()
+
+
+class AutoModSetupModal(discord.ui.Modal, title="AutoMod Setup"):
+    """A single up-front form covering the whole AutoMod setup in one submit."""
+
+    def __init__(self, cog: Any) -> None:
+        super().__init__(timeout=900)
+        self.cog = cog
+        self.goal = discord.ui.TextInput(
+            label="What should AutoMod do? (style/goals)",
+            placeholder="e.g. Keep gaming chat relaxed, but stop scam links and raids hard.",
+            style=discord.TextStyle.paragraph,
+            max_length=500,
+            required=True,
+        )
+        self.words_and_links = discord.ui.TextInput(
+            label="Bad words / links & invites policy",
+            placeholder="e.g. block slurs + 'simp'; only allow youtube.com, twitch.tv; no invites except ours",
+            style=discord.TextStyle.paragraph,
+            max_length=500,
+            required=False,
+        )
+        self.limits = discord.ui.TextInput(
+            label="Spam/raid limits & punishments",
+            placeholder="e.g. timeout for spam, ban new accounts that raid, kick for caps spam",
+            style=discord.TextStyle.paragraph,
+            max_length=500,
+            required=False,
+        )
+        self.warnings = discord.ui.TextInput(
+            label="Warning thresholds",
+            placeholder="e.g. 3 warnings = mute, 5 = kick, 8 = ban",
+            style=discord.TextStyle.short,
+            max_length=200,
+            required=False,
+        )
+        self.notes = discord.ui.TextInput(
+            label="Anything else?",
+            placeholder="e.g. log channel #mod-log, ignore staff role, exclude #memes",
+            style=discord.TextStyle.paragraph,
+            max_length=500,
+            required=False,
+        )
+        for field in (self.goal, self.words_and_links, self.limits, self.warnings, self.notes):
+            self.add_item(field)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await _build_and_review_setup(
+            self.cog,
+            interaction,
+            {
+                "goal": str(self.goal),
+                "words_and_links": str(self.words_and_links),
+                "limits_and_punishments": str(self.limits),
+                "warning_thresholds": str(self.warnings),
+                "notes": str(self.notes),
+            },
+        )
 
 
 class AutoModChangeModal(discord.ui.Modal, title="Change AutoMod"):
@@ -734,177 +688,6 @@ async def call_deepseek_json(
     raise RuntimeError("AutoMod AI JSON generation failed. " + " | ".join(failures))
 
 
-def _clean_text(value: Any, *, limit: int = 900) -> str:
-    cleaned = re.sub(r"\s+", " ", str(value or "")).strip()
-    return cleaned[:limit]
-
-
-def _profiles_prompt() -> str:
-    return (
-        "You design Discord AutoMod setup profiles. Return exactly one JSON object with key `profiles`. "
-        "`profiles` must contain exactly 3 objects. Each object must have `name`, `description`, and `focus` strings. "
-        "Base all 3 profiles on the admin's stated goal, but improve it into practical moderation setups. "
-        "The 3 profiles must be clearly different choices, not copies: one lighter, one balanced, one stricter or more targeted. "
-        "Do not return settings. Do not include markdown."
-    )
-
-
-def _profiles_user_prompt(guild: discord.Guild, initial_goal: str) -> str:
-    return json.dumps(
-        {
-            "guild": {"id": guild.id, "name": guild.name, "member_count": guild.member_count},
-            "admin_goal": initial_goal,
-            "goal": "Create 3 improved AutoMod profile choices for this server.",
-        },
-        indent=2,
-    )
-
-
-def _questions_prompt() -> str:
-    return (
-        "You design concise Discord AutoMod setup questions for the selected profile. "
-        "Return exactly one JSON object with key `questions`. "
-        "`questions` must contain 6 to 9 objects. Each object must have `key`, `question`, `type`, and optional `options` and `helper`. "
-        "`type` must be `choice` or `text`. At most 4 questions may be `text`. "
-        "Choice questions must have 2 to 5 short options. Questions must be specific to the admin goal and selected profile, not generic boilerplate. "
-        "Ask about the actual risks mentioned by the admin, punishments, links/invites, spam limits (e.g. how many messages trigger a penalty), raids/new accounts, and any custom allow/block lists that matter. "
-        "You MUST include exactly ONE open-ended `text` question asking for ALL warning escalation thresholds together. Provide this exact example in the question or helper: 'e.g., 3 warnings = mute, 5 = kick, 8 = ban'. Do NOT split warning actions into multiple choice questions. "
-        "For any question about custom bad words, set the `helper` text to explain that common slurs are already filtered globally and they only need to provide server-specific custom words. "
-        "For any question about links, set the `helper` text to explain that they should list specific allowed websites (like youtube.com). "
-        "Do not ask for raw setting keys. Do not include markdown."
-    )
-
-
-def _questions_user_prompt(guild: discord.Guild, initial_goal: str, profile: SetupProfile) -> str:
-    return json.dumps(
-        {
-            "guild": {"id": guild.id, "name": guild.name, "member_count": guild.member_count},
-            "admin_goal": initial_goal,
-            "selected_profile": {
-                "name": profile.name,
-                "description": profile.description,
-                "focus": profile.focus,
-            },
-            "goal": "Create profile-specific setup questions for this AutoMod setup.",
-        },
-        indent=2,
-    )
-
-
-def _parse_profiles(payload: Mapping[str, Any]) -> list[SetupProfile]:
-    raw_profiles = payload.get("profiles")
-    if not isinstance(raw_profiles, list):
-        raise ValueError("DeepSeek did not return a profiles list.")
-    profiles: list[SetupProfile] = []
-    seen_names: set[str] = set()
-    for raw in raw_profiles:
-        if not isinstance(raw, Mapping):
-            continue
-        name = _clean_text(raw.get("name"), limit=60)
-        description = _clean_text(raw.get("description"), limit=900)
-        focus = _clean_text(raw.get("focus"), limit=500)
-        if not name or not description or name.casefold() in seen_names:
-            continue
-        seen_names.add(name.casefold())
-        profiles.append(SetupProfile(name=name, description=description, focus=focus))
-        if len(profiles) == 3:
-            break
-    if len(profiles) != 3:
-        raise ValueError("DeepSeek must return exactly 3 distinct setup profiles.")
-    return profiles
-
-
-def _parse_generated_questions(payload: Mapping[str, Any]) -> list[SetupQuestion]:
-    raw_questions = payload.get("questions")
-    if not isinstance(raw_questions, list):
-        raise ValueError("DeepSeek did not return a questions list.")
-
-    questions: list[SetupQuestion] = []
-    text_count = 0
-    seen_keys: set[str] = set()
-    for index, raw in enumerate(raw_questions, start=1):
-        if not isinstance(raw, Mapping):
-            continue
-        key = re.sub(r"[^a-z0-9_]+", "_", str(raw.get("key") or f"question_{index}").casefold()).strip("_")
-        if not key or key in seen_keys:
-            key = f"question_{index}"
-        question = _clean_text(raw.get("question"), limit=240)
-        helper = _clean_text(raw.get("helper"), limit=300)
-        raw_type = str(raw.get("type") or "choice").strip().casefold()
-        raw_options = raw.get("options")
-
-        options: tuple[str, ...] = ()
-        if raw_type == "choice" and isinstance(raw_options, list):
-            cleaned_options: list[str] = []
-            seen_options: set[str] = set()
-            for option in raw_options:
-                cleaned = _clean_text(option, limit=80)
-                if cleaned and cleaned.casefold() not in seen_options:
-                    seen_options.add(cleaned.casefold())
-                    cleaned_options.append(cleaned)
-                if len(cleaned_options) == 5:
-                    break
-            if len(cleaned_options) >= 2:
-                options = tuple(cleaned_options)
-        elif raw_type == "text":
-            text_count += 1
-
-        if not question:
-            continue
-        if raw_type == "text" and text_count <= 4:
-            questions.append(SetupQuestion(key=key, prompt=question, helper=helper))
-            seen_keys.add(key)
-        elif options:
-            questions.append(SetupQuestion(key=key, prompt=question, options=options, helper=helper))
-            seen_keys.add(key)
-
-        if len(questions) == 12:
-            break
-
-    if not 5 <= len(questions) <= 12:
-        raise ValueError(f"DeepSeek must return 5-12 setup questions, but returned {len(questions)}.")
-    return questions
-
-
-async def _generate_profiles(
-    cog: Any,
-    guild: discord.Guild,
-    initial_goal: str,
-    *,
-    session_key: str,
-    session_name: str,
-) -> list[SetupProfile]:
-    payload = await call_deepseek_json(
-        cog,
-        _profiles_prompt(),
-        _profiles_user_prompt(guild, initial_goal),
-        max_tokens=1000,
-        session_key=session_key,
-        session_name=session_name,
-    )
-    return _parse_profiles(payload)
-
-
-async def _generate_questions(
-    cog: Any,
-    guild: discord.Guild,
-    initial_goal: str,
-    profile: SetupProfile,
-    *,
-    session_key: str,
-    session_name: str,
-) -> list[SetupQuestion]:
-    payload = await call_deepseek_json(
-        cog,
-        _questions_prompt(),
-        _questions_user_prompt(guild, initial_goal, profile),
-        max_tokens=1400,
-        session_key=session_key,
-        session_name=session_name,
-    )
-    return _parse_generated_questions(payload)
-
-
 def _settings_prompt() -> str:
     return (
         "You configure a Discord bot AutoMod system. Return exactly one JSON object with a "
@@ -930,24 +713,22 @@ def _schema_summary() -> dict[str, Any]:
     }
 
 
-def _setup_user_prompt(
-    guild: discord.Guild,
-    initial_goal: str,
-    selected_profile: SetupProfile,
-    answers: list[dict[str, str]],
-) -> str:
+def _setup_user_prompt(guild: discord.Guild, answers: Mapping[str, str]) -> str:
     return json.dumps(
         {
             "guild": {"id": guild.id, "name": guild.name, "member_count": guild.member_count},
             "schema": _schema_summary(),
-            "admin_goal": initial_goal,
-            "selected_profile": {
-                "name": selected_profile.name,
-                "description": selected_profile.description,
-                "focus": selected_profile.focus,
+            "admin_answers": {
+                "goal_and_style": answers.get("goal", ""),
+                "bad_words_and_links_policy": answers.get("words_and_links", ""),
+                "spam_raid_limits_and_punishments": answers.get("limits_and_punishments", ""),
+                "warning_thresholds": answers.get("warning_thresholds", ""),
+                "other_notes": answers.get("notes", ""),
             },
-            "answers": answers,
-            "goal": "Fill out a complete production-safe AutoMod setup from these answers.",
+            "goal": (
+                "Fill out a complete production-safe AutoMod setup from these answers. "
+                "Infer sensible, practical defaults for anything the admin did not mention."
+            ),
         },
         indent=2,
     )
@@ -982,17 +763,6 @@ def _human_setting_lines(settings: Mapping[str, Any]) -> list[str]:
     ]
 
 
-async def _collect_open_answer(cog: Any, channel: discord.TextChannel, user: discord.abc.User) -> Optional[str]:
-    def check(message: discord.Message) -> bool:
-        return message.author.id == user.id and message.channel.id == channel.id
-
-    try:
-        message = await cog.bot.wait_for("message", check=check, timeout=300)
-    except asyncio.TimeoutError:
-        return None
-    return message.content.strip()[:1500]
-
-
 async def _resolve_icons(guild: discord.Guild) -> dict[str, str]:
     return {
         kind: await _status_icon(guild, kind)
@@ -1000,229 +770,57 @@ async def _resolve_icons(guild: discord.Guild) -> dict[str, str]:
     }
 
 
-async def _ask_question(
-    cog: Any,
-    channel: discord.TextChannel,
-    user: discord.abc.User,
-    question: SetupQuestion,
-    index: int,
-    total: int,
-    icons: Mapping[str, str],
-) -> Optional[str]:
-    description = question.prompt
-    if question.helper:
-        description = f"{description}\n\n{question.helper}"
-    embed = await _setup_embed(
-        channel.guild,
-        kind="info",
-        title=f"Question {index}/{total}",
-        description=description,
-    )
-    if question.is_closed:
-        view = SetupQuestionView(user.id, question.options, icons)
-        prompt_message = await channel.send(embed=embed, view=view)
-        await view.wait()
-        if view.value is None:
-            return None
-        completed = await _setup_embed(
-            channel.guild,
-            kind="success",
-            title=f"Question {index}/{total}",
-            description=f"{question.prompt}\n\nAnswer: **{view.value}**",
-            color=Config.COLOR_SUCCESS,
-        )
-        await prompt_message.edit(embed=completed, view=None)
-        return view.value
-
-    prompt_message = await channel.send(embed=embed)
-    answer = await _collect_open_answer(cog, channel, user)
-    if not answer:
-        return None
-    completed = await _setup_embed(
-        channel.guild,
-        kind="success",
-        title=f"Question {index}/{total}",
-        description=f"{question.prompt}\n\nAnswer: **{answer[:900]}**",
-        color=Config.COLOR_SUCCESS,
-    )
-    await prompt_message.edit(embed=completed)
-    return answer
-
-
 async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None:
+    """Entry point for `/automod setup`: opens the single setup form."""
+    if interaction.guild is None or interaction.guild_id is None:
+        await interaction.response.send_message("AutoMod setup can only run inside a server.", ephemeral=True)
+        return
+
+    # Keep this check fast: it short-circuits on owner/administrator before
+    # touching the database, so it stays well within Discord's 3s response window.
+    if not await _has_admin_access(interaction):
+        await interaction.response.send_message(embed=_permission_denied_embed(), ephemeral=True)
+        return
+
+    await interaction.response.send_modal(AutoModSetupModal(cog))
+
+
+async def _build_and_review_setup(cog: Any, interaction: discord.Interaction, answers: dict[str, str]) -> None:
     guild = interaction.guild
     if guild is None or interaction.guild_id is None:
         await interaction.response.send_message("AutoMod setup can only run inside a server.", ephemeral=True)
         return
 
-    await interaction.response.defer(ephemeral=True, thinking=True)
-    if not await _has_admin_access(interaction):
-        await interaction.followup.send(embed=_permission_denied_embed(), ephemeral=True)
-        return
-
     async with _ACTIVE_LOCK:
         if guild.id in _ACTIVE_SETUPS:
-            await interaction.followup.send("An AutoMod setup is already running in this server.", ephemeral=True)
+            await interaction.response.send_message(
+                "An AutoMod setup is already running in this server.", ephemeral=True
+            )
             return
         _ACTIVE_SETUPS.add(guild.id)
 
-    channel: Optional[discord.TextChannel] = None
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    icons = await _resolve_icons(guild)
+    working: Optional[discord.Message] = None
     try:
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
-        }
-        if guild.me is not None:
-            overwrites[guild.me] = discord.PermissionOverwrite(
-                view_channel=True,
-                send_messages=True,
-                read_message_history=True,
-                manage_channels=True,
-            )
-        channel = await guild.create_text_channel(
-            "automod-setup",
-            overwrites=overwrites,
-            reason=f"AutoMod setup started by {interaction.user}",
-        )
-    except discord.Forbidden:
-        await interaction.followup.send("I need permission to create a private setup channel.", ephemeral=True)
-        async with _ACTIVE_LOCK:
-            _ACTIVE_SETUPS.discard(guild.id)
-        return
-    except discord.HTTPException as exc:
-        log.exception("Failed to create AutoMod setup channel")
-        await interaction.followup.send(f"Could not create the setup channel: `{exc}`", ephemeral=True)
-        async with _ACTIVE_LOCK:
-            _ACTIVE_SETUPS.discard(guild.id)
-        return
-
-    try:
-        icons = await _resolve_icons(guild)
-        setup_session_key = f"automod-setup:{guild.id}:{channel.id}"
-        setup_session_name = f"{guild.name} AutoMod setup"
-        await interaction.followup.send(f"{icons['success']} AutoMod setup started in {channel.mention}.", ephemeral=True)
-        intro = await _setup_embed(
-            guild,
-            kind="info",
-            title="AutoMod Setup",
-            description=(
-                "Welcome to your server's AutoMod setup.\n\n"
-                "First, tell me what you want AutoMod to do. DeepSeek will turn that into 3 improved setup profiles. "
-                "Pick the best profile, then the rest of the questions will be based on it."
-            ),
-        )
-        await channel.send(embed=intro)
-
-        goal_question = SetupQuestion(
-            key="initial_goal",
-            prompt="What do you want AutoMod for?",
-            helper="Example: stop scam links and raids, keep normal gaming chat relaxed, and block slurs.",
-        )
-        initial_goal = await _ask_question(cog, channel, interaction.user, goal_question, 1, 1, icons)
-        if initial_goal is None:
-            timeout_embed = await _setup_embed(
-                guild,
-                kind="warning",
-                title="Setup Timed Out",
-                description="Run `/automod setup` again when you are ready.",
-                color=Config.COLOR_WARNING,
-            )
-            await channel.send(embed=timeout_embed)
-            return
-
-        profile_message = await channel.send(
-            embed=await _setup_embed(
-                guild,
-                kind="loading",
-                title="Building Profile Choices",
-                description="Generating 3 improved AutoMod profiles from what you said.",
-            )
-        )
-        profiles = await _generate_profiles(
-            cog,
-            guild,
-            initial_goal,
-            session_key=setup_session_key,
-            session_name=setup_session_name,
-        )
-        profile_view = ProfilePaginatorView(interaction.user.id, profiles, icons)
-        await profile_message.edit(embed=profile_view.build_embed(guild), view=profile_view)
-        await profile_view.wait()
-        if profile_view.selected_profile is None:
-            await profile_message.edit(view=None)
-            timeout_embed = await _setup_embed(
-                guild,
-                kind="warning",
-                title="Setup Timed Out",
-                description="Run `/automod setup` again when you are ready.",
-                color=Config.COLOR_WARNING,
-            )
-            await channel.send(embed=timeout_embed)
-            return
-
-        selected_profile = profile_view.selected_profile
-        selected_embed = profile_view.build_embed(guild)
-        selected_embed.color = Config.COLOR_SUCCESS
-        selected_embed.set_footer(text="Selected. Generating setup questions from this profile.")
-        await profile_message.edit(embed=selected_embed, view=None)
-        question_message = await channel.send(
-            embed=await _setup_embed(
-                guild,
-                kind="loading",
-                title="Building Questions",
-                description=f"Creating setup questions for **{selected_profile.name}**.",
-            )
-        )
-        questions = await _generate_questions(
-            cog,
-            guild,
-            initial_goal,
-            selected_profile,
-            session_key=setup_session_key,
-            session_name=setup_session_name,
-        )
-        await question_message.edit(
-            embed=await _setup_embed(
-                guild,
-                kind="success",
-                title="Questions Ready",
-                description=f"Generated **{len(questions)}** questions based on **{selected_profile.name}**.",
-                color=Config.COLOR_SUCCESS,
-            )
-        )
-
-        answers: list[dict[str, str]] = []
-        for index, question in enumerate(questions, start=1):
-            answer = await _ask_question(cog, channel, interaction.user, question, index, len(questions), icons)
-            if answer is None:
-                timeout_embed = await _setup_embed(
-                    guild,
-                    kind="warning",
-                    title="Setup Timed Out",
-                    description="Run `/automod setup` again when you are ready.",
-                    color=Config.COLOR_WARNING,
-                )
-                await channel.send(embed=timeout_embed)
-                return
-            answers.append({"key": question.key, "question": question.prompt, "answer": answer})
-
-        working = await channel.send(
+        working = await interaction.followup.send(
             embed=await _setup_embed(
                 guild,
                 kind="loading",
                 title="Building Setup",
-                description="Sending your answers to DeepSeek. No default blocked-word list is included in this prompt.",
-            )
+                description="Sending your answers to DeepSeek.",
+            ),
+            wait=True,
         )
+
         response = await call_deepseek_json(
             cog,
             _settings_prompt(),
-            _setup_user_prompt(guild, initial_goal, selected_profile, answers),
+            _setup_user_prompt(guild, answers),
             max_tokens=1800,
-            session_key=setup_session_key,
-            session_name=setup_session_name,
         )
         model_update = validate_automod_update(response)
+
         settings_update = copy.deepcopy(AUTOMOD_SETTINGS)
         settings_update.update(model_update)
         settings_update["automod_enabled"] = True
@@ -1232,6 +830,7 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
         review_view.message = working
         await working.edit(embed=await review_view.build_embed(guild), view=review_view)
         await review_view.wait()
+
         if review_view.cancelled:
             await working.edit(
                 embed=await _setup_embed(
@@ -1256,13 +855,14 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
                 view=None,
             )
             return
-        settings_update = copy.deepcopy(review_view.settings)
+
+        final_settings = copy.deepcopy(review_view.settings)
 
         def apply_update(settings: dict[str, Any]) -> None:
             for key in list(settings):
                 if key.startswith("automod_") or key.startswith("warn_"):
                     settings.pop(key, None)
-            settings.update(settings_update)
+            settings.update(final_settings)
 
         saved = await cog._edit_settings(guild.id, apply_update)
         complete = await _setup_embed(
@@ -1272,20 +872,14 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
             description=f"{summary[:700]}\n\n" + "\n".join(_human_setting_lines(saved)),
             color=Config.COLOR_SUCCESS,
         )
-        complete.set_footer(text="This setup channel will be deleted in 10 seconds.")
         await working.edit(embed=complete, view=None)
-        await interaction.followup.send(f"{icons['success']} AutoMod setup finished. The setup channel is being cleaned up.", ephemeral=True)
-        await asyncio.sleep(10)
-        try:
-            await channel.delete(reason=f"AutoMod setup completed by {interaction.user}")
-        except discord.NotFound:
-            pass
-        except discord.HTTPException:
-            log.exception("Failed to delete AutoMod setup channel %s", channel.id)
     except Exception as exc:
         log.exception("AutoMod setup failed")
-        if channel is not None:
-            await channel.send(embed=ModEmbed.error("Setup failed", f"`{type(exc).__name__}: {str(exc)[:900]}`"))
+        error_embed = ModEmbed.error("Setup failed", f"`{type(exc).__name__}: {str(exc)[:900]}`")
+        if working is not None:
+            await working.edit(embed=error_embed, view=None)
+        else:
+            await interaction.followup.send(embed=error_embed, ephemeral=True)
     finally:
         async with _ACTIVE_LOCK:
             _ACTIVE_SETUPS.discard(guild.id)
