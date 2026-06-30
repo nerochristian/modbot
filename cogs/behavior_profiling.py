@@ -67,10 +67,11 @@ class BehaviorProfiling(commands.Cog):
         )
         
         # The AI inference proxy uses Discord under the hood and limits inputs to 4000 characters.
-        if len(prompt) > 3800:
-            prompt = prompt[:3800] + "\n...[TRUNCATED]"
+        if len(prompt) > 2500:
+            prompt = prompt[:2500] + "\n...[TRUNCATED]"
 
         try:
+            logger.info("Requesting behavioral profile for %s (prompt length: %d)", target.id, len(prompt))
             profile_content = await aimod_cog.ai._call_digitalocean(
                 [
                     {
