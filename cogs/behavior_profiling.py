@@ -468,18 +468,16 @@ class BehaviorProfiling(commands.Cog):
         interaction: discord.Interaction,
         embeds: Sequence[discord.Embed],
     ) -> None:
-        kwargs: dict[str, Any] = {
-            "ephemeral": True,
-            "allowed_mentions": discord.AllowedMentions.none(),
-        }
-        if len(embeds) == 1:
-            kwargs["embed"] = embeds[0]
-        else:
-            kwargs["embeds"] = list(embeds)
-        if interaction.response.is_done():
-            await interaction.followup.send(**kwargs)
-        else:
-            await interaction.response.send_message(**kwargs)
+        for embed in embeds:
+            kwargs: dict[str, Any] = {
+                "ephemeral": True,
+                "allowed_mentions": discord.AllowedMentions.none(),
+                "embed": embed
+            }
+            if interaction.response.is_done():
+                await interaction.followup.send(**kwargs)
+            else:
+                await interaction.response.send_message(**kwargs)
 
     @app_commands.command(
         name="profile",
