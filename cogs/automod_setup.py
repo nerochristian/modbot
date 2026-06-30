@@ -695,8 +695,8 @@ async def call_deepseek_json(
             response = await asyncio.wait_for(
                 web_client.chat(
                     prompt,
-                    search=False,
-                    deepthink=False,
+                    search=True,
+                    deepthink=True,
                     long_answer=False,
                     session_key=session_key,
                     session_name=session_name,
@@ -914,9 +914,9 @@ def _settings_prompt() -> str:
         "Accepted actions: log, warn, timeout, kick, ban, quarantine. "
         "Accepted link modes: dangerous, allowlist. Durations are seconds. "
         "Set every important automod_* key needed for a full setup. "
-        "Do not invent slurs or profanity. If the admin wants common slur filtering, set automod_badwords_enabled true. "
-        "Only set automod_badwords when the admin typed exact custom words. "
-        "Keep values practical and avoid destructive punishments unless the answers clearly choose them."
+        "If the admin asks for common slurs or says 'all', do NOT output severe real-world slurs (which trigger safety filters); rely on `automod_badwords_enabled` for those. However, you MUST creatively infer and add mild/moderate custom words or specific slang to `automod_badwords` if they ask for it. "
+        "If the admin is vague about links (e.g. 'all safe ones'), you MUST intelligently infer and populate `automod_whitelisted_domains` with 5-10 popular safe websites (like youtube.com, twitch.tv, twitter.com). "
+        "Do NOT literally add words like 'idk' or 'all' to the lists. Keep values practical and avoid destructive punishments unless clearly requested."
     )
 
 
