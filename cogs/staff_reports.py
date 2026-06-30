@@ -39,7 +39,7 @@ class StaffReports(commands.Cog):
             self._check_scheduled.cancel()
 
     report_group = app_commands.Group(
-        name="report",
+        name="staffreport",
         description="Staff report commands",
         default_permissions=discord.Permissions(administrator=True),
     )
