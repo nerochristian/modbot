@@ -29,7 +29,7 @@ class BehaviorProfiling(commands.Cog):
             await interaction.followup.send("AI client is currently offline or unavailable.")
             return
 
-        recent_msgs = await self.bot.db.get_recent_user_messages(interaction.guild.id, target.id, limit=300)
+        recent_msgs = await self.bot.db.get_recent_user_messages(interaction.guild.id, target.id, limit=1000)
         
         if not recent_msgs:
             # Fallback: pull from channel history
@@ -46,29 +46,29 @@ class BehaviorProfiling(commands.Cog):
                             })
                 except Exception:
                     continue
-                if len(fallback_msgs) >= 300:
+                if len(fallback_msgs) >= 1000:
                     break
-            recent_msgs = fallback_msgs[:300]
+            recent_msgs = fallback_msgs[:1000]
 
         if not recent_msgs:
             await interaction.followup.send(f"I don't have enough message history for {target.mention} to build a profile.")
             return
 
-        # Format messages for AI
+        # Format messages for AI (omitting timestamps to fit more context)
         message_context = "\n".join(
-            f"[{m['timestamp']}] {m['content']}" for m in recent_msgs
+            f"- {m['content']}" for m in recent_msgs
         )
 
         prompt = (
-            f"Analyze the following recent messages from Discord user '{target.display_name}' and provide a comprehensive Behavioral & Personality Profile.\n"
-            "Include their general tone, primary interests or topics they discuss, their level of toxicity/friendliness, and any notable behavioral patterns.\n"
-            "Keep it professional but insightful. Format the response nicely using Discord markdown.\n\n"
+            f"Analyze these messages from '{target.display_name}' and provide a VERY SHORT, punchy behavioral profile.\n"
+            "Keep it to 2-3 quick bullet points or a couple sentences. Focus on toxicity, primary topics, and vibe.\n"
+            "DO NOT write a wall of text. DO NOT write multiple paragraphs.\n\n"
             f"Messages:\n{message_context}"
         )
         
         # The AI inference proxy uses Discord under the hood and limits inputs to 4000 characters.
-        if len(prompt) > 2500:
-            prompt = prompt[:2500] + "\n...[TRUNCATED]"
+        if len(prompt) > 2800:
+            prompt = prompt[:2800] + "\n...[TRUNCATED]"
 
         try:
             logger.info("Requesting behavioral profile for %s (prompt length: %d)", target.id, len(prompt))
@@ -76,12 +76,12 @@ class BehaviorProfiling(commands.Cog):
                 [
                     {
                         "role": "system",
-                        "content": "You are an expert behavioral analyst profiling Discord user behavior. Be objective, accurate, and concise."
+                        "content": "You are a behavioral analyst. Output must be extremely concise, maximum 100 words."
                     },
                     {"role": "user", "content": prompt},
                 ],
-                temperature=0.3,
-                max_tokens=600,
+                temperature=0.4,
+                max_tokens=250,
                 model="deepseek-4-flash",
             )
 
