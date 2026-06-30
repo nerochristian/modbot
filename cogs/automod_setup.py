@@ -154,6 +154,38 @@ _ALLOWED_KEYS = (
 )
 
 
+async def _has_admin_access(interaction: discord.Interaction) -> bool:
+    user = interaction.user
+    if user.id in getattr(interaction.client, "owner_ids", set()):
+        return True
+    if interaction.guild is not None and user.id == interaction.guild.owner_id:
+        return True
+    permissions = getattr(user, "guild_permissions", None)
+    if permissions is not None and getattr(permissions, "administrator", False):
+        return True
+
+    try:
+        settings = await asyncio.wait_for(interaction.client.db.get_settings(interaction.guild_id), timeout=1.5)
+    except Exception:
+        log.exception("AutoMod permission lookup failed for guild %s", interaction.guild_id)
+        return False
+
+    role_ids = {role.id for role in getattr(user, "roles", [])}
+    manager_role = settings.get("manager_role")
+    admin_roles = settings.get("admin_roles", []) or []
+    return bool(
+        manager_role in role_ids
+        or any(role_id in role_ids for role_id in admin_roles)
+    )
+
+
+def _permission_denied_embed() -> discord.Embed:
+    return ModEmbed.error(
+        "Permission Denied",
+        "You need Administrator, Manager, or a configured admin role to change AutoMod.",
+    )
+
+
 class SetupQuestionView(discord.ui.View):
     def __init__(self, owner_id: int, options: Iterable[str]) -> None:
         super().__init__(timeout=300)
@@ -465,13 +497,17 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
         await interaction.response.send_message("AutoMod setup can only run inside a server.", ephemeral=True)
         return
 
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    if not await _has_admin_access(interaction):
+        await interaction.followup.send(embed=_permission_denied_embed(), ephemeral=True)
+        return
+
     async with _ACTIVE_LOCK:
         if guild.id in _ACTIVE_SETUPS:
-            await interaction.response.send_message("An AutoMod setup is already running in this server.", ephemeral=True)
+            await interaction.followup.send("An AutoMod setup is already running in this server.", ephemeral=True)
             return
         _ACTIVE_SETUPS.add(guild.id)
 
-    await interaction.response.defer(ephemeral=True, thinking=True)
     channel: Optional[discord.TextChannel] = None
     try:
         overwrites = {
@@ -582,6 +618,10 @@ async def _apply_automod_change(cog: Any, interaction: discord.Interaction, requ
         return
 
     await interaction.response.defer(ephemeral=True, thinking=True)
+    if not await _has_admin_access(interaction):
+        await interaction.followup.send(embed=_permission_denied_embed(), ephemeral=True)
+        return
+
     try:
         current_settings = await cog._get_settings(interaction.guild_id, fresh=True)
         response = await call_deepseek_json(
@@ -613,6 +653,9 @@ async def _apply_automod_change(cog: Any, interaction: discord.Interaction, requ
 
 async def handle_automod_change(cog: Any, interaction: discord.Interaction, request: Optional[str] = None) -> None:
     if not (request or "").strip():
+        if not await _has_admin_access(interaction):
+            await interaction.response.send_message(embed=_permission_denied_embed(), ephemeral=True)
+            return
         await interaction.response.send_modal(AutoModChangeModal(cog))
         return
     await _apply_automod_change(cog, interaction, request)
