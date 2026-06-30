@@ -10,8 +10,9 @@ from cogs.automod_setup import (
     SetupReviewView,
     SetupProfile,
     call_deepseek_json,
+    _blocked_invite_summary,
+    _blocked_link_summary,
     _extract_json_object,
-    _modal_update_from_fields,
     _parse_generated_questions,
     _parse_profiles,
     _review_description,
@@ -106,7 +107,7 @@ class AutoModSetupValidationTests(unittest.TestCase):
         self.assertEqual(len(questions), 8)
         self.assertGreaterEqual(sum(question.is_closed for question in questions), 7)
 
-    def test_review_description_surfaces_editable_panels(self) -> None:
+    def test_review_description_surfaces_blocked_items(self) -> None:
         description = _review_description(
             {
                 "automod_badwords_enabled": True,
@@ -127,13 +128,13 @@ class AutoModSetupValidationTests(unittest.TestCase):
             "Generated setup.",
         )
 
-        self.assertIn("Review the generated setup", description)
+        self.assertIn("Review what this setup will block", description)
         self.assertIn("**Blocked Words**", description)
         self.assertIn("custombad", description)
         self.assertIn("**Links**", description)
-        self.assertIn("youtube.com", description)
+        self.assertIn("Blocks **every link domain that is not allowed**", description)
         self.assertIn("**Invites and Security**", description)
-        self.assertIn("abc123", description)
+        self.assertIn("Blocks every Discord invite link except", description)
         self.assertIn("**Limits and Actions**", description)
 
     def test_review_view_has_expected_setup_buttons(self) -> None:
@@ -147,22 +148,27 @@ class AutoModSetupValidationTests(unittest.TestCase):
         self.assertIn("Actions", labels)
         self.assertIn("Save Setup", labels)
 
-    def test_modal_update_from_fields_validates_review_edits(self) -> None:
-        update = _modal_update_from_fields(
+    def test_blocked_link_summary_explains_dangerous_mode(self) -> None:
+        summary = _blocked_link_summary(
             {
-                "automod_badwords_enabled": "off",
-                "automod_badwords": "custombad\ncustombad\nx",
-                "automod_links_mode": "allowlist",
-                "automod_links_whitelist": "https://www.youtube.com/watch?v=1\nx.com",
-                "automod_spam_threshold": "6",
+                "automod_links_enabled": True,
+                "automod_links_mode": "dangerous",
             }
         )
 
-        self.assertEqual(update["automod_badwords_enabled"], False)
-        self.assertEqual(update["automod_badwords"], ["custombad"])
-        self.assertEqual(update["automod_links_mode"], "allowlist")
-        self.assertEqual(update["automod_links_whitelist"], ["www.youtube.com", "x.com"])
-        self.assertEqual(update["automod_spam_threshold"], 6)
+        self.assertIn("Blocks suspicious shortened links", summary)
+        self.assertIn("bit.ly", summary)
+        self.assertIn("grabify.link", summary)
+
+    def test_blocked_invite_summary_explains_allowed_codes(self) -> None:
+        self.assertEqual(
+            _blocked_invite_summary({"automod_invites_enabled": True, "automod_allowed_invites": []}),
+            "Blocks **all Discord invite links**.",
+        )
+        self.assertIn(
+            "except these invite codes",
+            _blocked_invite_summary({"automod_invites_enabled": True, "automod_allowed_invites": ["abc123"]}),
+        )
 
 
 class AutoModSetupAITests(unittest.IsolatedAsyncioTestCase):
