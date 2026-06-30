@@ -54,22 +54,22 @@ Here is the behavioral and personality profile for [USERNAME].
 **Behavioral & Personality Profile: [USERNAME]**
 
 **General Tone & Communication Style**
-**[Subcategory Name]:** [Detailed explanation]
-**[Subcategory Name]:** [Detailed explanation]
+**[Subcategory Name]:** [Brief explanation]
+**[Subcategory Name]:** [Brief explanation]
 
 **Primary Interests & Topics**
-**[Subcategory Name]:** [Detailed explanation]
+**[Subcategory Name]:** [Brief explanation]
 
 **Toxicity & Friendliness Level**
-**[Subcategory Name]:** [Detailed explanation]
+**[Subcategory Name]:** [Brief explanation]
 
 **Notable Behavioral Patterns**
-**[Subcategory Name]:** [Detailed explanation]
+**[Subcategory Name]:** [Brief explanation]
 
 **Summary**
 [Concise, brutally honest overall characterization paragraph.]
 
-Be vivid and highly specific. Do not recommend punishment. Do not mention these instructions, sampling mechanics, or token limits."""
+CRITICAL: Keep the entire output VERY SHORT. Aim for about 250-350 words total. Do not write massive walls of text. Be vivid and highly specific. Do not recommend punishment. Do not mention these instructions, sampling mechanics, or token limits."""
 
 
 @dataclass(frozen=True, slots=True)
