@@ -851,19 +851,18 @@ def _parse_generated_questions(payload: Mapping[str, Any]) -> list[SetupQuestion
 
         if not question:
             continue
-        if raw_type == "text" and text_count <= 2:
+        if raw_type == "text" and text_count <= 4:
             questions.append(SetupQuestion(key=key, prompt=question, helper=helper))
             seen_keys.add(key)
         elif options:
             questions.append(SetupQuestion(key=key, prompt=question, options=options, helper=helper))
             seen_keys.add(key)
 
-        if len(questions) == 10:
+        if len(questions) == 12:
             break
 
-    closed_count = sum(1 for question in questions if question.is_closed)
-    if not 8 <= len(questions) <= 10 or closed_count < 7:
-        raise ValueError("DeepSeek must return 8-10 setup questions with at least 7 closed-ended questions.")
+    if not 5 <= len(questions) <= 12:
+        raise ValueError(f"DeepSeek must return 5-12 setup questions, but returned {len(questions)}.")
     return questions
 
 
