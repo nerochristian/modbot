@@ -262,66 +262,6 @@ class AutoModChangeModal(discord.ui.Modal, title="Change AutoMod"):
         await _apply_automod_change(self.cog, interaction, str(self.request))
 
 
-class SetupSummaryView(discord.ui.View):
-    def __init__(
-        self,
-        *,
-        owner_id: int,
-        settings: Mapping[str, Any],
-        channel: discord.TextChannel,
-        icons: Mapping[str, str],
-    ) -> None:
-        super().__init__(timeout=1800)
-        self.owner_id = owner_id
-        self.settings = dict(settings)
-        self.channel = channel
-        self.children[0].emoji = icons.get("warning")
-        self.children[1].emoji = icons.get("info")
-        self.children[2].emoji = icons.get("info")
-        self.children[3].emoji = icons.get("lock")
-
-    async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        if interaction.user.id == self.owner_id:
-            return True
-        await interaction.response.send_message("This setup panel belongs to another admin.", ephemeral=True)
-        return False
-
-    @discord.ui.button(label="Blocked Words", style=discord.ButtonStyle.secondary)
-    async def blocked_words(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        words = self.settings.get("automod_badwords", []) or []
-        body = ", ".join(str(word) for word in words) if words else "No blocked words configured."
-        await interaction.response.send_message(_chunk_code("Blocked Words", body), ephemeral=True)
-
-    @discord.ui.button(label="Allowed Links", style=discord.ButtonStyle.secondary)
-    async def allowed_links(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        domains = list(self.settings.get("automod_whitelisted_domains", []) or [])
-        domains.extend(self.settings.get("automod_links_whitelist", []) or [])
-        body = ", ".join(dict.fromkeys(str(domain) for domain in domains)) if domains else "No allowed domains configured."
-        await interaction.response.send_message(_chunk_code("Allowed Links", body), ephemeral=True)
-
-    @discord.ui.button(label="Actions", style=discord.ButtonStyle.secondary)
-    async def actions(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        body = "\n".join(
-            [
-                f"Regular action: {self.settings.get('automod_punishment', 'warn')}",
-                f"Security action: {self.settings.get('automod_security_punishment', 'timeout')}",
-                f"Timeout seconds: {self.settings.get('automod_mute_duration', 3600)}",
-                f"DM users: {self.settings.get('automod_notify_users', True)}",
-                f"Public feedback: {self.settings.get('automod_public_feedback', False)}",
-            ]
-        )
-        await interaction.response.send_message(f"**Actions**\n```text\n{body}\n```", ephemeral=True)
-
-    @discord.ui.button(label="Close Channel", style=discord.ButtonStyle.danger)
-    async def close_channel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await interaction.response.send_message("Closing this setup channel.", ephemeral=True)
-        await asyncio.sleep(1)
-        try:
-            await self.channel.delete(reason=f"AutoMod setup closed by {interaction.user}")
-        except discord.HTTPException:
-            log.exception("Failed to delete AutoMod setup channel %s", self.channel.id)
-
-
 def _chunk_code(title: str, body: str) -> str:
     content = body if len(body) <= 1800 else f"{body[:1800]}... (truncated)"
     return f"**{title}**\n```text\n{content}\n```"
