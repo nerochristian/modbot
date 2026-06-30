@@ -200,8 +200,11 @@ class AIModeration(commands.Cog):
     )
     _WARNING_COUNT_RE: ClassVar[re.Pattern] = re.compile(
         r"\b(?P<count>\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|a|an)\s+"
-        r"(?:separate\s+)?(?:warnings?|times?)\b|"
-        r"\bwarn(?:ing)?s?\s*[x*]\s*(?P<multiplier>\d{1,3})\b",
+        r"(?:separate\s+)?(?:warn(?:ing)?s?|times?)\b|"
+        r"\bwarn(?:ing)?s?\s*[x*]\s*(?P<post_multiplier>\d{1,3})\b|"
+        r"\b[x*]\s*(?P<pre_multiplier>\d{1,3})\s*warn(?:ing)?s?\b|"
+        r"\b(?P<suffix_multiplier>\d{1,3})\s*[x*]\s*warn(?:ing)?s?\b|"
+        r"\b(?P<frequency>once|twice|thrice)\b",
         re.IGNORECASE,
     )
     _WARNING_NUMBER_WORDS: ClassVar[Dict[str, int]] = {
@@ -217,6 +220,9 @@ class AIModeration(commands.Cog):
         "eight": 8,
         "nine": 9,
         "ten": 10,
+        "once": 1,
+        "twice": 2,
+        "thrice": 3,
     }
 
     def __init__(self, bot: commands.Bot) -> None:
@@ -1178,7 +1184,7 @@ class AIModeration(commands.Cog):
         match = self._WARNING_COUNT_RE.search(text or "")
         if not match:
             return 1
-        raw = (match.group("count") or match.group("multiplier") or "1").lower()
+        raw = next((group for group in match.groups() if group), "1").lower()
         if raw.isdigit():
             return int(raw)
         return self._WARNING_NUMBER_WORDS.get(raw, 1)
@@ -1202,7 +1208,12 @@ class AIModeration(commands.Cog):
             )
             reason = re.sub(r"<@!?\d+>|<@&\d+>|<#\d+>", " ", reason)
             reason = self._WARNING_COUNT_RE.sub(" ", reason, count=1)
-            reason = re.sub(r"\b(?:warnings?|times?)\b", " ", reason, flags=re.IGNORECASE)
+            reason = re.sub(
+                r"\b(?:warn(?:ing)?s?|times?)\b",
+                " ",
+                reason,
+                flags=re.IGNORECASE,
+            )
             reason = _REPLY_TARGET_RE.sub(" ", reason)
             reason = re.sub(
                 r"^\s*(?:to|on)?\s*(?:them|him|her|this\s+(?:user|member)|the\s+(?:user|member))?\s*",

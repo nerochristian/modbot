@@ -180,6 +180,9 @@ class AIActionRoutingTests(unittest.TestCase):
             ("warn <@20> 4 times for repeated spam", 4),
             ("add a warning to <@20> for repeated spam", 1),
             ("apply warnings x5 to <@20> for repeated spam", 5),
+            ("warn <@20> twice for repeated spam", 2),
+            ("give 3x warnings to <@20> for repeated spam", 3),
+            ("give x6 warns to <@20> for repeated spam", 6),
         )
 
         for content, expected_count in cases:
