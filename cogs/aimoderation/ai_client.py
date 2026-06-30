@@ -66,7 +66,6 @@ class GeminiClient:
     def __init__(self, bot: commands.Bot, config: AIConfig) -> None:
         self.bot = bot
         self.config = config
-        self.provider = (config.provider or "deepseek-web").strip().lower()
         self._rate_limiter = RateLimiter(
             max_calls=config.rate_limit_calls,
             window_seconds=config.rate_limit_window,
@@ -80,49 +79,25 @@ class GeminiClient:
 
     @property
     def is_available(self) -> bool:
-        if self.provider == "digitalocean":
-            return bool(_DO_API_KEY and _DO_BASE_URL)
         return self._deepseek_web.enabled
 
     def availability_message(self) -> str:
-        if self.provider == "digitalocean":
-            if not _DO_API_KEY:
-                return "DigitalOcean provider is selected but `DO_API_KEY` is missing."
-            if not _DO_BASE_URL:
-                return "DigitalOcean provider is selected but `DO_INFERENCE_BASE_URL` is empty."
-            return "DigitalOcean inference is configured."
-
         if not self._deepseek_web.enabled:
             return "`DEEPSEEK_WEB_ENABLED` is off, so DeepSeek web requests are disabled."
         return "DeepSeek web is enabled. If requests still fail, refresh the saved browser session."
 
     def diagnostic_lines(self) -> List[str]:
-        lines = [f"Provider: `{self.provider}`"]
-        if self.provider == "digitalocean":
-            model = (
-                os.getenv("DO_AIMOD_MODEL")
-                or os.getenv("DO_CHAT_MODEL")
-                or os.getenv("DO_AUTOMOD_MODEL")
-                or "deepseek-4-flash"
-            )
-            lines.extend(
-                [
-                    f"API key: {'present' if bool(_DO_API_KEY) else 'missing'}",
-                    f"Base URL: `{_DO_BASE_URL or 'missing'}`",
-                    f"Default model: `{model}`",
-                ]
-            )
-        else:
-            storage_path = getattr(self._deepseek_web, "storage_state_path", None)
-            session_index = getattr(self._deepseek_web, "session_index_path", None)
-            lines.extend(
-                [
-                    f"DeepSeek web enabled: {'yes' if self._deepseek_web.enabled else 'no'}",
-                    f"Storage state: `{storage_path}`" if storage_path else "Storage state: `unknown`",
-                    f"Session index: `{session_index}`" if session_index else "Session index: `unknown`",
-                    f"Timeout: `{getattr(self._deepseek_web, 'timeout_seconds', 'unknown')}s`",
-                ]
-            )
+        lines = ["Provider: `deepseek-web`"]
+        storage_path = getattr(self._deepseek_web, "storage_state_path", None)
+        session_index = getattr(self._deepseek_web, "session_index_path", None)
+        lines.extend(
+            [
+                f"DeepSeek web enabled: {'yes' if self._deepseek_web.enabled else 'no'}",
+                f"Storage state: `{storage_path}`" if storage_path else "Storage state: `unknown`",
+                f"Session index: `{session_index}`" if session_index else "Session index: `unknown`",
+                f"Timeout: `{getattr(self._deepseek_web, 'timeout_seconds', 'unknown')}s`",
+            ]
+        )
         lines.append(f"Available now: {'yes' if self.is_available else 'no'}")
         lines.append(self.availability_message())
         return lines
@@ -133,15 +108,13 @@ class GeminiClient:
             self._brave_search_api_key
             or self._tavily_api_key
             or self._serpapi_api_key
-            or (self.provider == "deepseek-web" and self._deepseek_web.enabled)
+            or self._deepseek_web.enabled
         )
 
     async def close(self) -> None:
         await self._deepseek_web.close()
 
     async def prewarm(self) -> None:
-        if self.provider != "deepseek-web":
-            return
         await self._deepseek_web.prewarm()
 
     # ------------------------------------------------------------------
@@ -184,16 +157,6 @@ class GeminiClient:
         session_key: Optional[str] = None,
         session_name: Optional[str] = None,
     ) -> Optional[str]:
-        if self.provider == "digitalocean":
-            return await self._call_digitalocean(
-                messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                model=model,
-                json_mode=json_mode,
-                allow_multimodal=allow_multimodal,
-            )
-
         del temperature, max_tokens, model, allow_multimodal
         if not self._deepseek_web.enabled:
             raise DeepSeekWebError("DeepSeek web provider is disabled.")
@@ -229,12 +192,7 @@ class GeminiClient:
 
         selected_model = (model or self.config.model or "").strip()
         if selected_model.lower() in {"", "deepseek-web", "digitalocean"}:
-            selected_model = (
-                os.getenv("DO_AIMOD_MODEL")
-                or os.getenv("DO_CHAT_MODEL")
-                or os.getenv("DO_AUTOMOD_MODEL")
-                or "deepseek-4-flash"
-            ).strip()
+            selected_model = os.getenv("DO_PROFILE_MODEL", "deepseek-4-flash").strip()
         request_messages = messages if allow_multimodal else self._normalize_text_messages(messages)
         if not request_messages:
             raise RuntimeError("DigitalOcean request has no message content.")
@@ -683,7 +641,6 @@ class GeminiClient:
         web_context = ""
         uses_native_search = (
             signals.mode == ConversationMode.RESEARCH
-            and self.provider == "deepseek-web"
             and self._deepseek_web.enabled
         )
         if (
@@ -724,37 +681,23 @@ class GeminiClient:
         # --- Build message chain with multi-turn context ---
         is_image_question = _looks_like_image_question_text(user_content)
         image_context: List[ImageContext] = []
-        if self.provider == "deepseek-web" or is_image_question:
-            image_context = await self._collect_image_context(
-                recent_messages,
-                source_message=source_message,
-            )
+        image_context = await self._collect_image_context(
+            recent_messages,
+            source_message=source_message,
+        )
         prompt = f"{plan.system_prompt}\n\n### USER MESSAGE ###\n{plan.user_prompt}"
 
         try:
             await self._rate_limiter.record_call(author.id)
-            if self.provider == "digitalocean":
-                if image_context:
-                    return "Image analysis is not enabled on this DigitalOcean text model."
-                content = await self._call(
-                    [
-                        {"role": "system", "content": plan.system_prompt},
-                        {"role": "user", "content": plan.user_prompt},
-                    ],
-                    temperature=self.config.temperature_chat,
-                    max_tokens=self.config.max_tokens_chat,
-                    model=model,
-                )
-            else:
-                if not self._deepseek_web.enabled:
-                    return "DeepSeek is not configured on this deployment."
-                session_key, session_name = self._deepseek_session_identity(
-                    guild,
-                    source_message,
-                    research=signals.mode == ConversationMode.RESEARCH,
-                    vision=bool(image_context),
-                )
-                if image_context:
+            if not self._deepseek_web.enabled:
+                return "DeepSeek is not configured on this deployment."
+            session_key, session_name = self._deepseek_session_identity(
+                guild,
+                source_message,
+                research=signals.mode == ConversationMode.RESEARCH,
+                vision=bool(image_context),
+            )
+            if image_context:
                     uploads = [
                         (image.filename, image.mime_type, image.data)
                         for image in image_context
