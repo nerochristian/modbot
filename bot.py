@@ -1753,6 +1753,17 @@ class ModBot(commands.Bot):
 
         cmd_name = interaction.command.name if interaction.command else "Unknown"
         logger.error(f"Slash command error '{cmd_name}': {error}", exc_info=error)
+        embed = ModEmbed.error(
+            "Command Failed",
+            "That command hit an internal error before it could finish. The error was logged.",
+        )
+        try:
+            if interaction.response.is_done():
+                await interaction.followup.send(embed=embed, ephemeral=True)
+            else:
+                await interaction.response.send_message(embed=embed, ephemeral=True)
+        except Exception:
+            pass
 
     async def _check_global_blacklist(self, interaction: discord.Interaction) -> bool:
         """Block blacklisted users from application commands."""
