@@ -26,8 +26,7 @@ if [[ ! -d "${APP_DIR}/.git" ]]; then
   git clone --branch "${BRANCH}" "${REPO_URL}" "${APP_DIR}"
 fi
 
-install -m 0755 "${APP_DIR}/scripts/vps_deploy.sh" /usr/local/bin/modbot-deploy
-ln -sf /usr/local/bin/modbot-deploy "${APP_DIR}/scripts/vps_deploy.sh"
+chmod +x "${APP_DIR}/scripts/vps_deploy.sh"
 
 cat >/etc/modbot-autoupdate.env <<EOF
 MODBOT_APP_DIR=${APP_DIR}
@@ -36,8 +35,38 @@ MODBOT_BRANCH=${BRANCH}
 MODBOT_SERVICE=${SERVICE}
 EOF
 
-install -m 0644 "${APP_DIR}/deploy/modbot.service" "/etc/systemd/system/${SERVICE}.service"
-install -m 0644 "${APP_DIR}/deploy/modbot-autoupdate.service" /etc/systemd/system/modbot-autoupdate.service
+cat >"/etc/systemd/system/${SERVICE}.service" <<EOF
+[Unit]
+Description=ModBot Discord bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=${APP_DIR}
+EnvironmentFile=-${APP_DIR}/.env
+ExecStart=${APP_DIR}/.venv/bin/python ${APP_DIR}/bot.py
+Restart=always
+RestartSec=10
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+cat >/etc/systemd/system/modbot-autoupdate.service <<EOF
+[Unit]
+Description=Deploy latest ModBot commit from GitHub
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/modbot-autoupdate.env
+ExecStart=/usr/bin/env bash ${APP_DIR}/scripts/vps_deploy.sh
+EOF
+
 install -m 0644 "${APP_DIR}/deploy/modbot-autoupdate.timer" /etc/systemd/system/modbot-autoupdate.timer
 
 systemctl daemon-reload
