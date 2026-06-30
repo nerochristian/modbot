@@ -6,6 +6,7 @@ import asyncio
 import copy
 import json
 import logging
+import os
 import re
 from dataclasses import dataclass
 from typing import Any, Callable, Iterable, Mapping, Optional
@@ -23,6 +24,15 @@ log = logging.getLogger("AutoMod.Setup")
 
 _ACTIVE_SETUPS: set[int] = set()
 _ACTIVE_LOCK = asyncio.Lock()
+
+
+def _deepseek_web_primary_timeout() -> float:
+    raw = os.getenv("DEEPSEEK_WEB_PRIMARY_TIMEOUT", "25").strip()
+    try:
+        timeout = float(raw)
+    except ValueError:
+        timeout = 25.0
+    return min(90.0, max(0.1, timeout))
 
 
 @dataclass(frozen=True)
@@ -438,13 +448,16 @@ async def call_deepseek_json(
 
     if web_client and getattr(web_client, "enabled", False):
         try:
-            response = await web_client.chat(
-                prompt,
-                search=False,
-                deepthink=False,
-                long_answer=False,
-                session_key=session_key,
-                session_name=session_name,
+            response = await asyncio.wait_for(
+                web_client.chat(
+                    prompt,
+                    search=False,
+                    deepthink=False,
+                    long_answer=False,
+                    session_key=session_key,
+                    session_name=session_name,
+                ),
+                timeout=_deepseek_web_primary_timeout(),
             )
             return _extract_json_object(response)
         except Exception as exc:
