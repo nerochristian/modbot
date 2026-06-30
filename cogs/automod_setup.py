@@ -769,6 +769,8 @@ def _questions_prompt() -> str:
         "Choice questions must have 2 to 5 short options. Questions must be specific to the admin goal and selected profile, not generic boilerplate. "
         "Ask about the actual risks mentioned by the admin, punishments, links/invites, spam limits (e.g. how many messages trigger a penalty), raids/new accounts, and any custom allow/block lists that matter. "
         "You MUST include an open-ended `text` question asking for warning escalation thresholds, and provide this exact example in the question or helper: 'e.g., 3 warnings = mute, 5 = kick, 8 = ban'. "
+        "For any question about custom bad words, set the `helper` text to explain that common slurs are already filtered globally and they only need to provide server-specific custom words. "
+        "For any question about links, set the `helper` text to explain that they should list specific allowed websites (like youtube.com). "
         "Do not ask for raw setting keys. Do not include markdown."
     )
 
