@@ -445,17 +445,6 @@ class Moderation(
             original_action = None  # No "undo" context for direct replies
 
         if target_id is None:
-            try:
-                await message.reply(
-                    embed=discord.Embed(
-                        title="⚠️ Could Not Resolve Target",
-                        description="I couldn't find a target user ID in the replied message. Reply to a moderation embed that includes the target user.",
-                        color=discord.Color.orange(),
-                    ),
-                    delete_after=10,
-                )
-            except discord.HTTPException:
-                pass
             return
 
         # Check staff permissions

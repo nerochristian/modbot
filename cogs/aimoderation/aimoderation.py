@@ -1605,12 +1605,12 @@ class AIModeration(commands.Cog):
             return decision
 
         context_str = ""
-        if message and message.guild and hasattr(self.bot, 'database') and hasattr(self.bot.database, 'get_recent_user_messages'):
+        if message and message.guild and hasattr(self.bot, 'db') and hasattr(self.bot.db, 'get_recent_user_messages'):
             target_id_str = decision.arguments.get("user_id") or decision.arguments.get("target_user_id")
             if target_id_str:
                 try:
                     target_id = int(target_id_str)
-                    recent_msgs = await self.bot.database.get_recent_user_messages(message.guild.id, target_id, limit=100)
+                    recent_msgs = await self.bot.db.get_recent_user_messages(message.guild.id, target_id, limit=100)
                     if recent_msgs:
                         context_str = "\n\nTarget User's Recent Messages:\n" + "\n".join(
                             f"[{m['timestamp']}] {m['content']}" for m in recent_msgs
@@ -1955,8 +1955,8 @@ class AIModeration(commands.Cog):
             return
 
         # Track message for behavioral profiling
-        if hasattr(self.bot, 'database') and hasattr(self.bot.database, 'track_user_message'):
-            self.bot.loop.create_task(self.bot.database.track_user_message(message))
+        if hasattr(self.bot, 'db') and hasattr(self.bot.db, 'track_user_message'):
+            self.bot.loop.create_task(self.bot.db.track_user_message(message))
 
         is_mentioned = self.bot.user in message.mentions
         is_reply_to_bot = await self._message_replies_to_bot(message)
