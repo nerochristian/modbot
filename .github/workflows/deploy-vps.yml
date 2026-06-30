@@ -13,31 +13,42 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    if: ${{ vars.VPS_DEPLOY_ENABLED == 'true' || secrets.VPS_HOST != '' }}
+    env:
+      VPS_HOST: ${{ secrets.VPS_HOST }}
+      VPS_USER: ${{ secrets.VPS_USER }}
+      VPS_PORT: ${{ secrets.VPS_PORT }}
+      VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+      VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+      MODBOT_APP_DIR: ${{ vars.MODBOT_APP_DIR }}
+      MODBOT_SERVICE: ${{ vars.MODBOT_SERVICE }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
 
+      - name: Check deploy configuration
+        id: config
+        run: |
+          if [ -z "${VPS_HOST}" ] || [ -z "${VPS_SSH_KEY}" ] || [ -z "${VPS_KNOWN_HOSTS}" ]; then
+            echo "configured=false" >> "${GITHUB_OUTPUT}"
+            echo "VPS deploy skipped: set VPS_HOST, VPS_SSH_KEY, and VPS_KNOWN_HOSTS secrets."
+            exit 0
+          fi
+          echo "configured=true" >> "${GITHUB_OUTPUT}"
+
       - name: Configure SSH
+        if: steps.config.outputs.configured == 'true'
         run: |
           mkdir -p ~/.ssh
-          printf '%s\n' "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          printf '%s\n' "${VPS_SSH_KEY}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          printf '%s\n' "${{ secrets.VPS_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+          printf '%s\n' "${VPS_KNOWN_HOSTS}" > ~/.ssh/known_hosts
 
       - name: Deploy latest commit
-        env:
-          VPS_HOST: ${{ secrets.VPS_HOST }}
-          VPS_USER: ${{ secrets.VPS_USER }}
-          VPS_PORT: ${{ secrets.VPS_PORT }}
-          MODBOT_APP_DIR: ${{ vars.MODBOT_APP_DIR }}
-          MODBOT_BRANCH: main
-          MODBOT_SERVICE: ${{ vars.MODBOT_SERVICE }}
+        if: steps.config.outputs.configured == 'true'
         run: |
-          : "${VPS_HOST:?Missing VPS_HOST secret}"
           : "${VPS_USER:=root}"
           : "${VPS_PORT:=22}"
           : "${MODBOT_APP_DIR:=/opt/modbot}"
           : "${MODBOT_SERVICE:=modbot}"
           ssh -p "${VPS_PORT}" "${VPS_USER}@${VPS_HOST}" \
-            "MODBOT_APP_DIR='${MODBOT_APP_DIR}' MODBOT_BRANCH='${MODBOT_BRANCH}' MODBOT_SERVICE='${MODBOT_SERVICE}' '${MODBOT_APP_DIR}/scripts/vps_deploy.sh'"
+            "MODBOT_APP_DIR='${MODBOT_APP_DIR}' MODBOT_BRANCH='main' MODBOT_SERVICE='${MODBOT_SERVICE}' '${MODBOT_APP_DIR}/scripts/vps_deploy.sh'"
