@@ -511,16 +511,32 @@ def _extract_json_object(raw: str) -> dict[str, Any]:
     if content.startswith("```"):
         content = re.sub(r"^```(?:json)?\s*", "", content, flags=re.IGNORECASE)
         content = re.sub(r"\s*```$", "", content)
+    
+    # Try parsing the whole thing first
     try:
         parsed = json.loads(content)
+        if isinstance(parsed, dict):
+            return parsed
     except json.JSONDecodeError:
-        match = re.search(r"\{.*\}", content, flags=re.DOTALL)
-        if match is None:
-            raise ValueError("DeepSeek did not return a JSON object.") from None
-        parsed = json.loads(match.group(0))
-    if not isinstance(parsed, dict):
-        raise ValueError("DeepSeek returned JSON, but it was not an object.")
-    return parsed
+        pass
+
+    # Find the first valid JSON object by extracting from the first '{'
+    start_idx = content.find('{')
+    if start_idx == -1:
+        raise ValueError("DeepSeek did not return a JSON object.")
+
+    # Iterate through possible end indices for the JSON object
+    for end_idx in range(len(content), start_idx, -1):
+        if content[end_idx - 1] != '}':
+            continue
+        try:
+            parsed = json.loads(content[start_idx:end_idx])
+            if isinstance(parsed, dict):
+                return parsed
+        except json.JSONDecodeError:
+            continue
+
+    raise ValueError("DeepSeek returned malformed JSON.")
 
 
 def _coerce_bool(value: Any) -> Optional[bool]:
