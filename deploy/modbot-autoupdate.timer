@@ -1,0 +1,12 @@
+[Unit]
+Description=Check GitHub for ModBot updates every minute
+
+[Timer]
+OnBootSec=30
+OnUnitActiveSec=60
+AccuracySec=10
+Persistent=true
+Unit=modbot-autoupdate.service
+
+[Install]
+WantedBy=timers.target

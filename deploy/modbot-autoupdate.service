@@ -1,0 +1,9 @@
+[Unit]
+Description=Deploy latest ModBot commit from GitHub
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/modbot-autoupdate.env
+ExecStart=/opt/modbot/scripts/vps_deploy.sh

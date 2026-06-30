@@ -1,0 +1,17 @@
+[Unit]
+Description=ModBot Discord bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/modbot
+EnvironmentFile=-/opt/modbot/.env
+ExecStart=/opt/modbot/.venv/bin/python /opt/modbot/bot.py
+Restart=always
+RestartSec=10
+KillSignal=SIGINT
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target
