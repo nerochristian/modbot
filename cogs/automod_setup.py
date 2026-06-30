@@ -21,69 +21,15 @@ from utils.embeds import ModEmbed
 
 log = logging.getLogger("AutoMod.Setup")
 
-_DO_API_KEY = os.getenv("DO_API_KEY", "").strip()
-_DO_BASE_URL = os.getenv("DO_INFERENCE_BASE_URL", "https://inference.do-ai.run/v1").strip().rstrip("/")
-_DO_MODEL = os.getenv("DO_AUTOMOD_MODEL", os.getenv("DO_PROFILE_MODEL", "deepseek-4-flash")).strip()
+_DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", os.getenv("GALAXY_API_KEY", os.getenv("DO_API_KEY", ""))).strip()
+_DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", os.getenv("GALAXY_BASE_URL", "https://api.deepseek.com/v1")).strip().rstrip("/")
+_DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat").strip()
 
 _ACTIVE_SETUPS: set[int] = set()
 _ACTIVE_LOCK = asyncio.Lock()
 
 
-@dataclass(frozen=True)
-class SetupQuestion:
-    key: str
-    prompt: str
-    options: tuple[str, ...] = ()
-
-    @property
-    def is_closed(self) -> bool:
-        return bool(self.options)
-
-
-QUESTIONS: tuple[SetupQuestion, ...] = (
-    SetupQuestion(
-        "strictness",
-        "How strict should AutoMod be overall?",
-        ("Standard", "Relaxed", "Strict"),
-    ),
-    SetupQuestion(
-        "server_profile",
-        "Describe your server and what you mainly want AutoMod to prevent.",
-    ),
-    SetupQuestion(
-        "bad_words",
-        "Should AutoMod block common slurs, harassment, and banned words?",
-        ("Yes", "No", "Only severe words"),
-    ),
-    SetupQuestion(
-        "spam_action",
-        "What should happen when someone spams?",
-        ("Warn", "Timeout", "Nothing"),
-    ),
-    SetupQuestion(
-        "security_action",
-        "What should happen for scams, phishing links, or dangerous invites?",
-        ("Timeout", "Ban", "Warn"),
-    ),
-    SetupQuestion(
-        "custom_words",
-        "Any exact words or phrases you want banned? Type them separated by commas, or type none.",
-    ),
-    SetupQuestion(
-        "links",
-        "How should links and Discord invites work? Example: dangerous links only, block all except YouTube/GitHub, or allow normal links.",
-    ),
-    SetupQuestion(
-        "raid_protection",
-        "Should AutoMod be strict with brand-new accounts and mass mentions?",
-        ("Yes", "No", "Only during raids"),
-    ),
-    SetupQuestion(
-        "feedback",
-        "Should users get a DM when AutoMod acts?",
-        ("Yes", "No"),
-    ),
-)
+# Removed static QUESTIONS array in favor of dynamic DeepSeek questions
 
 _BOOL_KEYS = {
     "automod_enabled",
@@ -186,36 +132,49 @@ def _permission_denied_embed() -> discord.Embed:
     )
 
 
-class SetupQuestionView(discord.ui.View):
-    def __init__(self, owner_id: int, options: Iterable[str]) -> None:
+class ProfilePaginatorView(discord.ui.View):
+    def __init__(self, owner_id: int, profiles: list[dict[str, str]]):
         super().__init__(timeout=300)
         self.owner_id = owner_id
-        self.value: Optional[str] = None
-        for index, option in enumerate(options):
-            button = discord.ui.Button(
-                label=option,
-                style=discord.ButtonStyle.primary if index == 0 else discord.ButtonStyle.secondary,
-                custom_id=f"automod_setup:{index}",
-            )
-            button.callback = self._make_callback(option)
-            self.add_item(button)
+        self.profiles = profiles
+        self.current = 0
+        self.selected_profile: Optional[dict[str, str]] = None
+        self._update_buttons()
 
-    def _make_callback(self, option: str) -> Callable[[discord.Interaction], Any]:
-        async def callback(interaction: discord.Interaction) -> None:
-            if interaction.user.id != self.owner_id:
-                await interaction.response.send_message("This setup belongs to another admin.", ephemeral=True)
-                return
-            self.value = option
-            for item in self.children:
-                if isinstance(item, discord.ui.Button):
-                    item.disabled = True
-            if interaction.message and interaction.message.embeds:
-                await interaction.response.edit_message(embed=interaction.message.embeds[0], view=self)
-            else:
-                await interaction.response.edit_message(view=self)
-            self.stop()
+    def _update_buttons(self) -> None:
+        self.prev_button.disabled = self.current == 0
+        self.next_button.disabled = self.current == len(self.profiles) - 1
 
-        return callback
+    @discord.ui.button(emoji="⬅️", style=discord.ButtonStyle.secondary)
+    async def prev_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if interaction.user.id != self.owner_id: return
+        self.current -= 1
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self.get_embed(), view=self)
+
+    @discord.ui.button(label="Select this Profile", style=discord.ButtonStyle.primary)
+    async def select_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if interaction.user.id != self.owner_id: return
+        self.selected_profile = self.profiles[self.current]
+        for item in self.children:
+            item.disabled = True
+        await interaction.response.edit_message(view=self)
+        self.stop()
+
+    @discord.ui.button(emoji="➡️", style=discord.ButtonStyle.secondary)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        if interaction.user.id != self.owner_id: return
+        self.current += 1
+        self._update_buttons()
+        await interaction.response.edit_message(embed=self.get_embed(), view=self)
+
+    def get_embed(self) -> discord.Embed:
+        profile = self.profiles[self.current]
+        return discord.Embed(
+            title=f"Profile {self.current + 1}/{len(self.profiles)}: {profile.get('name', 'Profile')}",
+            description=profile.get('description', ''),
+            color=Config.COLOR_INFO
+        )
 
 
 class AutoModChangeModal(discord.ui.Modal, title="Change AutoMod"):
@@ -387,10 +346,10 @@ def validate_automod_update(candidate: Mapping[str, Any], *, require_changes: bo
 
 
 async def call_deepseek_json(system_prompt: str, user_prompt: str, *, max_tokens: int = 1400) -> dict[str, Any]:
-    if not _DO_API_KEY:
-        raise RuntimeError("DigitalOcean inference is missing DO_API_KEY.")
+    if not _DEEPSEEK_API_KEY:
+        raise RuntimeError("DeepSeek inference is missing DEEPSEEK_API_KEY.")
     payload = {
-        "model": _DO_MODEL or "deepseek-4-flash",
+        "model": _DEEPSEEK_MODEL or "deepseek-chat",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -402,9 +361,9 @@ async def call_deepseek_json(system_prompt: str, user_prompt: str, *, max_tokens
     timeout = aiohttp.ClientTimeout(total=120)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.post(
-            f"{_DO_BASE_URL}/chat/completions",
+            f"{_DEEPSEEK_BASE_URL}/chat/completions",
             headers={
-                "Authorization": f"Bearer {_DO_API_KEY}",
+                "Authorization": f"Bearer {_DEEPSEEK_API_KEY}",
                 "Content-Type": "application/json",
             },
             json=payload,
@@ -412,10 +371,10 @@ async def call_deepseek_json(system_prompt: str, user_prompt: str, *, max_tokens
             data = await response.json(content_type=None)
             if response.status >= 400:
                 detail = data.get("error", data) if isinstance(data, dict) else data
-                raise RuntimeError(f"DigitalOcean HTTP {response.status}: {str(detail)[:500]}")
+                raise RuntimeError(f"DeepSeek HTTP {response.status}: {str(detail)[:500]}")
     choices = data.get("choices") if isinstance(data, dict) else None
     if not choices:
-        raise RuntimeError("DigitalOcean response did not include choices.")
+        raise RuntimeError("DeepSeek response did not include choices.")
     message = (choices[0] or {}).get("message") or {}
     content = message.get("content")
     if not isinstance(content, str):
@@ -436,13 +395,13 @@ def _settings_prompt() -> str:
     )
 
 
-def _setup_user_prompt(guild: discord.Guild, answers: list[dict[str, str]]) -> str:
+def _setup_user_prompt(guild: discord.Guild, setup_data: dict[str, Any]) -> str:
     return json.dumps(
         {
             "guild": {"id": guild.id, "name": guild.name, "member_count": guild.member_count},
             "defaults": {key: AUTOMOD_SETTINGS[key] for key in sorted(AUTOMOD_SETTINGS)},
-            "answers": answers,
-            "goal": "Create a complete, production-safe AutoMod configuration from these setup answers.",
+            "setup_data": setup_data,
+            "goal": "Create a complete, production-safe AutoMod configuration from this data.",
         },
         indent=2,
     )
@@ -572,48 +531,97 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
 
     try:
         await interaction.followup.send(f"AutoMod setup started in {channel.mention}.", ephemeral=True)
-        await channel.send(
-            embed=discord.Embed(
-                title="AutoMod setup",
-                description=(
-                    "Hello! Welcome to your server's AutoMod setup.\n"
-                    "Answer each question below. Button questions are closed-ended; text questions are open-ended."
-                ),
-                color=Config.COLOR_INFO,
-            )
+        
+        # Step 1: Initial Question
+        embed = discord.Embed(
+            title="AutoMod Setup",
+            description="Welcome to your server's AutoMod setup.\n\n**Describe your server and what you mainly want AutoMod to prevent.**\n*(e.g., 'We are a gaming server, block slurs and scam links but keep it mostly relaxed.')*",
+            color=Config.COLOR_INFO,
         )
+        prompt_message = await channel.send(embed=embed)
+        initial_answer = await _collect_open_answer(cog, channel, interaction.user)
+        if not initial_answer:
+            await channel.send(embed=ModEmbed.warning("Setup timed out", "Run `/automod setup` again when you are ready."))
+            return
+            
+        embed.description = f"~~{embed.description}~~\n\n**Answer:** {initial_answer}"
+        embed.color = Config.COLOR_SUCCESS
+        await prompt_message.edit(embed=embed)
 
-        answers: list[dict[str, str]] = []
-        for index, question in enumerate(QUESTIONS, start=1):
+        # Step 2: Generate 3 Profiles
+        working = await channel.send(embed=ModEmbed.info("Generating Profiles", "Sending your description to DeepSeek to generate custom setup profiles..."))
+        
+        profiles_prompt = (
+            "You are an expert Discord AutoMod configuration AI. "
+            "Based on the user's description of their server, generate exactly 3 distinct, improved configuration profiles. "
+            "Return a JSON object with a key 'profiles' containing a list of 3 objects, "
+            "each with 'name' (a short title) and 'description' (a detailed paragraph of what the profile does)."
+        )
+        profiles_user_prompt = f"Server Description: {initial_answer}"
+        
+        profiles_resp = await call_deepseek_json(profiles_prompt, profiles_user_prompt, max_tokens=1000)
+        profiles = profiles_resp.get("profiles", [])
+        if len(profiles) < 3:
+            raise RuntimeError("DeepSeek did not generate enough profiles.")
+            
+        await working.delete()
+
+        # Step 3: Display Paginator and Select Profile
+        paginator = ProfilePaginatorView(interaction.user.id, profiles)
+        paginator_msg = await channel.send(embed=paginator.get_embed(), view=paginator)
+        await paginator.wait()
+        if not paginator.selected_profile:
+            await channel.send(embed=ModEmbed.warning("Setup timed out", "Run `/automod setup` again when you are ready."))
+            return
+            
+        selected_profile = paginator.selected_profile
+
+        # Step 4: Generate Dynamic Questions
+        working = await channel.send(embed=ModEmbed.info("Generating Questions", "Creating custom questions to fine-tune your selected profile..."))
+        
+        questions_prompt = (
+            "You are an expert Discord AutoMod configuration AI. "
+            "The user has selected a specific configuration profile for their server. "
+            "Generate exactly 4 specific questions to fine-tune the settings for this profile. "
+            "Return a JSON object with a key 'questions' containing a list of strings."
+        )
+        questions_user_prompt = f"Selected Profile: {selected_profile.get('name')}\nDescription: {selected_profile.get('description')}"
+        
+        questions_resp = await call_deepseek_json(questions_prompt, questions_user_prompt, max_tokens=800)
+        dynamic_questions = questions_resp.get("questions", [])
+        if not dynamic_questions:
+            raise RuntimeError("DeepSeek failed to generate questions.")
+            
+        await working.delete()
+
+        # Step 5: Ask Dynamic Questions
+        answers = []
+        for index, question in enumerate(dynamic_questions, start=1):
             embed = discord.Embed(
-                title=f"Question {index}/{len(QUESTIONS)}",
-                description=question.prompt,
+                title=f"Question {index}/{len(dynamic_questions)}",
+                description=question,
                 color=Config.COLOR_INFO,
             )
-            if question.is_closed:
-                view = SetupQuestionView(interaction.user.id, question.options)
-                prompt_message = await channel.send(embed=embed, view=view)
-                await view.wait()
-                if view.value is None:
-                    await channel.send(embed=ModEmbed.warning("Setup timed out", "Run `/automod setup` again when you are ready."))
-                    return
-                answer = view.value
-                embed.description = f"~~{question.prompt}~~\n\n**Answer:** {answer}"
-                embed.color = Config.COLOR_SUCCESS
-                await prompt_message.edit(embed=embed, view=None)
-            else:
-                prompt_message = await channel.send(embed=embed)
-                answer = await _collect_open_answer(cog, channel, interaction.user)
-                if answer is None:
-                    await channel.send(embed=ModEmbed.warning("Setup timed out", "Run `/automod setup` again when you are ready."))
-                    return
-                embed.description = f"~~{question.prompt}~~\n\n**Answer:** {answer}"
-                embed.color = Config.COLOR_SUCCESS
-                await prompt_message.edit(embed=embed)
-            answers.append({"key": question.key, "question": question.prompt, "answer": answer})
+            prompt_message = await channel.send(embed=embed)
+            answer = await _collect_open_answer(cog, channel, interaction.user)
+            if not answer:
+                await channel.send(embed=ModEmbed.warning("Setup timed out", "Run `/automod setup` again when you are ready."))
+                return
+            
+            embed.description = f"~~{question}~~\n\n**Answer:** {answer}"
+            embed.color = Config.COLOR_SUCCESS
+            await prompt_message.edit(embed=embed)
+            answers.append({"question": question, "answer": answer})
 
-        working = await channel.send(embed=ModEmbed.info("Building setup", "Sending your answers to DeepSeek through DigitalOcean."))
-        response = await call_deepseek_json(_settings_prompt(), _setup_user_prompt(guild, answers), max_tokens=1800)
+        # Step 6: Finalize Settings
+        working = await channel.send(embed=ModEmbed.info("Building setup", "Finalizing your AutoMod configuration through DeepSeek..."))
+        setup_data = {
+            "initial_goal": initial_answer,
+            "selected_profile": selected_profile,
+            "answers": answers
+        }
+        response = await call_deepseek_json(_settings_prompt(), _setup_user_prompt(guild, setup_data), max_tokens=1800)
+        
         model_update = validate_automod_update(response)
         settings_update = dict(AUTOMOD_SETTINGS)
         settings_update.update(model_update)
@@ -625,17 +633,20 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
                     settings.pop(key, None)
             settings.update(settings_update)
 
-        saved = await cog._edit_settings(guild.id, apply_update)
-        summary = str(response.get("summary") or "AutoMod has been configured from your answers.").strip()
-        embed = discord.Embed(
-            title="AutoMod setup complete",
-            description=f"{summary[:700]}\n\n" + "\n".join(_human_setting_lines(saved)),
-            color=Config.COLOR_SUCCESS,
-        )
-        view = SetupSummaryView(saved)
-        await working.edit(embed=embed, view=view)
-        await channel.send("This setup channel will close in 30 seconds.")
-        asyncio.create_task(_delete_channel_later(channel))
+        await cog._edit_settings(guild.id, apply_update)
+        
+        await channel.delete(reason="AutoMod setup completed successfully")
+        
+        # Send confirmation to the original channel
+        try:
+            await interaction.followup.send(embed=discord.Embed(
+                title="AutoMod Setup Complete",
+                description="Your AutoMod has been successfully configured and the setup channel has been closed.",
+                color=Config.COLOR_SUCCESS
+            ), ephemeral=True)
+        except Exception:
+            pass
+            
     except Exception as exc:
         log.exception("AutoMod setup failed")
         if channel is not None:
