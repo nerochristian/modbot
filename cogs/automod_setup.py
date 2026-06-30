@@ -431,6 +431,7 @@ def _settings_prompt() -> str:
         f"{', '.join(sorted(_ALLOWED_KEYS))}\n\n"
         "Actions must be one of: log, warn, timeout, kick, ban, quarantine. "
         "Link mode must be dangerous or allowlist. Durations are seconds. "
+        "If the user asks to block 'all bad words' or 'slurs', just set automod_badwords_enabled to true. Do not generate a list of bad words yourself. "
         "Keep values practical for a real Discord server. If the request is unclear, make the least destructive safe choice."
     )
 
@@ -676,11 +677,21 @@ async def _apply_automod_change(cog: Any, interaction: discord.Interaction, requ
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
     except Exception as exc:
-        log.exception("AutoMod change failed")
-        await interaction.followup.send(
-            embed=ModEmbed.error("AutoMod change failed", f"`{type(exc).__name__}: {str(exc)[:900]}`"),
-            ephemeral=True,
-        )
+        if "DeepSeek did not return any valid AutoMod settings" in str(exc):
+            await interaction.followup.send(
+                embed=ModEmbed.error(
+                    "No changes made",
+                    "The AI couldn't determine any settings to change based on your request. "
+                    "If you asked to add bad words, please provide the specific words you want to block, or ask to 'enable the bad word filter'."
+                ),
+                ephemeral=True,
+            )
+        else:
+            log.exception("AutoMod change failed")
+            await interaction.followup.send(
+                embed=ModEmbed.error("AutoMod change failed", f"`{type(exc).__name__}: {str(exc)[:900]}`"),
+                ephemeral=True,
+            )
 
 
 async def handle_automod_change(cog: Any, interaction: discord.Interaction, request: Optional[str] = None) -> None:
