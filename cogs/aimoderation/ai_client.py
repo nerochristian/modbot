@@ -95,7 +95,7 @@ class GeminiClient:
                 return "DeepSeek web is enabled with DigitalOcean fallback configured."
             return "DeepSeek web is enabled. If requests still fail, refresh the saved browser session."
         if _DO_API_KEY:
-            return "DeepSeek web is disabled; using DigitalOcean inference fallback."
+            return "`DEEPSEEK_WEB_ENABLED` is off; using DigitalOcean inference fallback."
         return "`DEEPSEEK_WEB_ENABLED` is off, so DeepSeek web requests are disabled."
 
     def diagnostic_lines(self) -> List[str]:

@@ -306,7 +306,8 @@ class AIActionRoutingTests(unittest.TestCase):
         )
 
         self.assertIn("DEEPSEEK_WEB_ENABLED", client.availability_message())
-        self.assertIn("Available now: no", client.diagnostic_lines())
+        self.assertIn("Available now: yes", client.diagnostic_lines())
+        self.assertIn("DigitalOcean inference fallback", client.availability_message())
 
     def test_tool_access_uses_registry_metadata_object(self) -> None:
         actor = SimpleNamespace(id=123)
