@@ -7,16 +7,12 @@ Falls back to DigitalOcean inference API if configured.
 from __future__ import annotations
 
 import asyncio
-import base64
-import io
 import json
 import logging
 import os
-import random
 import re
-from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable, ClassVar, Dict, Final, List, Optional, Set, Tuple, Union
+from typing import Any, ClassVar, Dict, Final, List, Optional, Set, Tuple, Union
 
 import aiohttp
 import discord
@@ -24,12 +20,10 @@ from discord.ext import commands
 
 from utils.deepseek_web import DeepSeekWebAuthError, DeepSeekWebClient, DeepSeekWebError
 from utils.cache import RateLimiter
-from utils.embeds import Colors, compact_kv_lines
 from utils.messages import Messages
 
 from .types import (
-    ToolType, DecisionType, ConversationMode, AIConfig,
-    TARGETED_TOOLS, REASONED_MODERATION_TOOLS, MAX_MODERATION_REASON_LENGTH,
+    ConversationMode, AIConfig,
     Decision, ConversationSignals, ConversationPlan,
     WebSearchResult, ImageContext, PermissionFlags, MentionInfo,
 )
@@ -82,14 +76,14 @@ class GeminiClient:
     @property
     def is_available(self) -> bool:
         if self.provider == "digitalocean":
-            return bool(DO_API_KEY and DO_BASE_URL)
+            return bool(_DO_API_KEY and _DO_BASE_URL)
         return self._deepseek_web.enabled
 
     def availability_message(self) -> str:
         if self.provider == "digitalocean":
-            if not DO_API_KEY:
+            if not _DO_API_KEY:
                 return "DigitalOcean provider is selected but `DO_API_KEY` is missing."
-            if not DO_BASE_URL:
+            if not _DO_BASE_URL:
                 return "DigitalOcean provider is selected but `DO_INFERENCE_BASE_URL` is empty."
             return "DigitalOcean inference is configured."
 
@@ -108,8 +102,8 @@ class GeminiClient:
             )
             lines.extend(
                 [
-                    f"API key: {'present' if bool(DO_API_KEY) else 'missing'}",
-                    f"Base URL: `{DO_BASE_URL or 'missing'}`",
+                    f"API key: {'present' if bool(_DO_API_KEY) else 'missing'}",
+                    f"Base URL: `{_DO_BASE_URL or 'missing'}`",
                     f"Default model: `{model}`",
                 ]
             )
@@ -225,7 +219,7 @@ class GeminiClient:
         json_mode: bool = False,
         allow_multimodal: bool = False,
     ) -> Optional[str]:
-        if not DO_API_KEY:
+        if not _DO_API_KEY:
             raise RuntimeError("DigitalOcean inference is missing DO_API_KEY.")
 
         selected_model = (model or self.config.model or "").strip()
@@ -252,9 +246,9 @@ class GeminiClient:
         session, owned_session = self._get_http_session(timeout=60)
         try:
             async with session.post(
-                f"{DO_BASE_URL}/chat/completions",
+                f"{_DO_BASE_URL}/chat/completions",
                 headers={
-                    "Authorization": f"Bearer {DO_API_KEY}",
+                    "Authorization": f"Bearer {_DO_API_KEY}",
                     "Content-Type": "application/json",
                 },
                 json=payload,
@@ -664,20 +658,21 @@ class GeminiClient:
 
         # Research is intentionally isolated from prior conversations. Only
         # the current request and explicitly attached/replied media are sent.
-        past_memory = ""
+        stored_memory = ""
         is_continuation = False
         thread_context = "No recent messages"
         try:
             db = getattr(self.bot, "db", None)
             if db:
-                past_memory = await db.get_ai_memory(author.id) or ""
+                stored_memory = await db.get_ai_memory(author.id) or ""
         except Exception:
-            pass
-        is_continuation = self._is_conversation_continuation(
-            author,
-            recent_messages,
-        )
+            logger.debug("Failed to load AI memory for user %d", author.id, exc_info=True)
+        past_memory = stored_memory if signals.mode != ConversationMode.RESEARCH else ""
         if signals.mode != ConversationMode.RESEARCH:
+            is_continuation = self._is_conversation_continuation(
+                author,
+                recent_messages,
+            )
             thread_context = self._format_conversation_history(recent_messages)
 
         web_context = ""
@@ -784,7 +779,7 @@ class GeminiClient:
 
             # Fire-and-forget memory update with summarization
             asyncio.create_task(
-                self._update_memory_smart(author.id, user_content, content, past_memory)
+                self._update_memory_smart(author.id, user_content, content, stored_memory)
             )
             return content
         except DeepSeekWebAuthError as exc:

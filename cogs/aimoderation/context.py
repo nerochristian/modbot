@@ -8,11 +8,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Optional, Union
 
 import discord
 
 from utils.embeds import compact_kv_lines
+
+if TYPE_CHECKING:
+    from .aimoderation import AIModeration
+    from .types import Decision
 
 
 def _now() -> datetime:

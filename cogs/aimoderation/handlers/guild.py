@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 from typing import Dict
+from urllib.parse import urlparse
 
 import aiohttp
 import discord
 
-from ..context import ToolContext, ToolResult, _now
+from ..context import ToolContext, ToolResult
 from ..registry import ToolRegistry
 from ..types import ToolType
 
@@ -22,7 +23,10 @@ from ..types import ToolType
 async def handle_edit_guild(ctx: ToolContext) -> ToolResult:
     kwargs: Dict[str, str] = {}
     if "name" in ctx.args:
-        kwargs["name"] = ctx.args["name"]
+        name = str(ctx.args["name"]).strip()
+        if not 2 <= len(name) <= 100:
+            return ToolResult.fail("Server name must be between 2 and 100 characters.")
+        kwargs["name"] = name
     if not kwargs:
         return ToolResult.fail("Nothing to edit.")
     await ctx.guild.edit(**kwargs, reason=f"AI Mod ({ctx.actor})")
@@ -38,10 +42,22 @@ async def handle_edit_guild(ctx: ToolContext) -> ToolResult:
     category="guild",
 )
 async def handle_create_emoji(ctx: ToolContext) -> ToolResult:
-    name = ctx.arg("name")
-    url = ctx.arg("url")
+    name = str(ctx.arg("name", "")).strip()
+    url = str(ctx.arg("url", "")).strip()
     if not name or not url:
         return ToolResult.fail("Both emoji name and image URL are required.")
+    if not 2 <= len(name) <= 32 or not name.replace("_", "").isalnum():
+        return ToolResult.fail("Emoji names must be 2-32 letters, numbers, or underscores.")
+
+    parsed = urlparse(url)
+    allowed_hosts = {
+        "cdn.discordapp.com",
+        "media.discordapp.net",
+        "images-ext-1.discordapp.net",
+        "images-ext-2.discordapp.net",
+    }
+    if parsed.scheme != "https" or (parsed.hostname or "").lower() not in allowed_hosts:
+        return ToolResult.fail("Emoji images must use a Discord CDN HTTPS URL.")
 
     session: aiohttp.ClientSession | None = getattr(ctx.cog.bot, "session", None)
     owned_session = False
@@ -50,11 +66,16 @@ async def handle_create_emoji(ctx: ToolContext) -> ToolResult:
         owned_session = True
 
     try:
-        async with session.get(str(url)) as resp:
+        async with session.get(url, allow_redirects=False) as resp:
             if resp.status != 200:
                 return ToolResult.fail(f"Failed to download image (HTTP {resp.status}).")
-            data = await resp.read()
-        emoji = await ctx.guild.create_custom_emoji(name=str(name), image=data, reason=f"AI Mod ({ctx.actor})")
+            content_type = (resp.headers.get("Content-Type") or "").lower()
+            if not content_type.startswith("image/"):
+                return ToolResult.fail("The supplied URL did not return an image.")
+            data = await resp.content.read(256 * 1024 + 1)
+            if len(data) > 256 * 1024:
+                return ToolResult.fail("Emoji image is too large (maximum 256 KiB).")
+        emoji = await ctx.guild.create_custom_emoji(name=name, image=data, reason=f"AI Mod ({ctx.actor})")
         embed = discord.Embed(description=f"Created emoji {emoji}", color=discord.Color.green())
         return ToolResult.ok("Emoji created.", embed=embed)
     finally:

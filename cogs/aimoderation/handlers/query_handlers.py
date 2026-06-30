@@ -5,10 +5,10 @@ Tools for analytics, bulk queries, inactivity scanning, and safety audits.
 """
 from __future__ import annotations
 
-import json
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
 import discord
 
@@ -28,27 +28,52 @@ logger = logging.getLogger("ModBot.AIModeration.Handlers.Queries")
     display_name="Find Inactive",
     color=discord.Color.blue(),
     emoji="🔍",
+    required_permission="manage_guild",
     category="queries",
     description="Find guild members who haven't sent messages in N days.",
 )
 async def handle_find_inactive(ctx: ToolContext) -> ToolResult:
-    args = ctx.args
-    days = args.get("days", 30)
+    days = max(1, min(ctx.int_arg("days", 30), 365))
+    limit = max(1, min(ctx.int_arg("limit", 20), 50))
     guild = ctx.guild
-    if guild is None:
-        return ToolResult.fail("This command can only be used in a server.")
-
     cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    inactive: List[discord.Member] = []
+    active_member_ids: set[int] = set()
+    history_limit = 1_000
+    semaphore = asyncio.Semaphore(4)
 
+    async def scan_channel(channel: discord.TextChannel) -> None:
+        actor_permissions = channel.permissions_for(ctx.actor)
+        if not actor_permissions.view_channel or not actor_permissions.read_message_history:
+            return
+        bot_member = guild.me
+        if bot_member:
+            permissions = channel.permissions_for(bot_member)
+            if not permissions.view_channel or not permissions.read_message_history:
+                return
+        try:
+            async with semaphore:
+                async for message in channel.history(limit=history_limit, after=cutoff):
+                    if not message.author.bot:
+                        active_member_ids.add(message.author.id)
+        except (discord.Forbidden, discord.HTTPException):
+            logger.debug("Could not scan channel %s for inactivity", channel.id, exc_info=True)
+
+    await asyncio.gather(*(scan_channel(channel) for channel in guild.text_channels))
+
+    inactive: List[discord.Member] = []
     for member in guild.members:
         if member.bot:
             continue
-        if member.joined_at and member.joined_at.replace(tzinfo=None) > cutoff:
+        joined_at = member.joined_at
+        if joined_at and joined_at.tzinfo is None:
+            joined_at = joined_at.replace(tzinfo=timezone.utc)
+        if joined_at and joined_at > cutoff:
+            continue
+        if member.id in active_member_ids:
             continue
         inactive.append(member)
 
-    limit = min(args.get("limit", 20), 50)
+    inactive.sort(key=lambda member: member.joined_at or datetime.min.replace(tzinfo=timezone.utc))
     preview = inactive[:limit]
 
     lines = []
@@ -59,10 +84,11 @@ async def handle_find_inactive(ctx: ToolContext) -> ToolResult:
     if not lines:
         return ToolResult.ok(f"No inactive members found (>{days} days).")
 
-    header = f"**Inactive Members (>{days} days)** — {len(inactive)} total"
+    header = f"**No activity found in the last {days} days** — {len(inactive)} member(s)"
     if len(inactive) > limit:
         header += f" (showing first {limit})"
-    return ToolResult.ok("\n".join([header] + lines))
+    footer = f"Checked up to {history_limit:,} recent messages per readable text channel."
+    return ToolResult.ok("\n".join([header] + lines + ["", footer]))
 
 
 # =============================================================================
@@ -74,39 +100,50 @@ async def handle_find_inactive(ctx: ToolContext) -> ToolResult:
     display_name="Scan Channel",
     color=discord.Color.blurple(),
     emoji="📋",
+    required_permission="manage_messages",
     category="queries",
     description="Dry-run automod on the last N messages in a channel.",
 )
 async def handle_scan_channel(ctx: ToolContext) -> ToolResult:
-    args = ctx.args
-    amount = min(args.get("amount", 100), 500)
-    channel_id = args.get("channel_id")
+    amount = max(1, min(ctx.int_arg("amount", 100), 500))
+    channel_id = ctx.arg("channel_id")
     guild = ctx.guild
-    if guild is None:
-        return ToolResult.fail("Server only.")
-
-    channel = ctx.resolve_target("channel", channel_id) if channel_id else ctx.message.channel
-    if channel is None:
+    channel = ctx.message.channel
+    if channel_id:
+        try:
+            resolved_id = int(channel_id)
+        except (TypeError, ValueError):
+            return ToolResult.fail("Channel ID must be a number or channel mention.")
+        get_channel_or_thread = getattr(guild, "get_channel_or_thread", None)
+        channel = get_channel_or_thread(resolved_id) if callable(get_channel_or_thread) else guild.get_channel(resolved_id)
+    if not isinstance(channel, (discord.TextChannel, discord.Thread)):
         return ToolResult.fail("Channel not found.")
+
+    actor_permissions = channel.permissions_for(ctx.actor)
+    if not actor_permissions.view_channel or not actor_permissions.read_message_history:
+        return ToolResult.fail("You need View Channel and Read Message History in that channel.")
 
     try:
         messages = [m async for m in channel.history(limit=amount)]
     except discord.HTTPException:
         return ToolResult.fail("Failed to fetch messages.")
 
-    from cogs.automod_engine import AutoModEngine
-    engine = AutoModEngine(ctx.bot)
+    automod_cog = ctx.cog.bot.get_cog("AutoMod")
+    engine = getattr(automod_cog, "engine", None)
+    db = getattr(ctx.cog.bot, "db", None)
+    if engine is None or db is None:
+        return ToolResult.fail("AutoMod is not available right now.")
+    settings = await db.get_settings(guild.id)
     violations = 0
     rule_hits: Dict[str, int] = {}
 
     for msg in messages:
         if msg.author.bot:
             continue
-        engine.dry_run = True
-        result_list = await engine.check_message(msg)
-        for match in result_list:
+        match = await engine.evaluate(msg, settings, dry_run=True)
+        if match is not None:
             violations += 1
-            rule_hits[match.rule_name] = rule_hits.get(match.rule_name, 0) + 1
+            rule_hits[match.rule] = rule_hits.get(match.rule, 0) + 1
 
     lines = [f"**Scanned {len(messages)} messages** in {channel.mention}"]
     if violations:
@@ -128,18 +165,20 @@ async def handle_scan_channel(ctx: ToolContext) -> ToolResult:
     display_name="Summarize Actions",
     color=discord.Color.green(),
     emoji="📊",
+    required_permission="manage_guild",
     category="queries",
     description="Summarize all moderation actions from the last 24 hours.",
 )
 async def handle_summarize_today(ctx: ToolContext) -> ToolResult:
     guild = ctx.guild
-    if guild is None:
-        return ToolResult.fail("Server only.")
+    db_manager = getattr(ctx.cog.bot, "db", None)
+    if db_manager is None:
+        return ToolResult.fail("Database not available.")
 
-    since = (datetime.now(timezone.utc) - timedelta(hours=24)).isoformat()
+    since = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
 
     try:
-        async with ctx.bot.db.get_connection() as db:
+        async with db_manager.get_connection() as db:
             cursor = await db.execute(
                 """
                 SELECT action, COUNT(*) FROM mod_stats
@@ -160,6 +199,7 @@ async def handle_summarize_today(ctx: ToolContext) -> ToolResult:
             case_count = (await cursor2.fetchone() or [0])[0]
 
     except Exception:
+        logger.exception("Failed to summarize moderation actions for guild %s", guild.id)
         return ToolResult.fail("Failed to query moderation data.")
 
     lines = [f"**📊 Last 24 Hours — {guild.name}**"]
@@ -177,7 +217,7 @@ async def handle_summarize_today(ctx: ToolContext) -> ToolResult:
         lines.append("No moderation actions recorded.")
 
     try:
-        top = await ctx.bot.db.get_top_risky_users(guild.id, limit=3)
+        top = await db_manager.get_top_risky_users(guild.id, limit=3)
         if top:
             lines.append("\n**Top Risks:**")
             for entry in top:
@@ -197,6 +237,7 @@ async def handle_summarize_today(ctx: ToolContext) -> ToolResult:
     display_name="Safety Check",
     color=discord.Color.gold(),
     emoji="🛡️",
+    required_permission="manage_guild",
     category="queries",
     description="Audit server safety: permissions, invite audit, hierarchy check.",
 )

@@ -32,6 +32,8 @@ async def handle_create_channel(ctx: ToolContext) -> ToolResult:
             lambda c: c.name.lower() == str(cat_name).lower(),
             ctx.guild.categories,
         )
+        if category is None:
+            return ToolResult.fail(f"Category `{cat_name}` not found.")
 
     reason = f"AI Mod ({ctx.actor}): {ctx.str_arg('reason')}"
 
@@ -88,8 +90,9 @@ async def handle_edit_channel(ctx: ToolContext) -> ToolResult:
         q = str(channel_name).strip()
         found = (ctx.guild.get_channel(int(q)) if q.isdigit()
                  else discord.utils.find(lambda c: c.name.lower() == q.lower(), ctx.guild.channels))
-        if found:
-            channel = found
+        if not found:
+            return ToolResult.fail(f"Channel `{q}` not found.")
+        channel = found
 
     if not isinstance(channel, (discord.TextChannel, discord.VoiceChannel, discord.StageChannel, discord.ForumChannel)):
         return ToolResult.fail("Cannot edit that type of channel.")
@@ -158,7 +161,7 @@ async def handle_unlock_channel(ctx: ToolContext) -> ToolResult:
     if not hasattr(channel, "set_permissions"):
         return ToolResult.fail("Cannot unlock this channel type.")
     await channel.set_permissions(  # type: ignore[union-attr]
-        ctx.guild.default_role, send_messages=True,
+        ctx.guild.default_role, send_messages=None,
         reason=f"Unlock by {ctx.actor}",
     )
     return ToolResult.ok("Channel unlocked.")

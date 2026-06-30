@@ -17,6 +17,7 @@ import discord
 from ..context import ToolContext, ToolResult, _now
 from ..registry import ToolRegistry
 from ..types import ToolType
+from utils.checks import is_bot_owner_id
 
 logger = logging.getLogger("ModBot.AIModeration.Handlers.Admin")
 
@@ -102,10 +103,8 @@ def _contains_forbidden_raw_api_key(value: object) -> bool:
 
 
 def _raw_api_safety_error(ctx: ToolContext, method: str, endpoint: str, payload: object) -> str | None:
-    from utils.checks import is_bot_owner_id
-
-    if not is_bot_owner_id(ctx.actor.id) and not ctx.actor.guild_permissions.administrator:
-        return "Raw Discord API access requires the `Administrator` permission."
+    if not is_bot_owner_id(ctx.actor.id):
+        return "Raw Discord API access is restricted to the bot owner."
     if not endpoint.startswith("/"):
         return "Raw API endpoint must start with `/`."
     if "{" in endpoint or "}" in endpoint:
@@ -115,6 +114,8 @@ def _raw_api_safety_error(ctx: ToolContext, method: str, endpoint: str, payload:
     if method not in {"GET", "POST", "PATCH", "PUT", "DELETE"}:
         return "Unsupported HTTP method."
     normalized = endpoint.lower().split("?", 1)[0].rstrip("/")
+    if ".." in normalized or "%2e" in normalized or "%2f" in normalized:
+        return "Raw API endpoint contains unsafe path encoding."
     guild_id = str(ctx.guild.id)
     bot_id = str(ctx.cog.bot.user.id) if ctx.cog.bot.user else ""
     if re.fullmatch(rf"/guilds/{guild_id}", normalized) and method == "DELETE":
@@ -123,8 +124,20 @@ def _raw_api_safety_error(ctx: ToolContext, method: str, endpoint: str, payload:
         return "Manipulating the bot account is blocked."
     if any(part in normalized for part in ("/oauth2", "/auth", "/tokens", "/applications/@me")):
         return "OAuth, auth, token, and application-account endpoints are blocked."
-    if not normalized.startswith(("/guilds/", "/channels/", "/webhooks/")):
-        return "Raw API is restricted to guild, channel, and webhook endpoints."
+    guild_prefix = f"/guilds/{guild_id}"
+    if normalized.startswith("/guilds/"):
+        if normalized != guild_prefix and not normalized.startswith(f"{guild_prefix}/"):
+            return "Raw API guild routes are restricted to this server."
+    elif channel_match := re.match(r"^/channels/(\d+)(?:/|$)", normalized):
+        channel_id = int(channel_match.group(1))
+        get_channel_or_thread = getattr(ctx.guild, "get_channel_or_thread", None)
+        channel = get_channel_or_thread(channel_id) if callable(get_channel_or_thread) else ctx.guild.get_channel(channel_id)
+        if channel is None:
+            return "Raw API channel routes are restricted to this server."
+    elif normalized.startswith("/webhooks/"):
+        return "Raw webhook routes are blocked because ownership cannot be verified safely."
+    else:
+        return "Raw API is restricted to this server's guild and channel endpoints."
     if _contains_forbidden_raw_api_key(payload):
         return "Payload cannot contain token or authorization fields."
     return None
@@ -170,6 +183,7 @@ def _normalize_scheduled_event_payload(endpoint: str, method: str, payload: Dict
     display_name="Execute Raw API",
     color=discord.Color.blurple(),
     emoji="API",
+    required_permission="bot_owner",
     category="admin",
 )
 async def handle_execute_raw_api(ctx: ToolContext) -> ToolResult:
@@ -211,6 +225,7 @@ async def handle_execute_raw_api(ctx: ToolContext) -> ToolResult:
     display_name="Execute Python",
     color=discord.Color.red(),
     emoji="Python",
+    required_permission="bot_owner",
     category="admin",
 )
 async def handle_execute_python(ctx: ToolContext) -> ToolResult:
@@ -220,10 +235,9 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
     _MAX_PREVIEW = 900
     _MAX_CODE_DISPLAY = 1000
 
-    is_owner = await ctx.cog.bot.is_owner(ctx.actor)
-    is_admin = isinstance(ctx.actor, discord.Member) and ctx.actor.guild_permissions.administrator
-    if not is_owner and not is_admin:
-        return ToolResult.fail("Execute Python is restricted to administrators.")
+    is_owner = is_bot_owner_id(ctx.actor.id) or await ctx.cog.bot.is_owner(ctx.actor)
+    if not is_owner:
+        return ToolResult.fail("Execute Python is restricted to the bot owner.")
 
     code = _strip_code_fences(str(ctx.arg("code", "")))
     if not code:

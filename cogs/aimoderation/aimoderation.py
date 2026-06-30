@@ -10,6 +10,7 @@ import difflib
 import logging
 import random
 import re
+from contextlib import suppress
 from datetime import datetime, timedelta, timezone
 from typing import Any, ClassVar, Dict, List, Optional, Tuple, Union
 
@@ -206,15 +207,25 @@ class AIModeration(commands.Cog):
         self._cleanup_cache.start()
         if self.ai.is_available:
             self._prewarm_task = asyncio.create_task(
-                self.ai.prewarm(),
+                self._prewarm_ai(),
                 name="deepseek-prewarm",
             )
 
-    def cog_unload(self) -> None:
+    async def cog_unload(self) -> None:
         self._cleanup_cache.cancel()
         if self._prewarm_task and not self._prewarm_task.done():
             self._prewarm_task.cancel()
-        asyncio.create_task(self.ai.close())
+            with suppress(asyncio.CancelledError):
+                await self._prewarm_task
+        await self.ai.close()
+
+    async def _prewarm_ai(self) -> None:
+        try:
+            await self.ai.prewarm()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.warning("AI provider prewarm failed", exc_info=True)
 
     # ------------------------------------------------------------------
     # Background tasks
@@ -1185,6 +1196,15 @@ class AIModeration(commands.Cog):
             reason = self._extract_moderation_reason(content, r"(?:mute|timeout|time\s*out)")
             if reason:
                 args["reason"] = reason
+            if message.mentions:
+                non_bot = [
+                    mentioned
+                    for mentioned in message.mentions
+                    if not mentioned.bot
+                    and (not self.bot.user or mentioned.id != self.bot.user.id)
+                ]
+                if non_bot:
+                    args["target_user_id"] = non_bot[0].id
             return Decision(type=DecisionType.TOOL_CALL, reason="rule: timeout", tool=ToolType.TIMEOUT, arguments=args)
         dm_args = self._extract_dm_args(content)
         if dm_args:

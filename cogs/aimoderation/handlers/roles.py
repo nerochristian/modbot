@@ -24,14 +24,20 @@ async def handle_add_role(ctx: ToolContext) -> ToolResult:
     target = await ctx.resolve_target()
     if not target:
         return ToolResult.fail("Target user not found.")
+    if not ctx.cog.can_moderate(ctx.actor, target):
+        return ToolResult.fail(f"Cannot change roles for {target.display_name} (role hierarchy).")
+    bot_member = ctx.guild.me
+    if not bot_member or not ctx.cog.can_moderate(bot_member, target):
+        return ToolResult.fail(f"Cannot change roles for {target.display_name}; their role is above mine.")
 
     role = await ctx.resolve_role()
     if not role:
         return ToolResult.fail(f"Role `{ctx.arg('role_name')}` not found.")
+    if role.is_default() or role.managed:
+        return ToolResult.fail(f"Role `{role.name}` cannot be assigned manually.")
 
     if not ctx.cog.can_manage_role(ctx.actor, role):
         return ToolResult.fail(f"Cannot assign `{role.name}` - it's above your top role.")
-    bot_member = ctx.guild.me
     if not bot_member or not ctx.cog.can_manage_role(bot_member, role):
         return ToolResult.fail(f"Cannot assign `{role.name}` - it's above my top role.")
 
@@ -54,14 +60,20 @@ async def handle_remove_role(ctx: ToolContext) -> ToolResult:
     target = await ctx.resolve_target()
     if not target:
         return ToolResult.fail("Target user not found.")
+    if not ctx.cog.can_moderate(ctx.actor, target):
+        return ToolResult.fail(f"Cannot change roles for {target.display_name} (role hierarchy).")
+    bot_member = ctx.guild.me
+    if not bot_member or not ctx.cog.can_moderate(bot_member, target):
+        return ToolResult.fail(f"Cannot change roles for {target.display_name}; their role is above mine.")
 
     role = await ctx.resolve_role()
     if not role:
         return ToolResult.fail(f"Role `{ctx.arg('role_name')}` not found.")
+    if role.is_default() or role.managed:
+        return ToolResult.fail(f"Role `{role.name}` cannot be removed manually.")
 
     if not ctx.cog.can_manage_role(ctx.actor, role):
         return ToolResult.fail(f"Cannot remove `{role.name}` - it's above your top role.")
-    bot_member = ctx.guild.me
     if not bot_member or not ctx.cog.can_manage_role(bot_member, role):
         return ToolResult.fail(f"Cannot remove `{role.name}` - it's above my top role.")
 
@@ -109,6 +121,8 @@ async def handle_delete_role(ctx: ToolContext) -> ToolResult:
     role = await ctx.resolve_role()
     if not role:
         return ToolResult.fail(f"Role `{ctx.arg('role_name')}` not found.")
+    if role.is_default() or role.managed:
+        return ToolResult.fail(f"Role `{role.name}` cannot be deleted.")
     if not ctx.cog.can_manage_role(ctx.actor, role):
         return ToolResult.fail("That role is above you in the hierarchy.")
     bot_member = ctx.guild.me
@@ -132,6 +146,8 @@ async def handle_edit_role(ctx: ToolContext) -> ToolResult:
     role = await ctx.resolve_role()
     if not role:
         return ToolResult.fail(f"Role `{ctx.arg('role_name')}` not found.")
+    if role.is_default() or role.managed:
+        return ToolResult.fail(f"Role `{role.name}` cannot be edited.")
     if not ctx.cog.can_manage_role(ctx.actor, role):
         return ToolResult.fail("That role is above you in the hierarchy.")
     bot_member = ctx.guild.me

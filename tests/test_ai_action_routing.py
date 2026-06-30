@@ -7,7 +7,10 @@ from pathlib import Path
 import discord
 
 from cogs.aimoderation.aimoderation import (
+    AIConfig,
     AIModeration,
+    ConversationMode,
+    ConversationSignals,
     Decision,
     DecisionType,
     GeminiClient,
@@ -145,6 +148,28 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertEqual(decision.arguments["target_user_id"], 20)
         self.assertEqual(decision.arguments["reason"], "spam")
 
+    def test_visible_mention_timeout_command_routes_end_to_end(self) -> None:
+        bot_user = SimpleNamespace(id=111111111111111111, bot=True)
+        target = SimpleNamespace(id=222222222222222222, bot=False)
+        self.cog.bot = SimpleNamespace(user=bot_user)
+        message = SimpleNamespace(
+            content=(
+                "<@111111111111111111> mute "
+                "<@222222222222222222> 10m for spam"
+            ),
+            mentions=[bot_user, target],
+        )
+
+        content = self.cog.clean_content(message)
+        decision = self.cog._quick_route(message, content)
+
+        self.assertEqual(content, "mute <@222222222222222222> 10m for spam")
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision.tool, ToolType.TIMEOUT)
+        self.assertEqual(decision.arguments["target_user_id"], target.id)
+        self.assertEqual(decision.arguments["seconds"], 600)
+        self.assertEqual(decision.arguments["reason"], "spam")
+
     def test_polite_warn_request_routes_without_model(self) -> None:
         message = SimpleNamespace(mentions=[])
 
@@ -218,8 +243,100 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertIn("DEEPSEEK_WEB_ENABLED", client.availability_message())
         self.assertIn("Available now: no", client.diagnostic_lines())
 
+    def test_tool_access_uses_registry_metadata_object(self) -> None:
+        actor = SimpleNamespace(id=123)
+
+        self.assertIsNone(self.cog.validate_tool_access(actor, None, ToolType.HELP))
+
+    def test_owner_only_tool_is_rejected_before_guild_permission_checks(self) -> None:
+        actor = SimpleNamespace(id=123)
+
+        with patch(
+            "cogs.aimoderation.aimoderation.is_bot_owner_id",
+            return_value=False,
+        ):
+            error = self.cog.validate_tool_access(
+                actor,
+                None,
+                ToolType.EXECUTE_PYTHON,
+            )
+
+        self.assertEqual(error, "This action is restricted to the bot owner.")
+
+    def test_digitalocean_availability_uses_configured_constants(self) -> None:
+        client = object.__new__(GeminiClient)
+        client.provider = "digitalocean"
+
+        with patch("cogs.aimoderation.ai_client._DO_API_KEY", "key"), patch(
+            "cogs.aimoderation.ai_client._DO_BASE_URL",
+            "https://example.invalid/v1",
+        ):
+            self.assertTrue(client.is_available)
+            self.assertEqual(
+                client.availability_message(),
+                "DigitalOcean inference is configured.",
+            )
+
+    def test_decision_discards_non_mapping_arguments(self) -> None:
+        decision = Decision.from_dict(
+            {
+                "type": "tool_call",
+                "tool": "warn_member",
+                "arguments": ["not", "a", "mapping"],
+            }
+        )
+
+        self.assertEqual(decision.arguments, {})
+
 
 class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
+    async def test_research_does_not_feed_saved_memory_or_continue_chat(self) -> None:
+        client = object.__new__(GeminiClient)
+        client.provider = "deepseek-web"
+        client.config = AIConfig()
+        client._block_until = None
+        client._block_reason = None
+        client._brave_search_api_key = None
+        client._tavily_api_key = None
+        client._serpapi_api_key = None
+        client._rate_limiter = SimpleNamespace(
+            is_rate_limited=AsyncMock(return_value=(False, 0)),
+            record_call=AsyncMock(),
+        )
+        client._deepseek_web = SimpleNamespace(
+            enabled=True,
+            chat=AsyncMock(return_value="researched answer"),
+        )
+        client._update_memory_smart = AsyncMock()
+        db = SimpleNamespace(get_ai_memory=AsyncMock(return_value="PRIVATE MEMORY"))
+        client.bot = SimpleNamespace(user=SimpleNamespace(id=999), db=db)
+        guild = SimpleNamespace(id=1, name="Guild", member_count=10)
+        author = SimpleNamespace(id=2, name="User")
+        signals = ConversationSignals(
+            mode=ConversationMode.RESEARCH,
+            confidence=1.0,
+            show_research_indicator=True,
+        )
+
+        response = await client.converse(
+            user_content="research this",
+            guild=guild,
+            author=author,
+            recent_messages=[],
+            signals=signals,
+        )
+
+        self.assertEqual(response, "researched answer")
+        prompt = client._deepseek_web.chat.await_args.args[0]
+        self.assertNotIn("PRIVATE MEMORY", prompt)
+        self.assertFalse(client._deepseek_web.chat.await_args.kwargs["continue_session"])
+        client._update_memory_smart.assert_called_once_with(
+            author.id,
+            "research this",
+            "researched answer",
+            "PRIVATE MEMORY",
+        )
+
     async def test_reason_is_rewritten_once_and_cleaned(self) -> None:
         cog = object.__new__(AIModeration)
         cog.ai = SimpleNamespace(

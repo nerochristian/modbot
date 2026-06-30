@@ -7,10 +7,12 @@ from __future__ import annotations
 
 import json
 import os
-import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, ClassVar, Dict, Final, List, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, Final, Optional, Set, Tuple
+
+if TYPE_CHECKING:
+    import discord
 
 
 # =============================================================================
@@ -55,10 +57,6 @@ class ToolType(str, Enum):
     SCAN_CHANNEL = "scan_channel"
     SUMMARIZE_ACTIONS = "summarize_actions"
     SAFETY_CHECK = "server_safety_check"
-    CHECK_ALT = "check_alt_account"
-    GENERATE_REPORT = "generate_report"
-    SERVER_BACKUP = "server_backup"
-    SERVER_RESTORE = "server_restore"
 
 
 class DecisionType(str, Enum):
@@ -260,14 +258,14 @@ class Decision:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Decision":
-        raw_type = (data.get("type") or "").strip().lower()
+        raw_type = str(data.get("type") or "").strip().lower()
         dec_type = DecisionType.ERROR
         if raw_type == "tool_call":
             dec_type = DecisionType.TOOL_CALL
         elif raw_type == "chat":
             dec_type = DecisionType.CHAT
 
-        raw_tool = (data.get("tool") or "").strip()
+        raw_tool = str(data.get("tool") or "").strip()
         tool = None
         if raw_tool:
             try:
@@ -275,11 +273,14 @@ class Decision:
             except ValueError:
                 pass
 
+        raw_arguments = data.get("arguments")
+        arguments = dict(raw_arguments) if isinstance(raw_arguments, dict) else {}
+
         return cls(
             type=dec_type,
             reason=str(data.get("reason") or ""),
             tool=tool,
-            arguments=data.get("arguments") or {},
+            arguments=arguments,
         )
 
     @classmethod
@@ -385,7 +386,6 @@ class PermissionFlags:
 
     @classmethod
     def from_member(cls, member: "discord.Member") -> "PermissionFlags":
-        import discord
         perms = member.guild_permissions
         return cls(
             administrator=perms.administrator,

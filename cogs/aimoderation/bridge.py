@@ -8,23 +8,23 @@ to direct Discord API calls.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import discord
+from discord.ext import commands
+
+if TYPE_CHECKING:
+    from cogs.moderation import Moderation
 
 logger = logging.getLogger("ModBot.AIModeration.Bridge")
 
 
-_MODERATION_COG: Optional["Moderation"] = None
-
-
-def get_moderation_cog(bot) -> Optional["Moderation"]:
+def get_moderation_cog(bot: Optional[commands.Bot]) -> Optional["Moderation"]:
     """Get the traditional Moderation cog if loaded."""
-    global _MODERATION_COG
-    if _MODERATION_COG is None:
-        from cogs.moderation import Moderation
-        _MODERATION_COG = bot.get_cog("Moderation")  # type: ignore[assignment]
-    return _MODERATION_COG
+    if bot is None:
+        return None
+    cog = bot.get_cog("Moderation")
+    return cog  # type: ignore[return-value]
 
 
 # ---- Action delegation -------------------------------------------------------
@@ -37,7 +37,7 @@ async def ban_member(
     *,
     delete_message_days: int = 0,
     actor: Optional[discord.Member] = None,
-    bot: Optional[discord.ext.commands.Bot] = None,
+    bot: Optional[commands.Bot] = None,
 ) -> str:
     """Ban a member through the Moderation cog if available, else direct API."""
     mod_cog = get_moderation_cog(bot) if bot else None
@@ -55,9 +55,10 @@ async def kick_member(
     reason: str,
     *,
     actor: Optional[discord.Member] = None,
+    bot: Optional[commands.Bot] = None,
 ) -> str:
     """Kick a member through the Moderation cog if available."""
-    mod_cog = get_moderation_cog(None) if hasattr(source, "guild") else None
+    mod_cog = get_moderation_cog(bot)
     if mod_cog and hasattr(mod_cog, "_kick_logic"):
         await mod_cog._kick_logic(source, target, reason)
         return f"Kicked {target.display_name}."
@@ -70,10 +71,12 @@ async def timeout_member(
     target: discord.Member,
     duration_seconds: int,
     reason: str,
+    *,
+    bot: Optional[commands.Bot] = None,
 ) -> str:
     """Timeout a member through the Moderation cog if available."""
     duration_str = _format_duration(duration_seconds)
-    mod_cog = get_moderation_cog(None)
+    mod_cog = get_moderation_cog(bot)
     if mod_cog and hasattr(mod_cog, "_mute_logic"):
         await mod_cog._mute_logic(source, target, duration_str, reason)
         return f"Timed out {target.display_name} for {duration_str}."
@@ -86,14 +89,25 @@ async def warn_member(
     source: discord.Message,
     target: discord.Member,
     reason: str,
+    *,
+    actor: Optional[discord.Member] = None,
+    bot: Optional[commands.Bot] = None,
 ) -> str:
     """Warn a member through the Moderation cog if available."""
-    mod_cog = get_moderation_cog(None)
+    mod_cog = get_moderation_cog(bot)
     if mod_cog and hasattr(mod_cog, "_warn_logic"):
         await mod_cog._warn_logic(source, target, reason)
         return f"Warned {target.display_name}."
-    # Fallback: just record via database directly
-    return f"Warned {target.display_name}."
+    db = getattr(bot, "db", None) if bot else None
+    if db and source.guild and actor:
+        await db.add_warning(
+            guild_id=source.guild.id,
+            user_id=target.id,
+            moderator_id=actor.id,
+            reason=reason,
+        )
+        return f"Warned {target.display_name}."
+    raise RuntimeError("Moderation cog or database is required to record a warning.")
 
 
 def _format_duration(seconds: int) -> str:

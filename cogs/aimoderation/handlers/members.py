@@ -19,6 +19,16 @@ from ..types import ToolType
 logger = logging.getLogger("ModBot.AIModeration.Handlers.Members")
 
 
+def _format_duration(seconds: int) -> str:
+    if seconds % 86_400 == 0:
+        return f"{seconds // 86_400} day(s)"
+    if seconds % 3_600 == 0:
+        return f"{seconds // 3_600} hour(s)"
+    if seconds % 60 == 0:
+        return f"{seconds // 60} minute(s)"
+    return f"{seconds} second(s)"
+
+
 @ToolRegistry.register(
     ToolType.WARN,
     display_name="Warn Member",
@@ -36,15 +46,16 @@ async def handle_warn(ctx: ToolContext) -> ToolResult:
 
     reason = ctx.str_arg("reason")
     db = getattr(ctx.cog.bot, "db", None)
-    if db:
-        try:
-            await db.add_warning(
-                guild_id=ctx.guild.id, user_id=target.id,
-                moderator_id=ctx.actor.id, reason=reason,
-            )
-        except Exception:
-            logger.exception("Failed to record warning")
-            return ToolResult.fail("Database error while recording warning.")
+    if not db:
+        return ToolResult.fail("Database not available; warning was not recorded.")
+    try:
+        await db.add_warning(
+            guild_id=ctx.guild.id, user_id=target.id,
+            moderator_id=ctx.actor.id, reason=reason,
+        )
+    except Exception:
+        logger.exception("Failed to record warning")
+        return ToolResult.fail("Database error while recording warning.")
 
     embed = action_embed(
         title="Warning Member Warned", color=discord.Color.gold(),
@@ -130,6 +141,9 @@ async def handle_timeout(ctx: ToolContext) -> ToolResult:
         return ToolResult.fail("Could not resolve target member.")
     if not ctx.cog.can_moderate(ctx.actor, target):
         return ToolResult.fail(f"Cannot moderate {target.display_name} (role hierarchy).")
+    bot_member = ctx.guild.me
+    if not bot_member or not ctx.cog.can_moderate(bot_member, target):
+        return ToolResult.fail(f"Cannot moderate {target.display_name}; their role is above mine.")
 
     raw_seconds = ctx.int_arg("seconds", ctx.cog.config.timeout_default_seconds)
     seconds = max(1, min(raw_seconds, ctx.cog.config.timeout_max_seconds))
@@ -137,16 +151,16 @@ async def handle_timeout(ctx: ToolContext) -> ToolResult:
 
     await target.timeout(timedelta(seconds=seconds), reason=reason)
 
-    minutes = seconds // 60
+    duration = _format_duration(seconds)
     embed = action_embed(
         title="Muted Member Timed Out", color=discord.Color.orange(),
         actor=ctx.actor, target=target, reason=reason,
-        extra={"Duration": f"{minutes} minute(s)"},
+        extra={"Duration": duration},
     )
     await ctx.cog.log_action(
         message=ctx.message, action="timeout_member",
         actor=ctx.actor, target=target, reason=reason, decision=ctx.decision,
-        extra={"Duration": f"{minutes} minute(s)"},
+        extra={"Duration": duration},
     )
     return ToolResult.ok("Timeout applied.", embed=embed)
 
@@ -163,6 +177,11 @@ async def handle_untimeout(ctx: ToolContext) -> ToolResult:
     target = await ctx.resolve_target()
     if not target:
         return ToolResult.fail("Could not resolve target member.")
+    if not ctx.cog.can_moderate(ctx.actor, target):
+        return ToolResult.fail(f"Cannot moderate {target.display_name} (role hierarchy).")
+    bot_member = ctx.guild.me
+    if not bot_member or not ctx.cog.can_moderate(bot_member, target):
+        return ToolResult.fail(f"Cannot moderate {target.display_name}; their role is above mine.")
 
     reason = ctx.str_arg("reason", "Timeout removed.")
     await target.timeout(None, reason=reason)
@@ -192,6 +211,9 @@ async def handle_kick(ctx: ToolContext) -> ToolResult:
         return ToolResult.fail("Could not resolve target member.")
     if not ctx.cog.can_moderate(ctx.actor, target):
         return ToolResult.fail(f"Cannot kick {target.display_name} (role hierarchy).")
+    bot_member = ctx.guild.me
+    if not bot_member or not ctx.cog.can_moderate(bot_member, target):
+        return ToolResult.fail(f"Cannot kick {target.display_name}; their role is above mine.")
 
     reason = ctx.str_arg("reason")
     await target.kick(reason=f"AI Mod ({ctx.actor}): {reason}")
@@ -221,6 +243,9 @@ async def handle_ban(ctx: ToolContext) -> ToolResult:
         return ToolResult.fail("Could not resolve target member.")
     if not ctx.cog.can_moderate(ctx.actor, target):
         return ToolResult.fail(f"Cannot ban {target.display_name} (role hierarchy).")
+    bot_member = ctx.guild.me
+    if not bot_member or not ctx.cog.can_moderate(bot_member, target):
+        return ToolResult.fail(f"Cannot ban {target.display_name}; their role is above mine.")
 
     reason = ctx.str_arg("reason")
     delete_days = max(0, min(ctx.int_arg("delete_message_days", 0), 7))
@@ -320,6 +345,11 @@ async def handle_move_member(ctx: ToolContext) -> ToolResult:
     target = await ctx.resolve_target()
     if not target:
         return ToolResult.fail("Target not found.")
+    if not ctx.cog.can_moderate(ctx.actor, target):
+        return ToolResult.fail(f"Cannot move {target.display_name} (role hierarchy).")
+    bot_member = ctx.guild.me
+    if not bot_member or not ctx.cog.can_moderate(bot_member, target):
+        return ToolResult.fail(f"Cannot move {target.display_name}; their role is above mine.")
     if not target.voice:
         return ToolResult.fail(f"{target.display_name} is not in a voice channel.")
 
@@ -356,6 +386,11 @@ async def handle_disconnect_member(ctx: ToolContext) -> ToolResult:
     target = await ctx.resolve_target()
     if not target:
         return ToolResult.fail("Target not found.")
+    if not ctx.cog.can_moderate(ctx.actor, target):
+        return ToolResult.fail(f"Cannot disconnect {target.display_name} (role hierarchy).")
+    bot_member = ctx.guild.me
+    if not bot_member or not ctx.cog.can_moderate(bot_member, target):
+        return ToolResult.fail(f"Cannot disconnect {target.display_name}; their role is above mine.")
     if not target.voice:
         return ToolResult.fail(f"{target.display_name} is not in a voice channel.")
 

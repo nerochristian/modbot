@@ -6,11 +6,11 @@ from __future__ import annotations
 import io
 import logging
 from datetime import timedelta
-from typing import Dict, List, Optional
+from typing import Dict, List
 
 import discord
 
-from ..context import ToolContext, ToolResult, _now, action_embed
+from ..context import ToolContext, ToolResult, _now
 from ..registry import ToolRegistry
 from ..types import ToolType
 
@@ -22,14 +22,15 @@ logger = logging.getLogger("ModBot.AIModeration.Handlers.Messages")
     display_name="DM User",
     color=discord.Color.green(),
     emoji="DM",
+    required_permission="manage_guild",
     category="messages",
 )
 async def handle_dm_user(ctx: ToolContext) -> ToolResult:
     is_owner = await ctx.cog.bot.is_owner(ctx.actor)
     is_admin = isinstance(ctx.actor, discord.Member) and ctx.actor.guild_permissions.administrator
-    can_manage = isinstance(ctx.actor, discord.Member) and ctx.actor.guild_permissions.manage_messages
+    can_manage = isinstance(ctx.actor, discord.Member) and ctx.actor.guild_permissions.manage_guild
     if not (is_owner or is_admin or can_manage):
-        return ToolResult.fail("You need Manage Messages to DM users through the bot.")
+        return ToolResult.fail("You need Manage Server to DM users through the bot.")
 
     target = await ctx.resolve_target()
     if not target:
@@ -44,7 +45,9 @@ async def handle_dm_user(ctx: ToolContext) -> ToolResult:
         return ToolResult.fail("That DM is too long. Keep it under 1900 characters.")
 
     try:
-        await target.send(dm_text)
+        await target.send(
+            f"**Message from the moderation team in {ctx.guild.name}:**\n\n{dm_text}"
+        )
     except discord.Forbidden:
         return ToolResult.fail(f"I couldn't DM {target.mention}; their DMs are closed or they blocked the bot.")
     except discord.HTTPException as exc:
@@ -73,7 +76,11 @@ async def handle_pin_message(ctx: ToolContext) -> ToolResult:
     fetch_message = getattr(ctx.message.channel, "fetch_message", None)
     if not callable(fetch_message):
         return ToolResult.fail("I can't fetch messages in this channel type.")
-    msg = await fetch_message(int(msg_id))
+    try:
+        msg_id = int(msg_id)
+    except (TypeError, ValueError):
+        return ToolResult.fail("Message ID must be a number.")
+    msg = await fetch_message(msg_id)
     await msg.pin(reason=f"AI Mod ({ctx.actor})")
     return ToolResult.ok("Message pinned.")
 
@@ -93,7 +100,11 @@ async def handle_unpin_message(ctx: ToolContext) -> ToolResult:
     fetch_message = getattr(ctx.message.channel, "fetch_message", None)
     if not callable(fetch_message):
         return ToolResult.fail("I can't fetch messages in this channel type.")
-    msg = await fetch_message(int(msg_id))
+    try:
+        msg_id = int(msg_id)
+    except (TypeError, ValueError):
+        return ToolResult.fail("Message ID must be a number.")
+    msg = await fetch_message(msg_id)
     await msg.unpin(reason=f"AI Mod ({ctx.actor})")
     return ToolResult.ok("Message unpinned.")
 
@@ -123,6 +134,10 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
 
     if not isinstance(channel, discord.TextChannel):
         return ToolResult.fail("Purge only works in text channels.")
+
+    actor_perms = channel.permissions_for(ctx.actor)
+    if not actor_perms.manage_messages or not actor_perms.read_message_history:
+        return ToolResult.fail(f"You need Manage Messages and Read Message History in {channel.mention}.")
 
     if ctx.arg("needs_channel_scope"):
         return ToolResult.ok(
@@ -190,7 +205,11 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
         if logging_cog:
             logging_cog.suppress_message_delete_log(target_channel.id)
             logging_cog.suppress_bulk_delete_log(target_channel.id)
-        purge_limit = remaining + 1 if target_user_id is None and lookback_seconds is None else max(5000, remaining * 5)
+        purge_limit = (
+            remaining + 1
+            if target_user_id is None and lookback_seconds is None
+            else min(5_000, max(100, remaining * 5))
+        )
         return await target_channel.purge(limit=purge_limit, check=should_delete)
 
     if all_channels_requested:
@@ -201,6 +220,9 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
                 bot_perms = target_channel.permissions_for(bot_member)
                 if not bot_perms.manage_messages or not bot_perms.read_message_history:
                     continue
+            actor_perms = target_channel.permissions_for(ctx.actor)
+            if not actor_perms.manage_messages or not actor_perms.read_message_history:
+                continue
             remaining = amount - len(deleted_messages)
             try:
                 deleted = await purge_one_channel(target_channel, remaining)

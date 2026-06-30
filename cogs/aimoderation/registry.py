@@ -8,11 +8,16 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Callable, ClassVar, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, ClassVar, Dict, List, Optional
 
 import discord
 
 from .types import ToolType
+
+if TYPE_CHECKING:
+    from .aimoderation import AIModeration
+    from .context import ToolResult
+    from .types import Decision
 
 logger = logging.getLogger("ModBot.AIModeration.Registry")
 
@@ -74,6 +79,10 @@ class ToolRegistry:
         """Decorator: register a handler function for the given tool type."""
 
         def decorator(func: Callable) -> Callable:
+            previous = cls._metadata.get(tool)
+            if previous:
+                previous_category = cls._categories.get(previous.category, [])
+                cls._categories[previous.category] = [item for item in previous_category if item != tool]
             cls._handlers[tool] = func
             cls._metadata[tool] = ToolMeta(
                 display_name=display_name,
@@ -83,7 +92,9 @@ class ToolRegistry:
                 category=category,
                 description=description,
             )
-            cls._categories.setdefault(category, []).append(tool)
+            category_tools = cls._categories.setdefault(category, [])
+            if tool not in category_tools:
+                category_tools.append(tool)
             return func
 
         return decorator

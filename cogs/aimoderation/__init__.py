@@ -27,6 +27,38 @@ from .registry import ToolRegistry
 from .ai_client import GeminiClient
 from .aimoderation import AIModeration, setup
 
+__all__ = [
+    "AIConfig",
+    "AIModeration",
+    "CONVERSATION_SYSTEM_PROMPT",
+    "ConversationMode",
+    "ConversationPlan",
+    "ConversationSignals",
+    "DEEP_RESEARCH_SYSTEM_PROMPT",
+    "Decision",
+    "DecisionType",
+    "GeminiClient",
+    "GuildSettings",
+    "ImageContext",
+    "MAX_MODERATION_REASON_LENGTH",
+    "MOD_GUIDANCE_SYSTEM_PROMPT",
+    "MentionInfo",
+    "PermissionFlags",
+    "REASONED_MODERATION_TOOLS",
+    "ROUTING_SYSTEM_PROMPT",
+    "TARGETED_TOOLS",
+    "ToolContext",
+    "ToolRegistry",
+    "ToolResult",
+    "ToolType",
+    "WebSearchResult",
+    "_default_ai_model",
+    "_default_ai_provider",
+    "action_embed",
+    "parse_hex_color",
+    "setup",
+]
+
 # Handler registration (side-effect: populates ToolRegistry)
 from . import handlers  # noqa: F401
 from . import bridge  # noqa: F401
