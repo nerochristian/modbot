@@ -1938,6 +1938,10 @@ class AIModeration(commands.Cog):
         if message.author.bot or not message.guild or not self.bot.user:
             return
 
+        # Track message for behavioral profiling
+        if hasattr(self.bot, 'database') and hasattr(self.bot.database, 'track_user_message'):
+            self.bot.loop.create_task(self.bot.database.track_user_message(message))
+
         is_mentioned = self.bot.user in message.mentions
         is_reply_to_bot = await self._message_replies_to_bot(message)
 

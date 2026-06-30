@@ -3428,7 +3428,6 @@ class Database:
                 }
                 for r in rows
             ]
-            ]
 
     # ==================== BEHAVIOR PROFILING ====================
 
