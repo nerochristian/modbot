@@ -9,6 +9,7 @@ from cogs.aimoderation import ToolRegistry, ToolType
 from cogs.aimoderation.handlers.admin import _raw_api_safety_error
 from cogs.aimoderation.handlers.channels import handle_unlock_channel
 from cogs.aimoderation.handlers.messages import handle_purge
+from cogs.aimoderation.handlers.members import handle_warn
 from cogs.aimoderation.handlers.query_handlers import (
     handle_find_inactive,
     handle_scan_channel,
@@ -36,6 +37,72 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
             send_messages=None,
             reason="Unlock by Moderator",
         )
+
+    async def test_warn_handler_records_requested_warning_count_atomically(self) -> None:
+        target = SimpleNamespace(
+            id=20,
+            name="target",
+            display_name="Target",
+            mention="<@20>",
+            display_avatar=SimpleNamespace(url="https://example.invalid/avatar.png"),
+        )
+        actor = SimpleNamespace(id=10, mention="<@10>")
+        database = SimpleNamespace(
+            add_warnings=AsyncMock(return_value=([101, 102, 103], 5))
+        )
+        cog = SimpleNamespace(
+            bot=SimpleNamespace(db=database),
+            can_moderate=lambda moderator, member: True,
+            log_action=AsyncMock(),
+        )
+        values = {"reason": "repeated spam", "warning_count": 3}
+        ctx = SimpleNamespace(
+            resolve_target=AsyncMock(return_value=target),
+            cog=cog,
+            actor=actor,
+            guild=SimpleNamespace(id=1),
+            message=SimpleNamespace(),
+            decision=SimpleNamespace(),
+            str_arg=lambda key, default="No reason provided": str(
+                values.get(key, default)
+            ),
+            int_arg=lambda key, default=0: int(values.get(key, default)),
+        )
+
+        result = await handle_warn(ctx)
+
+        self.assertTrue(result.success)
+        self.assertEqual(result.message, "3 warnings issued. Total warnings: 5.")
+        database.add_warnings.assert_awaited_once_with(
+            guild_id=1,
+            user_id=20,
+            moderator_id=10,
+            reason="repeated spam",
+            count=3,
+        )
+        self.assertIn("Warnings Issued", result.embed.title)
+        cog.log_action.assert_awaited_once()
+
+    async def test_warn_handler_rejects_unsafe_batch_size(self) -> None:
+        target = SimpleNamespace(id=20, display_name="Target")
+        database = SimpleNamespace(add_warnings=AsyncMock())
+        cog = SimpleNamespace(
+            bot=SimpleNamespace(db=database),
+            can_moderate=lambda moderator, member: True,
+        )
+        ctx = SimpleNamespace(
+            resolve_target=AsyncMock(return_value=target),
+            cog=cog,
+            actor=SimpleNamespace(id=10),
+            int_arg=lambda key, default=0: 11,
+            str_arg=lambda key, default="No reason provided": "spam",
+        )
+
+        result = await handle_warn(ctx)
+
+        self.assertFalse(result.success)
+        self.assertIn("between 1 and 10", result.message)
+        database.add_warnings.assert_not_awaited()
 
     async def test_inactive_query_handles_aware_join_dates(self) -> None:
         now = datetime.now(timezone.utc)

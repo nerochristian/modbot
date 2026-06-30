@@ -1348,7 +1348,11 @@ class AIModeration(commands.Cog):
             return Decision(type=DecisionType.TOOL_CALL, reason="rule: ban", tool=ToolType.BAN, arguments=args)
         return None
 
-    def _recover_tool_decision(self, content: str) -> Optional[Decision]:
+    def _recover_tool_decision(
+        self,
+        message: discord.Message,
+        content: str,
+    ) -> Optional[Decision]:
         if not content:
             return None
 
@@ -2158,7 +2162,7 @@ class AIModeration(commands.Cog):
             and is_mod_request
             and self._can_use_ai_tools(message.author)
         ):
-            decision = self._recover_tool_decision(content)
+            decision = self._recover_tool_decision(message, content)
         if not decision:
             async with message.channel.typing():
                 try:
