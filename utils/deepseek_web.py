@@ -360,10 +360,7 @@ class DeepSeekWebClient:
                 arg=_ANSWER_SELECTOR,
                 timeout=10_000,
             )
-            await page.get_by_role(
-                "textbox",
-                name="Message DeepSeek",
-            ).wait_for(state="visible", timeout=10_000)
+            await self._wait_for_textbox(page)
             return True
         except Exception as exc:
             if self._is_browser_crash_error(exc):
@@ -443,11 +440,29 @@ class DeepSeekWebClient:
         return None
 
     async def _wait_for_textbox(self, page: Any) -> Any:
-        textbox = page.get_by_role("textbox", name="Message DeepSeek")
+        selectors = (
+            page.get_by_role("textbox", name=re.compile(r"Message\s+DeepSeek", re.I)),
+            page.locator(
+                "textarea[placeholder*='Message DeepSeek' i], "
+                "[contenteditable='true'][data-placeholder*='Message DeepSeek' i], "
+                "[contenteditable='true'][aria-label*='Message DeepSeek' i], "
+                "div[role='textbox'][contenteditable='true']"
+            ),
+        )
+        deadline = time.monotonic() + 30
+        last_error: Exception | None = None
         try:
-            await textbox.wait_for(state="visible", timeout=30_000)
-            await self._ensure_cookie_choice(page)
-            return textbox
+            while time.monotonic() < deadline:
+                for locator in selectors:
+                    try:
+                        textbox = await self._visible_locator(locator)
+                        if textbox is not None:
+                            await self._ensure_cookie_choice(page)
+                            return textbox
+                    except Exception as exc:
+                        last_error = exc
+                await asyncio.sleep(0.25)
+            raise TimeoutError("DeepSeek prompt textbox was not visible.") from last_error
         except Exception as exc:
             body_text = ""
             try:
@@ -586,6 +601,15 @@ class DeepSeekWebClient:
         has_images: bool,
     ) -> None:
         if not has_images:
+            send_button = await self._visible_locator(
+                page.locator(
+                    "div.ds-button--primary.ds-button--circle"
+                    ":not(.ds-button--disabled)"
+                )
+            )
+            if send_button is not None:
+                await send_button.click(timeout=5_000)
+                return
             await textbox.press("Enter")
             return
         send_button = await self._visible_locator(

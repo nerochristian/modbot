@@ -42,6 +42,15 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _deepseek_web_primary_timeout() -> float:
+    raw = os.getenv("DEEPSEEK_WEB_PRIMARY_TIMEOUT", "25").strip()
+    try:
+        timeout = float(raw)
+    except ValueError:
+        timeout = 25.0
+    return min(90.0, max(0.1, timeout))
+
+
 def _looks_like_image_question_text(content: str) -> bool:
     low = re.sub(r"\s+", " ", (content or "").strip().lower())
     
@@ -182,13 +191,16 @@ class GeminiClient:
                     "[OUTPUT FORMAT]\nReturn exactly one valid JSON object and no other text."
                 )
             try:
-                return await self._deepseek_web.chat(
-                    "\n\n".join(prompt_parts),
-                    session_key=session_key,
-                    session_name=session_name,
-                    long_answer=long_answer,
+                return await asyncio.wait_for(
+                    self._deepseek_web.chat(
+                        "\n\n".join(prompt_parts),
+                        session_key=session_key,
+                        session_name=session_name,
+                        long_answer=long_answer,
+                    ),
+                    timeout=_deepseek_web_primary_timeout(),
                 )
-            except DeepSeekWebError:
+            except (DeepSeekWebError, asyncio.TimeoutError):
                 logger.warning("DeepSeek web call failed; falling back to DigitalOcean.", exc_info=True)
 
         return await self._call_digitalocean(
@@ -740,22 +752,28 @@ class GeminiClient:
                     (image.filename, image.mime_type, image.data)
                     for image in image_context
                 ]
-                content = await self._deepseek_web.vision(
-                    prompt,
-                    uploads,
-                    search=signals.mode == ConversationMode.RESEARCH,
-                    session_key=session_key,
-                    session_name=session_name,
+                content = await asyncio.wait_for(
+                    self._deepseek_web.vision(
+                        prompt,
+                        uploads,
+                        search=signals.mode == ConversationMode.RESEARCH,
+                        session_key=session_key,
+                        session_name=session_name,
+                    ),
+                    timeout=_deepseek_web_primary_timeout(),
                 )
             else:
-                content = await self._deepseek_web.chat(
-                    prompt,
-                    session_key=session_key,
-                    session_name=session_name,
-                    continue_session=is_continuation,
-                    search=True,
-                    long_answer=signals.asks_for_long_answer,
-                    deepthink=uses_native_search,
+                content = await asyncio.wait_for(
+                    self._deepseek_web.chat(
+                        prompt,
+                        session_key=session_key,
+                        session_name=session_name,
+                        continue_session=is_continuation,
+                        search=True,
+                        long_answer=signals.asks_for_long_answer,
+                        deepthink=uses_native_search,
+                    ),
+                    timeout=_deepseek_web_primary_timeout(),
                 )
             if not content:
                 return None
@@ -783,7 +801,7 @@ class GeminiClient:
             except Exception:
                 logger.warning("DigitalOcean fallback after DeepSeek auth failure failed", exc_info=True)
             return "DeepSeek needs a human session renewal and the fallback model is unavailable right now."
-        except DeepSeekWebError as exc:
+        except (DeepSeekWebError, asyncio.TimeoutError) as exc:
             logger.warning("DeepSeek browser request failed: %s", exc)
             try:
                 content = await self._call_digitalocean_conversation(
