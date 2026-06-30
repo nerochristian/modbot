@@ -133,7 +133,11 @@ def _coerce_message(row: object) -> Optional[ProfileMessage]:
 
 def _message_sort_key(message: ProfileMessage) -> tuple[int, float, int]:
     timestamp = message.created_at.timestamp() if message.created_at else 0.0
-    return (1 if message.message_id is not None else 0, timestamp, message.message_id or 0)
+    return (
+        1 if message.message_id is not None else 0,
+        timestamp,
+        message.message_id or 0,
+    )
 
 
 def _merge_messages(*groups: Sequence[ProfileMessage]) -> list[ProfileMessage]:
@@ -188,7 +192,9 @@ def _clean_profile_output(value: object) -> str:
     cleaned = value.replace("\u200b", "").strip()
     cleaned = _CODE_FENCE_START.sub("", cleaned, count=1)
     cleaned = _CODE_FENCE_END.sub("", cleaned, count=1).strip()
-    cleaned = cleaned.replace("@everyone", "@\u200beveryone").replace("@here", "@\u200bhere")
+    cleaned = cleaned.replace("@everyone", "@\u200beveryone").replace(
+        "@here", "@\u200bhere"
+    )
 
     lines = [line.rstrip() for line in cleaned.splitlines() if line.strip()]
     cleaned = "\n".join(lines)
@@ -226,7 +232,9 @@ class BehaviorProfiling(commands.Cog):
                 }
                 if len(self._cooldowns) > MAX_COOLDOWN_ENTRIES:
                     oldest = sorted(self._cooldowns, key=self._cooldowns.get)
-                    for stale_key in oldest[: len(self._cooldowns) - MAX_COOLDOWN_ENTRIES]:
+                    for stale_key in oldest[
+                        : len(self._cooldowns) - MAX_COOLDOWN_ENTRIES
+                    ]:
                         self._cooldowns.pop(stale_key, None)
         return 0.0
 
@@ -275,9 +283,13 @@ class BehaviorProfiling(commands.Cog):
         except (discord.Forbidden, discord.NotFound):
             logger.debug("Cannot read profiling history in channel %s", channel.id)
         except discord.HTTPException:
-            logger.warning("Discord rejected profiling history scan for channel %s", channel.id)
+            logger.warning(
+                "Discord rejected profiling history scan for channel %s", channel.id
+            )
         except Exception:
-            logger.exception("Unexpected profiling history failure in channel %s", channel.id)
+            logger.exception(
+                "Unexpected profiling history failure in channel %s", channel.id
+            )
         return matches
 
     async def _history_messages(
@@ -295,7 +307,10 @@ class BehaviorProfiling(commands.Cog):
 
         limiter = asyncio.Semaphore(HISTORY_SCAN_CONCURRENCY)
         results = await asyncio.gather(
-            *(self._scan_channel_history(channel, target_id, limiter) for channel in channels)
+            *(
+                self._scan_channel_history(channel, target_id, limiter)
+                for channel in channels
+            )
         )
         return _merge_messages(*(result for result in results))
 
@@ -332,7 +347,11 @@ class BehaviorProfiling(commands.Cog):
             history_messages = await self._history_messages(interaction, target_id)
 
         merged = _merge_messages(database_messages, history_messages)
-        database_ids = {message.message_id for message in database_messages if message.message_id is not None}
+        database_ids = {
+            message.message_id
+            for message in database_messages
+            if message.message_id is not None
+        }
         supplemental_count = sum(
             1
             for message in history_messages
@@ -347,7 +366,9 @@ class BehaviorProfiling(commands.Cog):
     async def _generate_profile(self, ai_client: object, prompt: str) -> str:
         call = getattr(ai_client, "_call", None)
         if not callable(call):
-            raise RuntimeError("The active AI client does not expose the provider call interface.")
+            raise RuntimeError(
+                "The active AI client does not expose the provider call interface."
+            )
 
         config = getattr(ai_client, "config", None)
         model = getattr(config, "model", None)
@@ -385,7 +406,9 @@ class BehaviorProfiling(commands.Cog):
         name="profile",
         description="Privately summarize a member's recent behavior for moderation review",
     )
-    @app_commands.describe(target="Member whose recent server messages should be summarized")
+    @app_commands.describe(
+        target="Member whose recent server messages should be summarized"
+    )
     @app_commands.guild_only()
     @app_commands.default_permissions(moderate_members=True)
     async def profile_user(
@@ -397,22 +420,31 @@ class BehaviorProfiling(commands.Cog):
         if guild is None:
             await self._send_status(
                 interaction,
-                ModEmbed.error("Server Only", "Behavior profiles are only available in servers."),
+                ModEmbed.error(
+                    "Server Only", "Behavior profiles are only available in servers."
+                ),
             )
             return
 
         if target.bot:
             await self._send_status(
                 interaction,
-                ModEmbed.info("No Profile", "Bot accounts are not eligible for behavior profiles."),
+                ModEmbed.info(
+                    "No Profile", "Bot accounts are not eligible for behavior profiles."
+                ),
             )
             return
 
         database = getattr(self.bot, "db", None)
-        if database is None or not callable(getattr(database, "get_recent_user_messages", None)):
+        if database is None or not callable(
+            getattr(database, "get_recent_user_messages", None)
+        ):
             await self._send_status(
                 interaction,
-                ModEmbed.error("Tracking Unavailable", "The message tracking database is unavailable."),
+                ModEmbed.error(
+                    "Tracking Unavailable",
+                    "The message tracking database is unavailable.",
+                ),
             )
             return
 
@@ -421,7 +453,9 @@ class BehaviorProfiling(commands.Cog):
         if ai_client is None or not bool(getattr(ai_client, "is_available", False)):
             await self._send_status(
                 interaction,
-                ModEmbed.warning("AI Unavailable", "The AI provider is currently offline."),
+                ModEmbed.warning(
+                    "AI Unavailable", "The AI provider is currently offline."
+                ),
             )
             return
 
@@ -454,7 +488,10 @@ class BehaviorProfiling(commands.Cog):
             if analyzed_count < MIN_PROFILE_MESSAGES:
                 await self._send_status(
                     interaction,
-                    ModEmbed.info("Not Enough Usable History", "The available messages could not form a reliable sample."),
+                    ModEmbed.info(
+                        "Not Enough Usable History",
+                        "The available messages could not form a reliable sample.",
+                    ),
                 )
                 return
 
@@ -491,7 +528,10 @@ class BehaviorProfiling(commands.Cog):
             )
             await self._send_status(
                 interaction,
-                ModEmbed.warning("Profile Timed Out", "The AI provider took too long. Try again later."),
+                ModEmbed.warning(
+                    "Profile Timed Out",
+                    "The AI provider took too long. Try again later.",
+                ),
             )
         except Exception:
             logger.exception(
@@ -501,7 +541,10 @@ class BehaviorProfiling(commands.Cog):
             )
             await self._send_status(
                 interaction,
-                ModEmbed.error("Profile Failed", "The profile could not be generated. Check the bot logs."),
+                ModEmbed.error(
+                    "Profile Failed",
+                    "The profile could not be generated. Check the bot logs.",
+                ),
             )
 
 

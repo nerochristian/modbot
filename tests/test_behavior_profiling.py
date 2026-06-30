@@ -46,7 +46,10 @@ class BehaviorProfilingHelpersTests(unittest.TestCase):
         self.assertEqual(message.created_at.tzinfo, timezone.utc)
 
     def test_merge_deduplicates_message_ids_and_keeps_newest_messages(self) -> None:
-        tracked = [ProfileMessage(message_id=index, content=f"db-{index}") for index in range(1, 4)]
+        tracked = [
+            ProfileMessage(message_id=index, content=f"db-{index}")
+            for index in range(1, 4)
+        ]
         history = [
             ProfileMessage(message_id=3, content="history-3"),
             ProfileMessage(message_id=4, content="history-4"),
@@ -64,15 +67,23 @@ class BehaviorProfilingHelpersTests(unittest.TestCase):
         ]
 
         prompt, count = _build_prompt(messages)
-        context = prompt.split("<message_excerpts>\n", 1)[1].split("\n</message_excerpts>", 1)[0]
+        context = prompt.split("<message_excerpts>\n", 1)[1].split(
+            "\n</message_excerpts>", 1
+        )[0]
 
         self.assertLessEqual(len(context), MAX_CONTEXT_CHARS)
         self.assertLessEqual(count, 100)
         self.assertIn("message-149-", context)
         self.assertNotIn("message-0-", context)
 
-    def test_profile_output_removes_fences_neutralizes_mentions_and_caps_words(self) -> None:
-        raw = "```text\n@everyone " + " ".join(f"word-{index}" for index in range(200)) + "\n```"
+    def test_profile_output_removes_fences_neutralizes_mentions_and_caps_words(
+        self,
+    ) -> None:
+        raw = (
+            "```text\n@everyone "
+            + " ".join(f"word-{index}" for index in range(200))
+            + "\n```"
+        )
 
         cleaned = _clean_profile_output(raw)
 
@@ -87,7 +98,9 @@ class BehaviorProfilingHelpersTests(unittest.TestCase):
 
 
 class BehaviorProfilingAsyncTests(unittest.IsolatedAsyncioTestCase):
-    async def test_generate_profile_uses_provider_interface_and_cleans_result(self) -> None:
+    async def test_generate_profile_uses_provider_interface_and_cleans_result(
+        self,
+    ) -> None:
         cog = BehaviorProfiling(SimpleNamespace())
         ai_client = SimpleNamespace(
             config=SimpleNamespace(model="configured-model"),
