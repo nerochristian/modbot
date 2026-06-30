@@ -1388,6 +1388,10 @@ class Database:
                     CREATE INDEX IF NOT EXISTS idx_deleted_message_attachments_message
                     ON deleted_message_attachments(guild_id, message_id)
                     """,
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_user_messages_guild_user
+                    ON user_messages(guild_id, user_id)
+                    """,
                 ]
                 for sql in index_statements:
                     try:
@@ -3424,6 +3428,51 @@ class Database:
                 }
                 for r in rows
             ]
+            ]
+
+    # ==================== BEHAVIOR PROFILING ====================
+
+    async def track_user_message(self, message: discord.Message) -> None:
+        """Store a message for behavioral profiling."""
+        if not message.guild or not message.author or message.author.bot:
+            return
+        content = message.content.strip()
+        if not content:
+            return
+            
+        try:
+            async with self.get_connection() as db:
+                await db.execute(
+                    \"\"\"
+                    INSERT INTO user_messages (message_id, guild_id, channel_id, user_id, content)
+                    VALUES (?, ?, ?, ?, ?)
+                    \"\"\",
+                    (message.id, message.guild.id, message.channel.id, message.author.id, content)
+                )
+                await db.commit()
+        except Exception as e:
+            logger.error("Failed to track user message: %s", e)
+
+    async def get_recent_user_messages(self, guild_id: int, user_id: int, limit: int = 100) -> List[Dict[str, Any]]:
+        """Retrieve recent messages for a specific user in a guild."""
+        try:
+            async with self.get_connection() as db:
+                cursor = await db.execute(
+                    \"\"\"
+                    SELECT message_id, channel_id, content, timestamp
+                    FROM user_messages
+                    WHERE guild_id = ? AND user_id = ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                    \"\"\",
+                    (guild_id, user_id, limit)
+                )
+                rows = await cursor.fetchall()
+                # Return in chronological order
+                return [dict(row) for row in reversed(rows)]
+        except Exception as e:
+            logger.error("Failed to get recent user messages: %s", e)
+            return []
 
     # ==================== LIFECYCLE ====================
 
