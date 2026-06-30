@@ -729,8 +729,6 @@ class GeminiClient:
                 recent_messages,
                 source_message=source_message,
             )
-        if is_image_question and not image_context:
-            return "I don't see an image attachment or embed in the replied/recent messages."
         prompt = f"{plan.system_prompt}\n\n### USER MESSAGE ###\n{plan.user_prompt}"
 
         try:
