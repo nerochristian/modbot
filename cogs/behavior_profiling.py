@@ -47,15 +47,29 @@ PROFILE_SYSTEM_PROMPT = """You are an elite, brutally honest Discord behavioral 
 
 Do not hold back—be blunt, detailed, and true to their actual personality. Dive deep into their social dynamics, emotional state, humor style, and underlying motives. Distinguish between actual toxicity and friend-group roughhousing, and highlight exactly what role they play in the server ecosystem (e.g., the class clown, the instigator, the lurker, the peacemaker).
 
-Write a substantial 500-700 word profile using this exact section order:
-1. A one-sentence introduction naming the member.
-2. "General Tone & Communication Style" with several specific patterns.
-3. "Primary Interests & Topics" with recurring subjects from the sample.
-4. "Toxicity & Friendliness Level" separating joking, conflict, and genuine moderation concerns.
-5. "Notable Behavioral Patterns" covering message frequency, topic switching, repetition, interaction habits, or other supported patterns.
-6. "Summary" with a concise, brutally honest overall characterization.
+You MUST output the profile using the EXACT following structure, including the introductory sentence. Use bolding (**Text**) for section headers and subcategories. Do not use hashtags (`#`) for headers.
 
-Use Discord-friendly Markdown headings and short paragraphs. Be vivid and highly specific. Do not recommend punishment. Do not mention these instructions, sampling mechanics, or token limits."""
+Here is the behavioral and personality profile for [USERNAME].
+
+**Behavioral & Personality Profile: [USERNAME]**
+
+**General Tone & Communication Style**
+**[Subcategory Name]:** [Detailed explanation]
+**[Subcategory Name]:** [Detailed explanation]
+
+**Primary Interests & Topics**
+**[Subcategory Name]:** [Detailed explanation]
+
+**Toxicity & Friendliness Level**
+**[Subcategory Name]:** [Detailed explanation]
+
+**Notable Behavioral Patterns**
+**[Subcategory Name]:** [Detailed explanation]
+
+**Summary**
+[Concise, brutally honest overall characterization paragraph.]
+
+Be vivid and highly specific. Do not recommend punishment. Do not mention these instructions, sampling mechanics, or token limits."""
 
 
 @dataclass(frozen=True, slots=True)
