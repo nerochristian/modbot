@@ -1363,53 +1363,14 @@ class AutoMod(commands.Cog):
     async def automod_enable(self, interaction: discord.Interaction) -> None:
         await self._edit_settings(interaction.guild_id, lambda settings: settings.__setitem__("automod_enabled", True))
         await interaction.response.send_message(embed=ModEmbed.success("AutoMod enabled", "Existing rule settings were preserved."), ephemeral=True)
-        timeout_duration="Timeout duration such as 30m, 2h or 1d",
-        notify_users="DM users after a successful action",
-        public_feedback="Post a short temporary notice in the channel",
-    )
-    @is_admin()
-    async def automod_actions(
-        self,
-        interaction: discord.Interaction,
-        regular: Optional[PolicyAction] = None,
-        security: Optional[PolicyAction] = None,
-        timeout_duration: Optional[str] = None,
-        notify_users: Optional[bool] = None,
-        public_feedback: Optional[bool] = None,
-    ) -> None:
-        duration = _parse_duration(timeout_duration) if timeout_duration is not None else None
-        if timeout_duration is not None and duration is None:
-            await interaction.response.send_message(
-                embed=ModEmbed.error("Invalid duration", "Use values from 1 minute to 28 days, for example `30m`, `2h`, or `1d12h`."),
-                ephemeral=True,
-            )
-            return
-        changes: dict[str, Any] = {}
-        if regular is not None:
-            changes["automod_punishment"] = regular
-        if security is not None:
-            changes["automod_security_punishment"] = security
-        if duration is not None:
-            changes["automod_mute_duration"] = duration
-        if notify_users is not None:
-            changes["automod_notify_users"] = notify_users
-        if public_feedback is not None:
-            changes["automod_public_feedback"] = public_feedback
-        if not changes:
-            settings = await self._get_settings(interaction.guild_id)
-            text = (
-                f"Regular: **{settings.get('automod_punishment', 'warn')}**\n"
-                f"Security: **{settings.get('automod_security_punishment', 'timeout')}**\n"
-                f"Timeout: **{_format_duration(settings.get('automod_mute_duration', 3600))}**\n"
-                f"DM users: **{settings.get('automod_notify_users', True)}**\n"
-                f"Public feedback: **{settings.get('automod_public_feedback', False)}**"
-            )
-            await interaction.response.send_message(embed=ModEmbed.info("Current actions", text), ephemeral=True)
-            return
-        await self._edit_settings(interaction.guild_id, lambda settings: settings.update(changes))
-        await interaction.response.send_message(embed=ModEmbed.success("Actions updated", "The new policy is active."), ephemeral=True)
 
-    @automod.command(name="link-mode", description="Choose dangerous-link detection or a strict domain allowlist")
+    @automod.command(name="disable", description="Disable AutoMod without deleting its configuration")
+    @is_admin()
+    async def automod_disable(self, interaction: discord.Interaction) -> None:
+        await self._edit_settings(interaction.guild_id, lambda settings: settings.__setitem__("automod_enabled", False))
+        await interaction.response.send_message(embed=ModEmbed.success("AutoMod disabled", "Your configuration was preserved."), ephemeral=True)
+
+    # @automod.command(name="link-mode", description="Choose dangerous-link detection or a strict domain allowlist")
     @app_commands.describe(mode="Dangerous blocks known risky links; allowlist blocks every unlisted domain")
     @is_admin()
     async def automod_link_mode(
@@ -1472,7 +1433,7 @@ class AutoMod(commands.Cog):
         await self._edit_settings(interaction.guild_id, lambda editable: editable.__setitem__(key, current))
         await interaction.response.send_message(embed=ModEmbed.success(f"{label} list updated", f"Entries: **{len(current)}**"), ephemeral=True)
 
-    @automod.command(name="words", description="Add, remove, list or clear blocked words and phrases")
+    # @automod.command(name="words", description="Add, remove, list or clear blocked words and phrases")
     @is_admin()
     async def automod_words(
         self,
@@ -1492,7 +1453,7 @@ class AutoMod(commands.Cog):
             clear_confirmed=confirm,
         )
 
-    @automod.command(name="domains", description="Manage domains allowed by strict link mode")
+    # @automod.command(name="domains", description="Manage domains allowed by strict link mode")
     @is_admin()
     async def automod_domains(
         self,
@@ -1512,7 +1473,7 @@ class AutoMod(commands.Cog):
             clear_confirmed=confirm,
         )
 
-    @automod.command(name="invites", description="Manage Discord invite codes that AutoMod allows")
+    # @automod.command(name="invites", description="Manage Discord invite codes that AutoMod allows")
     @is_admin()
     async def automod_invites(
         self,
@@ -1570,7 +1531,7 @@ class AutoMod(commands.Cog):
         await self._edit_settings(interaction.guild_id, lambda editable: editable.__setitem__(key, current))
         await interaction.response.send_message(embed=ModEmbed.success("Bypass updated", f"{target.mention} was {operation}ed."), ephemeral=True)
 
-    @automod.command(name="bypass-role", description="Add, remove or list roles ignored by AutoMod")
+    # @automod.command(name="bypass-role", description="Add, remove or list roles ignored by AutoMod")
     @is_admin()
     async def automod_bypass_role(
         self,
@@ -1580,7 +1541,7 @@ class AutoMod(commands.Cog):
     ) -> None:
         await self._edit_bypass(interaction, operation, role, key="automod_bypass_roles", label="role")
 
-    @automod.command(name="bypass-channel", description="Add, remove or list channels ignored by AutoMod")
+    # @automod.command(name="bypass-channel", description="Add, remove or list channels ignored by AutoMod")
     @is_admin()
     async def automod_bypass_channel(
         self,
@@ -1695,7 +1656,7 @@ class AutoMod(commands.Cog):
         embed.set_footer(text="Runtime history is bounded and resets when the bot restarts")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @automod.command(name="reset", description="Restore all AutoMod settings to safe defaults")
+    # @automod.command(name="reset", description="Restore all AutoMod settings to safe defaults")
     @is_admin()
     async def automod_reset(self, interaction: discord.Interaction, confirm: bool = False) -> None:
         if not confirm:
