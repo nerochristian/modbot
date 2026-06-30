@@ -1297,38 +1297,27 @@ class AutoMod(commands.Cog):
             color=Config.COLOR_INFO,
         )
         embed.add_field(
-            name="Start and inspect",
+            name="Main flow",
             value=(
-                "`/automod panel` — open the complete interactive dashboard\n"
-                "`/automod setup` — apply a complete preset\n"
-                "`/automod status` — inspect the live configuration\n"
-                "`/automod enable` / `disable` — master switch\n"
-                "`/automod test` — safely test sample text"
+                "`/automod setup` - create a private setup channel and answer guided questions\n"
+                "`/automod change` - describe what to change, with current settings sent for context\n"
+                "`/automod status` - inspect the live configuration\n"
+                "`/automod test` - test sample text without punishing anyone"
             ),
             inline=False,
         )
         embed.add_field(
-            name="Tune behavior",
+            name="Examples",
             value=(
-                "`/automod rule` — enable one rule\n"
-                "`/automod thresholds` — spam, duplicate, caps and mention limits\n"
-                "`/automod actions` — regular/security actions and timeout duration\n"
-                "`/automod link-mode` — dangerous-only or allowlist mode"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="Lists and routing",
-            value=(
-                "`/automod words`, `/automod domains`, `/automod invites`\n"
-                "`/automod bypass-role`, `/automod bypass-channel`\n"
-                "`/automod logs`, `/automod recent`, `/automod stats`"
+                "`/automod change request:make spam stricter and timeout spammers for 10 minutes`\n"
+                "`/automod change request:block all links except youtube and github`\n"
+                "`/automod change request:disable caps filtering but keep scam protection strict`"
             ),
             inline=False,
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @automod.command(name="panel", description="Open the complete interactive AutoMod dashboard")
+    # @automod.command(name="panel", description="Open the complete interactive AutoMod dashboard")
     @is_admin()
     async def automod_panel(self, interaction: discord.Interaction) -> None:
         settings = await self._get_settings(interaction.guild_id, fresh=True)
@@ -1358,13 +1347,13 @@ class AutoMod(commands.Cog):
         from cogs.automod_setup import handle_automod_change
         await handle_automod_change(self, interaction, request)
 
-    @automod.command(name="enable", description="Enable AutoMod without changing any rules")
+    # @automod.command(name="enable", description="Enable AutoMod without changing any rules")
     @is_admin()
     async def automod_enable(self, interaction: discord.Interaction) -> None:
         await self._edit_settings(interaction.guild_id, lambda settings: settings.__setitem__("automod_enabled", True))
         await interaction.response.send_message(embed=ModEmbed.success("AutoMod enabled", "Existing rule settings were preserved."), ephemeral=True)
 
-    @automod.command(name="disable", description="Disable AutoMod without deleting its configuration")
+    # @automod.command(name="disable", description="Disable AutoMod without deleting its configuration")
     @is_admin()
     async def automod_disable(self, interaction: discord.Interaction) -> None:
         await self._edit_settings(interaction.guild_id, lambda settings: settings.__setitem__("automod_enabled", False))
@@ -1551,7 +1540,7 @@ class AutoMod(commands.Cog):
     ) -> None:
         await self._edit_bypass(interaction, operation, channel, key="automod_bypass_channels", label="channel")
 
-    @automod.command(name="logs", description="Set, disable or inspect the AutoMod log channel")
+    # @automod.command(name="logs", description="Set, disable or inspect the AutoMod log channel")
     @is_admin()
     async def automod_logs(
         self,
@@ -1612,7 +1601,7 @@ class AutoMod(commands.Cog):
                 embed.add_field(name="Matched", value=", ".join(f"||{item}||" for item in match.evidence), inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @automod.command(name="stats", description="Show runtime AutoMod totals since the last bot restart")
+    # @automod.command(name="stats", description="Show runtime AutoMod totals since the last bot restart")
     @is_mod()
     async def automod_stats(self, interaction: discord.Interaction) -> None:
         stats = self.engine.stats
@@ -1634,7 +1623,7 @@ class AutoMod(commands.Cog):
         embed.set_footer(text="Runtime counters reset when the bot restarts")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @automod.command(name="recent", description="Show recent AutoMod violations from this bot session")
+    # @automod.command(name="recent", description="Show recent AutoMod violations from this bot session")
     @is_mod()
     async def automod_recent(
         self,
