@@ -1655,6 +1655,7 @@ class ModBot(commands.Bot):
             "cogs.risk_scoring",
             "cogs.alt_detection",
             "cogs.staff_reports",
+            "cogs.behavior_profiling",
         ]
 
         loaded: list[str] = []
