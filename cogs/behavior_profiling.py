@@ -462,7 +462,7 @@ class BehaviorProfiling(commands.Cog):
                         {"role": "user", "content": prompt},
                     ],
                     temperature=0.2,
-                    max_tokens=1_800,
+                    max_tokens=400,
                     model=model,
                     long_answer=True,
                 ),
