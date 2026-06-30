@@ -7,11 +7,14 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from cogs.automod_setup import (
+    SetupReviewView,
     SetupProfile,
     call_deepseek_json,
     _extract_json_object,
+    _modal_update_from_fields,
     _parse_generated_questions,
     _parse_profiles,
+    _review_description,
     _setup_user_prompt,
     validate_automod_update,
 )
@@ -102,6 +105,64 @@ class AutoModSetupValidationTests(unittest.TestCase):
         questions = _parse_generated_questions(payload)
         self.assertEqual(len(questions), 8)
         self.assertGreaterEqual(sum(question.is_closed for question in questions), 7)
+
+    def test_review_description_surfaces_editable_panels(self) -> None:
+        description = _review_description(
+            {
+                "automod_badwords_enabled": True,
+                "automod_badwords": ["custombad"],
+                "automod_links_enabled": True,
+                "automod_links_mode": "allowlist",
+                "automod_links_whitelist": ["youtube.com"],
+                "automod_whitelisted_domains": ["discord.com"],
+                "automod_invites_enabled": True,
+                "automod_allowed_invites": ["abc123"],
+                "automod_scam_protection": True,
+                "automod_spam_threshold": 4,
+                "automod_spam_window": 8,
+                "automod_max_mentions": 3,
+                "automod_punishment": "warn",
+                "automod_security_punishment": "timeout",
+            },
+            "Generated setup.",
+        )
+
+        self.assertIn("Review the generated setup", description)
+        self.assertIn("**Blocked Words**", description)
+        self.assertIn("custombad", description)
+        self.assertIn("**Links**", description)
+        self.assertIn("youtube.com", description)
+        self.assertIn("**Invites and Security**", description)
+        self.assertIn("abc123", description)
+        self.assertIn("**Limits and Actions**", description)
+
+    def test_review_view_has_expected_setup_buttons(self) -> None:
+        view = SetupReviewView(1, {}, {}, "summary")
+        labels = [getattr(item, "label", None) for item in view.children]
+
+        self.assertIn("Blocked Words", labels)
+        self.assertIn("Links", labels)
+        self.assertIn("Invites", labels)
+        self.assertIn("Limits", labels)
+        self.assertIn("Actions", labels)
+        self.assertIn("Save Setup", labels)
+
+    def test_modal_update_from_fields_validates_review_edits(self) -> None:
+        update = _modal_update_from_fields(
+            {
+                "automod_badwords_enabled": "off",
+                "automod_badwords": "custombad\ncustombad\nx",
+                "automod_links_mode": "allowlist",
+                "automod_links_whitelist": "https://www.youtube.com/watch?v=1\nx.com",
+                "automod_spam_threshold": "6",
+            }
+        )
+
+        self.assertEqual(update["automod_badwords_enabled"], False)
+        self.assertEqual(update["automod_badwords"], ["custombad"])
+        self.assertEqual(update["automod_links_mode"], "allowlist")
+        self.assertEqual(update["automod_links_whitelist"], ["www.youtube.com", "x.com"])
+        self.assertEqual(update["automod_spam_threshold"], 6)
 
 
 class AutoModSetupAITests(unittest.IsolatedAsyncioTestCase):
