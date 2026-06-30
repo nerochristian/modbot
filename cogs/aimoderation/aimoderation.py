@@ -1594,6 +1594,7 @@ class AIModeration(commands.Cog):
         self,
         decision: Decision,
         settings: GuildSettings,
+        message: Optional[discord.Message] = None,
     ) -> Decision:
         """Rewrite explicit moderation reasons without changing their meaning."""
         if decision.type != DecisionType.TOOL_CALL or decision.tool not in REASONED_MODERATION_TOOLS:
@@ -1603,14 +1604,29 @@ class AIModeration(commands.Cog):
         if not original or original.lower() == "no reason provided":
             return decision
 
+        context_str = ""
+        if message and message.guild and hasattr(self.bot, 'database') and hasattr(self.bot.database, 'get_recent_user_messages'):
+            target_id_str = decision.arguments.get("user_id") or decision.arguments.get("target_user_id")
+            if target_id_str:
+                try:
+                    target_id = int(target_id_str)
+                    recent_msgs = await self.bot.database.get_recent_user_messages(message.guild.id, target_id, limit=100)
+                    if recent_msgs:
+                        context_str = "\n\nTarget User's Recent Messages:\n" + "\n".join(
+                            f"[{m['timestamp']}] {m['content']}" for m in recent_msgs
+                        )
+                except ValueError:
+                    pass
+
         polished = ""
         if self.ai.is_available:
             prompt = (
                 "Rewrite this Discord moderation reason as one concise, professional sentence fragment. "
-                f"Keep the exact meaning, add no facts, use at most {MAX_MODERATION_REASON_LENGTH} characters, "
+                f"Keep the exact meaning, add no facts (unless summarizing their recent messages), use at most {MAX_MODERATION_REASON_LENGTH} characters, "
                 "and do not prefix it with 'Reason:', 'for', or 'because'. Return only the rewritten reason.\n\n"
-                f"Action: {decision.tool.value}\nOriginal reason: {original}"
+                f"Action: {decision.tool.value}\nOriginal reason: {original}{context_str}"
             )
+            session_name = f"{message.guild.name} -> Moderation" if message and message.guild else "Moderation reason formatting"
             try:
                 polished = await asyncio.wait_for(
                     self.ai._call(
@@ -1628,7 +1644,7 @@ class AIModeration(commands.Cog):
                         max_tokens=60,
                         model=settings.model,
                         session_key="moderation-reason-formatting",
-                        session_name="Moderation reason formatting",
+                        session_name=session_name,
                     ),
                     timeout=12.0,
                 )
@@ -2099,7 +2115,7 @@ class AIModeration(commands.Cog):
                 )
                 return
 
-            decision = await self._polish_decision_reason(decision, settings)
+            decision = await self._polish_decision_reason(decision, settings, message)
 
             if decision.tool == ToolType.EXECUTE_PYTHON and not str(decision.arguments.get("code", "")).strip():
                 async with message.channel.typing():
