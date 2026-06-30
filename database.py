@@ -1348,7 +1348,7 @@ class Database:
                         channel_id INTEGER NOT NULL,
                         user_id INTEGER NOT NULL,
                         content TEXT NOT NULL,
-                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
                 

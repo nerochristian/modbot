@@ -65,6 +65,10 @@ class BehaviorProfiling(commands.Cog):
             "Keep it professional but insightful. Format the response nicely using Discord markdown.\n\n"
             f"Messages:\n{message_context}"
         )
+        
+        # The AI inference proxy uses Discord under the hood and limits inputs to 4000 characters.
+        if len(prompt) > 3800:
+            prompt = prompt[:3800] + "\n...[TRUNCATED]"
 
         try:
             profile_content = await aimod_cog.ai._call_digitalocean(
