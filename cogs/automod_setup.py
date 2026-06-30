@@ -420,19 +420,45 @@ async def call_deepseek_json(cog: Any, system_prompt: str, user_prompt: str, *, 
     ai_cog = cog.bot.get_cog("AIModeration")
     ai_client = getattr(ai_cog, "ai", None) if ai_cog else None
     web_client = getattr(ai_client, "_deepseek_web", None) if ai_client else None
-    if not web_client or not web_client.enabled:
-        raise RuntimeError("DeepSeek Web is not configured. Ensure AIModeration is loaded and DEEPSEEK_WEB_ENABLED is true.")
-
     prompt = (
         "You are a strict JSON API. Follow the system instructions and return valid JSON only.\n\n"
         f"--- SYSTEM INSTRUCTIONS ---\n{system_prompt}\n\n"
         f"--- USER REQUEST ---\n{user_prompt}"
     )
-    try:
-        response = await web_client.chat(prompt, search=False, deepthink=False, long_answer=False)
-        return _extract_json_object(response)
-    except Exception as exc:
-        raise RuntimeError(f"DeepSeek Web error: {exc}") from exc
+    failures: list[str] = []
+
+    if web_client and getattr(web_client, "enabled", False):
+        try:
+            response = await web_client.chat(prompt, search=False, deepthink=False, long_answer=False)
+            return _extract_json_object(response)
+        except Exception as exc:
+            failures.append(f"DeepSeek Web: {type(exc).__name__}: {str(exc)[:200]}")
+            log.warning("AutoMod setup DeepSeek Web call failed; falling back to DigitalOcean.", exc_info=True)
+    else:
+        failures.append("DeepSeek Web: disabled")
+
+    digitalocean_call = getattr(ai_client, "_call_digitalocean", None) if ai_client else None
+    if callable(digitalocean_call):
+        try:
+            response = await digitalocean_call(
+                [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.1,
+                max_tokens=max_tokens,
+                json_mode=True,
+            )
+            if isinstance(response, str) and response.strip():
+                return _extract_json_object(response)
+            failures.append("DigitalOcean: empty response")
+        except Exception as exc:
+            failures.append(f"DigitalOcean: {type(exc).__name__}: {str(exc)[:200]}")
+            log.warning("AutoMod setup DigitalOcean fallback failed.", exc_info=True)
+    else:
+        failures.append("DigitalOcean: unavailable")
+
+    raise RuntimeError("AutoMod AI JSON generation failed. " + " | ".join(failures))
 
 
 def _clean_text(value: Any, *, limit: int = 900) -> str:

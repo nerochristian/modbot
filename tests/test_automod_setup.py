@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 from cogs.automod_setup import (
     SetupProfile,
+    call_deepseek_json,
     _extract_json_object,
     _parse_generated_questions,
     _parse_profiles,
@@ -99,6 +100,38 @@ class AutoModSetupValidationTests(unittest.TestCase):
         questions = _parse_generated_questions(payload)
         self.assertEqual(len(questions), 8)
         self.assertGreaterEqual(sum(question.is_closed for question in questions), 7)
+
+
+class AutoModSetupAITests(unittest.IsolatedAsyncioTestCase):
+    async def test_call_deepseek_json_falls_back_to_digitalocean_when_web_fails(self) -> None:
+        class BrokenWeb:
+            enabled = True
+
+            async def chat(self, *args, **kwargs):
+                raise RuntimeError("DeepSeek browser failure: Error")
+
+        class FakeAI:
+            _deepseek_web = BrokenWeb()
+
+            async def _call_digitalocean(self, messages, *, temperature, max_tokens, json_mode):
+                self.messages = messages
+                self.temperature = temperature
+                self.max_tokens = max_tokens
+                self.json_mode = json_mode
+                return '{"profiles": [{"name": "Safe", "description": "Blocks scams.", "focus": "Security"}]}'
+
+        fake_ai = FakeAI()
+        cog = SimpleNamespace(
+            bot=SimpleNamespace(
+                get_cog=lambda name: SimpleNamespace(ai=fake_ai) if name == "AIModeration" else None
+            )
+        )
+
+        payload = await call_deepseek_json(cog, "system", "user", max_tokens=500)
+
+        self.assertEqual(payload["profiles"][0]["name"], "Safe")
+        self.assertTrue(fake_ai.json_mode)
+        self.assertEqual(fake_ai.max_tokens, 500)
 
 
 if __name__ == "__main__":
