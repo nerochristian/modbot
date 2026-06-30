@@ -360,7 +360,7 @@ async def call_deepseek_json(cog: Any, system_prompt: str, user_prompt: str, *, 
     )
 
     try:
-        response = await web_client.chat(prompt, search=False, long_answer=False)
+        response = await web_client.chat(prompt, search=True, deepthink=True, long_answer=False)
         return _extract_json_object(response)
     except Exception as exc:
         raise RuntimeError(f"DeepSeek Web error: {exc}")
@@ -537,7 +537,9 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
         
         profiles_prompt = (
             "You are an expert Discord AutoMod configuration AI. "
-            "Based on the user's description of their server, generate exactly 3 distinct, improved configuration profiles. "
+            "Based on the user's description of their server, generate exactly 3 COMPLETELY DISTINCT configuration profiles. "
+            "Do NOT just split one idea into three parts. Each profile must represent a fundamentally different moderation philosophy "
+            "or strictness level (e.g., Profile 1: Lenient/Chill, Profile 2: Balanced/Standard, Profile 3: Strict/Maximum Security). "
             "Return a JSON object with a key 'profiles' containing a list of 3 objects, "
             "each with 'name' (a short title) and 'description' (a detailed paragraph of what the profile does)."
         )
