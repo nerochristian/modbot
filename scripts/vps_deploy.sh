@@ -36,6 +36,10 @@ install_dependencies() {
   fi
   .venv/bin/python -m pip install --upgrade pip
   .venv/bin/python -m pip install -r requirements.txt
+  
+  if grep -q "playwright" requirements.txt; then
+    .venv/bin/python -m playwright install chromium
+  fi
 
   if [[ -f "website/package.json" ]] && command -v npm >/dev/null 2>&1; then
     (
