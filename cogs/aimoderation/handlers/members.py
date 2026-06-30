@@ -18,6 +18,8 @@ from ..types import ToolType
 
 logger = logging.getLogger("ModBot.AIModeration.Handlers.Members")
 
+MAX_WARNING_BATCH = 10
+
 
 def _format_duration(seconds: int) -> str:
     if seconds % 86_400 == 0:
@@ -45,27 +47,62 @@ async def handle_warn(ctx: ToolContext) -> ToolResult:
         return ToolResult.fail(f"Cannot moderate {target.display_name} (role hierarchy).")
 
     reason = ctx.str_arg("reason")
+    warning_count = ctx.int_arg("warning_count", 1)
+    if not 1 <= warning_count <= MAX_WARNING_BATCH:
+        return ToolResult.fail(
+            f"Warning count must be between 1 and {MAX_WARNING_BATCH}."
+        )
     db = getattr(ctx.cog.bot, "db", None)
     if not db:
         return ToolResult.fail("Database not available; warning was not recorded.")
     try:
-        await db.add_warning(
-            guild_id=ctx.guild.id, user_id=target.id,
-            moderator_id=ctx.actor.id, reason=reason,
-        )
+        add_warnings = getattr(db, "add_warnings", None)
+        if callable(add_warnings):
+            _, total_count = await add_warnings(
+                guild_id=ctx.guild.id,
+                user_id=target.id,
+                moderator_id=ctx.actor.id,
+                reason=reason,
+                count=warning_count,
+            )
+        else:
+            total_count = 0
+            for _ in range(warning_count):
+                _, total_count = await db.add_warning(
+                    guild_id=ctx.guild.id,
+                    user_id=target.id,
+                    moderator_id=ctx.actor.id,
+                    reason=reason,
+                )
     except Exception:
-        logger.exception("Failed to record warning")
-        return ToolResult.fail("Database error while recording warning.")
+        logger.exception("Failed to record %d warning(s)", warning_count)
+        return ToolResult.fail("Database error while recording warnings.")
 
     embed = action_embed(
-        title="Warning Member Warned", color=discord.Color.gold(),
-        actor=ctx.actor, target=target, reason=reason,
+        title="Warnings Issued" if warning_count > 1 else "Member Warned",
+        color=discord.Color.gold(),
+        actor=ctx.actor,
+        target=target,
+        reason=reason,
+        extra={
+            "Warnings Issued": str(warning_count),
+            "Total Warnings": str(total_count),
+        },
     )
     await ctx.cog.log_action(
-        message=ctx.message, action="warn_member",
-        actor=ctx.actor, target=target, reason=reason, decision=ctx.decision,
+        message=ctx.message,
+        action="warn_member",
+        actor=ctx.actor,
+        target=target,
+        reason=reason,
+        decision=ctx.decision,
+        extra={"Warnings Issued": warning_count, "Total Warnings": total_count},
     )
-    return ToolResult.ok("Warning issued.", embed=embed)
+    label = "warning" if warning_count == 1 else "warnings"
+    return ToolResult.ok(
+        f"{warning_count} {label} issued. Total warnings: {total_count}.",
+        embed=embed,
+    )
 
 
 @ToolRegistry.register(
