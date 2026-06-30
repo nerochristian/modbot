@@ -698,27 +698,27 @@ class GeminiClient:
                 vision=bool(image_context),
             )
             if image_context:
-                    uploads = [
-                        (image.filename, image.mime_type, image.data)
-                        for image in image_context
-                    ]
-                    content = await self._deepseek_web.vision(
-                        prompt,
-                        uploads,
-                        search=signals.mode == ConversationMode.RESEARCH,
-                        session_key=session_key,
-                        session_name=session_name,
-                    )
-                else:
-                    content = await self._deepseek_web.chat(
-                        prompt,
-                        session_key=session_key,
-                        session_name=session_name,
-                        continue_session=is_continuation,
-                        search=True,
-                        long_answer=signals.asks_for_long_answer,
-                        deepthink=uses_native_search,
-                    )
+                uploads = [
+                    (image.filename, image.mime_type, image.data)
+                    for image in image_context
+                ]
+                content = await self._deepseek_web.vision(
+                    prompt,
+                    uploads,
+                    search=signals.mode == ConversationMode.RESEARCH,
+                    session_key=session_key,
+                    session_name=session_name,
+                )
+            else:
+                content = await self._deepseek_web.chat(
+                    prompt,
+                    session_key=session_key,
+                    session_name=session_name,
+                    continue_session=is_continuation,
+                    search=True,
+                    long_answer=signals.asks_for_long_answer,
+                    deepthink=uses_native_search,
+                )
             if not content:
                 return None
             content = self._postprocess_chat_response(content)
