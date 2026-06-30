@@ -347,10 +347,11 @@ def validate_automod_update(candidate: Mapping[str, Any], *, require_changes: bo
 
 async def call_deepseek_json(cog: Any, system_prompt: str, user_prompt: str, *, max_tokens: int = 1400) -> dict[str, Any]:
     ai_cog = cog.bot.get_cog("AIModeration")
-    if not ai_cog or getattr(ai_cog, "_deepseek_web", None) is None:
-        raise RuntimeError("DeepSeek Web is not configured. Please ensure AIModeration is loaded and DEEPSEEK_WEB_ENABLED is true.")
+    ai_client = getattr(ai_cog, "ai", None) if ai_cog else None
+    web_client = getattr(ai_client, "_deepseek_web", None) if ai_client else None
     
-    web_client = ai_cog._deepseek_web
+    if not web_client or not web_client.enabled:
+        raise RuntimeError("DeepSeek Web is not configured. Please ensure AIModeration is loaded and DEEPSEEK_WEB_ENABLED is true.")
     
     prompt = (
         "You are a strict JSON API. Follow the System Instructions perfectly and return valid JSON.\n\n"
