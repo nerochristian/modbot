@@ -191,6 +191,33 @@ class AIModeration(commands.Cog):
         r")",
         re.IGNORECASE,
     )
+    _WARNING_ACTION_RE: ClassVar[re.Pattern] = re.compile(
+        r"^(?:"
+        r"warn\b|"
+        r"(?:give|issue|add|apply)\b.{0,120}\bwarn(?:ing)?s?\b"
+        r")",
+        re.IGNORECASE,
+    )
+    _WARNING_COUNT_RE: ClassVar[re.Pattern] = re.compile(
+        r"\b(?P<count>\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|a|an)\s+"
+        r"(?:separate\s+)?(?:warnings?|times?)\b|"
+        r"\bwarn(?:ing)?s?\s*[xÃ—]\s*(?P<multiplier>\d{1,3})\b",
+        re.IGNORECASE,
+    )
+    _WARNING_NUMBER_WORDS: ClassVar[Dict[str, int]] = {
+        "a": 1,
+        "an": 1,
+        "one": 1,
+        "two": 2,
+        "three": 3,
+        "four": 4,
+        "five": 5,
+        "six": 6,
+        "seven": 7,
+        "eight": 8,
+        "nine": 9,
+        "ten": 10,
+    }
 
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
@@ -401,14 +428,21 @@ class AIModeration(commands.Cog):
     def _looks_like_mod_request(self, content: str) -> bool:
         low = self._normalize_chat_text(self._strip_action_prefix(content))
         return bool(
-            self._looks_like_warning_lookup(low)
+            self._looks_like_warning_action(low)
+            or self._looks_like_warning_lookup(low)
             or
             self._MOD_REQUEST_RE.match(low)
             or self._CONDITIONAL_ACTION_RE.match(low)
         )
 
+    def _looks_like_warning_action(self, content: str) -> bool:
+        low = self._normalize_chat_text(self._strip_action_prefix(content))
+        return bool(self._WARNING_ACTION_RE.match(low))
+
     def _looks_like_warning_lookup(self, content: str) -> bool:
         low = self._normalize_chat_text(content)
+        if self._looks_like_warning_action(low):
+            return False
         return bool(self._WARNING_LOOKUP_RE.search(low))
 
     def _looks_like_advanced_action_request(self, content: str) -> bool:
@@ -1140,6 +1174,60 @@ class AIModeration(commands.Cog):
         raw = re.sub(r"\s+", " ", raw).strip(" .,:;-")
         return raw or None
 
+    def _extract_warning_count(self, text: str) -> int:
+        match = self._WARNING_COUNT_RE.search(text or "")
+        if not match:
+            return 1
+        raw = (match.group("count") or match.group("multiplier") or "1").lower()
+        if raw.isdigit():
+            return int(raw)
+        return self._WARNING_NUMBER_WORDS.get(raw, 1)
+
+    def _extract_warning_reason(self, text: str) -> Optional[str]:
+        raw = text or ""
+        explicit = re.search(
+            r"\b(?:for|because|reason\s*:?)\s+(.+)$",
+            raw,
+            re.IGNORECASE,
+        )
+        if explicit:
+            reason = explicit.group(1)
+        else:
+            reason = re.sub(
+                r"^\s*(?:warn|give|issue|add|apply)\b",
+                " ",
+                raw,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+            reason = re.sub(r"<@!?\d+>|<@&\d+>|<#\d+>", " ", reason)
+            reason = self._WARNING_COUNT_RE.sub(" ", reason, count=1)
+            reason = re.sub(r"\b(?:warnings?|times?)\b", " ", reason, flags=re.IGNORECASE)
+            reason = _REPLY_TARGET_RE.sub(" ", reason)
+            reason = re.sub(
+                r"^\s*(?:to|on)?\s*(?:them|him|her|this\s+(?:user|member)|the\s+(?:user|member))?\s*",
+                "",
+                reason,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+        reason = re.sub(r"\s+", " ", reason).strip(" .,:;-")
+        return reason or None
+
+    def _warning_arguments(self, message: discord.Message, content: str) -> Dict[str, Any]:
+        args: Dict[str, Any] = {"warning_count": self._extract_warning_count(content)}
+        reason = self._extract_warning_reason(content)
+        if reason:
+            args["reason"] = reason
+        non_bot_mentions = [
+            member
+            for member in message.mentions
+            if not member.bot and (not self.bot.user or member.id != self.bot.user.id)
+        ]
+        if non_bot_mentions:
+            args["target_user_id"] = non_bot_mentions[0].id
+        return args
+
     # ------------------------------------------------------------------
     # Fast rule-based routing
     # ------------------------------------------------------------------
@@ -1149,6 +1237,14 @@ class AIModeration(commands.Cog):
             return None
         content = self._strip_action_prefix(content)
         low = content.strip().lower().lstrip(" ,:;-")
+
+        if self._looks_like_warning_action(low):
+            return Decision(
+                type=DecisionType.TOOL_CALL,
+                reason="rule: warn",
+                tool=ToolType.WARN,
+                arguments=self._warning_arguments(message, content),
+            )
 
         if self._looks_like_warning_lookup(low):
             args: Dict[str, Any] = {}
@@ -1226,14 +1322,6 @@ class AIModeration(commands.Cog):
                 tool=ToolType.PURGE,
                 arguments=self._extract_purge_args(content),
             )
-        if re.match(r"^warn\b", low):
-            reason = self._extract_moderation_reason(content, "warn")
-            args = {"reason": reason} if reason else {}
-            if message.mentions:
-                non_bot = [m for m in message.mentions if not m.bot and (not self.bot.user or m.id != self.bot.user.id)]
-                if non_bot:
-                    args["target_user_id"] = non_bot[0].id
-            return Decision(type=DecisionType.TOOL_CALL, reason="rule: warn", tool=ToolType.WARN, arguments=args)
         if re.match(r"^kick\b", low):
             reason = self._extract_moderation_reason(content, "kick")
             args = {"reason": reason} if reason else {}
