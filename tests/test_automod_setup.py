@@ -4,7 +4,14 @@ import unittest
 
 from types import SimpleNamespace
 
-from cogs.automod_setup import _extract_json_object, _setup_user_prompt, validate_automod_update
+from cogs.automod_setup import (
+    SetupProfile,
+    _extract_json_object,
+    _parse_generated_questions,
+    _parse_profiles,
+    _setup_user_prompt,
+    validate_automod_update,
+)
 
 
 class AutoModSetupValidationTests(unittest.TestCase):
@@ -54,12 +61,44 @@ class AutoModSetupValidationTests(unittest.TestCase):
     def test_setup_prompt_does_not_send_default_bad_word_list(self) -> None:
         prompt = _setup_user_prompt(
             SimpleNamespace(id=1, name="Test Guild", member_count=100),
+            "Stop raids and scam links",
+            SetupProfile(name="Balanced Security", description="Balanced profile", focus="Scams and raids"),
             [{"key": "bad_words", "question": "How should blocked words be handled?", "answer": "Common slurs only"}],
         )
         self.assertNotIn('"defaults"', prompt)
         self.assertNotIn('"nigger"', prompt)
         self.assertNotIn('"kill yourself"', prompt)
         self.assertIn('"schema"', prompt)
+        self.assertIn('"selected_profile"', prompt)
+
+    def test_parse_profiles_requires_three_distinct_profiles(self) -> None:
+        profiles = _parse_profiles(
+            {
+                "profiles": [
+                    {"name": "Light", "description": "Mostly logs problems.", "focus": "Low friction"},
+                    {"name": "Balanced", "description": "Stops scams and spam.", "focus": "General safety"},
+                    {"name": "Strict", "description": "Locks down raids.", "focus": "High security"},
+                ]
+            }
+        )
+        self.assertEqual([profile.name for profile in profiles], ["Light", "Balanced", "Strict"])
+
+    def test_parse_generated_questions_requires_mostly_closed_questions(self) -> None:
+        payload = {
+            "questions": [
+                {"key": "spam", "question": "How strict should spam be?", "type": "choice", "options": ["Light", "Normal", "Strict"]},
+                {"key": "links", "question": "How should links work?", "type": "choice", "options": ["Dangerous only", "Allowlist", "Block most"]},
+                {"key": "invites", "question": "How should invites work?", "type": "choice", "options": ["Block", "Allow approved"]},
+                {"key": "raids", "question": "Watch new accounts?", "type": "choice", "options": ["Off", "3 days", "7 days"]},
+                {"key": "mentions", "question": "Mass mention limit?", "type": "choice", "options": ["3", "5", "8"]},
+                {"key": "punish", "question": "Default action?", "type": "choice", "options": ["Warn", "Timeout"]},
+                {"key": "security", "question": "Scam action?", "type": "choice", "options": ["Timeout", "Ban"]},
+                {"key": "custom", "question": "Any exact words?", "type": "text"},
+            ]
+        }
+        questions = _parse_generated_questions(payload)
+        self.assertEqual(len(questions), 8)
+        self.assertGreaterEqual(sum(question.is_closed for question in questions), 7)
 
 
 if __name__ == "__main__":

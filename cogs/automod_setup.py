@@ -780,15 +780,76 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
             title="AutoMod Setup",
             description=(
                 "Welcome to your server's AutoMod setup.\n\n"
-                "Most questions use buttons. A few ask for typed details like custom blocked words or allowed domains. "
-                "The channel stays open at the end so you can review the setup panels."
+                "First, tell me what you want AutoMod to do. DeepSeek will turn that into 3 improved setup profiles. "
+                "Pick the best profile, then the rest of the questions will be based on it."
             ),
         )
         await channel.send(embed=intro)
 
+        goal_question = SetupQuestion(
+            key="initial_goal",
+            prompt="What do you want AutoMod for?",
+            helper="Example: stop scam links and raids, keep normal gaming chat relaxed, and block slurs.",
+        )
+        initial_goal = await _ask_question(cog, channel, interaction.user, goal_question, 1, 1, icons)
+        if initial_goal is None:
+            timeout_embed = await _setup_embed(
+                guild,
+                kind="warning",
+                title="Setup Timed Out",
+                description="Run `/automod setup` again when you are ready.",
+                color=Config.COLOR_WARNING,
+            )
+            await channel.send(embed=timeout_embed)
+            return
+
+        profile_message = await channel.send(
+            embed=await _setup_embed(
+                guild,
+                kind="loading",
+                title="Building Profile Choices",
+                description="Generating 3 improved AutoMod profiles from what you said.",
+            )
+        )
+        profiles = await _generate_profiles(cog, guild, initial_goal)
+        profile_view = ProfilePaginatorView(interaction.user.id, profiles, icons)
+        await profile_message.edit(embed=profile_view.build_embed(guild), view=profile_view)
+        await profile_view.wait()
+        if profile_view.selected_profile is None:
+            await profile_message.edit(view=None)
+            timeout_embed = await _setup_embed(
+                guild,
+                kind="warning",
+                title="Setup Timed Out",
+                description="Run `/automod setup` again when you are ready.",
+                color=Config.COLOR_WARNING,
+            )
+            await channel.send(embed=timeout_embed)
+            return
+
+        selected_profile = profile_view.selected_profile
+        question_message = await channel.send(
+            embed=await _setup_embed(
+                guild,
+                kind="loading",
+                title="Building Questions",
+                description=f"Creating setup questions for **{selected_profile.name}**.",
+            )
+        )
+        questions = await _generate_questions(cog, guild, initial_goal, selected_profile)
+        await question_message.edit(
+            embed=await _setup_embed(
+                guild,
+                kind="success",
+                title="Questions Ready",
+                description=f"Generated **{len(questions)}** questions based on **{selected_profile.name}**.",
+                color=Config.COLOR_SUCCESS,
+            )
+        )
+
         answers: list[dict[str, str]] = []
-        for index, question in enumerate(QUESTIONS, start=1):
-            answer = await _ask_question(cog, channel, interaction.user, question, index, len(QUESTIONS), icons)
+        for index, question in enumerate(questions, start=1):
+            answer = await _ask_question(cog, channel, interaction.user, question, index, len(questions), icons)
             if answer is None:
                 timeout_embed = await _setup_embed(
                     guild,
@@ -809,7 +870,12 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
                 description="Sending your answers to DeepSeek. No default blocked-word list is included in this prompt.",
             )
         )
-        response = await call_deepseek_json(cog, _settings_prompt(), _setup_user_prompt(guild, answers), max_tokens=1800)
+        response = await call_deepseek_json(
+            cog,
+            _settings_prompt(),
+            _setup_user_prompt(guild, initial_goal, selected_profile, answers),
+            max_tokens=1800,
+        )
         model_update = validate_automod_update(response)
         settings_update = copy.deepcopy(AUTOMOD_SETTINGS)
         settings_update.update(model_update)
@@ -830,9 +896,16 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
             description=f"{summary[:700]}\n\n" + "\n".join(_human_setting_lines(saved)),
             color=Config.COLOR_SUCCESS,
         )
-        complete.set_footer(text="Use the buttons below to review details. Close the channel when you are done.")
-        view = SetupSummaryView(owner_id=interaction.user.id, settings=saved, channel=channel, icons=icons)
-        await working.edit(embed=complete, view=view)
+        complete.set_footer(text="This setup channel will be deleted in 10 seconds.")
+        await working.edit(embed=complete, view=None)
+        await interaction.followup.send(f"{icons['success']} AutoMod setup finished. The setup channel is being cleaned up.", ephemeral=True)
+        await asyncio.sleep(10)
+        try:
+            await channel.delete(reason=f"AutoMod setup completed by {interaction.user}")
+        except discord.NotFound:
+            pass
+        except discord.HTTPException:
+            log.exception("Failed to delete AutoMod setup channel %s", channel.id)
     except Exception as exc:
         log.exception("AutoMod setup failed")
         if channel is not None:
