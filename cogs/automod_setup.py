@@ -399,7 +399,7 @@ async def call_deepseek_json(system_prompt: str, user_prompt: str, *, max_tokens
         "max_tokens": max_tokens,
         "response_format": {"type": "json_object"},
     }
-    timeout = aiohttp.ClientTimeout(total=60)
+    timeout = aiohttp.ClientTimeout(total=120)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.post(
             f"{_DO_BASE_URL}/chat/completions",
@@ -597,15 +597,19 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
                 if view.value is None:
                     await channel.send(embed=ModEmbed.warning("Setup timed out", "Run `/automod setup` again when you are ready."))
                     return
-                await prompt_message.edit(embed=embed, view=None)
                 answer = view.value
-                await channel.send(embed=ModEmbed.info("Selected", answer))
+                embed.description = f"~~{question.prompt}~~\n\n**Answer:** {answer}"
+                embed.color = Config.COLOR_SUCCESS
+                await prompt_message.edit(embed=embed, view=None)
             else:
-                await channel.send(embed=embed)
+                prompt_message = await channel.send(embed=embed)
                 answer = await _collect_open_answer(cog, channel, interaction.user)
                 if answer is None:
                     await channel.send(embed=ModEmbed.warning("Setup timed out", "Run `/automod setup` again when you are ready."))
                     return
+                embed.description = f"~~{question.prompt}~~\n\n**Answer:** {answer}"
+                embed.color = Config.COLOR_SUCCESS
+                await prompt_message.edit(embed=embed)
             answers.append({"key": question.key, "question": question.prompt, "answer": answer})
 
         working = await channel.send(embed=ModEmbed.info("Building setup", "Sending your answers to DeepSeek through DigitalOcean."))
