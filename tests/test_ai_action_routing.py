@@ -430,7 +430,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             guild=SimpleNamespace(id=1, name="Guild", member_count=10),
             author=SimpleNamespace(id=2, name="User"),
             recent_messages=[],
-            signals=ConversationSignals(mode=ConversationMode.STANDARD),
+            signals=ConversationSignals(mode=ConversationMode.STANDARD, confidence=1.0),
         )
 
         self.assertEqual(response, "fallback answer")

@@ -79,12 +79,24 @@ class GeminiClient:
 
     @property
     def is_available(self) -> bool:
-        return self._deepseek_web.enabled
+        provider = str(getattr(self, "provider", "") or "").strip().lower()
+        if provider == "digitalocean":
+            return bool(_DO_API_KEY)
+        deepseek_web = getattr(self, "_deepseek_web", None)
+        return bool(getattr(deepseek_web, "enabled", False) or _DO_API_KEY)
 
     def availability_message(self) -> str:
-        if not self._deepseek_web.enabled:
-            return "`DEEPSEEK_WEB_ENABLED` is off, so DeepSeek web requests are disabled."
-        return "DeepSeek web is enabled. If requests still fail, refresh the saved browser session."
+        provider = str(getattr(self, "provider", "") or "").strip().lower()
+        if provider == "digitalocean":
+            return "DigitalOcean inference is configured." if _DO_API_KEY else "DigitalOcean inference is missing DO_API_KEY."
+        deepseek_web = getattr(self, "_deepseek_web", None)
+        if getattr(deepseek_web, "enabled", False):
+            if _DO_API_KEY:
+                return "DeepSeek web is enabled with DigitalOcean fallback configured."
+            return "DeepSeek web is enabled. If requests still fail, refresh the saved browser session."
+        if _DO_API_KEY:
+            return "DeepSeek web is disabled; using DigitalOcean inference fallback."
+        return "`DEEPSEEK_WEB_ENABLED` is off, so DeepSeek web requests are disabled."
 
     def diagnostic_lines(self) -> List[str]:
         lines = ["Provider: `deepseek-web`"]
