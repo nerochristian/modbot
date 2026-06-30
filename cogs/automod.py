@@ -1345,24 +1345,18 @@ class AutoMod(commands.Cog):
             ephemeral=True,
         )
 
-    @automod.command(name="setup", description="Apply a complete, usable AutoMod preset")
-    @app_commands.describe(preset="Protection level", log_channel="Where AutoMod actions should be logged")
+    @automod.command(name="setup", description="Start the interactive AutoMod setup wizard")
     @is_admin()
-    async def automod_setup(
-        self,
-        interaction: discord.Interaction,
-        preset: Literal["relaxed", "standard", "strict"] = "standard",
-        log_channel: Optional[discord.TextChannel] = None,
-    ) -> None:
-        def edit(settings: dict[str, Any]) -> None:
-            settings.update(copy.deepcopy(PRESETS[preset]))
-            if log_channel is not None:
-                settings["automod_log_channel"] = log_channel.id
+    async def automod_setup(self, interaction: discord.Interaction) -> None:
+        from cogs.automod_setup import start_setup_wizard
+        await start_setup_wizard(self, interaction)
 
-        settings = await self._edit_settings(interaction.guild_id, edit)
-        embed = self._status_embed(settings, interaction.guild)
-        embed.title = f"AutoMod setup: {preset.title()}"
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    @automod.command(name="change", description="Modify your AutoMod configuration using natural language")
+    @app_commands.describe(request="What would you like to change?")
+    @is_admin()
+    async def automod_change(self, interaction: discord.Interaction, request: str) -> None:
+        from cogs.automod_setup import handle_automod_change
+        await handle_automod_change(self, interaction, request)
 
     @automod.command(name="enable", description="Enable AutoMod without changing any rules")
     @is_admin()
