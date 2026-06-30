@@ -105,8 +105,7 @@ class BehaviorProfilingHelpersTests(unittest.TestCase):
 
     def test_long_profile_splits_at_discord_safe_boundaries(self) -> None:
         profile = "\n\n".join(
-            f"## Section {index}\n" + (f"detail-{index} " * 180)
-            for index in range(6)
+            f"## Section {index}\n" + (f"detail-{index} " * 180) for index in range(6)
         )
 
         pages = _split_profile_pages(profile)

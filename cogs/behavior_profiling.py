@@ -241,7 +241,9 @@ def _clean_profile_output(value: object) -> str:
     cleaned = "\n".join(lines)
     word_matches = list(re.finditer(r"\S+", cleaned))
     if len(word_matches) > MAX_PROFILE_WORDS:
-        cleaned = cleaned[: word_matches[MAX_PROFILE_WORDS - 1].end()].rstrip(" ,;:-") + "…"
+        cleaned = (
+            cleaned[: word_matches[MAX_PROFILE_WORDS - 1].end()].rstrip(" ,;:-") + "…"
+        )
     if len(cleaned) > MAX_PROFILE_CHARS:
         cleaned = cleaned[: MAX_PROFILE_CHARS - 1].rstrip(" ,;:-") + "…"
     return cleaned
