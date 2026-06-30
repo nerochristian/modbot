@@ -326,6 +326,22 @@ class DeepSeekWebChatModeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(call.kwargs["reuse_existing"])
         self.assertEqual(call.kwargs["session_name"], "Soul -> General")
 
+    async def test_non_search_long_answer_allows_requested_structure(self) -> None:
+        client = DeepSeekWebClient()
+        client._run = AsyncMock(return_value="long profile")
+
+        result = await client.chat(
+            "Write a detailed profile with sections.",
+            search=False,
+            long_answer=True,
+        )
+
+        self.assertEqual(result, "long profile")
+        request = client._run.await_args.args[0]
+        self.assertIn("thorough long-form response", request)
+        self.assertIn("Multiple sections, paragraphs, and bullets are allowed", request)
+        self.assertNotIn("1 to 4 sentences maximum", request)
+
     def test_channel_session_index_round_trips_only_safe_urls(self) -> None:
         with TemporaryDirectory() as directory:
             client = DeepSeekWebClient()

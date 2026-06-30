@@ -187,11 +187,13 @@ class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
             json_mode=True,
             session_key="10:moderation",
             session_name="Soul -> moderation",
+            long_answer=True,
         )
 
         self.assertEqual(result, "{}")
         self.assertEqual(fake.kwargs["session_key"], "10:moderation")
         self.assertEqual(fake.kwargs["session_name"], "Soul -> moderation")
+        self.assertTrue(fake.kwargs["long_answer"])
 
 
 if __name__ == "__main__":
