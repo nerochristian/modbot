@@ -435,6 +435,151 @@ async def call_deepseek_json(cog: Any, system_prompt: str, user_prompt: str, *, 
         raise RuntimeError(f"DeepSeek Web error: {exc}") from exc
 
 
+def _clean_text(value: Any, *, limit: int = 900) -> str:
+    cleaned = re.sub(r"\s+", " ", str(value or "")).strip()
+    return cleaned[:limit]
+
+
+def _profiles_prompt() -> str:
+    return (
+        "You design Discord AutoMod setup profiles. Return exactly one JSON object with key `profiles`. "
+        "`profiles` must contain exactly 3 objects. Each object must have `name`, `description`, and `focus` strings. "
+        "Base all 3 profiles on the admin's stated goal, but improve it into practical moderation setups. "
+        "The 3 profiles must be clearly different choices, not copies: one lighter, one balanced, one stricter or more targeted. "
+        "Do not return settings. Do not include markdown."
+    )
+
+
+def _profiles_user_prompt(guild: discord.Guild, initial_goal: str) -> str:
+    return json.dumps(
+        {
+            "guild": {"id": guild.id, "name": guild.name, "member_count": guild.member_count},
+            "admin_goal": initial_goal,
+            "goal": "Create 3 improved AutoMod profile choices for this server.",
+        },
+        indent=2,
+    )
+
+
+def _questions_prompt() -> str:
+    return (
+        "You design concise Discord AutoMod setup questions for the selected profile. "
+        "Return exactly one JSON object with key `questions`. "
+        "`questions` must contain 8 to 10 objects. Each object must have `key`, `question`, `type`, and optional `options` and `helper`. "
+        "`type` must be `choice` or `text`. At least 7 questions must be `choice`; at most 2 may be `text`. "
+        "Choice questions must have 2 to 5 short options. Questions must be specific to the admin goal and selected profile, not generic boilerplate. "
+        "Ask about the actual risks mentioned by the admin, punishments, links/invites, spam, raids/new accounts, and any custom allow/block lists that matter. "
+        "Do not ask for raw setting keys. Do not include markdown."
+    )
+
+
+def _questions_user_prompt(guild: discord.Guild, initial_goal: str, profile: SetupProfile) -> str:
+    return json.dumps(
+        {
+            "guild": {"id": guild.id, "name": guild.name, "member_count": guild.member_count},
+            "admin_goal": initial_goal,
+            "selected_profile": {
+                "name": profile.name,
+                "description": profile.description,
+                "focus": profile.focus,
+            },
+            "goal": "Create profile-specific setup questions for this AutoMod setup.",
+        },
+        indent=2,
+    )
+
+
+def _parse_profiles(payload: Mapping[str, Any]) -> list[SetupProfile]:
+    raw_profiles = payload.get("profiles")
+    if not isinstance(raw_profiles, list):
+        raise ValueError("DeepSeek did not return a profiles list.")
+    profiles: list[SetupProfile] = []
+    seen_names: set[str] = set()
+    for raw in raw_profiles:
+        if not isinstance(raw, Mapping):
+            continue
+        name = _clean_text(raw.get("name"), limit=60)
+        description = _clean_text(raw.get("description"), limit=900)
+        focus = _clean_text(raw.get("focus"), limit=500)
+        if not name or not description or name.casefold() in seen_names:
+            continue
+        seen_names.add(name.casefold())
+        profiles.append(SetupProfile(name=name, description=description, focus=focus))
+        if len(profiles) == 3:
+            break
+    if len(profiles) != 3:
+        raise ValueError("DeepSeek must return exactly 3 distinct setup profiles.")
+    return profiles
+
+
+def _parse_generated_questions(payload: Mapping[str, Any]) -> list[SetupQuestion]:
+    raw_questions = payload.get("questions")
+    if not isinstance(raw_questions, list):
+        raise ValueError("DeepSeek did not return a questions list.")
+
+    questions: list[SetupQuestion] = []
+    text_count = 0
+    seen_keys: set[str] = set()
+    for index, raw in enumerate(raw_questions, start=1):
+        if not isinstance(raw, Mapping):
+            continue
+        key = re.sub(r"[^a-z0-9_]+", "_", str(raw.get("key") or f"question_{index}").casefold()).strip("_")
+        if not key or key in seen_keys:
+            key = f"question_{index}"
+        question = _clean_text(raw.get("question"), limit=240)
+        helper = _clean_text(raw.get("helper"), limit=300)
+        raw_type = str(raw.get("type") or "choice").strip().casefold()
+        raw_options = raw.get("options")
+
+        options: tuple[str, ...] = ()
+        if raw_type == "choice" and isinstance(raw_options, list):
+            cleaned_options: list[str] = []
+            seen_options: set[str] = set()
+            for option in raw_options:
+                cleaned = _clean_text(option, limit=80)
+                if cleaned and cleaned.casefold() not in seen_options:
+                    seen_options.add(cleaned.casefold())
+                    cleaned_options.append(cleaned)
+                if len(cleaned_options) == 5:
+                    break
+            if len(cleaned_options) >= 2:
+                options = tuple(cleaned_options)
+        elif raw_type == "text":
+            text_count += 1
+
+        if not question:
+            continue
+        if raw_type == "text" and text_count <= 2:
+            questions.append(SetupQuestion(key=key, prompt=question, helper=helper))
+            seen_keys.add(key)
+        elif options:
+            questions.append(SetupQuestion(key=key, prompt=question, options=options, helper=helper))
+            seen_keys.add(key)
+
+        if len(questions) == 10:
+            break
+
+    closed_count = sum(1 for question in questions if question.is_closed)
+    if not 8 <= len(questions) <= 10 or closed_count < 7:
+        raise ValueError("DeepSeek must return 8-10 setup questions with at least 7 closed-ended questions.")
+    return questions
+
+
+async def _generate_profiles(cog: Any, guild: discord.Guild, initial_goal: str) -> list[SetupProfile]:
+    payload = await call_deepseek_json(cog, _profiles_prompt(), _profiles_user_prompt(guild, initial_goal), max_tokens=1000)
+    return _parse_profiles(payload)
+
+
+async def _generate_questions(
+    cog: Any,
+    guild: discord.Guild,
+    initial_goal: str,
+    profile: SetupProfile,
+) -> list[SetupQuestion]:
+    payload = await call_deepseek_json(cog, _questions_prompt(), _questions_user_prompt(guild, initial_goal, profile), max_tokens=1400)
+    return _parse_generated_questions(payload)
+
+
 def _settings_prompt() -> str:
     return (
         "You configure a Discord bot AutoMod system. Return exactly one JSON object with a "
@@ -460,11 +605,22 @@ def _schema_summary() -> dict[str, Any]:
     }
 
 
-def _setup_user_prompt(guild: discord.Guild, answers: list[dict[str, str]]) -> str:
+def _setup_user_prompt(
+    guild: discord.Guild,
+    initial_goal: str,
+    selected_profile: SetupProfile,
+    answers: list[dict[str, str]],
+) -> str:
     return json.dumps(
         {
             "guild": {"id": guild.id, "name": guild.name, "member_count": guild.member_count},
             "schema": _schema_summary(),
+            "admin_goal": initial_goal,
+            "selected_profile": {
+                "name": selected_profile.name,
+                "description": selected_profile.description,
+                "focus": selected_profile.focus,
+            },
             "answers": answers,
             "goal": "Fill out a complete production-safe AutoMod setup from these answers.",
         },
