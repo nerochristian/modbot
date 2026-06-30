@@ -345,41 +345,24 @@ def validate_automod_update(candidate: Mapping[str, Any], *, require_changes: bo
     return update
 
 
-async def call_deepseek_json(system_prompt: str, user_prompt: str, *, max_tokens: int = 1400) -> dict[str, Any]:
-    if not _DEEPSEEK_API_KEY:
-        raise RuntimeError("DeepSeek inference is missing DEEPSEEK_API_KEY. Please add it to your .env file.")
-    payload = {
-        "model": _DEEPSEEK_MODEL or "deepseek-chat",
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        "temperature": 0.1,
-        "max_tokens": max_tokens,
-        "response_format": {"type": "json_object"},
-    }
-    timeout = aiohttp.ClientTimeout(total=120)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(
-            f"{_DEEPSEEK_BASE_URL}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {_DEEPSEEK_API_KEY}",
-                "Content-Type": "application/json",
-            },
-            json=payload,
-        ) as response:
-            data = await response.json(content_type=None)
-            if response.status >= 400:
-                detail = data.get("error", data) if isinstance(data, dict) else data
-                raise RuntimeError(f"DeepSeek HTTP {response.status}: {str(detail)[:500]}")
-    choices = data.get("choices") if isinstance(data, dict) else None
-    if not choices:
-        raise RuntimeError("DeepSeek response did not include choices.")
-    message = (choices[0] or {}).get("message") or {}
-    content = message.get("content")
-    if not isinstance(content, str):
-        raise RuntimeError("DigitalOcean response did not include text content.")
-    return _extract_json_object(content)
+async def call_deepseek_json(cog: Any, system_prompt: str, user_prompt: str, *, max_tokens: int = 1400) -> dict[str, Any]:
+    ai_cog = cog.bot.get_cog("AIModeration")
+    if not ai_cog or getattr(ai_cog, "_deepseek_web", None) is None:
+        raise RuntimeError("DeepSeek Web is not configured. Please ensure AIModeration is loaded and DEEPSEEK_WEB_ENABLED is true.")
+    
+    web_client = ai_cog._deepseek_web
+    
+    prompt = (
+        "You are a strict JSON API. Follow the System Instructions perfectly and return valid JSON.\n\n"
+        f"--- SYSTEM INSTRUCTIONS ---\n{system_prompt}\n\n"
+        f"--- USER REQUEST ---\n{user_prompt}"
+    )
+
+    try:
+        response = await web_client.chat(prompt, search=False, long_answer=False)
+        return _extract_json_object(response)
+    except Exception as exc:
+        raise RuntimeError(f"DeepSeek Web error: {exc}")
 
 
 def _settings_prompt() -> str:
@@ -559,7 +542,7 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
         )
         profiles_user_prompt = f"Server Description: {initial_answer}"
         
-        profiles_resp = await call_deepseek_json(profiles_prompt, profiles_user_prompt, max_tokens=1000)
+        profiles_resp = await call_deepseek_json(cog, profiles_prompt, profiles_user_prompt, max_tokens=1000)
         profiles = profiles_resp.get("profiles", [])
         if len(profiles) < 3:
             raise RuntimeError("DeepSeek did not generate enough profiles.")
@@ -587,7 +570,7 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
         )
         questions_user_prompt = f"Selected Profile: {selected_profile.get('name')}\nDescription: {selected_profile.get('description')}"
         
-        questions_resp = await call_deepseek_json(questions_prompt, questions_user_prompt, max_tokens=800)
+        questions_resp = await call_deepseek_json(cog, questions_prompt, questions_user_prompt, max_tokens=800)
         dynamic_questions = questions_resp.get("questions", [])
         if not dynamic_questions:
             raise RuntimeError("DeepSeek failed to generate questions.")
@@ -620,7 +603,7 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
             "selected_profile": selected_profile,
             "answers": answers
         }
-        response = await call_deepseek_json(_settings_prompt(), _setup_user_prompt(guild, setup_data), max_tokens=1800)
+        response = await call_deepseek_json(cog, _settings_prompt(), _setup_user_prompt(guild, setup_data), max_tokens=1800)
         
         model_update = validate_automod_update(response)
         settings_update = dict(AUTOMOD_SETTINGS)
@@ -673,6 +656,7 @@ async def _apply_automod_change(cog: Any, interaction: discord.Interaction, requ
     try:
         current_settings = await cog._get_settings(interaction.guild_id, fresh=True)
         response = await call_deepseek_json(
+            cog,
             _settings_prompt(),
             _change_user_prompt(current_settings, cleaned_request),
             max_tokens=1000,
