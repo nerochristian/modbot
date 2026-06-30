@@ -148,6 +148,50 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertEqual(decision.arguments["target_user_id"], 20)
         self.assertEqual(decision.arguments["reason"], "spam")
 
+    def test_visible_mention_multi_warning_request_routes_as_action(self) -> None:
+        bot_user = SimpleNamespace(id=10, bot=True)
+        target = SimpleNamespace(id=20, bot=False)
+        self.cog.bot = SimpleNamespace(user=bot_user)
+        message = SimpleNamespace(
+            content="<@10> give <@20> 3 warnings for being a retard",
+            mentions=[bot_user, target],
+        )
+
+        content = self.cog.clean_content(message)
+        decision = self.cog._quick_route(message, content)
+
+        self.assertEqual(content, "give <@20> 3 warnings for being a retard")
+        self.assertTrue(self.cog._looks_like_mod_request(content))
+        self.assertFalse(self.cog._looks_like_warning_lookup(content))
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision.tool, ToolType.WARN)
+        self.assertEqual(decision.arguments["target_user_id"], 20)
+        self.assertEqual(decision.arguments["warning_count"], 3)
+        self.assertEqual(decision.arguments["reason"], "being a retard")
+
+    def test_multi_warning_action_variants_preserve_count_and_reason(self) -> None:
+        bot_user = SimpleNamespace(id=10, bot=True)
+        target = SimpleNamespace(id=20, bot=False)
+        self.cog.bot = SimpleNamespace(user=bot_user)
+        message = SimpleNamespace(mentions=[bot_user, target])
+        cases = (
+            ("give 3 warnings to <@20> because repeated spam", 3),
+            ("issue <@20> two warnings: repeated spam", 2),
+            ("warn <@20> 4 times for repeated spam", 4),
+            ("add a warning to <@20> for repeated spam", 1),
+            ("apply warnings x5 to <@20> for repeated spam", 5),
+        )
+
+        for content, expected_count in cases:
+            with self.subTest(content=content):
+                decision = self.cog._quick_route(message, content)
+
+                self.assertIsNotNone(decision)
+                self.assertEqual(decision.tool, ToolType.WARN)
+                self.assertEqual(decision.arguments["target_user_id"], 20)
+                self.assertEqual(decision.arguments["warning_count"], expected_count)
+                self.assertEqual(decision.arguments["reason"], "repeated spam")
+
     def test_visible_mention_timeout_command_routes_end_to_end(self) -> None:
         bot_user = SimpleNamespace(id=111111111111111111, bot=True)
         target = SimpleNamespace(id=222222222222222222, bot=False)
@@ -214,6 +258,23 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertIsNotNone(decision)
         self.assertEqual(decision.tool, ToolType.GET_WARNINGS)
         self.assertEqual(decision.arguments["target_user_id"], 20)
+
+    def test_warning_history_variants_remain_read_only(self) -> None:
+        bot_user = SimpleNamespace(id=10, bot=True)
+        target = SimpleNamespace(id=20, bot=False)
+        self.cog.bot = SimpleNamespace(user=bot_user)
+        message = SimpleNamespace(mentions=[bot_user, target])
+
+        for content in (
+            "warnings for <@20>",
+            "show <@20> warnings",
+            "how many warnings does <@20> have?",
+        ):
+            with self.subTest(content=content):
+                decision = self.cog._quick_route(message, content)
+
+                self.assertIsNotNone(decision)
+                self.assertEqual(decision.tool, ToolType.GET_WARNINGS)
 
     def test_staff_with_manage_messages_can_use_ai_tools(self) -> None:
         perms = SimpleNamespace(
