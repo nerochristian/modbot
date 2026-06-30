@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -433,6 +434,46 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             recent_messages=[],
             signals=ConversationSignals(mode=ConversationMode.STANDARD, confidence=1.0),
         )
+
+        self.assertEqual(response, "fallback answer")
+        client._call_digitalocean_conversation.assert_awaited_once()
+        client._update_memory_smart.assert_called_once()
+
+    async def test_conversation_falls_back_to_digitalocean_when_deepseek_web_stalls(self) -> None:
+        async def stalled_chat(*args, **kwargs):
+            await asyncio.sleep(1)
+            return "late answer"
+
+        client = object.__new__(GeminiClient)
+        client.provider = "deepseek-web"
+        client.config = AIConfig()
+        client._block_until = None
+        client._block_reason = None
+        client._brave_search_api_key = None
+        client._tavily_api_key = None
+        client._serpapi_api_key = None
+        client._rate_limiter = SimpleNamespace(
+            is_rate_limited=AsyncMock(return_value=(False, 0)),
+            record_call=AsyncMock(),
+        )
+        client._deepseek_web = SimpleNamespace(
+            enabled=True,
+            chat=AsyncMock(side_effect=stalled_chat),
+        )
+        client._call_digitalocean_conversation = AsyncMock(return_value="fallback answer")
+        client._collect_image_context = AsyncMock(return_value=[])
+        client._update_memory_smart = AsyncMock()
+        db = SimpleNamespace(get_ai_memory=AsyncMock(return_value=""))
+        client.bot = SimpleNamespace(user=SimpleNamespace(id=999), db=db)
+
+        with patch.dict("os.environ", {"DEEPSEEK_WEB_PRIMARY_TIMEOUT": "0.1"}):
+            response = await client.converse(
+                user_content="hello",
+                guild=SimpleNamespace(id=1, name="Guild", member_count=10),
+                author=SimpleNamespace(id=2, name="User"),
+                recent_messages=[],
+                signals=ConversationSignals(mode=ConversationMode.STANDARD, confidence=1.0),
+            )
 
         self.assertEqual(response, "fallback answer")
         client._call_digitalocean_conversation.assert_awaited_once()
