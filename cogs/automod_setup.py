@@ -209,7 +209,10 @@ class SetupQuestionView(discord.ui.View):
             for item in self.children:
                 if isinstance(item, discord.ui.Button):
                     item.disabled = True
-            await interaction.response.edit_message(view=self)
+            if interaction.message and interaction.message.embeds:
+                await interaction.response.edit_message(embed=interaction.message.embeds[0], view=self)
+            else:
+                await interaction.response.edit_message(view=self)
             self.stop()
 
         return callback
@@ -565,7 +568,7 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
                 if view.value is None:
                     await channel.send(embed=ModEmbed.warning("Setup timed out", "Run `/automod setup` again when you are ready."))
                     return
-                await prompt_message.edit(view=None)
+                await prompt_message.edit(embed=embed, view=None)
                 answer = view.value
                 await channel.send(embed=ModEmbed.info("Selected", answer))
             else:
