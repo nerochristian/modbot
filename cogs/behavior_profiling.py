@@ -561,7 +561,7 @@ class BehaviorProfiling(commands.Cog):
             )
             return
 
-        await interaction.response.defer(ephemeral=True, thinking=True)
+        await interaction.response.defer(ephemeral=False, thinking=True)
 
         try:
             corpus = await self._collect_messages(interaction, target.id)
