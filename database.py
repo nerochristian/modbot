@@ -4,6 +4,7 @@ Supports ALL cogs with auto-migration and proper async patterns
 Version: 3.3.0
 """
 
+import discord
 import asyncio
 import json
 import logging
