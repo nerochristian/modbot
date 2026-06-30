@@ -16,7 +16,7 @@ class BehaviorProfiling(commands.Cog):
     @app_commands.command(name="profile", description="Generate an AI behavioral profile for a user based on their recent messages")
     @app_commands.default_permissions(moderate_members=True)
     async def profile_user(self, interaction: discord.Interaction, target: discord.Member):
-        if not hasattr(self.bot, 'database') or not hasattr(self.bot.database, 'get_recent_user_messages'):
+        if not hasattr(self.bot, 'db') or not hasattr(self.bot.db, 'get_recent_user_messages'):
             await interaction.response.send_message("Message tracking database is not available.", ephemeral=True)
             return
 
@@ -29,8 +29,27 @@ class BehaviorProfiling(commands.Cog):
             await interaction.followup.send("AI client is currently offline or unavailable.")
             return
 
-        recent_msgs = await self.bot.database.get_recent_user_messages(interaction.guild.id, target.id, limit=300)
+        recent_msgs = await self.bot.db.get_recent_user_messages(interaction.guild.id, target.id, limit=300)
         
+        if not recent_msgs:
+            # Fallback: pull from channel history
+            fallback_msgs = []
+            channels = [c for c in interaction.guild.text_channels if c.permissions_for(interaction.guild.me).read_message_history]
+            # Try to gather messages from the first 5 text channels
+            for channel in channels[:5]:
+                try:
+                    async for msg in channel.history(limit=200):
+                        if msg.author.id == target.id and msg.content.strip():
+                            fallback_msgs.append({
+                                'timestamp': msg.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                                'content': msg.content.strip()
+                            })
+                except Exception:
+                    continue
+                if len(fallback_msgs) >= 300:
+                    break
+            recent_msgs = fallback_msgs[:300]
+
         if not recent_msgs:
             await interaction.followup.send(f"I don't have enough message history for {target.mention} to build a profile.")
             return
