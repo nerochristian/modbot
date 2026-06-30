@@ -21,9 +21,9 @@ from utils.embeds import ModEmbed
 
 log = logging.getLogger("AutoMod.Setup")
 
-_DO_API_KEY = os.getenv("DO_API_KEY", "").strip()
-_DO_BASE_URL = os.getenv("DO_INFERENCE_BASE_URL", "https://inference.do-ai.run/v1").strip().rstrip("/")
-_DO_MODEL = os.getenv("DO_AUTOMOD_MODEL", "deepseek-4-flash").strip()
+_DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "").strip()
+_DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").strip().rstrip("/")
+_DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat").strip()
 
 _ACTIVE_SETUPS: set[int] = set()
 _ACTIVE_LOCK = asyncio.Lock()
@@ -346,10 +346,10 @@ def validate_automod_update(candidate: Mapping[str, Any], *, require_changes: bo
 
 
 async def call_deepseek_json(system_prompt: str, user_prompt: str, *, max_tokens: int = 1400) -> dict[str, Any]:
-    if not _DO_API_KEY:
-        raise RuntimeError("DeepSeek inference is missing DO_API_KEY.")
+    if not _DEEPSEEK_API_KEY:
+        raise RuntimeError("DeepSeek inference is missing DEEPSEEK_API_KEY. Please add it to your .env file.")
     payload = {
-        "model": _DO_MODEL or "deepseek-chat",
+        "model": _DEEPSEEK_MODEL or "deepseek-chat",
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -361,9 +361,9 @@ async def call_deepseek_json(system_prompt: str, user_prompt: str, *, max_tokens
     timeout = aiohttp.ClientTimeout(total=120)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         async with session.post(
-            f"{_DO_BASE_URL}/chat/completions",
+            f"{_DEEPSEEK_BASE_URL}/chat/completions",
             headers={
-                "Authorization": f"Bearer {_DO_API_KEY}",
+                "Authorization": f"Bearer {_DEEPSEEK_API_KEY}",
                 "Content-Type": "application/json",
             },
             json=payload,
