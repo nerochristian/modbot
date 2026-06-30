@@ -494,6 +494,34 @@ async def _collect_open_answer(cog: Any, channel: discord.TextChannel, user: dis
     return message.content.strip()[:1500]
 
 
+class SetupSummaryView(discord.ui.View):
+    def __init__(self, settings: dict[str, Any]) -> None:
+        super().__init__(timeout=None)
+        self.settings = settings
+
+    @discord.ui.button(label="Show Banned Words", style=discord.ButtonStyle.secondary, custom_id="setup_show_words")
+    async def show_words(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        words = self.settings.get("automod_badwords", [])
+        if not words:
+            await interaction.response.send_message("No custom blocked words are configured.", ephemeral=True)
+            return
+        content = ", ".join(words)
+        if len(content) > 1900:
+            content = content[:1900] + "... (truncated)"
+        await interaction.response.send_message(f"**Blocked Words:**\n```\n{content}\n```", ephemeral=True)
+
+    @discord.ui.button(label="Show Allowed Links", style=discord.ButtonStyle.secondary, custom_id="setup_show_links")
+    async def show_links(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        domains = self.settings.get("automod_whitelisted_domains", [])
+        if not domains:
+            await interaction.response.send_message("No allowed domains are configured.", ephemeral=True)
+            return
+        content = ", ".join(domains)
+        if len(content) > 1900:
+            content = content[:1900] + "... (truncated)"
+        await interaction.response.send_message(f"**Allowed Domains:**\n```\n{content}\n```", ephemeral=True)
+
+
 async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None:
     guild = interaction.guild
     if guild is None or interaction.guild_id is None:
@@ -599,7 +627,8 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
             description=f"{summary[:700]}\n\n" + "\n".join(_human_setting_lines(saved)),
             color=Config.COLOR_SUCCESS,
         )
-        await working.edit(embed=embed)
+        view = SetupSummaryView(saved)
+        await working.edit(embed=embed, view=view)
         await channel.send("This setup channel will close in 30 seconds.")
         asyncio.create_task(_delete_channel_later(channel))
     except Exception as exc:
