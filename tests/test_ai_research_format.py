@@ -1,7 +1,8 @@
+import asyncio
 import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from cogs.aimoderation.aimoderation import AIModeration, GeminiClient
 from cogs.aimoderation.types import ConversationMode
@@ -217,6 +218,32 @@ class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
             session_key="10:moderation",
             session_name="Soul -> moderation",
         )
+
+        self.assertEqual(result, '{"type": "chat"}')
+        client._call_digitalocean.assert_awaited_once()
+
+    async def test_call_falls_back_to_digitalocean_when_deepseek_web_stalls(self) -> None:
+        class StalledDeepSeek:
+            enabled = True
+
+            async def chat(self, prompt: str, **kwargs):
+                await asyncio.sleep(1)
+                return "{}"
+
+        client = object.__new__(GeminiClient)
+        client.config = SimpleNamespace(model="deepseek-web")
+        client._deepseek_web = StalledDeepSeek()
+        client._call_digitalocean = AsyncMock(return_value='{"type": "chat"}')
+
+        with patch.dict("os.environ", {"DEEPSEEK_WEB_PRIMARY_TIMEOUT": "0.1"}):
+            result = await client._call(
+                [{"role": "user", "content": "hello"}],
+                temperature=0.2,
+                max_tokens=100,
+                json_mode=True,
+                session_key="10:moderation",
+                session_name="Soul -> moderation",
+            )
 
         self.assertEqual(result, '{"type": "chat"}')
         client._call_digitalocean.assert_awaited_once()

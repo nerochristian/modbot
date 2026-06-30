@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import unittest
 
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from cogs.automod_setup import (
     SetupProfile,
@@ -158,6 +160,38 @@ class AutoModSetupAITests(unittest.IsolatedAsyncioTestCase):
         payload = await call_deepseek_json(cog, "system", "user", max_tokens=500)
 
         self.assertEqual(payload["profiles"][0]["name"], "Safe")
+        self.assertTrue(fake_ai.json_mode)
+        self.assertEqual(fake_ai.max_tokens, 500)
+
+    async def test_call_deepseek_json_falls_back_when_web_stalls(self) -> None:
+        class StalledWeb:
+            enabled = True
+
+            async def chat(self, *args, **kwargs):
+                await asyncio.sleep(1)
+                return '{"ok": false}'
+
+        class FakeAI:
+            _deepseek_web = StalledWeb()
+
+            async def _call_digitalocean(self, messages, *, temperature, max_tokens, json_mode):
+                self.messages = messages
+                self.temperature = temperature
+                self.max_tokens = max_tokens
+                self.json_mode = json_mode
+                return '{"ok": true}'
+
+        fake_ai = FakeAI()
+        cog = SimpleNamespace(
+            bot=SimpleNamespace(
+                get_cog=lambda name: SimpleNamespace(ai=fake_ai) if name == "AIModeration" else None
+            )
+        )
+
+        with patch.dict("os.environ", {"DEEPSEEK_WEB_PRIMARY_TIMEOUT": "0.1"}):
+            payload = await call_deepseek_json(cog, "system", "user", max_tokens=500)
+
+        self.assertEqual(payload, {"ok": True})
         self.assertTrue(fake_ai.json_mode)
         self.assertEqual(fake_ai.max_tokens, 500)
 

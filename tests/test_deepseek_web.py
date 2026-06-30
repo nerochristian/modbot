@@ -190,6 +190,24 @@ class DeepSeekWebChatModeTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(events, ["prompt", "image"])
 
+    async def test_textbox_lookup_accepts_current_start_screen_input(self) -> None:
+        client = DeepSeekWebClient()
+        page = MagicMock()
+        role_candidates = MagicMock()
+        css_candidates = MagicMock()
+        textbox = MagicMock()
+        page.get_by_role.return_value = role_candidates
+        page.locator.return_value = css_candidates
+        client._visible_locator = AsyncMock(side_effect=[None, textbox])
+        client._ensure_cookie_choice = AsyncMock()
+
+        result = await client._wait_for_textbox(page)
+
+        self.assertIs(result, textbox)
+        page.get_by_role.assert_called_once()
+        self.assertIn("contenteditable", page.locator.call_args.args[0])
+        client._ensure_cookie_choice.assert_awaited_once_with(page)
+
     async def test_image_submission_clicks_primary_send_button(self) -> None:
         client = DeepSeekWebClient()
         page = MagicMock()
@@ -211,6 +229,39 @@ class DeepSeekWebChatModeTests(unittest.IsolatedAsyncioTestCase):
 
         send_button.click.assert_awaited_once_with(timeout=5_000)
         textbox.press.assert_not_awaited()
+
+    async def test_text_submission_clicks_enabled_send_button_when_available(self) -> None:
+        client = DeepSeekWebClient()
+        page = MagicMock()
+        textbox = MagicMock()
+        send_button = MagicMock()
+        send_button.click = AsyncMock()
+        textbox.press = AsyncMock()
+        client._visible_locator = AsyncMock(return_value=send_button)
+
+        await client._submit_prompt(
+            page,
+            textbox,
+            has_images=False,
+        )
+
+        send_button.click.assert_awaited_once_with(timeout=5_000)
+        textbox.press.assert_not_awaited()
+
+    async def test_text_submission_presses_enter_when_send_button_missing(self) -> None:
+        client = DeepSeekWebClient()
+        page = MagicMock()
+        textbox = MagicMock()
+        textbox.press = AsyncMock()
+        client._visible_locator = AsyncMock(return_value=None)
+
+        await client._submit_prompt(
+            page,
+            textbox,
+            has_images=False,
+        )
+
+        textbox.press.assert_awaited_once_with("Enter")
 
     async def test_cookie_consent_uses_necessary_only_and_persists(self) -> None:
         client = DeepSeekWebClient()
