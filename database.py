@@ -1338,6 +1338,18 @@ class Database:
                         banned_from_guilds TEXT DEFAULT '[]'
                     )
                 """)
+
+                # ===== USER MESSAGES (behavior profiling) =====
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS user_messages (
+                        message_id INTEGER PRIMARY KEY,
+                        guild_id INTEGER NOT NULL,
+                        channel_id INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        content TEXT NOT NULL,
+                        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
                 
                 # Auto-migrate missing columns
                 await self._migrate_schema(db)
