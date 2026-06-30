@@ -14,7 +14,7 @@ from typing import Any, Callable, Iterable, Mapping, Optional
 import discord
 
 from cogs.automod_config import AUTOMOD_SETTINGS
-from cogs.automod_engine import normalize_domain
+from cogs.automod_engine import LinksRule, ScamRule, normalize_domain
 from config import Config
 from utils.embeds import ModEmbed
 from utils.status_emojis import get_status_emoji_for_guild
@@ -286,23 +286,62 @@ def _preview_values(values: Any, *, empty: str = "None", limit: int = 8) -> str:
     return preview[:900]
 
 
+def _detail_lines(values: Any, *, empty: str = "None", limit: int = 40) -> str:
+    if not isinstance(values, list) or not values:
+        return empty
+    shown = [f"- `{str(value)[:120]}`" for value in values[:limit]]
+    extra = len(values) - len(shown)
+    if extra > 0:
+        shown.append(f"- ...and {extra} more")
+    return "\n".join(shown)
+
+
+def _blocked_link_summary(settings: Mapping[str, Any]) -> str:
+    if not settings.get("automod_links_enabled", False):
+        return "Link filtering is off."
+    mode = str(settings.get("automod_links_mode", "dangerous")).casefold()
+    suspicious = ", ".join(f"`{domain}`" for domain in LinksRule._suspicious_domains)
+    if mode == "allowlist":
+        allowed = list(settings.get("automod_links_whitelist", [])) + list(settings.get("automod_whitelisted_domains", []))
+        return (
+            "Blocks **every link domain that is not allowed**.\n"
+            f"Allowed domains: {_preview_values(allowed)}"
+        )
+    return (
+        "Blocks suspicious shortened links and known dangerous links.\n"
+        f"Suspicious shorteners: {suspicious}\n"
+        f"Known dangerous tracking/phishing domains: {_preview_values(list(ScamRule._dangerous_domains))}"
+    )
+
+
+def _blocked_invite_summary(settings: Mapping[str, Any]) -> str:
+    if not settings.get("automod_invites_enabled", False):
+        return "Invite filtering is off."
+    allowed = settings.get("automod_allowed_invites", [])
+    if not isinstance(allowed, list) or not allowed:
+        return "Blocks **all Discord invite links**."
+    return (
+        "Blocks every Discord invite link except these invite codes:\n"
+        f"{_detail_lines(allowed)}"
+    )
+
+
 def _review_description(settings: Mapping[str, Any], summary: str) -> str:
     badwords = settings.get("automod_badwords", [])
     link_mode = str(settings.get("automod_links_mode", "dangerous")).title()
     return (
         f"{summary[:500]}\n\n"
-        "Review the generated setup before I save it. Use the buttons below to edit the panels that need changes.\n\n"
+        "Review what this setup will block before I save it. Use the buttons below to see the full blocked lists and rules.\n\n"
         f"**Blocked Words**\n"
         f"Status: **{'On' if settings.get('automod_badwords_enabled', False) else 'Off'}**\n"
-        f"Words: `{_preview_values(badwords)}`\n\n"
+        f"Blocked words/phrases: `{_preview_values(badwords)}`\n\n"
         f"**Links**\n"
         f"Status: **{'On' if settings.get('automod_links_enabled', False) else 'Off'}**\n"
         f"Mode: **{link_mode}**\n"
-        f"Allowed links: `{_preview_values(settings.get('automod_links_whitelist', []))}`\n"
-        f"Safe domains: `{_preview_values(settings.get('automod_whitelisted_domains', []))}`\n\n"
+        f"Blocked links: {_blocked_link_summary(settings)}\n\n"
         f"**Invites and Security**\n"
         f"Invites: **{'On' if settings.get('automod_invites_enabled', False) else 'Off'}**\n"
-        f"Allowed invite codes: `{_preview_values(settings.get('automod_allowed_invites', []))}`\n"
+        f"Blocked invites: {_blocked_invite_summary(settings)}\n"
         f"Scam protection: **{'On' if settings.get('automod_scam_protection', False) else 'Off'}**\n\n"
         f"**Limits and Actions**\n"
         f"Spam: **{settings.get('automod_spam_threshold', 5)} messages / {settings.get('automod_spam_window', 5)}s**\n"
@@ -310,43 +349,6 @@ def _review_description(settings: Mapping[str, Any], summary: str) -> str:
         f"Regular action: **{str(settings.get('automod_punishment', 'warn')).title()}**\n"
         f"Security action: **{str(settings.get('automod_security_punishment', 'timeout')).title()}**"
     )
-
-
-def _modal_update_from_fields(fields: Mapping[str, str]) -> dict[str, Any]:
-    return validate_automod_update({"settings": dict(fields)}, require_changes=False)
-
-
-class SetupReviewModal(discord.ui.Modal):
-    def __init__(
-        self,
-        view: "SetupReviewView",
-        title: str,
-        fields: list[tuple[str, str, str, discord.TextStyle]],
-    ) -> None:
-        super().__init__(title=title, timeout=300)
-        self.review_view = view
-        self.field_keys: list[str] = []
-        for key, label, value, style in fields:
-            text_input = discord.ui.TextInput(
-                label=label,
-                default=str(value or "")[:4000],
-                style=style,
-                required=False,
-                max_length=4000,
-            )
-            self.field_keys.append(key)
-            self.add_item(text_input)
-
-    async def on_submit(self, interaction: discord.Interaction) -> None:
-        values = {
-            key: str(item.value)
-            for key, item in zip(self.field_keys, self.children)
-            if isinstance(item, discord.ui.TextInput)
-        }
-        update = _modal_update_from_fields(values)
-        self.review_view.settings.update(update)
-        await interaction.response.defer(ephemeral=True)
-        await self.review_view.refresh_message(interaction.guild)
 
 
 class SetupReviewView(discord.ui.View):
@@ -382,76 +384,81 @@ class SetupReviewView(discord.ui.View):
         value = self.settings.get(key, [])
         return "\n".join(str(item) for item in value) if isinstance(value, list) else ""
 
+    async def _send_detail(self, interaction: discord.Interaction, title: str, description: str) -> None:
+        embed = await _setup_embed(
+            interaction.guild,
+            kind="info",
+            title=title,
+            description=description[:3900],
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
     @discord.ui.button(label="Blocked Words", style=discord.ButtonStyle.secondary, row=0)
     async def blocked_words_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await interaction.response.send_modal(
-            SetupReviewModal(
-                self,
-                "Blocked Words",
-                [
-                    ("automod_badwords_enabled", "Bad words on/off", "on" if self.settings.get("automod_badwords_enabled") else "off", discord.TextStyle.short),
-                    ("automod_badwords", "Blocked words, one per line", self._csv("automod_badwords"), discord.TextStyle.paragraph),
-                ],
-            )
+        words = self.settings.get("automod_badwords", [])
+        await self._send_detail(
+            interaction,
+            "Blocked Words",
+            (
+                f"Status: **{'On' if self.settings.get('automod_badwords_enabled') else 'Off'}**\n\n"
+                "Messages are blocked when they contain these configured words or phrases, including common spacing/evasion variants:\n"
+                f"{_detail_lines(words)}"
+            ),
         )
 
     @discord.ui.button(label="Links", style=discord.ButtonStyle.secondary, row=0)
     async def links_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await interaction.response.send_modal(
-            SetupReviewModal(
-                self,
-                "Link Rules",
-                [
-                    ("automod_links_enabled", "Links on/off", "on" if self.settings.get("automod_links_enabled") else "off", discord.TextStyle.short),
-                    ("automod_links_mode", "Mode: dangerous or allowlist", self.settings.get("automod_links_mode", "dangerous"), discord.TextStyle.short),
-                    ("automod_links_whitelist", "Allowed links, one domain per line", self._csv("automod_links_whitelist"), discord.TextStyle.paragraph),
-                    ("automod_whitelisted_domains", "Safe domains, one per line", self._csv("automod_whitelisted_domains"), discord.TextStyle.paragraph),
-                ],
-            )
+        allowed = list(self.settings.get("automod_links_whitelist", [])) + list(self.settings.get("automod_whitelisted_domains", []))
+        await self._send_detail(
+            interaction,
+            "Blocked Links",
+            (
+                f"Status: **{'On' if self.settings.get('automod_links_enabled') else 'Off'}**\n"
+                f"Mode: **{str(self.settings.get('automod_links_mode', 'dangerous')).title()}**\n\n"
+                f"{_blocked_link_summary(self.settings)}\n\n"
+                f"Allowed domains that will not be blocked:\n{_detail_lines(allowed)}"
+            ),
         )
 
     @discord.ui.button(label="Invites", style=discord.ButtonStyle.secondary, row=0)
     async def invites_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await interaction.response.send_modal(
-            SetupReviewModal(
-                self,
-                "Invite Rules",
-                [
-                    ("automod_invites_enabled", "Invites on/off", "on" if self.settings.get("automod_invites_enabled") else "off", discord.TextStyle.short),
-                    ("automod_allowed_invites", "Allowed invite codes, one per line", self._csv("automod_allowed_invites"), discord.TextStyle.paragraph),
-                    ("automod_scam_protection", "Scam protection on/off", "on" if self.settings.get("automod_scam_protection") else "off", discord.TextStyle.short),
-                ],
-            )
+        await self._send_detail(
+            interaction,
+            "Blocked Invites and Scams",
+            (
+                f"Invite filter: **{'On' if self.settings.get('automod_invites_enabled') else 'Off'}**\n"
+                f"{_blocked_invite_summary(self.settings)}\n\n"
+                f"Scam protection: **{'On' if self.settings.get('automod_scam_protection') else 'Off'}**\n"
+                "Scam protection blocks known tracking/phishing links and messages like free Nitro, claim rewards, Steam/Discord gifts, account verification scams, and crypto giveaway/airdrop scams when they include links."
+            ),
         )
 
     @discord.ui.button(label="Limits", style=discord.ButtonStyle.secondary, row=1)
     async def limits_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await interaction.response.send_modal(
-            SetupReviewModal(
-                self,
-                "Limits",
-                [
-                    ("automod_spam_threshold", "Spam messages", str(self.settings.get("automod_spam_threshold", 5)), discord.TextStyle.short),
-                    ("automod_spam_window", "Spam window seconds", str(self.settings.get("automod_spam_window", 5)), discord.TextStyle.short),
-                    ("automod_max_mentions", "Max mentions", str(self.settings.get("automod_max_mentions", 5)), discord.TextStyle.short),
-                    ("automod_newaccount_days", "New account days", str(self.settings.get("automod_newaccount_days", 7)), discord.TextStyle.short),
-                ],
-            )
+        await self._send_detail(
+            interaction,
+            "Blocked Limits",
+            (
+                f"Spam: blocks **{self.settings.get('automod_spam_threshold', 5)} messages in {self.settings.get('automod_spam_window', 5)} seconds**.\n"
+                f"Duplicates: blocks **{self.settings.get('automod_duplicate_threshold', 3)} repeated messages in {self.settings.get('automod_duplicate_window', 30)} seconds**.\n"
+                f"Mentions: blocks messages with **{self.settings.get('automod_max_mentions', 5)} or more unique mentions**.\n"
+                f"Caps: blocks messages at **{self.settings.get('automod_caps_percentage', 70)}% caps** after **{self.settings.get('automod_caps_min_length', 10)} letters**.\n"
+                f"New accounts: applies new-account restrictions for **{self.settings.get('automod_newaccount_days', 7)} days**."
+            ),
         )
 
     @discord.ui.button(label="Actions", style=discord.ButtonStyle.secondary, row=1)
     async def actions_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
-        await interaction.response.send_modal(
-            SetupReviewModal(
-                self,
-                "Actions",
-                [
-                    ("automod_punishment", "Regular action", self.settings.get("automod_punishment", "warn"), discord.TextStyle.short),
-                    ("automod_security_punishment", "Security action", self.settings.get("automod_security_punishment", "timeout"), discord.TextStyle.short),
-                    ("automod_mute_duration", "Timeout seconds", str(self.settings.get("automod_mute_duration", 3600)), discord.TextStyle.short),
-                    ("automod_violation_cooldown", "Violation cooldown seconds", str(self.settings.get("automod_violation_cooldown", 10)), discord.TextStyle.short),
-                ],
-            )
+        await self._send_detail(
+            interaction,
+            "Actions",
+            (
+                f"Normal violations: **{str(self.settings.get('automod_punishment', 'warn')).title()}**.\n"
+                f"Security violations: **{str(self.settings.get('automod_security_punishment', 'timeout')).title()}**.\n"
+                f"Timeout length: **{_format_duration(self.settings.get('automod_mute_duration', 3600))}**.\n"
+                f"Tempban length: **{_format_duration(self.settings.get('automod_tempban_duration', 86400))}**.\n"
+                f"Violation cooldown: **{self.settings.get('automod_violation_cooldown', 10)} seconds**."
+            ),
         )
 
     @discord.ui.button(label="Save Setup", style=discord.ButtonStyle.success, row=2)
