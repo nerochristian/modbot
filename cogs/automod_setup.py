@@ -607,8 +607,22 @@ def _parse_generated_questions(payload: Mapping[str, Any]) -> list[SetupQuestion
     return questions
 
 
-async def _generate_profiles(cog: Any, guild: discord.Guild, initial_goal: str) -> list[SetupProfile]:
-    payload = await call_deepseek_json(cog, _profiles_prompt(), _profiles_user_prompt(guild, initial_goal), max_tokens=1000)
+async def _generate_profiles(
+    cog: Any,
+    guild: discord.Guild,
+    initial_goal: str,
+    *,
+    session_key: str,
+    session_name: str,
+) -> list[SetupProfile]:
+    payload = await call_deepseek_json(
+        cog,
+        _profiles_prompt(),
+        _profiles_user_prompt(guild, initial_goal),
+        max_tokens=1000,
+        session_key=session_key,
+        session_name=session_name,
+    )
     return _parse_profiles(payload)
 
 
@@ -617,8 +631,18 @@ async def _generate_questions(
     guild: discord.Guild,
     initial_goal: str,
     profile: SetupProfile,
+    *,
+    session_key: str,
+    session_name: str,
 ) -> list[SetupQuestion]:
-    payload = await call_deepseek_json(cog, _questions_prompt(), _questions_user_prompt(guild, initial_goal, profile), max_tokens=1400)
+    payload = await call_deepseek_json(
+        cog,
+        _questions_prompt(),
+        _questions_user_prompt(guild, initial_goal, profile),
+        max_tokens=1400,
+        session_key=session_key,
+        session_name=session_name,
+    )
     return _parse_generated_questions(payload)
 
 
@@ -815,6 +839,8 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
 
     try:
         icons = await _resolve_icons(guild)
+        setup_session_key = f"automod-setup:{guild.id}:{channel.id}"
+        setup_session_name = f"{guild.name} AutoMod setup"
         await interaction.followup.send(f"{icons['success']} AutoMod setup started in {channel.mention}.", ephemeral=True)
         intro = await _setup_embed(
             guild,
@@ -853,7 +879,13 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
                 description="Generating 3 improved AutoMod profiles from what you said.",
             )
         )
-        profiles = await _generate_profiles(cog, guild, initial_goal)
+        profiles = await _generate_profiles(
+            cog,
+            guild,
+            initial_goal,
+            session_key=setup_session_key,
+            session_name=setup_session_name,
+        )
         profile_view = ProfilePaginatorView(interaction.user.id, profiles, icons)
         await profile_message.edit(embed=profile_view.build_embed(guild), view=profile_view)
         await profile_view.wait()
@@ -870,6 +902,10 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
             return
 
         selected_profile = profile_view.selected_profile
+        selected_embed = profile_view.build_embed(guild)
+        selected_embed.color = Config.COLOR_SUCCESS
+        selected_embed.set_footer(text="Selected. Generating setup questions from this profile.")
+        await profile_message.edit(embed=selected_embed, view=None)
         question_message = await channel.send(
             embed=await _setup_embed(
                 guild,
@@ -878,7 +914,14 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
                 description=f"Creating setup questions for **{selected_profile.name}**.",
             )
         )
-        questions = await _generate_questions(cog, guild, initial_goal, selected_profile)
+        questions = await _generate_questions(
+            cog,
+            guild,
+            initial_goal,
+            selected_profile,
+            session_key=setup_session_key,
+            session_name=setup_session_name,
+        )
         await question_message.edit(
             embed=await _setup_embed(
                 guild,
@@ -917,6 +960,8 @@ async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None
             _settings_prompt(),
             _setup_user_prompt(guild, initial_goal, selected_profile, answers),
             max_tokens=1800,
+            session_key=setup_session_key,
+            session_name=setup_session_name,
         )
         model_update = validate_automod_update(response)
         settings_update = copy.deepcopy(AUTOMOD_SETTINGS)

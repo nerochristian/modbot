@@ -103,6 +103,34 @@ class AutoModSetupValidationTests(unittest.TestCase):
 
 
 class AutoModSetupAITests(unittest.IsolatedAsyncioTestCase):
+    async def test_call_deepseek_json_passes_web_session_identity(self) -> None:
+        class WorkingWeb:
+            enabled = True
+
+            async def chat(self, prompt, **kwargs):
+                self.prompt = prompt
+                self.kwargs = kwargs
+                return '{"ok": true}'
+
+        web = WorkingWeb()
+        cog = SimpleNamespace(
+            bot=SimpleNamespace(
+                get_cog=lambda name: SimpleNamespace(ai=SimpleNamespace(_deepseek_web=web)) if name == "AIModeration" else None
+            )
+        )
+
+        payload = await call_deepseek_json(
+            cog,
+            "system",
+            "user",
+            session_key="automod-setup:1:2",
+            session_name="Test AutoMod setup",
+        )
+
+        self.assertEqual(payload, {"ok": True})
+        self.assertEqual(web.kwargs["session_key"], "automod-setup:1:2")
+        self.assertEqual(web.kwargs["session_name"], "Test AutoMod setup")
+
     async def test_call_deepseek_json_falls_back_to_digitalocean_when_web_fails(self) -> None:
         class BrokenWeb:
             enabled = True
