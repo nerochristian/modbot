@@ -3442,10 +3442,10 @@ class Database:
         try:
             async with self.get_connection() as db:
                 await db.execute(
-                    \"\"\"
+                    """
                     INSERT INTO user_messages (message_id, guild_id, channel_id, user_id, content)
                     VALUES (?, ?, ?, ?, ?)
-                    \"\"\",
+                    """,
                     (message.id, message.guild.id, message.channel.id, message.author.id, content)
                 )
                 await db.commit()
@@ -3457,13 +3457,13 @@ class Database:
         try:
             async with self.get_connection() as db:
                 cursor = await db.execute(
-                    \"\"\"
+                    """
                     SELECT message_id, channel_id, content, timestamp
                     FROM user_messages
                     WHERE guild_id = ? AND user_id = ?
                     ORDER BY timestamp DESC
                     LIMIT ?
-                    \"\"\",
+                    """,
                     (guild_id, user_id, limit)
                 )
                 rows = await cursor.fetchall()
