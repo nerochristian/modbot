@@ -1,0 +1,779 @@
+"""Conversational AutoMod setup and natural-language change flow."""
+
+from __future__ import annotations
+
+import asyncio
+import copy
+import json
+import logging
+import re
+from dataclasses import dataclass
+from typing import Any, Callable, Iterable, Mapping, Optional
+
+import discord
+
+from cogs.automod_config import AUTOMOD_SETTINGS
+from cogs.automod_engine import normalize_domain
+from config import Config
+from utils.embeds import ModEmbed
+from utils.status_emojis import get_status_emoji_for_guild
+
+
+log = logging.getLogger("AutoMod.Setup")
+
+_ACTIVE_SETUPS: set[int] = set()
+_ACTIVE_LOCK = asyncio.Lock()
+
+
+@dataclass(frozen=True)
+class SetupQuestion:
+    key: str
+    prompt: str
+    options: tuple[str, ...] = ()
+    helper: str = ""
+
+    @property
+    def is_closed(self) -> bool:
+        return bool(self.options)
+
+
+QUESTIONS: tuple[SetupQuestion, ...] = (
+    SetupQuestion(
+        "server_profile",
+        "Describe your server and the main problems AutoMod should prevent.",
+        helper="Example: gaming server, stop slurs/scams/spam, but keep normal chat relaxed.",
+    ),
+    SetupQuestion("strictness", "Choose the overall strictness.", ("Relaxed", "Balanced", "Strict", "Lockdown")),
+    SetupQuestion("bad_words", "How should blocked words be handled?", ("Common slurs only", "Strict harassment filter", "Custom words only", "Off")),
+    SetupQuestion(
+        "custom_words",
+        "Add exact custom words or phrases to block. Type them separated by commas, or type none.",
+    ),
+    SetupQuestion("spam_sensitivity", "How sensitive should spam detection be?", ("Light", "Normal", "Strict", "Very strict")),
+    SetupQuestion("duplicate_messages", "Should repeated duplicate messages be blocked?", ("Yes", "No")),
+    SetupQuestion("caps", "Should excessive caps be filtered?", ("Yes", "No", "Only extreme caps")),
+    SetupQuestion("mass_mentions", "How many mentions should trigger AutoMod?", ("3 mentions", "5 mentions", "8 mentions", "10+ mentions")),
+    SetupQuestion("link_policy", "How should links be handled?", ("Dangerous links only", "Allowlist only", "Allow normal links", "Block most links")),
+    SetupQuestion(
+        "allowed_domains",
+        "List domains that should always be allowed, separated by commas, or type none.",
+        helper="Example: youtube.com, github.com, twitch.tv",
+    ),
+    SetupQuestion("discord_invites", "How should Discord invites be handled?", ("Block all invites", "Allow approved invites", "Allow invites")),
+    SetupQuestion("new_accounts", "Should new accounts be watched more closely?", ("Off", "1 day", "3 days", "7 days", "14 days")),
+    SetupQuestion("regular_action", "Default action for regular violations.", ("Log only", "Warn", "Timeout", "Kick")),
+    SetupQuestion("security_action", "Action for scams/phishing/dangerous links.", ("Timeout", "Ban", "Kick", "Warn")),
+    SetupQuestion("timeout_length", "Default timeout length.", ("10 minutes", "30 minutes", "1 hour", "6 hours", "1 day")),
+    SetupQuestion("dm_users", "Should users get a DM when AutoMod acts?", ("Yes", "No")),
+    SetupQuestion("public_feedback", "Should AutoMod post a short channel notice?", ("No", "Yes")),
+)
+
+_BOOL_KEYS = {
+    "automod_enabled",
+    "automod_notify_users",
+    "automod_public_feedback",
+    "automod_delete_violations",
+    "automod_bypass_staff",
+    "automod_badwords_enabled",
+    "automod_spam_enabled",
+    "automod_mentions_enabled",
+    "automod_caps_enabled",
+    "automod_links_enabled",
+    "automod_invites_enabled",
+    "automod_scam_protection",
+    "automod_newaccount_enabled",
+    "automod_ai_enabled",
+    "warn_thresholds_enabled",
+}
+_INT_RANGES = {
+    "automod_log_channel": (0, 2**63 - 1),
+    "automod_violation_cooldown": (0, 300),
+    "automod_mute_duration": (60, 28 * 86400),
+    "automod_tempban_duration": (60, 28 * 86400),
+    "automod_ban_delete_days": (0, 7),
+    "automod_spam_threshold": (2, 50),
+    "automod_spam_window": (2, 60),
+    "automod_duplicate_threshold": (2, 20),
+    "automod_duplicate_window": (5, 300),
+    "automod_caps_percentage": (50, 100),
+    "automod_caps_min_length": (5, 500),
+    "automod_max_mentions": (1, 50),
+    "automod_newaccount_days": (0, 365),
+    "automod_ai_min_severity": (1, 10),
+    "warn_threshold_mute": (1, 20),
+    "warn_threshold_kick": (1, 20),
+    "warn_threshold_ban": (1, 20),
+    "warn_mute_duration": (60, 28 * 86400),
+}
+_OPTION_KEYS = {
+    "automod_links_mode": {"dangerous", "allowlist"},
+    "automod_punishment": {"log", "warn", "timeout", "kick", "ban", "quarantine"},
+    "automod_security_punishment": {"log", "warn", "timeout", "kick", "ban", "quarantine"},
+}
+_STRING_LIST_KEYS = {
+    "automod_badwords": (2, 80, 250, lambda value: str(value).strip().casefold()),
+    "automod_links_whitelist": (3, 253, 500, normalize_domain),
+    "automod_whitelisted_domains": (3, 253, 500, normalize_domain),
+    "automod_allowed_invites": (2, 100, 250, lambda value: str(value).strip().split("/")[-1].casefold()),
+}
+_INT_LIST_KEYS = {
+    "automod_bypass_roles",
+    "automod_bypass_channels",
+    "automod_temp_bypass",
+}
+_NULLABLE_INT_KEYS = {
+    "automod_log_channel",
+    "automod_bypass_role_id",
+    "automod_quarantine_role_id",
+}
+_ALLOWED_KEYS = (
+    set(AUTOMOD_SETTINGS)
+    | _BOOL_KEYS
+    | set(_INT_RANGES)
+    | set(_OPTION_KEYS)
+    | set(_STRING_LIST_KEYS)
+    | _INT_LIST_KEYS
+    | _NULLABLE_INT_KEYS
+)
+
+
+async def _status_icon(guild: Optional[discord.Guild], kind: str) -> str:
+    return await get_status_emoji_for_guild(guild, kind=kind)
+
+
+async def _setup_embed(
+    guild: Optional[discord.Guild],
+    *,
+    kind: str,
+    title: str,
+    description: str,
+    color: Optional[int] = None,
+) -> discord.Embed:
+    icon = await _status_icon(guild, kind)
+    return discord.Embed(
+        title=f"{icon} {title}",
+        description=description,
+        color=color if color is not None else Config.COLOR_INFO,
+    )
+
+
+async def _has_admin_access(interaction: discord.Interaction) -> bool:
+    user = interaction.user
+    if user.id in getattr(interaction.client, "owner_ids", set()):
+        return True
+    if interaction.guild is not None and user.id == interaction.guild.owner_id:
+        return True
+    permissions = getattr(user, "guild_permissions", None)
+    if permissions is not None and getattr(permissions, "administrator", False):
+        return True
+
+    try:
+        settings = await asyncio.wait_for(interaction.client.db.get_settings(interaction.guild_id), timeout=1.5)
+    except Exception:
+        log.exception("AutoMod permission lookup failed for guild %s", interaction.guild_id)
+        return False
+
+    role_ids = {role.id for role in getattr(user, "roles", [])}
+    manager_role = settings.get("manager_role")
+    admin_roles = settings.get("admin_roles", []) or []
+    return bool(manager_role in role_ids or any(role_id in role_ids for role_id in admin_roles))
+
+
+def _permission_denied_embed() -> discord.Embed:
+    return ModEmbed.error(
+        "Permission Denied",
+        "You need Administrator, Manager, or a configured admin role to change AutoMod.",
+    )
+
+
+class SetupQuestionView(discord.ui.View):
+    def __init__(self, owner_id: int, options: Iterable[str], icons: Mapping[str, str]) -> None:
+        super().__init__(timeout=300)
+        self.owner_id = owner_id
+        self.value: Optional[str] = None
+        option_list = list(options)
+        for index, option in enumerate(option_list):
+            button = discord.ui.Button(
+                label=option,
+                emoji=icons.get("success") if index == 0 else None,
+                style=discord.ButtonStyle.primary if index == 0 else discord.ButtonStyle.secondary,
+                row=index // 5,
+                custom_id=f"automod_setup_answer:{index}",
+            )
+            button.callback = self._make_callback(option)
+            self.add_item(button)
+
+    def _make_callback(self, option: str) -> Callable[[discord.Interaction], Any]:
+        async def callback(interaction: discord.Interaction) -> None:
+            if interaction.user.id != self.owner_id:
+                await interaction.response.send_message("This setup belongs to another admin.", ephemeral=True)
+                return
+            self.value = option
+            await interaction.response.edit_message(view=None)
+            self.stop()
+
+        return callback
+
+
+class AutoModChangeModal(discord.ui.Modal, title="Change AutoMod"):
+    def __init__(self, cog: Any) -> None:
+        super().__init__(timeout=300)
+        self.cog = cog
+        self.request = discord.ui.TextInput(
+            label="What would you like to change?",
+            placeholder="Example: make spam stricter and timeout spammers for 10 minutes",
+            style=discord.TextStyle.paragraph,
+            min_length=3,
+            max_length=1000,
+        )
+        self.add_item(self.request)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        await _apply_automod_change(self.cog, interaction, str(self.request))
+
+
+class SetupSummaryView(discord.ui.View):
+    def __init__(
+        self,
+        *,
+        owner_id: int,
+        settings: Mapping[str, Any],
+        channel: discord.TextChannel,
+        icons: Mapping[str, str],
+    ) -> None:
+        super().__init__(timeout=1800)
+        self.owner_id = owner_id
+        self.settings = dict(settings)
+        self.channel = channel
+        self.children[0].emoji = icons.get("warning")
+        self.children[1].emoji = icons.get("info")
+        self.children[2].emoji = icons.get("info")
+        self.children[3].emoji = icons.get("lock")
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id == self.owner_id:
+            return True
+        await interaction.response.send_message("This setup panel belongs to another admin.", ephemeral=True)
+        return False
+
+    @discord.ui.button(label="Blocked Words", style=discord.ButtonStyle.secondary)
+    async def blocked_words(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        words = self.settings.get("automod_badwords", []) or []
+        body = ", ".join(str(word) for word in words) if words else "No blocked words configured."
+        await interaction.response.send_message(_chunk_code("Blocked Words", body), ephemeral=True)
+
+    @discord.ui.button(label="Allowed Links", style=discord.ButtonStyle.secondary)
+    async def allowed_links(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        domains = list(self.settings.get("automod_whitelisted_domains", []) or [])
+        domains.extend(self.settings.get("automod_links_whitelist", []) or [])
+        body = ", ".join(dict.fromkeys(str(domain) for domain in domains)) if domains else "No allowed domains configured."
+        await interaction.response.send_message(_chunk_code("Allowed Links", body), ephemeral=True)
+
+    @discord.ui.button(label="Actions", style=discord.ButtonStyle.secondary)
+    async def actions(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        body = "\n".join(
+            [
+                f"Regular action: {self.settings.get('automod_punishment', 'warn')}",
+                f"Security action: {self.settings.get('automod_security_punishment', 'timeout')}",
+                f"Timeout seconds: {self.settings.get('automod_mute_duration', 3600)}",
+                f"DM users: {self.settings.get('automod_notify_users', True)}",
+                f"Public feedback: {self.settings.get('automod_public_feedback', False)}",
+            ]
+        )
+        await interaction.response.send_message(f"**Actions**\n```text\n{body}\n```", ephemeral=True)
+
+    @discord.ui.button(label="Close Channel", style=discord.ButtonStyle.danger)
+    async def close_channel(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        await interaction.response.send_message("Closing this setup channel.", ephemeral=True)
+        await asyncio.sleep(1)
+        try:
+            await self.channel.delete(reason=f"AutoMod setup closed by {interaction.user}")
+        except discord.HTTPException:
+            log.exception("Failed to delete AutoMod setup channel %s", self.channel.id)
+
+
+def _chunk_code(title: str, body: str) -> str:
+    content = body if len(body) <= 1800 else f"{body[:1800]}... (truncated)"
+    return f"**{title}**\n```text\n{content}\n```"
+
+
+def _extract_json_object(raw: str) -> dict[str, Any]:
+    content = (raw or "").strip()
+    if content.startswith("```"):
+        content = re.sub(r"^```(?:json)?\s*", "", content, flags=re.IGNORECASE)
+        content = re.sub(r"\s*```$", "", content)
+    try:
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", content, flags=re.DOTALL)
+        if match is None:
+            raise ValueError("DeepSeek did not return a JSON object.") from None
+        parsed = json.loads(match.group(0))
+    if not isinstance(parsed, dict):
+        raise ValueError("DeepSeek returned JSON, but it was not an object.")
+    return parsed
+
+
+def _coerce_bool(value: Any) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)) and value in {0, 1}:
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().casefold()
+        if normalized in {"true", "yes", "y", "on", "enabled", "enable", "1"}:
+            return True
+        if normalized in {"false", "no", "n", "off", "disabled", "disable", "0"}:
+            return False
+    return None
+
+
+def _coerce_int(value: Any) -> Optional[int]:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        match = re.fullmatch(r"\s*(?:<#|<@&)?(\d+)>?\s*", value)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def _coerce_string_list(
+    value: Any,
+    *,
+    minimum_length: int,
+    maximum_length: int,
+    maximum_items: int,
+    normalizer: Callable[[Any], str],
+) -> Optional[list[str]]:
+    if isinstance(value, str):
+        raw_values = re.split(r"[\n,]+", value)
+    elif isinstance(value, list):
+        raw_values = value
+    else:
+        return None
+    cleaned: list[str] = []
+    seen: set[str] = set()
+    for raw in raw_values:
+        item = normalizer(raw)
+        if not item or item in {"none", "n/a", "na", "nothing"}:
+            continue
+        if not minimum_length <= len(item) <= maximum_length:
+            continue
+        if item in seen:
+            continue
+        seen.add(item)
+        cleaned.append(item)
+        if len(cleaned) >= maximum_items:
+            break
+    return cleaned
+
+
+def _coerce_int_list(value: Any) -> Optional[list[int]]:
+    if not isinstance(value, list):
+        return None
+    result: list[int] = []
+    seen: set[int] = set()
+    for item in value:
+        parsed = _coerce_int(item)
+        if parsed is None or parsed < 0 or parsed in seen:
+            continue
+        seen.add(parsed)
+        result.append(parsed)
+        if len(result) >= 250:
+            break
+    return result
+
+
+def validate_automod_update(candidate: Mapping[str, Any], *, require_changes: bool = True) -> dict[str, Any]:
+    """Return a bounded AutoMod settings update from model output."""
+    if not isinstance(candidate, Mapping):
+        raise ValueError("AutoMod update must be a JSON object.")
+    raw_settings = candidate.get("settings", candidate)
+    if not isinstance(raw_settings, Mapping):
+        raise ValueError("AutoMod update must contain a settings object.")
+
+    update: dict[str, Any] = {}
+    for key, value in raw_settings.items():
+        if key not in _ALLOWED_KEYS:
+            continue
+        if key in _BOOL_KEYS:
+            parsed_bool = _coerce_bool(value)
+            if parsed_bool is not None:
+                update[key] = parsed_bool
+            continue
+        if key in _NULLABLE_INT_KEYS and (
+            value is None or (isinstance(value, str) and value.strip().casefold() in {"", "none", "null"})
+        ):
+            update[key] = None
+            continue
+        if key in _INT_RANGES:
+            parsed_int = _coerce_int(value)
+            if parsed_int is None:
+                continue
+            low, high = _INT_RANGES[key]
+            if low <= parsed_int <= high:
+                update[key] = parsed_int
+            continue
+        if key in _OPTION_KEYS:
+            parsed_option = str(value or "").strip().casefold().replace("mute", "timeout")
+            if parsed_option in _OPTION_KEYS[key]:
+                update[key] = parsed_option
+            continue
+        if key in _STRING_LIST_KEYS:
+            minimum, maximum, limit, normalizer = _STRING_LIST_KEYS[key]
+            parsed_list = _coerce_string_list(
+                value,
+                minimum_length=minimum,
+                maximum_length=maximum,
+                maximum_items=limit,
+                normalizer=normalizer,
+            )
+            if parsed_list is not None:
+                update[key] = parsed_list
+            continue
+        if key in _INT_LIST_KEYS:
+            parsed_ids = _coerce_int_list(value)
+            if parsed_ids is not None:
+                update[key] = parsed_ids
+
+    if require_changes and not update:
+        raise ValueError("DeepSeek did not return any valid AutoMod settings.")
+    return update
+
+
+async def call_deepseek_json(cog: Any, system_prompt: str, user_prompt: str, *, max_tokens: int = 1400) -> dict[str, Any]:
+    ai_cog = cog.bot.get_cog("AIModeration")
+    ai_client = getattr(ai_cog, "ai", None) if ai_cog else None
+    web_client = getattr(ai_client, "_deepseek_web", None) if ai_client else None
+    if not web_client or not web_client.enabled:
+        raise RuntimeError("DeepSeek Web is not configured. Ensure AIModeration is loaded and DEEPSEEK_WEB_ENABLED is true.")
+
+    prompt = (
+        "You are a strict JSON API. Follow the system instructions and return valid JSON only.\n\n"
+        f"--- SYSTEM INSTRUCTIONS ---\n{system_prompt}\n\n"
+        f"--- USER REQUEST ---\n{user_prompt}"
+    )
+    try:
+        response = await web_client.chat(prompt, search=False, deepthink=False, long_answer=False)
+        return _extract_json_object(response)
+    except Exception as exc:
+        raise RuntimeError(f"DeepSeek Web error: {exc}") from exc
+
+
+def _settings_prompt() -> str:
+    return (
+        "You configure a Discord bot AutoMod system. Return exactly one JSON object with a "
+        "`settings` object and optional `summary` string. Do not include markdown.\n\n"
+        "Only use these setting keys:\n"
+        f"{', '.join(sorted(_ALLOWED_KEYS))}\n\n"
+        "Accepted actions: log, warn, timeout, kick, ban, quarantine. "
+        "Accepted link modes: dangerous, allowlist. Durations are seconds. "
+        "Set every important automod_* key needed for a full setup. "
+        "Do not invent slurs or profanity. If the admin wants common slur filtering, set automod_badwords_enabled true. "
+        "Only set automod_badwords when the admin typed exact custom words. "
+        "Keep values practical and avoid destructive punishments unless the answers clearly choose them."
+    )
+
+
+def _schema_summary() -> dict[str, Any]:
+    return {
+        "booleans": sorted(_BOOL_KEYS),
+        "integers": _INT_RANGES,
+        "choices": {key: sorted(values) for key, values in _OPTION_KEYS.items()},
+        "string_lists": sorted(_STRING_LIST_KEYS),
+        "nullable_ids": sorted(_NULLABLE_INT_KEYS),
+    }
+
+
+def _setup_user_prompt(guild: discord.Guild, answers: list[dict[str, str]]) -> str:
+    return json.dumps(
+        {
+            "guild": {"id": guild.id, "name": guild.name, "member_count": guild.member_count},
+            "schema": _schema_summary(),
+            "answers": answers,
+            "goal": "Fill out a complete production-safe AutoMod setup from these answers.",
+        },
+        indent=2,
+    )
+
+
+def _change_user_prompt(current_settings: Mapping[str, Any], request: str) -> str:
+    safe_current = {
+        key: value
+        for key, value in current_settings.items()
+        if key in _ALLOWED_KEYS or str(key).startswith("warn_")
+    }
+    return json.dumps(
+        {
+            "current_settings": safe_current,
+            "schema": _schema_summary(),
+            "admin_request": request,
+            "goal": "Return only the settings that must change to satisfy the admin request.",
+        },
+        indent=2,
+    )
+
+
+def _human_setting_lines(settings: Mapping[str, Any]) -> list[str]:
+    return [
+        f"Enabled: **{'Yes' if settings.get('automod_enabled', True) else 'No'}**",
+        f"Bad words: **{'On' if settings.get('automod_badwords_enabled', False) else 'Off'}**",
+        f"Spam: **{settings.get('automod_spam_threshold', 5)} messages / {settings.get('automod_spam_window', 5)}s**",
+        f"Mentions: **{settings.get('automod_max_mentions', 5)} max**",
+        f"Links: **{str(settings.get('automod_links_mode', 'dangerous')).title()}**",
+        f"Regular action: **{str(settings.get('automod_punishment', 'warn')).title()}**",
+        f"Security action: **{str(settings.get('automod_security_punishment', 'timeout')).title()}**",
+    ]
+
+
+async def _collect_open_answer(cog: Any, channel: discord.TextChannel, user: discord.abc.User) -> Optional[str]:
+    def check(message: discord.Message) -> bool:
+        return message.author.id == user.id and message.channel.id == channel.id
+
+    try:
+        message = await cog.bot.wait_for("message", check=check, timeout=300)
+    except asyncio.TimeoutError:
+        return None
+    return message.content.strip()[:1500]
+
+
+async def _resolve_icons(guild: discord.Guild) -> dict[str, str]:
+    return {
+        kind: await _status_icon(guild, kind)
+        for kind in ("success", "error", "warning", "info", "loading", "lock")
+    }
+
+
+async def _ask_question(
+    cog: Any,
+    channel: discord.TextChannel,
+    user: discord.abc.User,
+    question: SetupQuestion,
+    index: int,
+    total: int,
+    icons: Mapping[str, str],
+) -> Optional[str]:
+    description = question.prompt
+    if question.helper:
+        description = f"{description}\n\n{question.helper}"
+    embed = await _setup_embed(
+        channel.guild,
+        kind="info",
+        title=f"Question {index}/{total}",
+        description=description,
+    )
+    if question.is_closed:
+        view = SetupQuestionView(user.id, question.options, icons)
+        prompt_message = await channel.send(embed=embed, view=view)
+        await view.wait()
+        if view.value is None:
+            return None
+        completed = await _setup_embed(
+            channel.guild,
+            kind="success",
+            title=f"Question {index}/{total}",
+            description=f"{question.prompt}\n\nAnswer: **{view.value}**",
+            color=Config.COLOR_SUCCESS,
+        )
+        await prompt_message.edit(embed=completed, view=None)
+        return view.value
+
+    prompt_message = await channel.send(embed=embed)
+    answer = await _collect_open_answer(cog, channel, user)
+    if not answer:
+        return None
+    completed = await _setup_embed(
+        channel.guild,
+        kind="success",
+        title=f"Question {index}/{total}",
+        description=f"{question.prompt}\n\nAnswer: **{answer[:900]}**",
+        color=Config.COLOR_SUCCESS,
+    )
+    await prompt_message.edit(embed=completed)
+    return answer
+
+
+async def start_setup_wizard(cog: Any, interaction: discord.Interaction) -> None:
+    guild = interaction.guild
+    if guild is None or interaction.guild_id is None:
+        await interaction.response.send_message("AutoMod setup can only run inside a server.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    if not await _has_admin_access(interaction):
+        await interaction.followup.send(embed=_permission_denied_embed(), ephemeral=True)
+        return
+
+    async with _ACTIVE_LOCK:
+        if guild.id in _ACTIVE_SETUPS:
+            await interaction.followup.send("An AutoMod setup is already running in this server.", ephemeral=True)
+            return
+        _ACTIVE_SETUPS.add(guild.id)
+
+    channel: Optional[discord.TextChannel] = None
+    try:
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+            interaction.user: discord.PermissionOverwrite(view_channel=True, send_messages=True, read_message_history=True),
+        }
+        if guild.me is not None:
+            overwrites[guild.me] = discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                manage_channels=True,
+            )
+        channel = await guild.create_text_channel(
+            "automod-setup",
+            overwrites=overwrites,
+            reason=f"AutoMod setup started by {interaction.user}",
+        )
+    except discord.Forbidden:
+        await interaction.followup.send("I need permission to create a private setup channel.", ephemeral=True)
+        async with _ACTIVE_LOCK:
+            _ACTIVE_SETUPS.discard(guild.id)
+        return
+    except discord.HTTPException as exc:
+        log.exception("Failed to create AutoMod setup channel")
+        await interaction.followup.send(f"Could not create the setup channel: `{exc}`", ephemeral=True)
+        async with _ACTIVE_LOCK:
+            _ACTIVE_SETUPS.discard(guild.id)
+        return
+
+    try:
+        icons = await _resolve_icons(guild)
+        await interaction.followup.send(f"{icons['success']} AutoMod setup started in {channel.mention}.", ephemeral=True)
+        intro = await _setup_embed(
+            guild,
+            kind="info",
+            title="AutoMod Setup",
+            description=(
+                "Welcome to your server's AutoMod setup.\n\n"
+                "Most questions use buttons. A few ask for typed details like custom blocked words or allowed domains. "
+                "The channel stays open at the end so you can review the setup panels."
+            ),
+        )
+        await channel.send(embed=intro)
+
+        answers: list[dict[str, str]] = []
+        for index, question in enumerate(QUESTIONS, start=1):
+            answer = await _ask_question(cog, channel, interaction.user, question, index, len(QUESTIONS), icons)
+            if answer is None:
+                timeout_embed = await _setup_embed(
+                    guild,
+                    kind="warning",
+                    title="Setup Timed Out",
+                    description="Run `/automod setup` again when you are ready.",
+                    color=Config.COLOR_WARNING,
+                )
+                await channel.send(embed=timeout_embed)
+                return
+            answers.append({"key": question.key, "question": question.prompt, "answer": answer})
+
+        working = await channel.send(
+            embed=await _setup_embed(
+                guild,
+                kind="loading",
+                title="Building Setup",
+                description="Sending your answers to DeepSeek. No default blocked-word list is included in this prompt.",
+            )
+        )
+        response = await call_deepseek_json(cog, _settings_prompt(), _setup_user_prompt(guild, answers), max_tokens=1800)
+        model_update = validate_automod_update(response)
+        settings_update = copy.deepcopy(AUTOMOD_SETTINGS)
+        settings_update.update(model_update)
+        settings_update["automod_enabled"] = True
+
+        def apply_update(settings: dict[str, Any]) -> None:
+            for key in list(settings):
+                if key.startswith("automod_") or key.startswith("warn_"):
+                    settings.pop(key, None)
+            settings.update(settings_update)
+
+        saved = await cog._edit_settings(guild.id, apply_update)
+        summary = str(response.get("summary") or "AutoMod has been configured from your answers.").strip()
+        complete = await _setup_embed(
+            guild,
+            kind="success",
+            title="AutoMod Setup Complete",
+            description=f"{summary[:700]}\n\n" + "\n".join(_human_setting_lines(saved)),
+            color=Config.COLOR_SUCCESS,
+        )
+        complete.set_footer(text="Use the buttons below to review details. Close the channel when you are done.")
+        view = SetupSummaryView(owner_id=interaction.user.id, settings=saved, channel=channel, icons=icons)
+        await working.edit(embed=complete, view=view)
+    except Exception as exc:
+        log.exception("AutoMod setup failed")
+        if channel is not None:
+            await channel.send(embed=ModEmbed.error("Setup failed", f"`{type(exc).__name__}: {str(exc)[:900]}`"))
+    finally:
+        async with _ACTIVE_LOCK:
+            _ACTIVE_SETUPS.discard(guild.id)
+
+
+async def _apply_automod_change(cog: Any, interaction: discord.Interaction, request: str) -> None:
+    if interaction.guild_id is None:
+        await interaction.response.send_message("AutoMod can only be changed inside a server.", ephemeral=True)
+        return
+    cleaned_request = (request or "").strip()
+    if len(cleaned_request) < 3:
+        await interaction.response.send_message("Tell me what AutoMod setting you want changed.", ephemeral=True)
+        return
+
+    await interaction.response.defer(ephemeral=True, thinking=True)
+    if not await _has_admin_access(interaction):
+        await interaction.followup.send(embed=_permission_denied_embed(), ephemeral=True)
+        return
+
+    try:
+        current_settings = await cog._get_settings(interaction.guild_id, fresh=True)
+        response = await call_deepseek_json(
+            cog,
+            _settings_prompt(),
+            _change_user_prompt(current_settings, cleaned_request),
+            max_tokens=1000,
+        )
+        changes = validate_automod_update(response)
+
+        def apply_changes(settings: dict[str, Any]) -> None:
+            settings.update(changes)
+
+        saved = await cog._edit_settings(interaction.guild_id, apply_changes)
+        change_lines = "\n".join(f"`{key}` -> `{value}`" for key, value in sorted(changes.items()))
+        summary = str(response.get("summary") or "Requested AutoMod settings were updated.").strip()
+        embed = discord.Embed(
+            title="AutoMod changed",
+            description=f"{summary[:600]}\n\n{change_lines[:1500]}\n\n" + "\n".join(_human_setting_lines(saved)),
+            color=Config.COLOR_SUCCESS,
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+    except Exception as exc:
+        if "DeepSeek did not return any valid AutoMod settings" in str(exc):
+            await interaction.followup.send(
+                embed=ModEmbed.error(
+                    "No changes made",
+                    "The AI could not determine any settings to change. Ask for a specific setting, or provide exact custom words.",
+                ),
+                ephemeral=True,
+            )
+        else:
+            log.exception("AutoMod change failed")
+            await interaction.followup.send(
+                embed=ModEmbed.error("AutoMod change failed", f"`{type(exc).__name__}: {str(exc)[:900]}`"),
+                ephemeral=True,
+            )
+
+
+async def handle_automod_change(cog: Any, interaction: discord.Interaction, request: Optional[str] = None) -> None:
+    if not (request or "").strip():
+        if not await _has_admin_access(interaction):
+            await interaction.response.send_message(embed=_permission_denied_embed(), ephemeral=True)
+            return
+        await interaction.response.send_modal(AutoModChangeModal(cog))
+        return
+    await _apply_automod_change(cog, interaction, request)
