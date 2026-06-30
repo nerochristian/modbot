@@ -18,6 +18,7 @@ from cogs.aimoderation.aimoderation import (
     ToolResult,
     ToolType,
 )
+from utils.deepseek_web import DeepSeekWebError
 
 
 class AIActionRoutingTests(unittest.TestCase):
@@ -400,6 +401,41 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             "researched answer",
             "PRIVATE MEMORY",
         )
+
+    async def test_conversation_falls_back_to_digitalocean_when_deepseek_web_fails(self) -> None:
+        client = object.__new__(GeminiClient)
+        client.provider = "deepseek-web"
+        client.config = AIConfig()
+        client._block_until = None
+        client._block_reason = None
+        client._brave_search_api_key = None
+        client._tavily_api_key = None
+        client._serpapi_api_key = None
+        client._rate_limiter = SimpleNamespace(
+            is_rate_limited=AsyncMock(return_value=(False, 0)),
+            record_call=AsyncMock(),
+        )
+        client._deepseek_web = SimpleNamespace(
+            enabled=True,
+            chat=AsyncMock(side_effect=DeepSeekWebError("browser failed")),
+        )
+        client._call_digitalocean_conversation = AsyncMock(return_value="fallback answer")
+        client._collect_image_context = AsyncMock(return_value=[])
+        client._update_memory_smart = AsyncMock()
+        db = SimpleNamespace(get_ai_memory=AsyncMock(return_value=""))
+        client.bot = SimpleNamespace(user=SimpleNamespace(id=999), db=db)
+
+        response = await client.converse(
+            user_content="hello",
+            guild=SimpleNamespace(id=1, name="Guild", member_count=10),
+            author=SimpleNamespace(id=2, name="User"),
+            recent_messages=[],
+            signals=ConversationSignals(mode=ConversationMode.STANDARD),
+        )
+
+        self.assertEqual(response, "fallback answer")
+        client._call_digitalocean_conversation.assert_awaited_once()
+        client._update_memory_smart.assert_called_once()
 
     async def test_reason_is_rewritten_once_and_cleaned(self) -> None:
         cog = object.__new__(AIModeration)
