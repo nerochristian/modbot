@@ -156,6 +156,7 @@ class GeminiClient:
         allow_multimodal: bool = False,
         session_key: Optional[str] = None,
         session_name: Optional[str] = None,
+        long_answer: bool = False,
     ) -> Optional[str]:
         del temperature, max_tokens, model, allow_multimodal
         if not self._deepseek_web.enabled:
@@ -175,6 +176,7 @@ class GeminiClient:
             "\n\n".join(prompt_parts),
             session_key=session_key,
             session_name=session_name,
+            long_answer=long_answer,
         )
 
     async def _call_digitalocean(

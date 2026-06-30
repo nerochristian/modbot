@@ -909,11 +909,19 @@ class DeepSeekWebClient:
                         "Do not emit citation tokens or URLs. Be brief, punchy, and conversational."
                     )
             else:
-                search_instruction = (
-                    "Do not claim live verification or add citations. "
-                    "You MUST give a concise, direct answer (1 to 4 sentences maximum). "
-                    "NEVER write essays, multiple paragraphs, or bulleted lists."
-                )
+                if long_answer:
+                    search_instruction = (
+                        "Live web search is disabled. Do not claim live verification, add citations, "
+                        "or invent external facts. Provide a thorough long-form response that follows "
+                        "the requested structure and length. Multiple sections, paragraphs, and bullets "
+                        "are allowed when the request calls for them. Avoid filler and repetition. "
+                    )
+                else:
+                    search_instruction = (
+                        "Do not claim live verification or add citations. "
+                        "You MUST give a concise, direct answer (1 to 4 sentences maximum). "
+                        "NEVER write essays, multiple paragraphs, or bulleted lists."
+                    )
 
             request = (
                 "Reply in the same language as the user's latest message; default to "
