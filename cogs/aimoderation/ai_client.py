@@ -158,25 +158,34 @@ class GeminiClient:
         session_name: Optional[str] = None,
         long_answer: bool = False,
     ) -> Optional[str]:
-        del temperature, max_tokens, model, allow_multimodal
-        if not self._deepseek_web.enabled:
-            raise DeepSeekWebError("DeepSeek web provider is disabled.")
+        if self._deepseek_web.enabled:
+            prompt_parts: List[str] = []
+            for message in messages:
+                role = str(message.get("role") or "user").upper()
+                content = self._stringify_web_content(message.get("content"))
+                if content:
+                    prompt_parts.append(f"[{role}]\n{content}")
+            if json_mode:
+                prompt_parts.append(
+                    "[OUTPUT FORMAT]\nReturn exactly one valid JSON object and no other text."
+                )
+            try:
+                return await self._deepseek_web.chat(
+                    "\n\n".join(prompt_parts),
+                    session_key=session_key,
+                    session_name=session_name,
+                    long_answer=long_answer,
+                )
+            except DeepSeekWebError:
+                logger.warning("DeepSeek web call failed; falling back to DigitalOcean.", exc_info=True)
 
-        prompt_parts: List[str] = []
-        for message in messages:
-            role = str(message.get("role") or "user").upper()
-            content = self._stringify_web_content(message.get("content"))
-            if content:
-                prompt_parts.append(f"[{role}]\n{content}")
-        if json_mode:
-            prompt_parts.append(
-                "[OUTPUT FORMAT]\nReturn exactly one valid JSON object and no other text."
-            )
-        return await self._deepseek_web.chat(
-            "\n\n".join(prompt_parts),
-            session_key=session_key,
-            session_name=session_name,
-            long_answer=long_answer,
+        return await self._call_digitalocean(
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            model=model,
+            json_mode=json_mode,
+            allow_multimodal=allow_multimodal,
         )
 
     async def _call_digitalocean(
@@ -248,6 +257,21 @@ class GeminiClient:
         if isinstance(content, list):
             return self._stringify_web_content(content)
         return None
+
+    async def _call_digitalocean_conversation(
+        self,
+        prompt: str,
+        *,
+        model: Optional[str] = None,
+        long_answer: bool = False,
+    ) -> Optional[str]:
+        max_tokens = max(self.config.max_tokens_chat, 2400) if long_answer else self.config.max_tokens_chat
+        return await self._call_digitalocean(
+            [{"role": "user", "content": prompt}],
+            temperature=self.config.temperature_chat,
+            max_tokens=max_tokens,
+            model=model,
+        )
 
     @classmethod
     def _normalize_text_messages(cls, messages: List[Dict[str, Any]]) -> List[Dict[str, str]]:
