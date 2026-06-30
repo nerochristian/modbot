@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 
 from cogs.aimoderation.aimoderation import AIModeration, GeminiClient
+from cogs.aimoderation.types import ConversationMode
 
 
 class ResearchFormattingTests(unittest.TestCase):
@@ -136,6 +137,33 @@ class ResearchFormattingTests(unittest.TestCase):
 
 
 class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_explicit_research_request_builds_a_complete_plan(self) -> None:
+        cog = object.__new__(AIModeration)
+        cog.ai = SimpleNamespace(has_web_search=True)
+
+        signals = await cog._build_conversation_signals(
+            "research all the conversion rates from different currencies to JMD"
+        )
+
+        self.assertEqual(signals.mode, ConversationMode.RESEARCH)
+        self.assertTrue(signals.show_research_indicator)
+        self.assertTrue(signals.asks_for_long_answer)
+        self.assertEqual(signals.focus_entities, ())
+
+        client = object.__new__(GeminiClient)
+        client.config = SimpleNamespace(max_tokens_chat=1200)
+        client.bot = SimpleNamespace(user=None)
+        plan = client._build_conversation_plan(
+            signals=signals,
+            user_content="research conversion rates to JMD",
+            guild=SimpleNamespace(name="Soul", member_count=10),
+            author=SimpleNamespace(name="Surreny"),
+            past_memory="",
+        )
+
+        self.assertTrue(plan.show_indicator)
+        self.assertIn("research conversion rates to JMD", plan.user_prompt)
+
     async def test_call_passes_moderation_session_name_to_deepseek_web(self) -> None:
         class FakeDeepSeek:
             enabled = True

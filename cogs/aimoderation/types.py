@@ -10,7 +10,7 @@ import os
 import re
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, ClassVar, Dict, Final, List, Optional, Set
+from typing import Any, ClassVar, Dict, Final, List, Optional, Set, Tuple
 
 
 # =============================================================================
@@ -301,9 +301,27 @@ class ConversationSignals:
     """Conversation classifier output."""
     mode: ConversationMode
     confidence: float
-    research: bool = False
-    sources: bool = False
-    long_answer: bool = False
+    show_research_indicator: bool = False
+    asks_for_current_info: bool = False
+    asks_for_sources: bool = False
+    asks_for_long_answer: bool = False
+    mentions_moderation: bool = False
+    focus_entities: Tuple[str, ...] = ()
+
+    @property
+    def research(self) -> bool:
+        """Backward-compatible research-mode flag."""
+        return self.mode == ConversationMode.RESEARCH
+
+    @property
+    def sources(self) -> bool:
+        """Backward-compatible source-request flag."""
+        return self.asks_for_sources
+
+    @property
+    def long_answer(self) -> bool:
+        """Backward-compatible long-answer flag."""
+        return self.asks_for_long_answer
 
 
 @dataclass(frozen=True)
@@ -313,7 +331,12 @@ class ConversationPlan:
     user_prompt: str
     temperature: float
     max_tokens: int
-    show_indicator: bool
+    show_research_indicator: bool
+
+    @property
+    def show_indicator(self) -> bool:
+        """Backward-compatible research-indicator flag."""
+        return self.show_research_indicator
 
 
 @dataclass(frozen=True)
