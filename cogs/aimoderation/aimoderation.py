@@ -201,7 +201,7 @@ class AIModeration(commands.Cog):
     _WARNING_COUNT_RE: ClassVar[re.Pattern] = re.compile(
         r"\b(?P<count>\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|a|an)\s+"
         r"(?:separate\s+)?(?:warnings?|times?)\b|"
-        r"\bwarn(?:ing)?s?\s*[xÃ—]\s*(?P<multiplier>\d{1,3})\b",
+        r"\bwarn(?:ing)?s?\s*[x*]\s*(?P<multiplier>\d{1,3})\b",
         re.IGNORECASE,
     )
     _WARNING_NUMBER_WORDS: ClassVar[Dict[str, int]] = {
@@ -1365,6 +1365,9 @@ class AIModeration(commands.Cog):
 
         if self._HELP_RE.search(low):
             return decision(ToolType.HELP, "help")
+
+        if self._looks_like_warning_action(low):
+            return decision(ToolType.WARN, "warn", self._warning_arguments(message, content))
 
         if self._looks_like_warning_lookup(low):
             return decision(ToolType.GET_WARNINGS, "get_warnings")

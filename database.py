@@ -1668,24 +1668,51 @@ class Database:
         self, guild_id: int, user_id: int, moderator_id: int, reason: str
     ):
         """Add a warning. Returns (warning_id, total_warning_count)."""
+        warning_ids, total_count = await self.add_warnings(
+            guild_id=guild_id,
+            user_id=user_id,
+            moderator_id=moderator_id,
+            reason=reason,
+            count=1,
+        )
+        return warning_ids[0], total_count
+
+    async def add_warnings(
+        self,
+        guild_id: int,
+        user_id: int,
+        moderator_id: int,
+        reason: str,
+        count: int,
+    ) -> tuple[List[int], int]:
+        """Atomically add multiple warnings and return their IDs and the new total."""
+        if isinstance(count, bool) or not 1 <= count <= 10:
+            raise ValueError("Warning count must be between 1 and 10.")
+
         async with self._lock:
             async with self.get_connection() as db:
-                cursor = await db.execute(
-                    """
-                    INSERT INTO warnings (guild_id, user_id, moderator_id, reason)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (guild_id, user_id, moderator_id, reason),
-                )
-                warning_id = cursor.lastrowid
-                cursor2 = await db.execute(
-                    "SELECT COUNT(*) FROM warnings WHERE guild_id = ? AND user_id = ?",
-                    (guild_id, user_id),
-                )
-                row = await cursor2.fetchone()
-                total_count = row[0] if row else 1
-                await db.commit()
-                return warning_id, total_count
+                try:
+                    warning_ids: List[int] = []
+                    for _ in range(count):
+                        cursor = await db.execute(
+                            """
+                            INSERT INTO warnings (guild_id, user_id, moderator_id, reason)
+                            VALUES (?, ?, ?, ?)
+                            """,
+                            (guild_id, user_id, moderator_id, reason),
+                        )
+                        warning_ids.append(cursor.lastrowid)
+                    cursor2 = await db.execute(
+                        "SELECT COUNT(*) FROM warnings WHERE guild_id = ? AND user_id = ?",
+                        (guild_id, user_id),
+                    )
+                    row = await cursor2.fetchone()
+                    total_count = row[0] if row else count
+                    await db.commit()
+                    return warning_ids, total_count
+                except Exception:
+                    await db.rollback()
+                    raise
     
     async def get_warnings(self, guild_id: int, user_id: int) -> List[Dict[str, Any]]:
         """Get all warnings for a user"""
