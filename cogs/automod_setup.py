@@ -37,36 +37,11 @@ class SetupQuestion:
         return bool(self.options)
 
 
-QUESTIONS: tuple[SetupQuestion, ...] = (
-    SetupQuestion(
-        "server_profile",
-        "Describe your server and the main problems AutoMod should prevent.",
-        helper="Example: gaming server, stop slurs/scams/spam, but keep normal chat relaxed.",
-    ),
-    SetupQuestion("strictness", "Choose the overall strictness.", ("Relaxed", "Balanced", "Strict", "Lockdown")),
-    SetupQuestion("bad_words", "How should blocked words be handled?", ("Common slurs only", "Strict harassment filter", "Custom words only", "Off")),
-    SetupQuestion(
-        "custom_words",
-        "Add exact custom words or phrases to block. Type them separated by commas, or type none.",
-    ),
-    SetupQuestion("spam_sensitivity", "How sensitive should spam detection be?", ("Light", "Normal", "Strict", "Very strict")),
-    SetupQuestion("duplicate_messages", "Should repeated duplicate messages be blocked?", ("Yes", "No")),
-    SetupQuestion("caps", "Should excessive caps be filtered?", ("Yes", "No", "Only extreme caps")),
-    SetupQuestion("mass_mentions", "How many mentions should trigger AutoMod?", ("3 mentions", "5 mentions", "8 mentions", "10+ mentions")),
-    SetupQuestion("link_policy", "How should links be handled?", ("Dangerous links only", "Allowlist only", "Allow normal links", "Block most links")),
-    SetupQuestion(
-        "allowed_domains",
-        "List domains that should always be allowed, separated by commas, or type none.",
-        helper="Example: youtube.com, github.com, twitch.tv",
-    ),
-    SetupQuestion("discord_invites", "How should Discord invites be handled?", ("Block all invites", "Allow approved invites", "Allow invites")),
-    SetupQuestion("new_accounts", "Should new accounts be watched more closely?", ("Off", "1 day", "3 days", "7 days", "14 days")),
-    SetupQuestion("regular_action", "Default action for regular violations.", ("Log only", "Warn", "Timeout", "Kick")),
-    SetupQuestion("security_action", "Action for scams/phishing/dangerous links.", ("Timeout", "Ban", "Kick", "Warn")),
-    SetupQuestion("timeout_length", "Default timeout length.", ("10 minutes", "30 minutes", "1 hour", "6 hours", "1 day")),
-    SetupQuestion("dm_users", "Should users get a DM when AutoMod acts?", ("Yes", "No")),
-    SetupQuestion("public_feedback", "Should AutoMod post a short channel notice?", ("No", "Yes")),
-)
+@dataclass(frozen=True)
+class SetupProfile:
+    name: str
+    description: str
+    focus: str = ""
 
 _BOOL_KEYS = {
     "automod_enabled",
@@ -213,6 +188,61 @@ class SetupQuestionView(discord.ui.View):
             self.stop()
 
         return callback
+
+
+class ProfilePaginatorView(discord.ui.View):
+    def __init__(self, owner_id: int, profiles: list[SetupProfile], icons: Mapping[str, str]) -> None:
+        super().__init__(timeout=300)
+        self.owner_id = owner_id
+        self.profiles = profiles
+        self.icons = icons
+        self.current = 0
+        self.selected_profile: Optional[SetupProfile] = None
+        self._sync_buttons()
+
+    def _sync_buttons(self) -> None:
+        self.previous_button.disabled = self.current <= 0
+        self.next_button.disabled = self.current >= len(self.profiles) - 1
+
+    def build_embed(self, guild: Optional[discord.Guild]) -> discord.Embed:
+        profile = self.profiles[self.current]
+        icon = self.icons.get("info", "")
+        embed = discord.Embed(
+            title=f"{icon} Profile {self.current + 1}/{len(self.profiles)}: {profile.name}",
+            description=profile.description,
+            color=Config.COLOR_INFO,
+        )
+        if profile.focus:
+            embed.add_field(name="Focus", value=profile.focus[:1024], inline=False)
+        embed.set_footer(text="Use the arrows to compare profiles, then select one.")
+        return embed
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id == self.owner_id:
+            return True
+        await interaction.response.send_message("This setup belongs to another admin.", ephemeral=True)
+        return False
+
+    @discord.ui.button(label="<", style=discord.ButtonStyle.secondary, row=0)
+    async def previous_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.current = max(0, self.current - 1)
+        self._sync_buttons()
+        await interaction.response.edit_message(embed=self.build_embed(interaction.guild), view=self)
+
+    @discord.ui.button(label="Select this profile", style=discord.ButtonStyle.primary, row=0)
+    async def select_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.selected_profile = self.profiles[self.current]
+        embed = self.build_embed(interaction.guild)
+        embed.color = Config.COLOR_SUCCESS
+        embed.set_footer(text="Selected. Generating setup questions from this profile.")
+        await interaction.response.edit_message(embed=embed, view=None)
+        self.stop()
+
+    @discord.ui.button(label=">", style=discord.ButtonStyle.secondary, row=0)
+    async def next_button(self, interaction: discord.Interaction, button: discord.ui.Button) -> None:
+        self.current = min(len(self.profiles) - 1, self.current + 1)
+        self._sync_buttons()
+        await interaction.response.edit_message(embed=self.build_embed(interaction.guild), view=self)
 
 
 class AutoModChangeModal(discord.ui.Modal, title="Change AutoMod"):
