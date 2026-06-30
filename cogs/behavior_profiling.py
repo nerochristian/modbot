@@ -484,7 +484,7 @@ class BehaviorProfiling(commands.Cog):
     ) -> None:
         for embed in embeds:
             kwargs: dict[str, Any] = {
-                "ephemeral": True,
+                "ephemeral": False,
                 "allowed_mentions": discord.AllowedMentions.none(),
                 "embed": embed
             }
