@@ -89,7 +89,7 @@ def build_automod_health_report(guild: discord.Guild, settings: dict[str, Any]) 
     failures: list[str] = []
     recommendations: list[str] = []
 
-    bot_member = guild.me
+    bot_member = getattr(guild, "me", None)
     if bot_member is None:
         score -= 25
         failures.append("Bot member is unavailable, so permission checks cannot run.")
