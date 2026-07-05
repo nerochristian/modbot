@@ -155,7 +155,7 @@ class AutoMod(commands.Cog):
             pass
 
     @automod.command(name="setup", description="Enable AutoMod with safe defaults or a preset")
-    @app_commands.describe(log_channel="Channel where AutoMod actions are logged", preset="Quick setup profile: strict, moderate, relaxed, security, minimal")
+    @app_commands.describe(log_channel="Channel where AutoMod actions are logged", preset="Quick setup profile: starter, community, gaming, support, marketplace, high_security, chill, lockdown")
     async def setup_command(self, interaction: discord.Interaction, log_channel: Optional[discord.TextChannel] = None, preset: Optional[str] = None) -> None:
         if not await self._guard(interaction):
             return
@@ -204,7 +204,7 @@ class AutoMod(commands.Cog):
         await interaction.response.send_message(embed=report.to_embed(), ephemeral=True)
 
     @automod.command(name="preset", description="Apply a preset configuration profile")
-    @app_commands.describe(profile="Preset profile: strict, moderate, relaxed, security, minimal")
+    @app_commands.describe(profile="Preset profile: starter, community, gaming, support, marketplace, high_security, chill, lockdown")
     async def preset_command(self, interaction: discord.Interaction, profile: str) -> None:
         if not await self._guard(interaction):
             return
@@ -421,7 +421,7 @@ class AutoMod(commands.Cog):
         await interaction.response.send_message("Punishment settings updated.", ephemeral=True)
 
     @thresholds.command(name="set", description="Set common AutoMod thresholds")
-    @app_commands.describe(module="spam, duplicates, fast_messages, mentions, caps, raid", value="Example: spam 5/5, mentions 5, caps 70")
+    @app_commands.describe(module="spam, duplicates, fast_messages, attachments, emoji_spam, mentions, caps, raid", value="Example: spam 5/5, mentions 5, caps 70")
     async def thresholds_set_command(self, interaction: discord.Interaction, module: str, value: str) -> None:
         if not await self._guard(interaction):
             return
@@ -442,12 +442,18 @@ class AutoMod(commands.Cog):
         elif module == "raid":
             pair = parse_threshold_pair(value, count_range=(2, 100), window_range=(5, 300))
             if pair:
+        elif module == "attachments":
+            pair = parse_threshold_pair(value, count_range=(2, 25), window_range=(5, 120))
+            if pair:
+                changes = {"automod_attachment_threshold": pair[0], "automod_attachment_window": pair[1]}
                 changes = {"automod_raid_join_threshold": pair[0], "automod_raid_join_window": pair[1]}
         elif module == "mentions" and value.isdigit():
             changes = {"automod_max_mentions": max(1, min(50, int(value)))}
         elif module == "caps" and value.isdigit():
+        elif module == "emoji_spam" and value.isdigit():
+            changes = {"automod_emoji_spam_threshold": max(4, min(100, int(value)))}
             changes = {"automod_caps_percentage": max(50, min(100, int(value)))}
-        if not changes:
+            await interaction.response.send_message("Invalid threshold. Use `5/5` for windowed rules or a number for mentions/caps/emoji_spam.", ephemeral=True)
             await interaction.response.send_message("Invalid threshold. Use `5/5` for windowed rules or a number for mentions/caps.", ephemeral=True)
             return
         await self._update(interaction.guild.id, changes)
