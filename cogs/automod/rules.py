@@ -7,12 +7,24 @@ messages or punish users.
 from __future__ import annotations
 
 import hashlib
+import re
 import time
+import unicodedata
 from collections import Counter, defaultdict, deque
 from typing import Any, Deque, Iterable, Optional
 
 from .models import Category, RuleMatch, Severity
 from .utils import INVITE_RE, domain_matches, extract_domains, keyword_pattern, normalize_text, unique_strings
+
+
+CUSTOM_EMOJI_RE = re.compile(r"<a?:[A-Za-z0-9_]{2,32}:\d{15,25}>")
+DISGUISED_INVITE_RE = re.compile(
+    r"(?ix)"
+    r"\b(?:discord|d\s*i\s*s\s*c\s*o\s*r\s*d)\s*"
+    r"(?:\.|\(dot\)|\[dot\]|dot|\s)+\s*"
+    r"(?:gg|com\s*/\s*invite|app\s*\.\s*com\s*/\s*invite)\s*"
+    r"(?:/|\\|\s)+\s*([A-Za-z0-9-]{2,32})"
+)
 
 
 class Rule:
@@ -70,12 +82,26 @@ class ScamRule(Rule):
     priority = 110
     scam_phrases = (
         "free nitro",
+        "nitro free",
         "claim your prize",
         "claim reward",
+        "claim your reward",
+        "airdrop",
         "discord gift",
+        "discord staff",
+        "discord moderator",
+        "steam community gift",
         "steam gift",
+        "steam wallet",
         "verify your account",
+        "verify account",
+        "account flagged",
+        "account disabled",
+        "qr code login",
         "crypto giveaway",
+        "limited giveaway",
+        "click this link",
+        "password reset",
     )
 
     async def check(self, message: Any, settings: dict[str, Any], *, dry_run: bool = False) -> Optional[RuleMatch]:
@@ -134,13 +160,17 @@ class InviteRule(Rule):
     async def check(self, message: Any, settings: dict[str, Any], *, dry_run: bool = False) -> Optional[RuleMatch]:
         content = getattr(message, "content", "") or ""
         codes = [match.group(1).casefold() for match in INVITE_RE.finditer(content)]
+        codes.extend(match.group(1).casefold() for match in DISGUISED_INVITE_RE.finditer(content))
         if not codes:
             return None
         allowed = {str(value).rsplit("/", 1)[-1].casefold() for value in settings.get("automod_allowed_invites", []) or []}
         blocked = [code for code in codes if code not in allowed]
         if not blocked:
             return None
-        return RuleMatch(self.name, "Discord invite is not allowed", Severity.MEDIUM, Category.CONTENT, evidence=tuple(blocked[:3]))
+        reason = "Discord invite is not allowed"
+        if any(DISGUISED_INVITE_RE.search(content) for _ in (0,)):
+            reason = "Disguised Discord invite is not allowed"
+        return RuleMatch(self.name, reason, Severity.MEDIUM, Category.CONTENT, evidence=tuple(blocked[:3]))
 
 
 class MentionRule(Rule):
@@ -294,6 +324,137 @@ class FastMessageRule(Rule):
                 self._messages.pop(key, None)
 
 
+class EmojiSpamRule(Rule):
+    name = "emoji_spam"
+    setting_key = "automod_emoji_spam_enabled"
+    priority = 65
+
+    @staticmethod
+    def _emoji_count(content: str) -> int:
+        custom = len(CUSTOM_EMOJI_RE.findall(content or ""))
+        unicode_emoji = 0
+        for char in content or "":
+            if unicodedata.category(char) == "So" and not char.isalnum():
+                unicode_emoji += 1
+        return custom + unicode_emoji
+
+    async def check(self, message: Any, settings: dict[str, Any], *, dry_run: bool = False) -> Optional[RuleMatch]:
+        content = getattr(message, "content", "") or ""
+        if not content:
+            return None
+        emoji_count = self._emoji_count(content)
+        threshold = max(4, min(100, int(settings.get("automod_emoji_spam_threshold", 14))))
+        if emoji_count < threshold:
+            return None
+        non_space_length = max(1, len("".join(content.split())))
+        ratio = round(emoji_count * 100 / non_space_length)
+        ratio_threshold = max(20, min(100, int(settings.get("automod_emoji_spam_ratio", 65))))
+        if ratio < ratio_threshold and emoji_count < threshold * 2:
+            return None
+        return RuleMatch(
+            self.name,
+            f"Emoji spam ({emoji_count} emojis, {ratio}% of message)",
+            Severity.LOW if emoji_count < threshold * 2 else Severity.MEDIUM,
+            Category.BEHAVIOR,
+            metadata={"count": emoji_count, "ratio": ratio},
+        )
+
+
+class WallSpamRule(Rule):
+    name = "wall_spam"
+    setting_key = "automod_wall_spam_enabled"
+    priority = 64
+
+    async def check(self, message: Any, settings: dict[str, Any], *, dry_run: bool = False) -> Optional[RuleMatch]:
+        content = getattr(message, "content", "") or ""
+        if not content:
+            return None
+        max_chars = max(200, min(4000, int(settings.get("automod_wall_spam_max_chars", 1800))))
+        max_lines = max(3, min(80, int(settings.get("automod_wall_spam_max_lines", 12))))
+        max_newlines = max(3, min(120, int(settings.get("automod_wall_spam_max_newlines", 10))))
+        line_count = len(content.splitlines())
+        newline_count = content.count("\n")
+        if len(content) < max_chars and line_count < max_lines and newline_count < max_newlines:
+            return None
+        reason_parts: list[str] = []
+        if len(content) >= max_chars:
+            reason_parts.append(f"{len(content)} chars")
+        if line_count >= max_lines:
+            reason_parts.append(f"{line_count} lines")
+        if newline_count >= max_newlines:
+            reason_parts.append(f"{newline_count} newlines")
+        return RuleMatch(
+            self.name,
+            f"Wall/spacer spam ({', '.join(reason_parts)})",
+            Severity.LOW if len(content) < max_chars * 2 else Severity.MEDIUM,
+            Category.BEHAVIOR,
+            metadata={"chars": len(content), "lines": line_count, "newlines": newline_count},
+        )
+
+
+class AttachmentSpamRule(Rule):
+    name = "attachments"
+    setting_key = "automod_attachments_enabled"
+    priority = 63
+
+    def __init__(self) -> None:
+        self._attachments: dict[tuple[int, int], Deque[tuple[float, int]]] = defaultdict(deque)
+
+    async def check(self, message: Any, settings: dict[str, Any], *, dry_run: bool = False) -> Optional[RuleMatch]:
+        attachments = getattr(message, "attachments", []) or []
+        count = len(attachments)
+        if count <= 0:
+            return None
+        limit = max(2, min(25, int(settings.get("automod_attachment_threshold", 4))))
+        if count >= limit:
+            return RuleMatch(self.name, f"Attachment spam ({count} files in one message)", Severity.MEDIUM, Category.BEHAVIOR, metadata={"count": count})
+        if dry_run:
+            return None
+        guild_id = int(getattr(getattr(message, "guild", None), "id", 0))
+        user_id = int(getattr(getattr(message, "author", None), "id", 0))
+        now = time.monotonic()
+        window = max(5, min(120, int(settings.get("automod_attachment_window", 15))))
+        entries = self._attachments[(guild_id, user_id)]
+        while entries and now - entries[0][0] > window:
+            entries.popleft()
+        entries.append((now, count))
+        total = sum(item_count for _, item_count in entries)
+        if total >= limit:
+            return RuleMatch(self.name, f"Attachment burst ({total} files in {window}s)", Severity.MEDIUM, Category.BEHAVIOR, metadata={"count": total, "window": window})
+        return None
+
+    def prune(self, now: float) -> None:
+        for key, entries in list(self._attachments.items()):
+            while entries and now - entries[0][0] > 180:
+                entries.popleft()
+            if not entries:
+                self._attachments.pop(key, None)
+
+
+class UnicodeSpamRule(Rule):
+    name = "unicode_spam"
+    setting_key = "automod_unicode_spam_enabled"
+    priority = 62
+
+    async def check(self, message: Any, settings: dict[str, Any], *, dry_run: bool = False) -> Optional[RuleMatch]:
+        content = getattr(message, "content", "") or ""
+        if len(content) < 8:
+            return None
+        combining = sum(1 for char in content if unicodedata.combining(char))
+        combining_limit = max(3, min(100, int(settings.get("automod_unicode_combining_threshold", 8))))
+        if combining >= combining_limit:
+            return RuleMatch(self.name, f"Unicode/Zalgo abuse ({combining} combining marks)", Severity.MEDIUM, Category.BEHAVIOR, metadata={"combining": combining})
+        visible = [char for char in content if not char.isspace()]
+        if len(visible) < 12:
+            return None
+        symbols = sum(1 for char in visible if unicodedata.category(char).startswith(("S", "M", "C")))
+        ratio = round(symbols * 100 / max(1, len(visible)))
+        ratio_limit = max(40, min(100, int(settings.get("automod_unicode_symbol_ratio", 70))))
+        if ratio < ratio_limit:
+            return None
+        return RuleMatch(self.name, f"Unicode symbol spam ({ratio}% symbols/marks)", Severity.LOW, Category.BEHAVIOR, metadata={"ratio": ratio})
+
+
 class NewAccountRule(Rule):
     name = "new_accounts"
     setting_key = "automod_newaccount_enabled"
@@ -324,5 +485,9 @@ ALL_RULES: tuple[type[Rule], ...] = (
     InviteRule,
     MentionRule,
     CapsRule,
+    EmojiSpamRule,
+    WallSpamRule,
+    AttachmentSpamRule,
+    UnicodeSpamRule,
     NewAccountRule,
 )
