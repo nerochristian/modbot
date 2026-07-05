@@ -178,19 +178,20 @@ class AutoModPanel(discord.ui.View):
         lines = [f"## {embed.title}", embed.description or ""]
         for field in embed.fields:
             lines.append(f"**{field.name}**\n{field.value}")
-        controls = [
-            discord.ui.Button(label=str(item.label), style=item.style, disabled=item.disabled, row=item.row)
-            for item in self.children
-            if isinstance(item, discord.ui.Button)
-        ]
-        layout.add_item(
-            discord.ui.Container(
-                discord.ui.TextDisplay("\n\n".join(lines)[:3500]),
-                discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
-                discord.ui.ActionRow(*controls),
-                accent_color=getattr(Config, "COLOR_MOD", 0x5865F2),
-            )
+        controls_by_row: dict[int, list[discord.ui.Button[Any]]] = {}
+        for item in self.children:
+            if not isinstance(item, discord.ui.Button):
+                continue
+            row = int(item.row or 0)
+            controls_by_row.setdefault(row, []).append(discord.ui.Button(label=str(item.label), style=item.style, disabled=item.disabled, row=item.row))
+        container = discord.ui.Container(
+            discord.ui.TextDisplay("\n\n".join(lines)[:3500]),
+            discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+            accent_color=getattr(Config, "COLOR_MOD", 0x5865F2),
         )
+        for row in sorted(controls_by_row):
+            container.add_item(discord.ui.ActionRow(*controls_by_row[row]))
+        layout.add_item(container)
         return layout
 
     def _ids(self, key: str, *, role: bool = False, channel: bool = False) -> str:
