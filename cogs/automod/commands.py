@@ -289,7 +289,7 @@ class AutoMod(commands.Cog):
         interaction: discord.Interaction,
         role: Optional[discord.Role] = None,
         user: Optional[discord.Member] = None,
-        channel: Optional[discord.abc.GuildChannel] = None,
+        channel: Optional[discord.TextChannel] = None,
     ) -> None:
         await self._whitelist_update(interaction, False, role=role, user=user, channel=channel)
 
