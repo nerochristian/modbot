@@ -11,7 +11,7 @@ from cogs.automod import (
     _parse_duration,
     _parse_threshold_pair,
 )
-from cogs.automod_engine import AutoModEngine, Category, domain_matches, normalize_domain
+from cogs.automod import AutoModEngine, Category, domain_matches, normalize_domain
 
 
 class FakePermissions:

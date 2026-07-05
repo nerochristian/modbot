@@ -23,7 +23,7 @@ try:
 except ImportError:
     asyncpg = None
 try:
-    from cogs.automod_config import AUTOMOD_SETTINGS
+    from cogs.automod.config import AUTOMOD_SETTINGS
 except ImportError:
     AUTOMOD_SETTINGS = {}
 
