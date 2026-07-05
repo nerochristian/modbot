@@ -8,7 +8,115 @@ defaults, not hard requirements.
 from __future__ import annotations
 
 from copy import deepcopy
-from typing import Any
+from typing import Any, Literal
+
+
+# Preset profiles for quick setup
+PresetName = Literal["strict", "moderate", "relaxed", "security", "minimal"]
+
+AUTOMOD_PRESETS: dict[str, dict[str, Any]] = {
+    "strict": {
+        "description": "Maximum protection for high-traffic or sensitive servers",
+        "automod_punishment": "timeout",
+        "automod_security_punishment": "ban",
+        "automod_spam_threshold": 3,
+        "automod_spam_window": 5,
+        "automod_duplicate_threshold": 2,
+        "automod_duplicate_window": 30,
+        "automod_fast_message_threshold": 3,
+        "automod_fast_message_window": 3,
+        "automod_max_mentions": 3,
+        "automod_caps_percentage": 60,
+        "automod_newaccount_days": 14,
+        "automod_raid_join_threshold": 5,
+        "automod_raid_join_window": 15,
+        "automod_escalation": [
+            {"offenses": 2, "action": "timeout", "duration": 3600},
+            {"offenses": 3, "action": "kick", "duration": 0},
+           {"offenses": 5, "action": "ban", "duration": 0},
+        ],
+    },
+    "moderate": {
+        "description": "Balanced protection suitable for most communities",
+        "automod_punishment": "warn",
+        "automod_security_punishment": "timeout",
+        "automod_spam_threshold": 5,
+        "automod_spam_window": 5,
+        "automod_duplicate_threshold": 3,
+        "automod_duplicate_window": 30,
+        "automod_fast_message_threshold": 4,
+        "automod_fast_message_window": 3,
+        "automod_max_mentions": 5,
+        "automod_caps_percentage": 70,
+        "automod_newaccount_days": 7,
+        "automod_raid_join_threshold": 8,
+        "automod_raid_join_window": 20,
+        "automod_escalation": [
+            {"offenses": 2, "action": "timeout", "duration": 1800},
+            {"offenses": 4, "action": "kick", "duration": 0},
+            {"offenses": 6, "action": "ban", "duration": 0},
+        ],
+    },
+    "relaxed": {
+        "description": "Light moderation for chill communities",
+        "automod_punishment": "log",
+        "automod_security_punishment": "warn",
+        "automod_spam_threshold": 8,
+        "automod_spam_window": 10,
+        "automod_duplicate_threshold": 5,
+        "automod_duplicate_window": 60,
+        "automod_fast_message_threshold": 6,
+        "automod_fast_message_window": 5,
+        "automod_max_mentions": 10,
+        "automod_caps_percentage": 85,
+        "automod_newaccount_days": 3,
+        "automod_raid_join_threshold": 12,
+        "automod_raid_join_window": 30,
+        "automod_escalation": [
+            {"offenses": 3, "action": "warn", "duration": 0},
+            {"offenses": 5, "action": "timeout", "duration": 600},
+            {"offenses": 8, "action": "kick", "duration": 0},
+        ],
+    },
+    "security": {
+        "description": "Focus on security threats: scams, phishing, raids, malicious links",
+        "automod_punishment": "timeout",
+        "automod_security_punishment": "ban",
+        "automod_links_enabled": True,
+        "automod_links_mode": "dangerous",
+        "automod_scam_protection": True,
+        "automod_invites_enabled": True,
+       "automod_raid_enabled": True,
+        "automod_raid_join_threshold": 5,
+        "automod_raid_join_window": 10,
+        "automod_raid_punishment": "ban",
+        "automod_newaccount_enabled": True,
+        "automod_newaccount_days": 7,
+        "automod_newaccount_join_action": "timeout",
+        "automod_escalation": [
+            {"offenses": 1, "action": "timeout", "duration": 3600},
+            {"offenses": 2, "action": "ban", "duration": 0},
+        ],
+    },
+    "minimal": {
+        "description": "Only critical protections, maximum freedom",
+        "automod_punishment": "log",
+        "automod_security_punishment": "warn",
+        "automod_spam_enabled": False,
+        "automod_duplicates_enabled": False,
+        "automod_fast_messages_enabled": False,
+        "automod_caps_enabled": False,
+        "automod_mentions_enabled": True,
+        "automod_max_mentions": 15,
+        "automod_links_enabled": True,
+        "automod_scam_protection": True,
+        "automod_invites_enabled": True,
+        "automod_badwords_enabled": True,
+        "automod_raid_enabled": True,
+        "automod_newaccount_enabled": False,
+        "automod_escalation_enabled": False,
+    },
+}
 
 
 MODULES: tuple[str, ...] = (
