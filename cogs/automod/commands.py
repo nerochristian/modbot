@@ -327,13 +327,13 @@ class AutoMod(commands.Cog):
         await self._update(interaction.guild.id, changes)
         await interaction.response.send_message(f"Disabled `{module}`.", ephemeral=True)
 
-    @automod.command(name="status", description="Show AutoMod status")
+    @automod.command(name="status", description="Show AutoMod status with interactive controls")
     async def status_command(self, interaction: discord.Interaction) -> None:
         if interaction.guild is None:
             await interaction.response.send_message("Use this command in a server.", ephemeral=True)
             return
         settings = await self._settings(interaction.guild.id)
-        panel = AutoModPanel(self.bot, interaction.guild, interaction.user.id, settings)
+        panel = AutoModPanel(self.bot, interaction.guild, interaction.user.id, settings, self.storage)
         await interaction.response.send_message(embed=panel.build_embed(), view=panel, ephemeral=True)
 
     @automod.command(name="config", description="Set a raw AutoMod config key")
