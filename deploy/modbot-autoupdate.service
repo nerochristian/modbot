@@ -7,3 +7,9 @@ After=network-online.target
 Type=oneshot
 EnvironmentFile=-/etc/modbot-autoupdate.env
 ExecStart=/usr/bin/env bash /opt/modbot/scripts/vps_deploy.sh
+
+# IMPORTANT for multi-bot VPS hosts:
+# install_vps_autoupdate.sh now generates a unique service per bot, e.g.
+#   modbot-autoupdate.service -> /etc/modbot-autoupdate.env -> /opt/modbot
+#   lifesim-autoupdate.service -> /etc/lifesim-autoupdate.env -> /opt/lifesim
+# Do not reuse this exact unit name/env file for multiple bots.
