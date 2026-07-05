@@ -32,20 +32,28 @@ def _parse_threshold_pair(value: str, *, count_range: tuple[int, int], window_ra
 
 
 class AutoModPanel(discord.ui.View):
-    def __init__(self, bot: Any, guild: Any, user_id: int, settings: dict[str, Any]) -> None:
+    def __init__(self, bot: Any, guild: Any, user_id: int, settings: dict[str, Any], storage: Any = None) -> None:
         super().__init__(timeout=180)
         self.bot = bot
         self.guild = guild
         self.user_id = int(user_id)
         self.settings = settings
+        self.storage = storage
         self.page = 0
         self.rebuild()
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         return interaction.user.id == self.user_id
 
+    async def _save_settings(self) -> None:
+        """Save settings to storage if available."""
+        if self.storage and self.guild:
+            await self.storage.update_settings(self.guild.id, self.settings)
+
     def rebuild(self) -> None:
         self.clear_items()
+        
+        # Navigation row
         previous_button = discord.ui.Button(label="Prev", style=discord.ButtonStyle.secondary, row=0, disabled=self.page <= 0)
         next_button = discord.ui.Button(label="Next", style=discord.ButtonStyle.secondary, row=0, disabled=self.page >= len(PANEL_PAGES) - 1)
         refresh_button = discord.ui.Button(label="Refresh", style=discord.ButtonStyle.primary, row=0)
@@ -62,6 +70,13 @@ class AutoModPanel(discord.ui.View):
             await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
         async def refresh(interaction: discord.Interaction) -> None:
+            # Reload settings from storage
+            if self.storage and self.guild:
+                from .config import merged_settings
+                db = getattr(self.bot, "db", None)
+                if db and hasattr(db, "get_settings"):
+                    stored = await db.get_settings(self.guild.id)
+                    self.settings = merged_settings(stored)
             await interaction.response.edit_message(embed=self.build_embed(), view=self)
 
         async def close(interaction: discord.Interaction) -> None:
@@ -76,6 +91,36 @@ class AutoModPanel(discord.ui.View):
         self.add_item(refresh_button)
         self.add_item(next_button)
         self.add_item(close_button)
+        
+        # Add module toggle buttons on overview page
+        if self.page == 0:
+            self._add_module_toggles()
+    
+    def _add_module_toggles(self) -> None:
+        """Add toggle buttons for modules on the overview page."""
+        # Quick enable/disable all
+        enable_all = discord.ui.Button(label="Enable All", style=discord.ButtonStyle.success, row=1)
+        disable_all = discord.ui.Button(label="Disable All", style=discord.ButtonStyle.danger, row=1)
+
+        async def toggle_enable_all(interaction: discord.Interaction) -> None:
+            for key in MODULE_SETTING_KEYS.values():
+                self.settings[key] = True
+            self.settings["automod_enabled"] = True
+            await self._save_settings()
+            self.rebuild()
+            await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+        async def toggle_disable_all(interaction: discord.Interaction) -> None:
+            for key in MODULE_SETTING_KEYS.values():
+                self.settings[key] = False
+            await self._save_settings()
+            self.rebuild()
+            await interaction.response.edit_message(embed=self.build_embed(), view=self)
+
+        enable_all.callback = toggle_enable_all
+        disable_all.callback = toggle_disable_all
+        self.add_item(enable_all)
+        self.add_item(disable_all)
 
     def build_embed(self) -> discord.Embed:
         _, title, description = PANEL_PAGES[self.page]
