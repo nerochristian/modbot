@@ -442,19 +442,19 @@ class AutoMod(commands.Cog):
         elif module == "raid":
             pair = parse_threshold_pair(value, count_range=(2, 100), window_range=(5, 300))
             if pair:
+                changes = {"automod_raid_join_threshold": pair[0], "automod_raid_join_window": pair[1]}
         elif module == "attachments":
             pair = parse_threshold_pair(value, count_range=(2, 25), window_range=(5, 120))
             if pair:
                 changes = {"automod_attachment_threshold": pair[0], "automod_attachment_window": pair[1]}
-                changes = {"automod_raid_join_threshold": pair[0], "automod_raid_join_window": pair[1]}
         elif module == "mentions" and value.isdigit():
             changes = {"automod_max_mentions": max(1, min(50, int(value)))}
         elif module == "caps" and value.isdigit():
+            changes = {"automod_caps_percentage": max(50, min(100, int(value)))}
         elif module == "emoji_spam" and value.isdigit():
             changes = {"automod_emoji_spam_threshold": max(4, min(100, int(value)))}
-            changes = {"automod_caps_percentage": max(50, min(100, int(value)))}
+        if not changes:
             await interaction.response.send_message("Invalid threshold. Use `5/5` for windowed rules or a number for mentions/caps/emoji_spam.", ephemeral=True)
-            await interaction.response.send_message("Invalid threshold. Use `5/5` for windowed rules or a number for mentions/caps.", ephemeral=True)
             return
         await self._update(interaction.guild.id, changes)
         await interaction.response.send_message(f"Updated `{module}` thresholds.", ephemeral=True)
