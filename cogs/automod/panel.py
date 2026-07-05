@@ -1,14 +1,14 @@
-"""Beginner-friendly AutoMod status panel."""
+"""Beginner-friendly AutoMod status panel with interactive controls."""
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
 
 import discord
 
 from config import Config
-from .config import MODULE_SETTING_KEYS
-from .utils import compact_duration, parse_duration, parse_threshold_pair
+from .config import AUTOMOD_PRESETS, MODULE_SETTING_KEYS, MODULES
+from .utils import compact_duration, id_list, parse_duration, parse_threshold_pair
 
 
 PANEL_PAGES: tuple[tuple[int, str, str], ...] = (
