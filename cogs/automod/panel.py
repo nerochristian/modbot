@@ -8,6 +8,7 @@ import discord
 
 from config import Config
 from .config import AUTOMOD_PRESETS, MODULE_SETTING_KEYS, MODULES
+from .health import build_automod_health_report
 from .utils import compact_duration, id_list, parse_duration, parse_threshold_pair
 
 
@@ -133,7 +134,9 @@ class AutoModPanel(discord.ui.View):
         if self.page == 0:
             enabled = [name for name, key in MODULE_SETTING_KEYS.items() if self.settings.get(key, False)]
             disabled = [name for name, key in MODULE_SETTING_KEYS.items() if not self.settings.get(key, False)]
+            health = build_automod_health_report(self.guild, self.settings)
             embed.add_field(name="System", value=f"Enabled: `{bool(self.settings.get('automod_enabled', True))}`\nLog channel: {self._channel_label(self.settings.get('automod_log_channel'))}", inline=False)
+            embed.add_field(name="Setup Health", value=f"`{health.score}/100` — **{health.grade}**\n{self._health_hint(health)}", inline=False)
             embed.add_field(name="Enabled Modules", value=", ".join(f"`{item}`" for item in enabled) or "None", inline=False)
             embed.add_field(name="Disabled Modules", value=", ".join(f"`{item}`" for item in disabled) or "None", inline=False)
         elif self.page == 1:
@@ -154,7 +157,8 @@ class AutoModPanel(discord.ui.View):
                     f"Security: `{self.settings.get('automod_security_punishment', 'timeout')}`\n"
                     f"Raid: `{self.settings.get('automod_raid_punishment', 'timeout')}`\n"
                     f"Mute duration: `{compact_duration(int(self.settings.get('automod_mute_duration', 3600)))}`\n"
-                    f"Escalation: `{bool(self.settings.get('automod_escalation_enabled', True))}`"
+                    f"Escalation: `{bool(self.settings.get('automod_escalation_enabled', True))}`\n"
+                    f"Per-rule policies: `{len(self.settings.get('automod_rule_actions', {}) or {})}`"
                 ),
                 inline=False,
             )
@@ -163,6 +167,10 @@ class AutoModPanel(discord.ui.View):
             embed.add_field(name="Users", value=self._ids("automod_bypass_users"), inline=False)
             embed.add_field(name="Channels", value=self._ids("automod_bypass_channels", channel=True), inline=False)
         return embed
+
+    def _health_hint(self, health: Any) -> str:
+        items = health.failures[:1] or health.warnings[:1] or health.recommendations[:1]
+        return items[0] if items else "No major issues detected."
 
     async def build_layout(self) -> discord.ui.LayoutView:
         layout = discord.ui.LayoutView(timeout=self.timeout)
