@@ -9,7 +9,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from config import Config
-from .config import MODULE_SETTING_KEYS, MODULES, PUNISHMENTS, default_settings
+from .config import AUTOMOD_PRESETS, MODULE_SETTING_KEYS, MODULES, PUNISHMENTS, apply_preset, default_settings, get_preset_description
 from .engine import AutoModEngine
 from .logging import AutoModLogger
 from .models import Action, RuleMatch

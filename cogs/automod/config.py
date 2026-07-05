@@ -230,3 +230,20 @@ def merged_settings(stored: dict[str, Any] | None) -> dict[str, Any]:
     settings = default_settings()
     settings.update(stored or {})
     return settings
+
+
+def apply_preset(preset_name: str) -> dict[str, Any]:
+    """Get settings with a preset applied on top of defaults."""
+    settings = default_settings()
+    preset = AUTOMOD_PRESETS.get(preset_name)
+    if preset:
+        # Remove description key if present
+        preset_copy = {k: v for k, v in preset.items() if k != "description"}
+        settings.update(preset_copy)
+    return settings
+
+
+def get_preset_description(preset_name: str) -> str:
+    """Get the description for a preset profile."""
+    preset = AUTOMOD_PRESETS.get(preset_name)
+    return preset.get("description", "Unknown preset") if preset else "Unknown preset"
