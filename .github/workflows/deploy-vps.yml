@@ -21,6 +21,8 @@ jobs:
       VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
       MODBOT_APP_DIR: ${{ vars.MODBOT_APP_DIR }}
       MODBOT_SERVICE: ${{ vars.MODBOT_SERVICE }}
+      MODBOT_ENTRYPOINT: ${{ vars.MODBOT_ENTRYPOINT }}
+      MODBOT_UPDATE_SERVICE: ${{ vars.MODBOT_UPDATE_SERVICE }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -50,5 +52,7 @@ jobs:
           : "${VPS_PORT:=22}"
           : "${MODBOT_APP_DIR:=/opt/modbot}"
           : "${MODBOT_SERVICE:=modbot}"
+          : "${MODBOT_ENTRYPOINT:=bot.py}"
+          : "${MODBOT_UPDATE_SERVICE:=${MODBOT_SERVICE}-autoupdate}"
           ssh -p "${VPS_PORT}" "${VPS_USER}@${VPS_HOST}" \
-            "MODBOT_APP_DIR='${MODBOT_APP_DIR}' MODBOT_BRANCH='main' MODBOT_SERVICE='${MODBOT_SERVICE}' '${MODBOT_APP_DIR}/scripts/vps_deploy.sh'"
+            "MODBOT_APP_DIR='${MODBOT_APP_DIR}' MODBOT_BRANCH='main' MODBOT_SERVICE='${MODBOT_SERVICE}' MODBOT_ENTRYPOINT='${MODBOT_ENTRYPOINT}' MODBOT_UPDATE_SERVICE='${MODBOT_UPDATE_SERVICE}' MODBOT_DEPLOY_LOCK='/tmp/${MODBOT_SERVICE}-deploy.lock' '${MODBOT_APP_DIR}/scripts/vps_deploy.sh'"
