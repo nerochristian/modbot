@@ -149,21 +149,104 @@ class AutoMod(commands.Cog):
         except (discord.Forbidden, discord.HTTPException):
             pass
 
-    @automod.command(name="setup", description="Enable AutoMod with safe defaults")
-    @app_commands.describe(log_channel="Channel where AutoMod actions are logged")
-    async def setup_command(self, interaction: discord.Interaction, log_channel: Optional[discord.TextChannel] = None) -> None:
+    @automod.command(name="setup", description="Enable AutoMod with safe defaults or a preset")
+    @app_commands.describe(log_channel="Channel where AutoMod actions are logged", preset="Quick setup profile: strict, moderate, relaxed, security, minimal")
+    async def setup_command(self, interaction: discord.Interaction, log_channel: Optional[discord.TextChannel] = None, preset: Optional[str] = None) -> None:
         if not await self._guard(interaction):
             return
-        settings = default_settings()
+        if preset and preset.lower() not in AUTOMOD_PRESETS:
+            await interaction.response.send_message(
+                f"Unknown preset `{preset}`. Available: {', '.join(f'`{p}`' for p in AUTOMOD_PRESETS)}",
+                ephemeral=True,
+            )
+            return
+        settings = apply_preset(preset.lower()) if preset else default_settings()
         settings["automod_enabled"] = True
         if log_channel is not None:
             settings["automod_log_channel"] = log_channel.id
             settings["log_channel_automod"] = log_channel.id
         await self._update(interaction.guild.id, settings)
+        preset_info = f" with `{preset}` preset" if preset else ""
         await interaction.response.send_message(
-            f"AutoMod is enabled. Logs: {log_channel.mention if log_channel else 'not set'}. Use `/automod status` to review settings.",
+            f"AutoMod is enabled{preset_info}. Logs: {log_channel.mention if log_channel else 'not set'}. Use `/automod status` to review settings.",
             ephemeral=True,
         )
+
+    @automod.command(name="preset", description="Apply a preset configuration profile")
+    @app_commands.describe(profile="Preset profile: strict, moderate, relaxed, security, minimal")
+    async def preset_command(self, interaction: discord.Interaction, profile: str) -> None:
+        if not await self._guard(interaction):
+            return
+        profile = profile.lower().strip()
+        if profile not in AUTOMOD_PRESETS:
+            embed = discord.Embed(
+                title="Available Presets",
+                description="Choose a preset profile for quick AutoMod configuration:",
+                color=getattr(Config, "COLOR_INFO", 0x2563EB),
+            )
+            for name, data in AUTOMOD_PRESETS.items():
+                embed.add_field(name=f"`{name}`", value=data.get("description", "No description"), inline=False)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        settings = await self._settings(interaction.guild.id)
+        preset_settings = apply_preset(profile)
+        # Preserve log channel and whitelists from current settings
+        for key in ("automod_log_channel", "log_channel_automod", "automod_bypass_roles", "automod_bypass_users", "automod_bypass_channels", "automod_badwords", "automod_allowed_invites", "automod_whitelisted_domains"):
+            if settings.get(key):
+                preset_settings[key] = settings[key]
+        preset_settings["automod_enabled"] = True
+        await self._update(interaction.guild.id, preset_settings)
+        await interaction.response.send_message(
+            f"Applied `{profile}` preset: {get_preset_description(profile)}\nUse `/automod status` to review your new settings.",
+            ephemeral=True,
+        )
+
+    @automod.command(name="export", description="Export AutoMod settings to copy to another server")
+    async def export_command(self, interaction: discord.Interaction) -> None:
+        if not await self._guard(interaction):
+            return
+        import json
+        settings = await self._settings(interaction.guild.id)
+        # Filter to only automod settings
+        export_data = {k: v for k, v in settings.items() if k.startswith("automod_") or k in ("ignored_roles", "ignored_channels", "warn_thresholds_enabled", "warn_threshold_mute", "warn_threshold_kick", "warn_threshold_ban", "warn_mute_duration")}
+        # Remove server-specific IDs
+        for key in ("automod_log_channel", "log_channel_automod", "automod_bypass_roles", "automod_bypass_users", "automod_bypass_channels"):
+            export_data.pop(key, None)
+        export_json = json.dumps(export_data, indent=2)
+        if len(export_json) > 1900:
+            await interaction.response.send_message("Settings too large to display. Use `/automod status` to view.", ephemeral=True)
+            return
+        await interaction.response.send_message(f"```json\n{export_json}\n```\nCopy this config and use `/automod import` on another server.", ephemeral=True)
+
+    @automod.command(name="import", description="Import AutoMod settings from exported config")
+    @app_commands.describe(config="JSON config exported from /automod export")
+    async def import_command(self, interaction: discord.Interaction, config: str) -> None:
+        if not await self._guard(interaction):
+            return
+        import json
+        config = config.strip()
+        if config.startswith("```"):
+            config = config.split("\n", 1)[-1].rsplit("```", 1)[0].strip()
+        try:
+            imported = json.loads(config)
+        except json.JSONDecodeError:
+            await interaction.response.send_message("Invalid JSON config. Copy the exact output from `/automod export`.", ephemeral=True)
+            return
+        if not isinstance(imported, dict):
+            await interaction.response.send_message("Invalid config format.", ephemeral=True)
+            return
+        # Validate keys exist in defaults
+        defaults = default_settings()
+        valid_keys = {k for k in imported if k in defaults}
+        if not valid_keys:
+            await interaction.response.send_message("No valid AutoMod settings found in config.", ephemeral=True)
+            return
+        # Merge with current settings
+        current = await self._settings(interaction.guild.id)
+        for key in valid_keys:
+            current[key] = imported[key]
+        await self._update(interaction.guild.id, current)
+        await interaction.response.send_message(f"Imported {len(valid_keys)} AutoMod settings. Use `/automod status` to review.", ephemeral=True)
 
     @automod.command(name="help", description="Show AutoMod setup and command help")
     async def help_command(self, interaction: discord.Interaction) -> None:
