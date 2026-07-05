@@ -147,9 +147,11 @@ class AutoMod(commands.Cog):
     async def _notify_user(self, message: discord.Message, match: RuleMatch, action: Action, settings: dict[str, Any]) -> None:
         if not settings.get("automod_notify_users", True):
             return
+        appeal = str(settings.get("automod_appeal_instructions") or "").strip()
+        appeal_text = f"\nAppeal: {appeal}" if appeal else ""
         try:
             await message.author.send(
-                f"AutoMod in {message.guild.name}: {match.reason}. Action: {action.value}."
+                f"AutoMod in {message.guild.name}: {match.reason}. Action: {action.value}.{appeal_text}"
             )
         except (discord.Forbidden, discord.HTTPException):
             pass
@@ -240,6 +242,7 @@ class AutoMod(commands.Cog):
         settings = await self._settings(interaction.guild.id)
         # Filter to only automod settings
         export_data = {k: v for k, v in settings.items() if k.startswith("automod_") or k in ("ignored_roles", "ignored_channels", "warn_thresholds_enabled", "warn_threshold_mute", "warn_threshold_kick", "warn_threshold_ban", "warn_mute_duration")}
+        export_data["automod_template_version"] = 2
         # Remove server-specific IDs
         for key in ("automod_log_channel", "log_channel_automod", "automod_bypass_roles", "automod_bypass_users", "automod_bypass_channels"):
             export_data.pop(key, None)
