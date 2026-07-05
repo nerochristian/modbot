@@ -11,15 +11,17 @@ from discord.ext import commands, tasks
 from config import Config
 from .config import AUTOMOD_PRESETS, MODULE_SETTING_KEYS, MODULES, PUNISHMENTS, apply_preset, default_settings, get_preset_description
 from .engine import AutoModEngine
+from .health import build_automod_health_report
 from .logging import AutoModLogger
 from .models import Action, RuleMatch
 from .panel import AutoModPanel
 from .punishments import PunishmentManager
 from .storage import AutoModStorage
 from .utils import can_manage_automod, compact_duration, id_list, parse_duration, parse_threshold_pair
+from .wizard import AutoModWizardSession
 
 
-ModuleName = Literal["all", "spam", "links", "invites", "mentions", "caps", "badwords", "duplicates", "fast_messages", "new_accounts", "raid"]
+ModuleName = Literal["all", "spam", "links", "invites", "mentions", "caps", "badwords", "duplicates", "fast_messages", "emoji_spam", "wall_spam", "attachments", "unicode_spam", "new_accounts", "raid"]
 PunishmentName = Literal["none", "log", "warn", "mute", "timeout", "kick", "ban"]
 
 
@@ -39,6 +41,7 @@ class AutoMod(commands.Cog):
         self.engine = AutoModEngine()
         self.logger = AutoModLogger(bot)
         self.punishments = PunishmentManager(bot)
+        self._wizard_sessions: dict[tuple[int, int], AutoModWizardSession] = {}
         self.cleanup_loop.start()
 
     def cog_unload(self) -> None:
@@ -105,7 +108,7 @@ class AutoMod(commands.Cog):
 
     async def _handle_message_match(self, message: discord.Message, match: RuleMatch, settings: dict[str, Any]) -> None:
         deleted = False
-        if match.delete_message and settings.get("automod_delete_violations", True):
+        if self.engine.should_delete_message(match, settings):
             try:
                 await message.delete()
                 deleted = True
@@ -114,6 +117,8 @@ class AutoMod(commands.Cog):
 
         base_action = self.engine.resolve_action(match, settings)
         action, duration_override, offense_count = self.engine.escalated_action(message.guild.id, message.author.id, base_action, settings)
+        rule_duration = self.engine.resolve_duration(match, settings)
+        duration_override = duration_override or rule_duration
         result = None
         if isinstance(message.author, discord.Member):
             result = await self.punishments.apply(message.guild, message.author, action, match, settings, duration_override=duration_override)
@@ -168,9 +173,35 @@ class AutoMod(commands.Cog):
         await self._update(interaction.guild.id, settings)
         preset_info = f" with `{preset}` preset" if preset else ""
         await interaction.response.send_message(
-            f"AutoMod is enabled{preset_info}. Logs: {log_channel.mention if log_channel else 'not set'}. Use `/automod status` to review settings.",
+            f"AutoMod is enabled{preset_info}. Logs: {log_channel.mention if log_channel else 'not set'}. Use `/automod wizard` for the full guided setup or `/automod status` to review settings.",
             ephemeral=True,
         )
+
+    @automod.command(name="wizard", description="Open the full guided AutoMod setup wizard")
+    async def wizard_command(self, interaction: discord.Interaction) -> None:
+        if not await self._guard(interaction):
+            return
+        assert interaction.guild is not None
+        key = (interaction.guild.id, interaction.user.id)
+        existing = self._wizard_sessions.get(key)
+        if existing and not existing.finished:
+            channel = existing.channel
+            if channel is not None:
+                await interaction.response.send_message(f"You already have an AutoMod setup open in {channel.mention}.", ephemeral=True)
+                return
+
+        session = AutoModWizardSession(self.bot, interaction.guild, interaction.user.id, self.storage)
+        self._wizard_sessions[key] = session
+        await session.start(interaction)
+
+    @automod.command(name="doctor", description="Check AutoMod setup quality, permissions, and missing configuration")
+    async def doctor_command(self, interaction: discord.Interaction) -> None:
+        if not await self._guard(interaction):
+            return
+        assert interaction.guild is not None
+        settings = await self._settings(interaction.guild.id)
+        report = build_automod_health_report(interaction.guild, settings)
+        await interaction.response.send_message(embed=report.to_embed(), ephemeral=True)
 
     @automod.command(name="preset", description="Apply a preset configuration profile")
     @app_commands.describe(profile="Preset profile: strict, moderate, relaxed, security, minimal")
@@ -258,6 +289,8 @@ class AutoMod(commands.Cog):
         embed.add_field(
             name="Start Here",
             value=(
+                "`/automod wizard` - full private guided setup\n"
+                "`/automod doctor` - check permissions and config health\n"
                 "`/automod setup log_channel:#logs`\n"
                 "`/automod status`\n"
                 "`/automod enable module:all`\n"
@@ -276,6 +309,7 @@ class AutoMod(commands.Cog):
                 "`/automod thresholds set module:spam value:5/5`\n"
                 "`/automod thresholds set module:duplicates value:3/30`\n"
                 "`/automod thresholds set module:mentions value:5`\n"
+                "`/automod thresholds set module:attachments value:4/15`\n"
                 "`/automod punishment set default_action:warn security_action:timeout mute_duration:1h`"
             ),
             inline=False,
