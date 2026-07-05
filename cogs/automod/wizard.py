@@ -9,7 +9,7 @@ selects, and modals for detailed input such as timeout durations.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import discord
@@ -417,8 +417,9 @@ class AutoModWizardView:
         return select
 
     def _module_select(self) -> discord.ui.Select[Any]:
-        select = discord.ui.Select(placeholder="Toggle modules", min_values=1, max_values=min(10, len(MODULE_SETTING_KEYS)))
-        for module, key in MODULE_SETTING_KEYS.items():
+        modules = list(MODULE_SETTING_KEYS.items())
+        select = discord.ui.Select(placeholder="Toggle modules", min_values=1, max_values=len(modules))
+        for module, key in modules:
             select.add_option(label=module.replace("_", " ").title(), value=module, default=bool(self.session.state.settings.get(key, False)))
 
         async def callback(interaction: discord.Interaction) -> None:
@@ -517,6 +518,7 @@ class AutoModWizardView:
             return
         if action == "security_action":
             key = self.session.state.current_policy_key or "scams"
+            self.session.state.current_policy_key = key
             await interaction.response.send_message(f"Choose an action for **{key}** below.", view=AutoModActionChoiceView(self.session, key), ephemeral=True)
             return
         if action == "threshold_recommended":
@@ -591,7 +593,14 @@ class AutoModWizardView:
             return
         delete = choice != "log"
         self.session.state.set_policy(key, choice, delete=delete)
-        self.session.state.settings["automod_punishment" if key == "default" else "automod_security_punishment"] = "log" if choice == "delete" else choice
+        if key == "default":
+            self.session.state.settings["automod_punishment"] = "log" if choice == "delete" else choice
+        elif key in {"raid"}:
+            self.session.state.settings["automod_raid_punishment"] = "log" if choice == "delete" else choice
+        elif key in {"new_accounts"}:
+            self.session.state.settings["automod_newaccount_join_action"] = "log" if choice == "delete" else choice
+        else:
+            self.session.state.settings["automod_security_punishment"] = "log" if choice == "delete" else choice
         await self.session.refresh(interaction, "normal_action" if key == "default" else "security")
 
     def _progress_line(self) -> str:
@@ -689,6 +698,14 @@ class AutoModActionChoiceView(discord.ui.View):
             return
         delete = choice != "log"
         self.session.state.set_policy(self.key, choice, delete=delete)
+        if self.key == "default":
+            self.session.state.settings["automod_punishment"] = "log" if choice == "delete" else choice
+        elif self.key == "raid":
+            self.session.state.settings["automod_raid_punishment"] = "log" if choice == "delete" else choice
+        elif self.key == "new_accounts":
+            self.session.state.settings["automod_newaccount_join_action"] = "log" if choice == "delete" else choice
+        elif self.key in {"scams", "links", "invites", "mentions", "attachments", "emoji_spam"}:
+            self.session.state.settings["automod_security_punishment"] = "log" if choice == "delete" else choice
         await interaction.response.edit_message(content=f"Saved `{self.key}` policy as `{choice}`.", view=None)
         if self.session.message:
             view = AutoModWizardView(self.session, "security")
@@ -743,6 +760,15 @@ class ActionDurationModal(discord.ui.Modal, title="Timeout Duration"):
         if self.policy_key == "default":
             self.session.state.settings["automod_punishment"] = "timeout"
             self.session.state.settings["automod_mute_duration"] = seconds
+        elif self.policy_key == "raid":
+            self.session.state.settings["automod_raid_punishment"] = "timeout"
+            self.session.state.settings["automod_mute_duration"] = seconds
+        elif self.policy_key == "new_accounts":
+            self.session.state.settings["automod_newaccount_join_action"] = "timeout"
+            self.session.state.settings["automod_mute_duration"] = seconds
+        else:
+            self.session.state.settings["automod_security_punishment"] = "timeout"
+            self.session.state.settings["automod_mute_duration"] = seconds
         await self.session.refresh(interaction, "normal_action" if self.policy_key == "default" else "security")
 
 
@@ -766,6 +792,10 @@ class BanConfirmModal(discord.ui.Modal, title="Confirm Ban Policy"):
         self.session.state.set_policy(self.policy_key, "ban", delete=True, delete_days=days)
         if self.policy_key == "default":
             self.session.state.settings["automod_punishment"] = "ban"
+        elif self.policy_key == "raid":
+            self.session.state.settings["automod_raid_punishment"] = "ban"
+        elif self.policy_key == "new_accounts":
+            self.session.state.settings["automod_newaccount_join_action"] = "ban"
         else:
             self.session.state.settings["automod_security_punishment"] = "ban"
         self.session.state.settings["automod_ban_delete_days"] = days
