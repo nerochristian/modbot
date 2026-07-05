@@ -6,9 +6,19 @@ REPO_URL="${MODBOT_REPO_URL:-https://github.com/nerochristian/modbot.git}"
 REMOTE="${MODBOT_REMOTE:-origin}"
 BRANCH="${MODBOT_BRANCH:-main}"
 SERVICE="${MODBOT_SERVICE:-modbot}"
+BOT_ENTRYPOINT="${MODBOT_ENTRYPOINT:-bot.py}"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
-LOCK_FILE="${MODBOT_DEPLOY_LOCK:-/tmp/modbot-deploy.lock}"
+LOCK_FILE="${MODBOT_DEPLOY_LOCK:-/tmp/${SERVICE}-deploy.lock}"
 RESET_DIRTY="${MODBOT_DEPLOY_RESET_DIRTY:-0}"
+
+SERVICE="${SERVICE%.service}"
+
+case "${SERVICE}" in
+  ""|modbot-autoupdate|*-autoupdate)
+    echo "Invalid MODBOT_SERVICE='${SERVICE}'. Use the actual bot systemd service name." >&2
+    exit 1
+    ;;
+esac
 
 log() {
   printf '[%s] %s\n' "$(date -Is)" "$*"
@@ -26,6 +36,10 @@ run_as_root_or_user() {
 
 restart_service() {
   run_as_root_or_user systemctl daemon-reload
+  if ! run_as_root_or_user systemctl cat "${SERVICE}" >/dev/null 2>&1; then
+    log "Service ${SERVICE} does not exist. Refusing to restart a wrong bot."
+    exit 1
+  fi
   run_as_root_or_user systemctl restart "${SERVICE}"
   run_as_root_or_user systemctl is-active --quiet "${SERVICE}"
 }
@@ -55,7 +69,11 @@ install_dependencies() {
 }
 
 compile_check() {
-  .venv/bin/python -m compileall -q bot.py cogs utils database.py config.py
+  if [[ ! -f "${BOT_ENTRYPOINT}" ]]; then
+    log "Configured entrypoint ${BOT_ENTRYPOINT} does not exist in ${APP_DIR}."
+    exit 1
+  fi
+  .venv/bin/python -m compileall -q "${BOT_ENTRYPOINT}" cogs utils database.py config.py
 }
 
 (
