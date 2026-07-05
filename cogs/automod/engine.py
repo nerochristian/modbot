@@ -111,6 +111,17 @@ class AutoModEngine:
         return None
 
     def resolve_action(self, match: RuleMatch, settings: dict[str, Any]) -> Action:
+        if settings.get("automod_safe_mode", False):
+            return Action.LOG
+        override = self._rule_policy(match, settings)
+        if override:
+            raw = str(override.get("action", "") or "").strip().lower()
+            if raw:
+                raw = {"mute": "timeout", "delete": "log", "delete_only": "log", "none": "none"}.get(raw, raw)
+                try:
+                    return Action(raw)
+                except ValueError:
+                    pass
         if match.category is Category.IDENTITY:
             raw = str(settings.get("automod_newaccount_join_action", "log"))
         elif match.category is Category.RAID:
@@ -124,6 +135,44 @@ class AutoModEngine:
             return Action(raw)
         except ValueError:
             return Action.TIMEOUT if match.category in {Category.SECURITY, Category.RAID} else Action.WARN
+
+    def resolve_duration(self, match: RuleMatch, settings: dict[str, Any]) -> Optional[int]:
+        override = self._rule_policy(match, settings)
+        if not override:
+            return None
+        try:
+            duration = int(override.get("duration") or 0)
+        except (TypeError, ValueError):
+            return None
+        return max(60, min(2419200, duration)) if duration else None
+
+    def should_delete_message(self, match: RuleMatch, settings: dict[str, Any]) -> bool:
+        if not match.delete_message or not settings.get("automod_delete_violations", True):
+            return False
+        override = self._rule_policy(match, settings)
+        if override and "delete" in override:
+            return bool(override.get("delete"))
+        return True
+
+    def _rule_policy(self, match: RuleMatch, settings: dict[str, Any]) -> Optional[dict[str, Any]]:
+        policies = settings.get("automod_rule_actions", {}) or {}
+        if not isinstance(policies, dict):
+            return None
+        candidates = (
+            match.rule,
+            match.category.value,
+            "security" if match.category is Category.SECURITY else "",
+            "raid" if match.category is Category.RAID else "",
+            "identity" if match.category is Category.IDENTITY else "",
+            "default",
+        )
+        for key in candidates:
+            if not key:
+                continue
+            value = policies.get(key)
+            if isinstance(value, dict):
+                return value
+        return None
 
     def escalated_action(self, guild_id: int, user_id: int, base_action: Action, settings: dict[str, Any]) -> tuple[Action, Optional[int], int]:
         window = max(60, min(2592000, int(settings.get("automod_escalation_window", 86400))))
