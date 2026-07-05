@@ -194,3 +194,6 @@ class AutoModEngine:
                 entries.popleft()
             if not entries:
                 self._joins.pop(guild_id, None)
+
+    async def close(self) -> None:
+        return None

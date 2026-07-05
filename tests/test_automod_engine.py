@@ -87,7 +87,7 @@ class AutoModEngineTests(unittest.IsolatedAsyncioTestCase):
             dry_run=True,
         )
         self.assertIsNotNone(match)
-        self.assertEqual(match.rule, "words")
+        self.assertEqual(match.rule, "badwords")
 
     async def test_disabled_rule_does_not_run(self) -> None:
         settings = base_settings()

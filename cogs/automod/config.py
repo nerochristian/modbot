@@ -63,6 +63,7 @@ AUTOMOD_SETTINGS: dict[str, Any] = {
     "automod_spam_threshold": 5,
     "automod_spam_window": 5,
     "automod_links_enabled": True,
+    "automod_scam_protection": True,
     "automod_links_mode": "dangerous",
     "automod_links_whitelist": ["discord.com", "discordapp.com", "youtube.com", "youtu.be", "github.com"],
     "automod_whitelisted_domains": [],

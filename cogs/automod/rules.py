@@ -64,6 +64,39 @@ class BadWordsRule(Rule):
         )
 
 
+class ScamRule(Rule):
+    name = "scams"
+    setting_key = "automod_scam_protection"
+    priority = 110
+    scam_phrases = (
+        "free nitro",
+        "claim your prize",
+        "claim reward",
+        "discord gift",
+        "steam gift",
+        "verify your account",
+        "crypto giveaway",
+    )
+
+    async def check(self, message: Any, settings: dict[str, Any], *, dry_run: bool = False) -> Optional[RuleMatch]:
+        content = normalize_text(getattr(message, "content", ""))
+        if not content:
+            return None
+        domains = extract_domains(getattr(message, "content", ""))
+        has_invite_or_link = bool(domains or INVITE_RE.search(getattr(message, "content", "") or ""))
+        if not has_invite_or_link:
+            return None
+        if any(phrase in content for phrase in self.scam_phrases):
+            return RuleMatch(
+                self.name,
+                "Likely scam or phishing message",
+                Severity.CRITICAL if "@everyone" in content or "@here" in content else Severity.HIGH,
+                Category.SECURITY,
+                evidence=tuple(domains[:3]),
+            )
+        return None
+
+
 class LinkRule(Rule):
     name = "links"
     setting_key = "automod_links_enabled"
@@ -282,6 +315,7 @@ class NewAccountRule(Rule):
 
 
 ALL_RULES: tuple[type[Rule], ...] = (
+    ScamRule,
     BadWordsRule,
     SpamRule,
     FastMessageRule,
