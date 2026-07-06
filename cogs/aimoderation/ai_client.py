@@ -1443,17 +1443,23 @@ class GeminiClient:
         elif uses_native_search:
             full_context += "### LIVE SEARCH ###\nDeepSeek web search is enabled for this request. Use current search results and include source URLs when available.\n\n"
         
-        # Memory section
+        # Memory section — a distilled profile of durable facts about the user.
         if past_memory.strip():
-            # Trim to last meaningful chunk
+            # Memory is now a concise curated profile, so we can afford the full
+            # thing (capped to a sane upper bound for safety).
             trimmed = past_memory.strip()
-            if len(trimmed) > 4000:
-                trimmed = trimmed[-4000:]
-                # Don't start mid-entry
-                first_bracket = trimmed.find("\n[")
-                if first_bracket > 0:
-                    trimmed = trimmed[first_bracket:]
-            full_context += f"What you remember about this user:\n{trimmed}\n\n"
+            if len(trimmed) > 6000:
+                trimmed = trimmed[:6000].rsplit("\n", 1)[0] or trimmed[:6000]
+            full_context += (
+                "### MEMORY OF THIS USER ###\n"
+                "These are durable facts you've learned about this person across past "
+                "conversations. Use them to make replies feel personal and continuous. "
+                "Reference relevant memories naturally when they fit, but never dump the "
+                "whole list back at the user or explicitly say you're 'checking memory'. "
+                "If a detail here conflicts with something the user just said, trust the "
+                "current message.\n"
+                f"{trimmed}\n\n"
+            )
 
         # --- RESEARCH MODE ---
         if signals.mode == ConversationMode.RESEARCH:
@@ -1660,43 +1666,115 @@ class GeminiClient:
             i += 1
         return "\n".join(output)
 
+    # Memory is distilled into a concise user profile via an LLM summarization
+    # pass rather than appended as raw dialogue turns. This keeps the memory
+    # bounded, relevant, and genuinely useful when injected back into prompts.
+    _MEMORY_SUMMARY_PROMPT = (
+        "You are a memory curator for a friendly Discord assistant. "
+        "You maintain a concise, factual profile of a single user so the assistant can "
+        "remember them across conversations.\n\n"
+        "Inputs you receive:\n"
+        "- CURRENT MEMORY: the existing distilled profile (may be empty).\n"
+        "- NEW EXCHANGE: the latest user message and the assistant's reply.\n\n"
+        "Rules:\n"
+        "- Extract durable, useful facts about the USER only: name/aliases, preferences, "
+        "interests, recurring topics, important context they shared, goals, tone they like.\n"
+        "- Do NOT record the assistant's replies, transient small talk, or one-off chatter "
+        "with no lasting value.\n"
+        "- Merge new facts into CURRENT MEMORY, deduplicate, and keep it tight.\n"
+        "- Prefer short bullet lines like '- Likes roguelike games' or '- Prefers brief answers.'\n"
+        "- Drop facts that are clearly outdated or contradicted by the new exchange.\n"
+        "- Keep the whole profile under ~1200 characters. Be ruthless about relevance.\n"
+        "- Output ONLY the updated profile text. No preamble, no JSON, no quotes."
+    )
+
     async def _update_memory_smart(
         self, user_id: int, user_msg: str, bot_response: str, past_memory: str
     ) -> None:
-        """Update per-user conversation memory with smart truncation.
+        """Distill a conversation turn into a concise, evolving user profile.
 
-        Keeps the most recent exchanges and trims at entry boundaries
-        to avoid cutting mid-thought.
+        Instead of accumulating raw dialogue, the model merges the new exchange
+        into the existing distilled memory so it stays small and meaningful.
+        Falls back to raw-log accumulation only if the summarization call fails.
         """
         try:
             db = getattr(self.bot, "db", None)
             if not db:
                 return
 
-            # Build new entry
-            user_snippet = user_msg[:1000].strip()
-            bot_snippet = bot_response[:1000].strip()
-            entry = f"\n[user]: {user_snippet}\n[bot]: {bot_snippet}"
+            # Skip noise: empty or trivially short exchanges add no lasting value.
+            user_text = (user_msg or "").strip()
+            bot_text = (bot_response or "").strip()
+            if len(user_text) < 3 and len(bot_text) < 3:
+                return
 
-            new_memory = (past_memory + entry).strip()
+            new_memory = await self._summarize_memory(
+                past_memory or "", user_text, bot_response
+            )
 
-            # Smart truncation: keep within limit but don't break mid-entry
-            max_chars = self.config.memory_max_chars
-            if len(new_memory) > max_chars:
-                # Find the first complete entry boundary after the cutoff point
-                cutoff = len(new_memory) - max_chars
-                # Search for the next "\n[user]:" or "\n[bot]:" after cutoff
-                next_entry = new_memory.find("\n[user]:", cutoff)
-                if next_entry == -1:
-                    next_entry = new_memory.find("\n[bot]:", cutoff)
-                if next_entry > 0:
-                    new_memory = new_memory[next_entry:].strip()
-                else:
-                    new_memory = new_memory[-max_chars:]
+            if not new_memory or not new_memory.strip():
+                # Fallback: keep the old raw-log behavior so memory still evolves
+                # even if the summarizer is unavailable.
+                entry = (
+                    f"\n[user]: {user_text[:1000]}\n[bot]: {bot_text[:1000]}"
+                )
+                new_memory = (past_memory + entry).strip()
+                max_chars = self.config.memory_max_chars
+                if len(new_memory) > max_chars:
+                    cutoff = len(new_memory) - max_chars
+                    next_entry = new_memory.find("\n[user]:", cutoff)
+                    if next_entry == -1:
+                        next_entry = new_memory.find("\n[bot]:", cutoff)
+                    if next_entry > 0:
+                        new_memory = new_memory[next_entry:].strip()
+                    else:
+                        new_memory = new_memory[-max_chars:]
 
-            await db.update_ai_memory(user_id, new_memory)
+            await db.update_ai_memory(user_id, new_memory.strip())
         except Exception:
             logger.debug("Failed to update AI memory for user %d", user_id, exc_info=True)
+
+    async def _summarize_memory(
+        self, current_memory: str, user_msg: str, bot_response: str
+    ) -> Optional[str]:
+        """Ask the configured AI provider to merge a new exchange into the profile."""
+        if not self.is_available:
+            return None
+        try:
+            current_block = current_memory.strip() or "(none yet)"
+            user_block = (user_msg or "").strip()[:1500]
+            bot_block = (bot_response or "").strip()[:1500]
+            prompt = (
+                f"CURRENT MEMORY:\n{current_block}\n\n"
+                f"NEW EXCHANGE:\n"
+                f"User said: {user_block}\n"
+                f"Assistant replied: {bot_block}\n\n"
+                "Output the updated profile now (bullets, <= ~1200 chars)."
+            )
+            messages = [
+                {"role": "system", "content": self._MEMORY_SUMMARY_PROMPT},
+                {"role": "user", "content": prompt},
+            ]
+            # Use a short, cheap call. Use DigitalOcean model if DeepSeek web is off.
+            content = await asyncio.wait_for(
+                self._call(
+                    messages,
+                    temperature=0.2,
+                    max_tokens=800,
+                    session_key="ai-memory",
+                    session_name="AI memory curator",
+                ),
+                timeout=_deepseek_web_primary_timeout(),
+            )
+            if content:
+                content = self._CODE_FENCE_RE.sub("", content).strip()
+                # Strip any leading/trailing full-line code fences left over.
+                content = re.sub(r"(?:^|\n)```[a-zA-Z]*\s*(?:\n|$)", "", content)
+                content = re.sub(r"(?:^|\n)```\s*(?:\n|$)", "", content)
+            return content or None
+        except Exception:
+            logger.debug("Memory summarization call failed", exc_info=True)
+            return None
 
     # Keep old method name as alias for compatibility
     async def _update_memory(
