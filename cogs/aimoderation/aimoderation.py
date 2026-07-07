@@ -281,6 +281,26 @@ class AIModeration(commands.Cog):
         for channel_id in inactive_channels:
             del self._active_chat_channels[channel_id]
 
+    @tasks.loop(minutes=30)
+    async def _memory_scanner(self) -> None:
+        """Periodically scan every guild's channels and update memories."""
+        if not self.ai.is_available:
+            return
+        try:
+            stats = await self.ai.run_memory_scanner()
+            if stats["guilds"]:
+                logger.info(
+                    "Memory scanner: %d guilds, %d channels, %d users updated",
+                    stats["guilds"], stats["channels"], stats["users"],
+                )
+        except Exception:
+            logger.debug("Memory scanner loop failed", exc_info=True)
+
+    @_memory_scanner.before_loop
+    async def _before_memory_scanner(self) -> None:
+        """Wait until the bot is fully ready before the first scan."""
+        await self.bot.wait_until_ready()
+
     def _mark_chat_active(self, channel_id: int) -> None:
         self._active_chat_channels[channel_id] = _now() + timedelta(minutes=3)
 
