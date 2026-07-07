@@ -1236,6 +1236,16 @@ class Database:
                     )
                 """)
 
+                # ===== GUILD MEMORY =====
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS guild_memory (
+                        guild_id INTEGER PRIMARY KEY,
+                        guild_name TEXT,
+                        memory_text TEXT,
+                        last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
                 # ===== DELETED MESSAGE ATTACHMENTS =====
                 await db.execute("""
                     CREATE TABLE IF NOT EXISTS deleted_message_attachments (
