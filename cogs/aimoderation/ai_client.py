@@ -1782,3 +1782,257 @@ class GeminiClient:
     ) -> None:
         await self._update_memory_smart(user_id, user_msg, bot_response, past_memory)
 
+    # ------------------------------------------------------------------
+    # Background Batch Memory Scanner
+    # ------------------------------------------------------------------
+    #
+    # Every ~30 minutes each guild's text channels are sampled for the
+    # last 50 stored messages.  Those batches are distilled into:
+    #   - "(ServerName) -> Memory"  — a concise guild-level profile
+    #   - per-user memory updates for every active author in the batch
+    #
+    # This keeps the bot continuously aware of the communities it serves
+    # without relying on every member directly talking to it.
+
+    _SERVER_MEMORY_SUMMARY_PROMPT = (
+        "You are a community memory curator for a Discord assistant. "
+        "You maintain a concise, factual server profile so the assistant understands "
+        "the server's identity, culture, and current activity.\n\n"
+        "Inputs:\n"
+        "- CURRENT SERVER MEMORY: the existing profile (may be empty).\n"
+        "- RECENT MESSAGES: a sample of recent messages from one or more channels "
+        "in this server (timestamped, with author names).\n\n"
+        "Rules:\n"
+        "- Extract durable facts about the SERVER (not individual users): "
+        "server name, rough member count, primary language(s), main topics, "
+        "shared interests, inside jokes, recurring events, notable rules or norms, "
+        "server mood/vibe, what kind of community this is.\n"
+        "- Merge new facts into CURRENT MEMORY, deduplicate, and keep it tight.\n"
+        "- Prefer short bullet lines (e.g., '- Primary language: Spanish').\n"
+        "- Drop facts that are clearly outdated or contradicted by the new sample.\n"
+        "- Keep the whole profile under ~1500 characters. Be ruthless.\n"
+        "- Output ONLY the updated profile text. No preamble, no JSON, no quotes.\n"
+        "- Start with exactly: \"(ServerName) -> Memory\" on its own line, "
+        "then the bullets."
+    )
+
+    _BATCH_USER_MEMORY_PROMPT = (
+        "You are a memory curator for a Discord assistant. "
+        "You maintain a concise profile of a single user so the assistant can "
+        "remember them across conversations.\n\n"
+        "Inputs:\n"
+        "- CURRENT MEMORY: the existing distilled profile (may be empty).\n"
+        "- RECENT MESSAGES: the user's recent messages sampled from this server.\n\n"
+        "Rules:\n"
+        "- Extract durable facts about the USER: name/aliases, preferences, "
+        "interests, recurring topics, tone they like, important context shared.\n"
+        "- Do NOT record transient chatter or one-off lines with no lasting value.\n"
+        "- Merge new facts into CURRENT MEMORY, deduplicate, keep it tight.\n"
+        "- Prefer short bullet lines like '- Likes roguelike games'.\n"
+        "- Drop facts clearly outdated or contradicted by the new messages.\n"
+        "- Keep the profile under ~1200 characters. Be ruthless about relevance.\n"
+        "- Output ONLY the updated profile text. No preamble, no JSON, no quotes."
+    )
+
+    async def run_memory_scanner(self) -> Dict[str, int]:
+        """Scan every guild's text channels and update server + user memories.
+
+        Returns a stats dict: {'guilds': int, 'channels': int, 'users': int}.
+        """
+        db = getattr(self.bot, "db", None)
+        if not db or not self.is_available:
+            return {"guilds": 0, "channels": 0, "users": 0}
+
+        guilds_scanned = 0
+        channels_scanned = 0
+        users_updated = 0
+
+        for guild in self.bot.guilds:
+            try:
+                # Collect all batches for this guild
+                guild_batches: List[Dict[str, Any]] = []
+                all_author_msgs: Dict[int, List[str]] = {}
+
+                for channel in guild.text_channels:
+                    # Respect channel permissions — only read channels we can see
+                    perms = channel.permissions_for(guild.me)
+                    if not perms.read_messages or not perms.read_message_history:
+                        continue
+
+                    msgs = await db.get_recent_channel_messages(channel.id, limit=50)
+                    if not msgs:
+                        continue
+
+                    guild_batches.append({
+                        "channel_name": channel.name,
+                        "channel_id": channel.id,
+                        "messages": msgs,
+                    })
+                    channels_scanned += 1
+
+                    for msg in msgs:
+                        author_id = msg.get("user_id")
+                        content = (msg.get("content") or "").strip()
+                        if author_id and content:
+                            all_author_msgs.setdefault(author_id, []).append(content)
+
+                if guild_batches:
+                    await self._summarize_server_memory(guild, guild_batches)
+                    guilds_scanned += 1
+
+                # Per-user memory updates from this guild's batch
+                if all_author_msgs and guild_batches:
+                    user_count = await self._batch_update_user_memories(
+                        guild, all_author_msgs
+                    )
+                    users_updated += user_count
+
+            except Exception:
+                logger.debug(
+                    "Memory scanner failed for guild %d", guild.id, exc_info=True
+                )
+
+        return {
+            "guilds": guilds_scanned,
+            "channels": channels_scanned,
+            "users": users_updated,
+        }
+
+    async def _summarize_server_memory(
+        self, guild: discord.Guild, batches: List[Dict[str, Any]]
+    ) -> None:
+        """Distil recent channel messages into a guild-level memory profile."""
+        db = getattr(self.bot, "db", None)
+        if not db or not batches:
+            return
+
+        # Build a compact feed of messages
+        feed_lines: List[str] = []
+        total_chars = 0
+        max_feed_chars = 6000
+
+        for batch in batches:
+            ch_name = batch["channel_name"]
+            feed_lines.append(f"--- #{ch_name} ---")
+            for msg in batch["messages"]:
+                author_id = msg.get("user_id", 0)
+                content = (msg.get("content") or "").strip()
+                if not content:
+                    continue
+                # Resolve display name if possible
+                member = guild.get_member(int(author_id))
+                name = member.display_name if member else f"user_{author_id}"
+                line = f"[{name}]: {content[:400]}"
+                if total_chars + len(line) > max_feed_chars:
+                    break
+                feed_lines.append(line)
+                total_chars += len(line)
+            if total_chars >= max_feed_chars:
+                break
+
+        if not feed_lines or total_chars < 20:
+            return
+
+        feed_text = "\n".join(feed_lines)
+        current_memory = (await db.get_guild_memory(guild.id)) or "(none yet)"
+        guild_name = guild.name
+
+        prompt = (
+            f"SERVER NAME: {guild_name}\n"
+            f"MEMBER COUNT: ~{guild.member_count}\n\n"
+            f"CURRENT SERVER MEMORY:\n{current_memory}\n\n"
+            f"RECENT MESSAGES:\n{feed_text}\n\n"
+            "Output the updated profile now. Start with \"(ServerName) -> Memory\"."
+        )
+        messages = [
+            {"role": "system", "content": self._SERVER_MEMORY_SUMMARY_PROMPT},
+            {"role": "user", "content": prompt},
+        ]
+
+        try:
+            content = await asyncio.wait_for(
+                self._call(
+                    messages,
+                    temperature=0.2,
+                    max_tokens=1000,
+                    session_key=f"guild-mem-{guild.id}",
+                    session_name=f"{guild.name} -> Memory",
+                ),
+                timeout=_deepseek_web_primary_timeout(),
+            )
+            if content:
+                content = self._CODE_FENCE_RE.sub("", content).strip()
+                content = re.sub(r"(?:^|\n)```[a-zA-Z]*\s*(?:\n|$)", "", content)
+                content = re.sub(r"(?:^|\n)```\s*(?:\n|$)", "", content)
+                # Ensure the header line is present
+                header = f"({guild_name}) -> Memory"
+                if not content.startswith(header):
+                    content = f"{header}\n{content}"
+                await db.update_guild_memory(guild.id, guild_name, content)
+                logger.debug(
+                    "Updated server memory for %s (%d chars)",
+                    guild_name, len(content),
+                )
+        except Exception:
+            logger.debug(
+                "Guild memory summarization failed for %d", guild.id, exc_info=True
+            )
+
+    async def _batch_update_user_memories(
+        self, guild: discord.Guild, author_msgs: Dict[int, List[str]]
+    ) -> int:
+        """Update per-user memories from a batch of recent messages."""
+        db = getattr(self.bot, "db", None)
+        if not db:
+            return 0
+
+        updated = 0
+        for author_id, msg_list in author_msgs.items():
+            if not msg_list:
+                continue
+            try:
+                # Build a compact feed of just this user's lines
+                member = guild.get_member(int(author_id))
+                name = member.display_name if member else f"user_{author_id}"
+                lines = [f"[{name}]: {m[:400]}" for m in msg_list[:15]]
+                feed_text = "\n".join(lines)
+
+                if len(feed_text) < 15:
+                    continue
+
+                current_memory = (await db.get_ai_memory(author_id)) or "(none yet)"
+
+                prompt = (
+                    f"CURRENT MEMORY:\n{current_memory}\n\n"
+                    f"RECENT MESSAGES (from server {guild.name}):\n{feed_text}\n\n"
+                    "Output the updated profile now (bullets, <= ~1200 chars)."
+                )
+                messages = [
+                    {"role": "system", "content": self._BATCH_USER_MEMORY_PROMPT},
+                    {"role": "user", "content": prompt},
+                ]
+
+                content = await asyncio.wait_for(
+                    self._call(
+                        messages,
+                        temperature=0.2,
+                        max_tokens=800,
+                        session_key="ai-memory",
+                        session_name="AI memory curator",
+                    ),
+                    timeout=_deepseek_web_primary_timeout(),
+                )
+                if content:
+                    content = self._CODE_FENCE_RE.sub("", content).strip()
+                    content = re.sub(r"(?:^|\n)```[a-zA-Z]*\s*(?:\n|$)", "", content)
+                    content = re.sub(r"(?:^|\n)```\s*(?:\n|$)", "", content)
+                    if content and len(content) > 5:
+                        await db.update_ai_memory(author_id, content.strip())
+                        updated += 1
+            except Exception:
+                logger.debug(
+                    "Batch user memory update failed for %d", author_id, exc_info=True
+                )
+
+        return updated
+

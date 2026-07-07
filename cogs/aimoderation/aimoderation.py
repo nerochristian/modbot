@@ -238,6 +238,7 @@ class AIModeration(commands.Cog):
 
     def cog_load(self) -> None:
         self._cleanup_cache.start()
+        self._memory_scanner.start()
         if self.ai.is_available:
             self._prewarm_task = asyncio.create_task(
                 self._prewarm_ai(),
@@ -246,6 +247,7 @@ class AIModeration(commands.Cog):
 
     async def cog_unload(self) -> None:
         self._cleanup_cache.cancel()
+        self._memory_scanner.cancel()
         if self._prewarm_task and not self._prewarm_task.done():
             self._prewarm_task.cancel()
             with suppress(asyncio.CancelledError):
