@@ -1546,6 +1546,71 @@ class Database:
                 await db.commit()
                 return cursor.rowcount > 0
 
+    # ==================== GUILD MEMORY ====================
+
+    async def get_guild_memory(self, guild_id: int) -> Optional[str]:
+        """Get stored AI memory for a guild."""
+        self._validate_guild_id(int(guild_id))
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT memory_text FROM guild_memory WHERE guild_id = ?",
+                (int(guild_id),),
+            )
+            row = await cursor.fetchone()
+            return row[0] if row and row[0] else None
+
+    async def update_guild_memory(self, guild_id: int, guild_name: str, memory_text: str) -> None:
+        """Replace stored AI memory for a guild, keeping the name up to date."""
+        self._validate_guild_id(int(guild_id))
+        text = str(memory_text or "")
+        name = str(guild_name or "")[:120]
+        async with self._lock:
+            async with self.get_connection() as db:
+                await db.execute(
+                    """
+                    INSERT OR REPLACE INTO guild_memory (guild_id, guild_name, memory_text, last_updated)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                    """,
+                    (int(guild_id), name, text),
+                )
+                await db.commit()
+
+    async def clear_guild_memory(self, guild_id: int) -> bool:
+        """Delete stored AI memory for a guild."""
+        self._validate_guild_id(int(guild_id))
+        async with self._lock:
+            async with self.get_connection() as db:
+                cursor = await db.execute(
+                    "DELETE FROM guild_memory WHERE guild_id = ?",
+                    (int(guild_id),),
+                )
+                await db.commit()
+                return cursor.rowcount > 0
+
+    # ==================== CHANNEL MESSAGE BATCHES ====================
+
+    async def get_recent_channel_messages(
+        self, channel_id: int, limit: int = 50
+    ) -> List[Dict[str, Any]]:
+        """Retrieve the most recent messages in a specific channel."""
+        try:
+            async with self.get_connection() as db:
+                cursor = await db.execute(
+                    """
+                    SELECT message_id, channel_id, user_id, content, timestamp
+                    FROM user_messages
+                    WHERE channel_id = ?
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                    """,
+                    (int(channel_id), int(limit)),
+                )
+                rows = await cursor.fetchall()
+                return [dict(row) for row in reversed(rows)]
+        except Exception as e:
+            logger.error("Failed to get recent channel messages: %s", e)
+            return []
+
     # ==================== QUARANTINE ====================
 
     async def add_quarantine(self, guild_id: int, user_id: int, moderator_id: int, reason: str, expires_at=None, role_ids: list = None) -> None:
