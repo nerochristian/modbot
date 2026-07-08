@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
-from cogs.aimoderation.aimoderation import AIModeration, GeminiClient
+from cogs.aimoderation.aimoderation import AIClient, AIModeration
 from cogs.aimoderation.types import ConversationMode
 from utils.deepseek_web import DeepSeekWebError
 
@@ -71,20 +71,20 @@ class ResearchFormattingTests(unittest.TestCase):
         )
 
     def test_topic_words_match_related_inflections(self) -> None:
-        first = GeminiClient._conversation_topic_words("is zzz a gooner game")
-        second = GeminiClient._conversation_topic_words("is gooning valid")
+        first = AIClient._conversation_topic_words("is zzz a gooner game")
+        second = AIClient._conversation_topic_words("is gooning valid")
 
         self.assertIn("goon", first & second)
 
     def test_topic_words_ignore_bot_mentions_and_generic_words(self) -> None:
-        topics = GeminiClient._conversation_topic_words(
+        topics = AIClient._conversation_topic_words(
             "<@123456789012345678> should I do that?"
         )
 
         self.assertEqual(topics, set())
 
     def test_different_user_can_continue_active_channel_topic(self) -> None:
-        client = object.__new__(GeminiClient)
+        client = object.__new__(AIClient)
         client.bot = SimpleNamespace(user=SimpleNamespace(id=99))
         first_user = SimpleNamespace(id=1, bot=False)
         second_user = SimpleNamespace(id=2, bot=False)
@@ -115,12 +115,12 @@ class ResearchFormattingTests(unittest.TestCase):
             channel=SimpleNamespace(id=20, name="general-chat")
         )
 
-        key, name = GeminiClient._deepseek_session_identity(guild, message)
+        key, name = AIClient._deepseek_session_identity(guild, message)
 
         self.assertEqual(key, "10:20")
         self.assertEqual(name, "Soul -> General Chat")
 
-        research_key, research_name = GeminiClient._deepseek_session_identity(
+        research_key, research_name = AIClient._deepseek_session_identity(
             guild,
             message,
             research=True,
@@ -129,7 +129,7 @@ class ResearchFormattingTests(unittest.TestCase):
         self.assertEqual(research_key, "10:20:research")
         self.assertEqual(research_name, "Soul -> General Chat [Research]")
 
-        vision_key, vision_name = GeminiClient._deepseek_session_identity(
+        vision_key, vision_name = AIClient._deepseek_session_identity(
             guild,
             message,
             vision=True,
@@ -153,7 +153,7 @@ class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(signals.asks_for_long_answer)
         self.assertEqual(signals.focus_entities, ())
 
-        client = object.__new__(GeminiClient)
+        client = object.__new__(AIClient)
         client.config = SimpleNamespace(max_tokens_chat=1200)
         client.bot = SimpleNamespace(user=None)
         plan = client._build_conversation_plan(
@@ -179,7 +179,7 @@ class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
                 return "{}"
 
         fake = FakeDeepSeek()
-        client = object.__new__(GeminiClient)
+        client = object.__new__(AIClient)
         client.provider = "deepseek-web"
         client._deepseek_web = fake
 
@@ -205,7 +205,7 @@ class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
             async def chat(self, prompt: str, **kwargs):
                 raise DeepSeekWebError("browser crashed")
 
-        client = object.__new__(GeminiClient)
+        client = object.__new__(AIClient)
         client.config = SimpleNamespace(model="deepseek-web")
         client._deepseek_web = BrokenDeepSeek()
         client._call_digitalocean = AsyncMock(return_value='{"type": "chat"}')
@@ -230,7 +230,7 @@ class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
                 await asyncio.sleep(1)
                 return "{}"
 
-        client = object.__new__(GeminiClient)
+        client = object.__new__(AIClient)
         client.config = SimpleNamespace(model="deepseek-web")
         client._deepseek_web = StalledDeepSeek()
         client._call_digitalocean = AsyncMock(return_value='{"type": "chat"}')
