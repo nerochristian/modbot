@@ -478,6 +478,7 @@ async def _build_welcome_card_png_inner(
     *,
     options: WelcomeCardOptions = WelcomeCardOptions(),
 ) -> bytes:
+    import asyncio
 
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
 
@@ -546,6 +547,25 @@ async def _build_welcome_card_png_inner(
     else:
         pill_text = DEFAULT_WELCOME_LABEL
 
+    display_name = getattr(member, "display_name", member.name) or member.name
+    username     = _parse_username(full_user)  # type: ignore
+
+    return await asyncio.to_thread(
+        _render_welcome_card_sync,
+        bg_img, avatar_img, deco_img, badges, accent, pill_text, display_name, username, options
+    )
+
+def _render_welcome_card_sync(
+    bg_img: Optional[Image.Image],
+    avatar_img: Optional[Image.Image],
+    deco_img: Optional[Image.Image],
+    badges: list[_Badge],
+    accent: tuple[int, int, int],
+    pill_text: str,
+    display_name: str,
+    username: str,
+    options: WelcomeCardOptions
+) -> bytes:
     # ── Fonts ──────────────────────────────────────────────────────────────
     font_name  = load_font(72, bold=True)
     font_user  = load_font(34, bold=False)
@@ -628,9 +648,6 @@ async def _build_welcome_card_png_inner(
     # ── Text ───────────────────────────────────────────────────────────────
     tx     = ax + total + 28
     max_tw = W - tx - M - 8
-
-    display_name = getattr(member, "display_name", member.name) or member.name
-    username     = _parse_username(full_user)  # type: ignore
 
     draw = ImageDraw.Draw(card)
     display_name = _text_fit(draw, display_name, font_name, max_tw)

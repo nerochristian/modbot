@@ -13,6 +13,14 @@ import os
 import re
 import sys
 import asyncio
+
+try:
+    import uvloop
+    if sys.platform != 'win32':
+        asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+except ImportError:
+    pass
+
 import shlex
 import signal
 import inspect
