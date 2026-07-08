@@ -254,21 +254,23 @@ class ChatCommands:
         await self._respond(source, embed=embed)
         await self.log_action(source.guild, embed)
 
-    async def _nuke_logic(self, source, channel: discord.TextChannel = None):
+    async def _nuke_logic(self, source, channel: discord.TextChannel = None, reason: str = "No reason provided"):
         channel = channel or (source.channel if isinstance(source, discord.Interaction) else source.channel)
         user = source.user if isinstance(source, discord.Interaction) else source.author
 
+        audit_reason = f"Nuked by {user}: {reason}"
+
         try:
             position = channel.position
-            new_channel = await channel.clone(reason=f"Nuked by {user}")
+            new_channel = await channel.clone(reason=audit_reason)
             await new_channel.edit(position=position)
-            await channel.delete(reason=f"Nuked by {user}")
+            await channel.delete(reason=audit_reason)
         except discord.Forbidden:
              return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to clone/delete channels."), ephemeral=True)
         
         embed = discord.Embed(
             title="💥 Channel Nuked",
-            description=f"This channel has been nuked by {user.mention}.",
+            description=f"This channel has been nuked by {user.mention}.\n**Reason:** {reason}",
             color=Colors.ERROR
         )
         embed.set_image(url="https://media1.tenor.com/m/giN2CZ60D70AAAAC/explosion-mushroom-cloud.gif")
@@ -619,12 +621,12 @@ class ChatCommands:
 
     @commands.command(name="nuke")
     @is_admin()
-    async def nuke(self, ctx: commands.Context, channel: Optional[discord.TextChannel] = None):
-        await self._nuke_logic(ctx, channel)
+    async def nuke(self, ctx: commands.Context, channel: Optional[discord.TextChannel] = None, *, reason: str = "No reason provided"):
+        await self._nuke_logic(ctx, channel, reason)
 
     # Slash command - registered dynamically in __init__.py
-    async def nuke_slash(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None):
-        await self._nuke_logic(interaction, channel)
+    async def nuke_slash(self, interaction: discord.Interaction, channel: Optional[discord.TextChannel] = None, reason: str = "No reason provided"):
+        await self._nuke_logic(interaction, channel, reason)
 
     @commands.command(name="purge", aliases=["clear"])
     @is_mod()
