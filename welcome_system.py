@@ -1,4 +1,4 @@
-"""Welcome system � generates a Koya-styled welcome card."""
+"""Welcome system generates a Koya-styled welcome card."""
 
 from __future__ import annotations
 
@@ -7,14 +7,16 @@ import io
 import logging
 from pathlib import Path
 from typing import Optional
+import os
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 LOGGER = logging.getLogger("enzo-bot.welcome")
 
-# -- Paths ---------------------------------------------------------------------
+# ── Paths ─────────────────────────────────────────────────────────────────────
 BASE_DIR = Path(__file__).resolve().parent
 
 def _welcome_bg_path() -> Path:
@@ -32,7 +34,7 @@ def _welcome_bg_path() -> Path:
 
 WELCOME_BG_PATH = _welcome_bg_path()
 
-# -- Style constants -----------------------------------------------------------
+# ── Style constants ───────────────────────────────────────────────────────────
 CARD_WIDTH = 800
 CARD_HEIGHT = 400
 AVATAR_SIZE = 180
@@ -68,7 +70,7 @@ def _generate_welcome_card(
 
     draw = ImageDraw.Draw(card)
 
-    # -- Avatar -------------------------------------------------------------
+    # ── Avatar ─────────────────────────────────────────────────────────────
     AV = AVATAR_SIZE
     av_x = (W - AV) // 2
     av_y = (H - AV) // 2 - 40
@@ -95,7 +97,7 @@ def _generate_welcome_card(
     except Exception:
         pass
 
-    # -- Fonts --------------------------------------------------------------
+    # ── Fonts ──────────────────────────────────────────────────────────────
     font_welcome = None
     font_user = None
     for font_name in ("arialbd.ttf", "DejaVuSans-Bold.ttf", "FreeSansBold.ttf"):
@@ -112,7 +114,7 @@ def _generate_welcome_card(
         
     display_name = username.upper()
 
-    # -- Text WELCOME -------------------------------------------------------
+    # ── Text WELCOME ───────────────────────────────────────────────────────
     try:
         w_bb = draw.textbbox((0, 0), "WELCOME", font=font_welcome)
     except Exception:
@@ -128,7 +130,7 @@ def _generate_welcome_card(
     # Main text
     draw.text((wx, wy), "WELCOME", font=font_welcome, fill=(255, 255, 255, 255))
     
-    # -- Text Username ------------------------------------------------------
+    # ── Text Username ──────────────────────────────────────────────────────
     try:
         u_bb = draw.textbbox((0, 0), display_name, font=font_user)
     except Exception:
@@ -166,10 +168,6 @@ class WelcomeSystem(commands.Cog):
         except Exception:
             avatar_bytes = b""
 
-        # We can support custom background by letting a command set it, but for now we just use WELCOME_BG_PATH.
-        # Wait, the user asked to be able to set the welcome img to whatever you want.
-        # So I will add a command!
-        
         try:
             image_stream = await asyncio.to_thread(
                 _generate_welcome_card,
