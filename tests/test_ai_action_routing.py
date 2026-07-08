@@ -11,12 +11,12 @@ import discord
 from database import Database
 from cogs.aimoderation.aimoderation import (
     AIConfig,
+    AIClient,
     AIModeration,
     ConversationMode,
     ConversationSignals,
     Decision,
     DecisionType,
-    GeminiClient,
     GuildSettings,
     ToolResult,
     ToolType,
@@ -29,7 +29,7 @@ class AIActionRoutingTests(unittest.TestCase):
         self.cog = object.__new__(AIModeration)
 
     def test_client_initializes_provider_from_config(self) -> None:
-        client = GeminiClient(
+        client = AIClient(
             SimpleNamespace(),
             AIConfig(provider="digitalocean", model="deepseek-4-flash"),
         )
@@ -307,7 +307,7 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertTrue(AIModeration._can_use_ai_tools(member))
 
     def test_deepseek_disabled_diagnostic_names_real_setting(self) -> None:
-        client = object.__new__(GeminiClient)
+        client = object.__new__(AIClient)
         client.provider = "deepseek-web"
         client._deepseek_web = SimpleNamespace(
             enabled=False,
@@ -341,7 +341,7 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertEqual(error, "This action is restricted to the bot owner.")
 
     def test_digitalocean_availability_uses_configured_constants(self) -> None:
-        client = object.__new__(GeminiClient)
+        client = object.__new__(AIClient)
         client.provider = "digitalocean"
 
         with patch("cogs.aimoderation.ai_client._DO_API_KEY", "key"), patch(
@@ -368,7 +368,7 @@ class AIActionRoutingTests(unittest.TestCase):
 
 class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
     async def test_conversation_includes_guild_memory_for_standard_chat(self) -> None:
-        client = object.__new__(GeminiClient)
+        client = object.__new__(AIClient)
         client.provider = "deepseek-web"
         client.config = AIConfig()
         client._block_until = None
@@ -408,7 +408,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         db.get_guild_memory.assert_awaited_once_with(1)
 
     async def test_research_does_not_feed_saved_memory_or_continue_chat(self) -> None:
-        client = object.__new__(GeminiClient)
+        client = object.__new__(AIClient)
         client.provider = "deepseek-web"
         client.config = AIConfig()
         client._block_until = None
@@ -456,7 +456,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         )
 
     async def test_conversation_falls_back_to_digitalocean_when_deepseek_web_fails(self) -> None:
-        client = object.__new__(GeminiClient)
+        client = object.__new__(AIClient)
         client.provider = "deepseek-web"
         client.config = AIConfig()
         client._block_until = None
@@ -555,7 +555,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(1)
             return "late answer"
 
-        client = object.__new__(GeminiClient)
+        client = object.__new__(AIClient)
         client.provider = "deepseek-web"
         client.config = AIConfig()
         client._block_until = None
