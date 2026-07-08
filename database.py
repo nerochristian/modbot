@@ -221,6 +221,8 @@ def _normalize_postgres_url(database_url: str) -> str:
 
 _POSTGRES_UPSERT_CONFLICT_COLUMNS: dict[str, tuple[str, ...]] = {
     "guild_settings": ("guild_id",),
+    "ai_memory": ("user_id",),
+    "guild_memory": ("guild_id",),
     "court_votes": ("session_id", "voter_id"),
     "giveaway_entries": ("giveaway_id", "user_id"),
     "blacklist": ("user_id",),
@@ -1559,6 +1561,24 @@ class Database:
             row = await cursor.fetchone()
             return row[0] if row and row[0] else None
 
+    async def get_guild_memory_record(self, guild_id: int) -> Optional[Dict[str, Any]]:
+        """Get stored AI memory plus metadata for a guild."""
+        self._validate_guild_id(int(guild_id))
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                "SELECT guild_id, guild_name, memory_text, last_updated FROM guild_memory WHERE guild_id = ?",
+                (int(guild_id),),
+            )
+            row = await cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "guild_id": row[0],
+                "guild_name": row[1] or "",
+                "memory_text": row[2] or "",
+                "last_updated": row[3],
+            }
+
     async def update_guild_memory(self, guild_id: int, guild_name: str, memory_text: str) -> None:
         """Replace stored AI memory for a guild, keeping the name up to date."""
         self._validate_guild_id(int(guild_id))
@@ -1606,7 +1626,16 @@ class Database:
                     (int(channel_id), int(limit)),
                 )
                 rows = await cursor.fetchall()
-                return [dict(row) for row in reversed(rows)]
+                return [
+                    {
+                        "message_id": row[0],
+                        "channel_id": row[1],
+                        "user_id": row[2],
+                        "content": row[3] or "",
+                        "timestamp": row[4],
+                    }
+                    for row in reversed(rows)
+                ]
         except Exception as e:
             logger.error("Failed to get recent channel messages: %s", e)
             return []

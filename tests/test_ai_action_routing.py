@@ -1,4 +1,5 @@
 import asyncio
+import tempfile
 import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -7,6 +8,7 @@ from pathlib import Path
 
 import discord
 
+from database import Database
 from cogs.aimoderation.aimoderation import (
     AIConfig,
     AIModeration,
@@ -25,6 +27,14 @@ from utils.deepseek_web import DeepSeekWebError
 class AIActionRoutingTests(unittest.TestCase):
     def setUp(self) -> None:
         self.cog = object.__new__(AIModeration)
+
+    def test_client_initializes_provider_from_config(self) -> None:
+        client = GeminiClient(
+            SimpleNamespace(),
+            AIConfig(provider="digitalocean", model="deepseek-4-flash"),
+        )
+
+        self.assertEqual(client.provider, "digitalocean")
 
     def test_casual_conditional_question_is_conversation(self) -> None:
         content = "if someone is gay, are they gay?"
@@ -357,6 +367,46 @@ class AIActionRoutingTests(unittest.TestCase):
 
 
 class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
+    async def test_conversation_includes_guild_memory_for_standard_chat(self) -> None:
+        client = object.__new__(GeminiClient)
+        client.provider = "deepseek-web"
+        client.config = AIConfig()
+        client._block_until = None
+        client._block_reason = None
+        client._brave_search_api_key = None
+        client._tavily_api_key = None
+        client._serpapi_api_key = None
+        client._rate_limiter = SimpleNamespace(
+            is_rate_limited=AsyncMock(return_value=(False, 0)),
+            record_call=AsyncMock(),
+        )
+        client._deepseek_web = SimpleNamespace(
+            enabled=True,
+            chat=AsyncMock(return_value="server-aware answer"),
+        )
+        client._collect_image_context = AsyncMock(return_value=[])
+        client._update_memory_smart = AsyncMock()
+        db = SimpleNamespace(
+            get_ai_memory=AsyncMock(return_value="- Likes concise replies"),
+            get_guild_memory=AsyncMock(return_value="(Guild) -> Memory\n- Server likes Python help"),
+        )
+        client.bot = SimpleNamespace(user=SimpleNamespace(id=999), db=db)
+
+        response = await client.converse(
+            user_content="what should we work on?",
+            guild=SimpleNamespace(id=1, name="Guild", member_count=10),
+            author=SimpleNamespace(id=2, name="User"),
+            recent_messages=[],
+            signals=ConversationSignals(mode=ConversationMode.STANDARD, confidence=1.0),
+        )
+
+        self.assertEqual(response, "server-aware answer")
+        prompt = client._deepseek_web.chat.await_args.args[0]
+        self.assertIn("### MEMORY OF THIS USER ###", prompt)
+        self.assertIn("### MEMORY OF THIS SERVER ###", prompt)
+        self.assertIn("Server likes Python help", prompt)
+        db.get_guild_memory.assert_awaited_once_with(1)
+
     async def test_research_does_not_feed_saved_memory_or_continue_chat(self) -> None:
         client = object.__new__(GeminiClient)
         client.provider = "deepseek-web"
@@ -396,6 +446,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response, "researched answer")
         prompt = client._deepseek_web.chat.await_args.args[0]
         self.assertNotIn("PRIVATE MEMORY", prompt)
+        self.assertNotIn("### MEMORY OF THIS SERVER ###", prompt)
         self.assertFalse(client._deepseek_web.chat.await_args.kwargs["continue_session"])
         client._update_memory_smart.assert_called_once_with(
             author.id,
@@ -438,6 +489,66 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response, "fallback answer")
         client._call_digitalocean_conversation.assert_awaited_once()
         client._update_memory_smart.assert_called_once()
+
+    async def test_database_guild_memory_crud_and_channel_batch_query(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.dict("os.environ", {"DB_MODE": "sqlite", "DATABASE_URL": ""}):
+                db = Database()
+                db.db_path = str(Path(tmpdir) / "modbot-test.db")
+                db._supabase_mirror.enabled = False
+
+                try:
+                    await db.init_guild(123)
+                    await db.update_guild_memory(123, "Guild Name", "(Guild Name) -> Memory\n- Likes tests")
+
+                    self.assertEqual(
+                        await db.get_guild_memory(123),
+                        "(Guild Name) -> Memory\n- Likes tests",
+                    )
+                    record = await db.get_guild_memory_record(123)
+                    self.assertIsNotNone(record)
+                    self.assertEqual(record["guild_id"], 123)
+                    self.assertEqual(record["guild_name"], "Guild Name")
+
+                    async with db.get_connection() as conn:
+                        await conn.execute(
+                            """
+                            INSERT INTO user_messages (message_id, guild_id, channel_id, user_id, content, timestamp)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            """,
+                            (1, 123, 999, 10, "old", "2026-07-07T00:00:01+00:00"),
+                        )
+                        await conn.execute(
+                            """
+                            INSERT INTO user_messages (message_id, guild_id, channel_id, user_id, content, timestamp)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            """,
+                            (2, 123, 999, 11, "middle", "2026-07-07T00:00:02+00:00"),
+                        )
+                        await conn.execute(
+                            """
+                            INSERT INTO user_messages (message_id, guild_id, channel_id, user_id, content, timestamp)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            """,
+                            (3, 123, 999, 12, "new", "2026-07-07T00:00:03+00:00"),
+                        )
+                        await conn.execute(
+                            """
+                            INSERT INTO user_messages (message_id, guild_id, channel_id, user_id, content, timestamp)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                            """,
+                            (4, 123, 1000, 13, "other channel", "2026-07-07T00:00:04+00:00"),
+                        )
+                        await conn.commit()
+
+                    rows = await db.get_recent_channel_messages(999, limit=2)
+                    self.assertEqual([row["message_id"] for row in rows], [2, 3])
+                    self.assertEqual([row["content"] for row in rows], ["middle", "new"])
+
+                    self.assertTrue(await db.clear_guild_memory(123))
+                    self.assertIsNone(await db.get_guild_memory(123))
+                finally:
+                    await db.close()
 
     async def test_conversation_falls_back_to_digitalocean_when_deepseek_web_stalls(self) -> None:
         async def stalled_chat(*args, **kwargs):

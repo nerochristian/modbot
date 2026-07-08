@@ -75,6 +75,7 @@ class GeminiClient:
     def __init__(self, bot: commands.Bot, config: AIConfig) -> None:
         self.bot = bot
         self.config = config
+        self.provider = config.provider
         self._rate_limiter = RateLimiter(
             max_calls=config.rate_limit_calls,
             window_seconds=config.rate_limit_window,
@@ -672,15 +673,18 @@ class GeminiClient:
         # Research is intentionally isolated from prior conversations. Only
         # the current request and explicitly attached/replied media are sent.
         stored_memory = ""
+        stored_guild_memory = ""
         is_continuation = False
         thread_context = "No recent messages"
         try:
             db = getattr(self.bot, "db", None)
             if db:
                 stored_memory = await db.get_ai_memory(author.id) or ""
+                stored_guild_memory = await db.get_guild_memory(guild.id) or ""
         except Exception:
             logger.debug("Failed to load AI memory for user %d", author.id, exc_info=True)
         past_memory = stored_memory if signals.mode != ConversationMode.RESEARCH else ""
+        guild_memory = stored_guild_memory if signals.mode != ConversationMode.RESEARCH else ""
         if signals.mode != ConversationMode.RESEARCH:
             is_continuation = self._is_conversation_continuation(
                 author,
@@ -721,6 +725,7 @@ class GeminiClient:
             guild=guild,
             author=author,
             past_memory=past_memory,
+            guild_memory=guild_memory,
             thread_context=thread_context,
             is_continuation=is_continuation,
             location_context=location_context,
@@ -1394,6 +1399,7 @@ class GeminiClient:
         guild: discord.Guild,
         author: Union[discord.Member, discord.User],
         past_memory: str,
+        guild_memory: str = "",
         thread_context: str = "",
         is_continuation: bool = False,
         location_context: str = "",
@@ -1458,6 +1464,19 @@ class GeminiClient:
                 "whole list back at the user or explicitly say you're 'checking memory'. "
                 "If a detail here conflicts with something the user just said, trust the "
                 "current message.\n"
+                f"{trimmed}\n\n"
+            )
+
+        if guild_memory.strip():
+            trimmed = guild_memory.strip()
+            if len(trimmed) > 5000:
+                trimmed = trimmed[:5000].rsplit("\n", 1)[0] or trimmed[:5000]
+            full_context += (
+                "### MEMORY OF THIS SERVER ###\n"
+                "These are durable facts learned from recent server activity. Use them "
+                "only when they help answer local server questions or make the reply fit "
+                "the community. Do not expose private-feeling details, do not claim you "
+                "scanned logs, and trust the current thread over older memory.\n"
                 f"{trimmed}\n\n"
             )
 
@@ -1855,7 +1874,10 @@ class GeminiClient:
 
                 for channel in guild.text_channels:
                     # Respect channel permissions — only read channels we can see
-                    perms = channel.permissions_for(guild.me)
+                    me = getattr(guild, "me", None)
+                    if me is None:
+                        continue
+                    perms = channel.permissions_for(me)
                     if not perms.read_messages or not perms.read_message_history:
                         continue
 
