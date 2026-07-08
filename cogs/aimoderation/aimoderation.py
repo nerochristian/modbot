@@ -32,7 +32,7 @@ from .types import (
 )
 from .context import ToolResult
 from .registry import ToolRegistry
-from .ai_client import GeminiClient
+from .ai_client import AIClient
 
 logger = logging.getLogger("ModBot.AIModeration")
 
@@ -228,7 +228,7 @@ class AIModeration(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
         self.config = AIConfig()
-        self.ai = GeminiClient(bot, self.config)
+        self.ai = AIClient(bot, self.config)
         self._target_cache: Dict[int, Tuple[int, datetime]] = {}
         self._active_chat_channels: Dict[int, datetime] = {}
         self._prewarm_task: Optional[asyncio.Task[None]] = None

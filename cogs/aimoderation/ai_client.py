@@ -66,7 +66,7 @@ def _looks_like_image_question_text(content: str) -> bool:
     )
 
 
-class GeminiClient:
+class AIClient:
     """Async wrapper around the configured AI provider with rate limiting and memory."""
 
     _CODE_FENCE_RE: ClassVar[re.Pattern] = re.compile(r"^```[a-zA-Z]*\s*|\s*```$", re.MULTILINE)
@@ -1365,7 +1365,7 @@ class GeminiClient:
                 image_names = [
                     a.filename
                     for a in msg.attachments
-                    if GeminiClient._is_supported_image_attachment(a)
+                    if AIClient._is_supported_image_attachment(a)
                 ]
                 if image_names:
                     extras.append(f"image attachment(s): {', '.join(image_names[:3])}")
@@ -1380,7 +1380,7 @@ class GeminiClient:
                 snapshot_images = [
                     str(record_field(a, "filename", "image") or "image")
                     for a in snapshot_attachments
-                    if GeminiClient._is_supported_image_attachment(a)
+                    if AIClient._is_supported_image_attachment(a)
                 ]
                 if snapshot_images:
                     extras.append(f"forwarded image attachment(s): {', '.join(snapshot_images[:3])}")
@@ -1587,9 +1587,9 @@ class GeminiClient:
 
         # Collapse excessive whitespace
         text = re.sub(r"\n{3,}", "\n\n", text)
-        text = GeminiClient._strip_citation_tokens(text)
-        text = GeminiClient._convert_simple_markdown_table(text)
-        text = GeminiClient._strip_consumer_app_footers(text)
+        text = AIClient._strip_citation_tokens(text)
+        text = AIClient._convert_simple_markdown_table(text)
+        text = AIClient._strip_consumer_app_footers(text)
 
         # The user requested to stop using long dash separators and use commas instead.
         text = text.replace(" \u2014 ", ", ").replace("\u2014", ", ")
@@ -2057,4 +2057,8 @@ class GeminiClient:
                 )
 
         return updated
+
+
+# Backward-compatible alias for older imports/tests. The provider is no longer Gemini.
+GeminiClient = AIClient
 

@@ -6,7 +6,7 @@ Modular files:
 - prompts.py       — System prompts
 - context.py       — ToolContext, ToolResult, embed helpers
 - registry.py      — ToolRegistry with @register decorator
-- ai_client.py     — GeminiClient (DeepSeek Web + DigitalOcean providers)
+- ai_client.py     — AIClient (DeepSeek Web + DigitalOcean providers)
 - aimoderation.py  — AIModeration cog (thin wrapper)
 - bridge.py        — Delegation to Moderation cog
 - handlers/        — Tool handler functions
@@ -24,11 +24,12 @@ from .prompts import (
 )
 from .context import ToolResult, ToolContext, action_embed, parse_hex_color
 from .registry import ToolRegistry
-from .ai_client import GeminiClient
+from .ai_client import AIClient, GeminiClient
 from .aimoderation import AIModeration, setup
 
 __all__ = [
     "AIConfig",
+    "AIClient",
     "AIModeration",
     "CONVERSATION_SYSTEM_PROMPT",
     "ConversationMode",
