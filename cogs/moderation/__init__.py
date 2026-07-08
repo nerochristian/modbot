@@ -103,6 +103,7 @@ class Moderation(
         cmd("modstats", "View mod statistics", self.modstats_slash)
 
         # Misc
+        cmd("setwelcomebg", "Set custom welcome background image", self.setwelcomebg)
         cmd("testwelcome", "Preview welcome card", self.testwelcome)
         cmd("welcomeall", "Welcome all members", self.welcomeall)
         cmd("ownerinfo", "View owner info", self.ownerinfo)

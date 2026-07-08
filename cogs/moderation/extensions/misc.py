@@ -545,6 +545,33 @@ class MiscCommands:
         await send_classic_message(channel, embed=build_embed())
 
     # Slash command - registered dynamically in __init__.py
+    async def setwelcomebg(
+        self,
+        interaction: discord.Interaction,
+        url: Optional[str] = None
+    ):
+        if not interaction.guild:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Not Available", "This command can only be used in a server."),
+                ephemeral=True,
+            )
+            
+        if not interaction.user.guild_permissions.manage_guild: # type: ignore
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Missing Permissions", "You need Manage Server permissions to set the welcome background."),
+                ephemeral=True,
+            )
+            
+        settings = await self.bot.db.get_settings(interaction.guild.id)
+        settings["welcome_bg_url"] = url
+        await self.bot.db.update_settings(interaction.guild.id, settings)
+        
+        if url:
+            await interaction.response.send_message(f"Welcome background set to: {url}", ephemeral=True)
+        else:
+            await interaction.response.send_message("Welcome background reset to default.", ephemeral=True)
+
+    # Slash command - registered dynamically in __init__.py
     async def testwelcome(
         self,
         interaction: discord.Interaction,
