@@ -273,9 +273,10 @@ class ChatCommands:
             description=f"This channel has been nuked by {user.mention}.\n**Reason:** {reason}",
             color=Colors.ERROR
         )
-        embed.set_image(url="https://media.giphy.com/media/HhTXt43pk1I1W/giphy.gif")
+        file = discord.File("assets/nuke.gif", filename="nuke.gif")
+        embed.set_image(url="attachment://nuke.gif")
         
-        await new_channel.send(embed=embed)
+        await new_channel.send(embed=embed, file=file)
 
     async def _glock_logic(self, source, channel: discord.TextChannel = None, role: discord.Role = None, reason: str = "No reason provided"):
         author_id = source.user.id if isinstance(source, discord.Interaction) else source.author.id
