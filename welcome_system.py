@@ -183,19 +183,19 @@ class WelcomeSystem(commands.Cog):
             LOGGER.error(f"Failed to generate welcome card: {e}")
             await channel.send(f"Greetings {member.mention}, welcome to {member.guild.name}.")
 
-    @app_commands.command(name="setwelcomebg", description="Set custom welcome background image (must attach an image)")
+    @app_commands.command(name="setwelcome", description="Configure the welcome system (attach an image to set a custom background)")
     @app_commands.checks.has_permissions(manage_guild=True)
-    async def setwelcomebg(self, interaction: discord.Interaction, attachment: Optional[discord.Attachment] = None):
-        if not attachment:
+    async def setwelcome(self, interaction: discord.Interaction, background: Optional[discord.Attachment] = None):
+        if not background:
             if WELCOME_BG_PATH.exists():
                 WELCOME_BG_PATH.unlink()
             await interaction.response.send_message("Welcome background reset to default.", ephemeral=True)
             return
 
-        if not attachment.content_type or not attachment.content_type.startswith("image/"):
+        if not background.content_type or not background.content_type.startswith("image/"):
             return await interaction.response.send_message("Please attach a valid image file.", ephemeral=True)
 
-        await attachment.save(WELCOME_BG_PATH)
+        await background.save(WELCOME_BG_PATH)
         await interaction.response.send_message("Welcome background updated successfully!", ephemeral=True)
 
 async def setup(bot: commands.Bot):
