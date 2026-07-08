@@ -444,15 +444,16 @@ DEFAULT_WELCOME_LABEL = "WELCOME!"
 
 @dataclass(frozen=True)
 class WelcomeCardOptions:
-    width: int        = 940
-    height: int       = 300
-    radius: int       = 20
-    avatar_size: int  = 200
-    margin: int       = 30
+    width: int        = 800
+    height: int       = 400
+    radius: int       = 0
+    avatar_size: int  = 180
+    margin: int       = 0
     accent_color: int = getattr(Config, "EMBED_ACCENT_COLOR", Config.COLOR_EMBED)
-    use_role_color: bool      = True
+    use_role_color: bool      = False
     welcome_label: str        = ""
-    role_badge_fallback: bool = True
+    role_badge_fallback: bool = False
+    custom_bg_url: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -491,11 +492,15 @@ async def _build_welcome_card_png_inner(
         # Avatar
         avatar_img = await _fetch(session, _asset_url(member.display_avatar, size=512) or "")
 
-        # Background: user banner if available, else blurred avatar
+        # Background: custom, or user banner, or blurred avatar
         bg_img: Optional[Image.Image] = None
-        banner_url = _asset_url(getattr(full_user, "banner", None), size=1024)
-        if banner_url:
-            bg_img = await _fetch(session, banner_url)
+        if options.custom_bg_url:
+            bg_img = await _fetch(session, options.custom_bg_url)
+            
+        if bg_img is None:
+            banner_url = _asset_url(getattr(full_user, "banner", None), size=1024)
+            if banner_url:
+                bg_img = await _fetch(session, banner_url)
         if bg_img is None and avatar_img is not None:
             bg_img = avatar_img.copy()
 
@@ -566,180 +571,66 @@ def _render_welcome_card_sync(
     username: str,
     options: WelcomeCardOptions
 ) -> bytes:
-    # ── Fonts ──────────────────────────────────────────────────────────────
-    font_name  = load_font(72, bold=True)
-    font_user  = load_font(34, bold=False)
-    font_pill  = load_font(22, bold=True)
-    font_badge = load_font(13, bold=True)
-
-    # ── Canvas ─────────────────────────────────────────────────────────────
-    W, H, R, M = options.width, options.height, options.radius, options.margin
-
-    # Background
+    W, H = options.width, options.height
+    
+    # ── Background ─────────────────────────────────────────────────────────
     if bg_img is None:
         bg_img = Image.new("RGBA", (W, H), (18, 18, 18, 255))
-
-    bg = _cover_resize(bg_img, (W, H)).convert("RGBA")
-    bg = bg.filter(ImageFilter.GaussianBlur(radius=14))
-    # Dark overlay for readability
-    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 175))
-    bg = Image.alpha_composite(bg, overlay)
-
-    # Rounded card mask
-    card_mask = Image.new("L", (W, H), 0)
-    ImageDraw.Draw(card_mask).rounded_rectangle((0, 0, W, H), radius=R, fill=255)
-    card = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    card.paste(bg, mask=card_mask)
+        
+    card = _cover_resize(bg_img, (W, H)).convert("RGBA")
+    
+    # Very subtle overlay if background is too bright, otherwise leave it mostly untouched
+    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 40))
+    card = Image.alpha_composite(card, overlay)
 
     draw = ImageDraw.Draw(card)
-
-    # Subtle card border using accent color
-    draw.rounded_rectangle(
-        (2, 2, W - 2, H - 2),
-        radius=R,
-        outline=(*accent, 160),
-        width=3,
-    )
 
     # ── Avatar ─────────────────────────────────────────────────────────────
-    AV    = options.avatar_size
-    RING  = 8        # ring thickness
-    GLOW  = 16       # extra glow blur radius
-    total = AV + RING * 2
-    ax    = M
-    ay    = (H - total) // 2
+    AV = options.avatar_size
+    av_x = (W - AV) // 2
+    av_y = (H - AV) // 2 - 40
+    RING = 6
 
-    # Draw glowing ring behind avatar
-    # 1. Soft outer glow layer
-    glow_layer = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    glow_draw  = ImageDraw.Draw(glow_layer)
-    glow_draw.ellipse(
-        (ax - GLOW, ay - GLOW, ax + total + GLOW, ay + total + GLOW),
-        fill=(*accent, 90),
-    )
-    glow_layer = glow_layer.filter(ImageFilter.GaussianBlur(radius=GLOW))
-    card.alpha_composite(glow_layer)
-
-    # 2. Solid ring
-    draw = ImageDraw.Draw(card)
+    # Draw solid white border
     draw.ellipse(
-        (ax, ay, ax + total, ay + total),
-        fill=(*accent, 255),
+        (av_x - RING, av_y - RING, av_x + AV + RING, av_y + AV + RING),
+        fill=(255, 255, 255, 255)
     )
 
-    # 3. Inner dark background circle (so ring has defined edge)
-    pad = RING
-    draw.ellipse(
-        (ax + pad, ay + pad, ax + total - pad, ay + total - pad),
-        fill=(15, 15, 15, 200),
-    )
-
-    # 4. Avatar image
     if avatar_img is not None:
         av = _circle_crop(avatar_img, AV)
-        card.alpha_composite(av, (ax + RING, ay + RING))
+        card.alpha_composite(av, (av_x, av_y))
 
-    # 5. Avatar decoration overlay
-    if deco_img is not None:
-        dsz  = total + 20
-        deco = deco_img.resize((dsz, dsz), Image.Resampling.LANCZOS)
-        card.alpha_composite(deco, (ax + (total - dsz) // 2, ay + (total - dsz) // 2))
-
-    # ── Text ───────────────────────────────────────────────────────────────
-    tx     = ax + total + 28
-    max_tw = W - tx - M - 8
-
+    # ── Fonts ──────────────────────────────────────────────────────────────
+    font_welcome = load_font(76, bold=True)
+    font_user    = load_font(34, bold=True)
+    
     draw = ImageDraw.Draw(card)
-    display_name = _text_fit(draw, display_name, font_name, max_tw)
-    username     = _text_fit(draw, username,     font_user, max_tw)
+    
+    display_name = (username.upper() if username else display_name.upper())
 
-    # Vertically center text block in the card
-    dn_bb   = _get_textbbox(draw, display_name, font_name)
-    dn_h    = dn_bb[3] - dn_bb[1]
-    un_bb   = _get_textbbox(draw, username, font_user)
-    un_h    = un_bb[3] - un_bb[1]
-    gap     = 10
-    block_h = dn_h + gap + un_h
-    name_y  = (H - block_h) // 2
-    user_y  = name_y + dn_h + gap
-
-    # Drop shadow on name
-    draw.text((tx + 2, name_y + 3), display_name, font=font_name, fill=(0, 0, 0, 180))
-    # Main name in white
-    draw.text((tx,     name_y),     display_name, font=font_name, fill=(255, 255, 255, 250))
-
-    # Username in muted white
-    draw.text((tx + 1, user_y + 2), username, font=font_user, fill=(0, 0, 0, 130))
-    draw.text((tx,     user_y),     username, font=font_user, fill=(190, 190, 190, 220))
-
-    # ── WELCOME pill (bottom-right) ────────────────────────────────────────
-    pbb    = _get_textbbox(draw, pill_text, font_pill)
-    pw, ph = pbb[2] - pbb[0], pbb[3] - pbb[1]
-    ppx, ppy = 18, 9
-    pill_w = pw + ppx * 2
-    pill_h = ph + ppy * 2
-    px     = W - M - pill_w
-    py     = H - M - pill_h
-
-    # Pill background
-    draw.rounded_rectangle(
-        (px, py, px + pill_w, py + pill_h),
-        radius=12,
-        fill=(12, 12, 12, 160),
-        outline=(*accent, 220),
-        width=2,
-    )
-    draw.text(
-        (px + ppx - pbb[0], py + ppy - pbb[1]),
-        pill_text,
-        font=font_pill,
-        fill=(255, 255, 255, 245),
-    )
-
-    # ── Badges (top-right, flowing left) ──────────────────────────────────
-    BSIZE  = 32          # chip height & width for icon-only badges
-    BGAP   = 6
-    right  = W - M + 2
-    badge_y = 12
-
-    for badge in badges:
-        bw = BSIZE
-
-        # All profile-flag badges are now images; text-label badges only appear
-        # for role chips (if any were added as _Badge(label=…) elsewhere).
-        if badge.label:
-            lbb = _get_textbbox(draw, badge.label, font_badge)
-            bw  = max(BSIZE, lbb[2] - lbb[0] + 16)
-
-        bx = right - bw
-
-        # Chip background
-        draw.rounded_rectangle(
-            (bx, badge_y, bx + bw, badge_y + BSIZE),
-            radius=9,
-            fill=(10, 10, 10, 185),
-            outline=(*accent, 215),
-            width=2,
-        )
-
-        if badge.icon is not None:
-            pad = 4
-            isz = BSIZE - pad * 2
-            # Scale icon to fit, preserving transparency (no circle crop for official badges)
-            icon = badge.icon.resize((isz, isz), Image.Resampling.LANCZOS)
-            card.alpha_composite(icon, (bx + pad, badge_y + pad))
-            draw = ImageDraw.Draw(card)
-        elif badge.label:
-            lbb = _get_textbbox(draw, badge.label, font_badge)
-            lw, lh = lbb[2] - lbb[0], lbb[3] - lbb[1]
-            draw.text(
-                (bx + (bw - lw) // 2 - lbb[0], badge_y + (BSIZE - lh) // 2 - lbb[1]),
-                badge.label,
-                font=font_badge,
-                fill=(255, 255, 255, 245),
-            )
-
-        right = bx - BGAP
+    # ── Text WELCOME ───────────────────────────────────────────────────────
+    w_bb = _get_textbbox(draw, "WELCOME", font_welcome)
+    w_w, w_h = w_bb[2] - w_bb[0], w_bb[3] - w_bb[1]
+    
+    wx = (W - w_w) // 2
+    wy = av_y + AV - (w_h // 2) + 10
+    
+    # Subtle drop shadow
+    draw.text((wx + 3, wy + 3), "WELCOME", font=font_welcome, fill=(0, 0, 0, 200))
+    # Main text
+    draw.text((wx, wy), "WELCOME", font=font_welcome, fill=(255, 255, 255, 255))
+    
+    # ── Text Username ──────────────────────────────────────────────────────
+    display_name = _text_fit(draw, display_name, font_user, W - 40)
+    u_bb = _get_textbbox(draw, display_name, font_user)
+    u_w, u_h = u_bb[2] - u_bb[0], u_bb[3] - u_bb[1]
+    
+    ux = (W - u_w) // 2
+    uy = wy + w_h + 10
+    
+    draw.text((ux + 2, uy + 2), display_name, font=font_user, fill=(0, 0, 0, 200))
+    draw.text((ux, uy), display_name, font=font_user, fill=(255, 255, 255, 255))
 
     # ── Export ─────────────────────────────────────────────────────────────
     out = io.BytesIO()

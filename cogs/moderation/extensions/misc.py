@@ -171,13 +171,6 @@ class MiscCommands:
             return None
 
         return channel
-
-    @commands.group(name="emoji", invoke_without_command=True)
-    async def emoji_group(self, ctx: commands.Context):
-        """
-        Emoji tools (add, steal, tutorial)
-        Usage: 
-          ,emoji add <name> <url>
           ,emoji steal <emojis>
           ,emoji tutorial
         """
@@ -492,6 +485,7 @@ class MiscCommands:
         options = WelcomeCardOptions(
             accent_color=card_accent,
             welcome_label=f"{system_name} - Moderation",
+            custom_bg_url=settings.get("welcome_bg_url")
         )
 
         def build_embed(image_filename: Optional[str] = None) -> discord.Embed:
