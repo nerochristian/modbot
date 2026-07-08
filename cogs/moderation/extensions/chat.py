@@ -273,7 +273,7 @@ class ChatCommands:
             description=f"This channel has been nuked by {user.mention}.\n**Reason:** {reason}",
             color=Colors.ERROR
         )
-        embed.set_image(url="https://media1.tenor.com/m/giN2CZ60D70AAAAC/explosion-mushroom-cloud.gif")
+        embed.set_image(url="https://media.giphy.com/media/HhTXt43pk1I1W/giphy.gif")
         
         await new_channel.send(embed=embed)
 
