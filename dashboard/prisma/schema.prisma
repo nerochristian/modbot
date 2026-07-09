@@ -158,6 +158,10 @@ model AutomodRule {
   hits        Int      @default(0) // number of times this rule has fired
   lastTriggeredAt DateTime?
   createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now())
+
+  @@index([enabled])
+  @@index([trigger])
 }
 
 // (rest of schema remains unchanged — truncated here for brevity in this response)
