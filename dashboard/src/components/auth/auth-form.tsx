@@ -11,8 +11,8 @@ type Mode = 'login' | 'register'
 
 const DEMO_ACCOUNTS = [
   { label: 'Admin', email: 'admin@aegisbot.gg' },
-  { label: 'Manager', email: 'manager@aegisbot.gg' },
-  { label: 'Viewer', email: 'viewer@aegisbot.gg' },
+  { label: 'Moderator', email: 'manager@aegisbot.gg' },
+  { label: 'Helper', email: 'viewer@aegisbot.gg' },
 ]
 
 export function AuthForm({ mode, next }: { mode: Mode; next: string }) {
