@@ -257,8 +257,11 @@ export function MembersClient() {
                         </DropdownTrigger>
                         <DropdownMenu>
                           {canCase && (
-                            <DropdownItem icon={Gavel} asChild>
-                              <Link href={`/dashboard/cases?member=${m.id}&new=1`}>Open case</Link>
+                            <DropdownItem
+                              icon={Gavel}
+                              onClick={() => router.push(`/dashboard/cases?member=${m.id}&new=1`)}
+                            >
+                              Open case
                             </DropdownItem>
                           )}
                           {canWrite && (
@@ -415,7 +418,6 @@ function MemberForm({
       open
       onClose={onClose}
       title={member ? 'Edit member' : 'Add member'}
-      icon={ShieldAlert}
       size="md"
       footer={
         <>
