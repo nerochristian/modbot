@@ -1,10 +1,7 @@
 """
-Advanced Help System with Role-Based Panels
+Advanced Help System
 Features:
 - Interactive /help with categories, search, and detailed info
-- /modpanel - Quick access to moderation tools
-- /adminpanel - Server configuration & management
-- /ownerpanel - Bot owner controls
 """
 
 from __future__ import annotations
@@ -17,8 +14,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from utils.embeds import ModEmbed
-from utils.checks import is_mod, is_admin, is_bot_owner_id
 from config import Config
 
 
@@ -150,7 +145,7 @@ class _HelpIndex:
 
         if include_slash:
             for cmd in _walk_slash_commands(bot.tree):
-                if getattr(cmd, "name", None) in ("help", "modpanel", "adminpanel", "ownerpanel"):
+                if getattr(cmd, "name", None) == "help":
                     continue
 
                 category = _category_for_command(cmd)
@@ -412,8 +407,8 @@ class HelpView(discord.ui.View):
             name="Fast Start",
             value=(
                 "`/setup` - Build the basic server roles/channels\n"
-                "`/modpanel` - Open moderator quick actions\n"
-                "`/adminpanel` - Toggle major server systems\n"
+                "`/settings` - Open server configuration\n"
+                "`/automod status` - Review filter health\n"
                 "`/automod help` - Configure content filters\n"
                 "`/aimod status` - Check AI moderation\n"
                 "`/ticket create` or `,ticket create` - Open support"
@@ -515,8 +510,8 @@ class HelpView(discord.ui.View):
             value=(
                 "`/automod help` - filter setup\n"
                 "`/aimod status` - AI moderation state\n"
-                "`/modpanel` - quick moderation controls\n"
-                "`/adminpanel` - server systems\n"
+                "`/settings` - server systems\n"
+                "`/help command:warn` - command details\n"
                 "`/setup` - missing roles/channels"
             ),
             inline=False,
@@ -1371,32 +1366,6 @@ class Help(commands.Cog):
             if len(results) >= 25:
                 break
         return results
-
-    @app_commands.command(name="modpanel", description="🛡️ Quick access moderation panel")
-    @is_mod()
-    async def modpanel(self, interaction: discord.Interaction) -> None:
-        view = ModPanelView(author_id=interaction.user.id)
-        embed = view._build_main_embed()
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-    @app_commands.command(name="adminpanel", description="⚙️ Server administration panel")
-    @is_admin()
-    async def adminpanel(self, interaction: discord.Interaction) -> None:
-        view = AdminPanelView(author_id=interaction.user.id)
-        embed = view._build_embed()
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
-
-    @app_commands.command(name="ownerpanel", description="👑 Bot owner control panel")
-    async def ownerpanel(self, interaction: discord.Interaction) -> None:
-        if not is_bot_owner_id(interaction.user.id):
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Access Denied", "This panel is for the bot owner only."),
-                ephemeral=True
-            )
-        
-        view = OwnerPanelView(author_id=interaction.user.id)
-        embed = view._build_embed()
-        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Help(bot))
