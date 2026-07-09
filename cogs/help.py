@@ -1,4 +1,4 @@
-﻿"""
+"""
 Advanced Help System
 Features:
 - Interactive /help with categories, search, and detailed info
