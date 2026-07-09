@@ -9,6 +9,7 @@ import {
   Sparkles,
   ArrowRight,
   Star,
+  LogIn,
 } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import { HeroPreview } from '@/components/marketing/hero-preview'
@@ -44,196 +45,120 @@ const TESTIMONIALS = [
 export default function LandingPage() {
   return (
     <>
-      {/* Hero */}
-      <section className="relative overflow-hidden">
-        <div className="grid-texture pointer-events-none absolute inset-0 -z-10 opacity-40" />
-        <div
-          className="pointer-events-none absolute inset-0 -z-10 opacity-60"
-          style={{
-            background:
-              'radial-gradient(60% 50% at 50% 0%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 70%)',
-          }}
-        />
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-20 sm:px-6 lg:grid-cols-2 lg:py-28">
+      {/* Hero — Command Deck Aesthetic */}
+      <section className="relative overflow-hidden border-b border-border/60 bg-[#0a0a0f]">
+        <div className="pointer-events-none absolute inset-0 -z-10 bg-[radial-gradient(#1f2937_0.6px,transparent_1px)] bg-[length:4px_4px] opacity-40" />
+        <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-24 lg:grid-cols-2 lg:py-32">
           <div>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-muted">
-              <Sparkles className="size-3.5 text-accent" />
-              New: AI content scoring
-            </span>
-            <h1 className="mt-5 text-4xl font-bold tracking-tight text-foreground sm:text-5xl lg:text-6xl">
-              Keep your community safe at any scale
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-1 text-xs font-medium tracking-[0.5px] text-white/70">
+              <Sparkles className="size-3.5" /> NEW — AI content scoring v2
+            </div>
+
+            <h1 className="mt-6 text-6xl font-semibold tracking-[-2.5px] text-white sm:text-7xl">
+              The command deck<br />for serious servers.
             </h1>
-            <p className="mt-5 max-w-xl text-lg text-muted">
-              Aegis is the moderation platform for serious Discord communities. Stop raids and spam
-              automatically, track every case in one place, and give your whole mod team a command
-              deck built exactly for how they work.
+            <p className="mt-6 max-w-lg text-lg text-white/60">
+              Aegis gives moderators a real-time, beautiful interface to stop raids, manage cases,
+              and run their community with the precision of a war room.
             </p>
-              <Link href="/register" className={buttonVariants({ variant: 'primary', size: 'lg' })}>
-                Start free trial
-                <ArrowRight className="size-4" />
+
+            <div className="mt-9 flex flex-wrap items-center gap-4">
+              <Link
+                href="/api/auth/discord/authorize"
+                className={buttonVariants({ variant: 'primary', size: 'lg', className: 'gap-3 px-8 text-base' })}
+              >
+                <LogIn className="size-4" />
+                Sign in with Discord
               </Link>
-              <Link href="/login" className={buttonVariants({ variant: 'outline', size: 'lg' })}>
-                Live demo
+              <Link
+                href="#features"
+                className={buttonVariants({ variant: 'outline', size: 'lg', className: 'border-white/20 text-white hover:bg-white/5' })}
+              >
+                See how it works
               </Link>
             </div>
-              <Link href="/register" className={buttonVariants({ variant: 'primary', size: 'lg' })}>
-                Start free trial
-                <ArrowRight className="size-4" />
-              </Link>
-              <Link href="/login" className={buttonVariants({ variant: 'outline', size: 'lg' })}>
-                Live demo
-              </Link>
-            </div>
-            <p className="mt-4 text-sm text-muted-2">
-              Add Aegis to your server in 2 minutes · No credit card required · Cancel anytime
+
+            <p className="mt-5 text-xs tracking-widest text-white/40">
+              FREE FOR SERVERS UNDER 5K MEMBERS · NO CARD REQUIRED
             </p>
           </div>
-          <div className="lg:pl-6">
-            <HeroPreview />
+
+          <div className="relative lg:pl-8">
+            <div className="rounded-3xl border border-white/10 bg-[#111114] p-2 shadow-2xl">
+              <HeroPreview />
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Stats */}
-      <section className="border-y border-border bg-surface">
-        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-8 px-4 py-12 sm:px-6 lg:grid-cols-4">
-          {STATS.map((s) => (
-            <div key={s.label} className="text-center">
-              <p className="text-3xl font-bold tracking-tight text-foreground">{s.value}</p>
-              <p className="mt-1 text-sm text-muted">{s.label}</p>
+      {/* Stats Bar */}
+      <section className="border-b border-border/60 bg-[#0a0a0f] py-8">
+        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-y-8 px-6 text-center sm:grid-cols-4">
+          {STATS.map((s, i) => (
+            <div key={i} className="border-l border-white/10 pl-6 text-left first:border-l-0 first:pl-0">
+              <div className="font-mono text-4xl font-semibold tracking-tighter text-white">{s.value}</div>
+              <div className="mt-1 text-sm text-white/50">{s.label}</div>
             </div>
           ))}
         </div>
       </section>
 
       {/* Features */}
-      <section id="features" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-24 sm:px-6">
-        <div className="mx-auto max-w-2xl text-center">
-          <span className="text-sm font-semibold text-accent">Features</span>
-          <h2 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            Everything your mod team needs to hold the line
-          </h2>
-          <p className="mt-4 text-lg text-muted">
-            A complete toolkit for automod, cases, appeals, and member intelligence — designed to be
-            configured, not compromised.
-          </p>
+      <section id="features" className="mx-auto max-w-6xl px-6 py-24">
+        <div className="mb-12 text-center">
+          <div className="text-xs font-medium tracking-[3px] text-accent">BUILT FOR POWER USERS</div>
+          <h2 className="mt-3 text-5xl font-semibold tracking-[-1.5px]">Everything you need.<br />Nothing you don’t.</h2>
         </div>
-        <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map((f) => (
-            <div
-              key={f.title}
-              className="group rounded-2xl border border-border bg-card p-6 transition-colors hover:border-border-strong"
-            >
-              <span className="flex size-11 items-center justify-center rounded-xl bg-accent-soft text-accent">
-                <f.icon className="size-5.5" />
-              </span>
-              <h3 className="mt-4 text-base font-semibold text-foreground">{f.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted">{f.desc}</p>
+
+        <div className="grid gap-px rounded-3xl border border-white/10 bg-white/5 md:grid-cols-2">
+          {FEATURES.map((f, idx) => (
+            <div key={idx} className="group flex gap-5 border-b border-white/10 p-8 last:border-b-0 md:border-r md:last:border-r-0">
+              <div className="mt-1 text-accent"><f.icon className="size-6" /></div>
+              <div>
+                <div className="font-semibold tracking-tight text-lg">{f.title}</div>
+                <p className="mt-2 text-sm leading-relaxed text-white/60">{f.desc}</p>
+              </div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Spotlight */}
-      <section className="border-y border-border bg-surface">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-4 py-24 sm:px-6 lg:grid-cols-2">
-          <div>
-            <span className="text-sm font-semibold text-accent">Configurable by design</span>
-            <h2 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-              A command deck that adapts to every moderator
-            </h2>
-            <p className="mt-4 text-lg text-muted">
-              From the owner watching raid signals to the helper triaging the appeals queue, everyone
-              gets a view built for them — without a single line of code.
-            </p>
-            <ul className="mt-6 space-y-3">
-              {[
-                'Drag-free widget management: show, hide, and reorder',
-                'Automod severity thresholds and per-rule actions',
-                'Saved views with filters, sorting, and columns',
-                'Watchlist and open-case widgets front and center',
-                'Feature toggles and admin-controlled widget catalog',
-              ].map((item) => (
-                <li key={item} className="flex items-start gap-2.5 text-sm text-foreground">
-                  <Star className="mt-0.5 size-4 shrink-0 text-accent" />
-                  {item}
-                </li>
-              ))}
-            </ul>
-          </div>
-          <HeroPreview />
-        </div>
-      </section>
-
       {/* Testimonials */}
-      <section id="testimonials" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-24 sm:px-6">
-        <div className="mx-auto max-w-2xl text-center">
-          <span className="text-sm font-semibold text-accent">Testimonials</span>
-          <h2 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            Trusted by the mod teams that hold big servers together
-          </h2>
-          <p className="mt-4 text-lg text-muted">
-            Thousands of communities rely on Aegis to stay safe every day.
-          </p>
-        </div>
-        <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
-          {TESTIMONIALS.map((t) => (
-            <figure key={t.name} className="flex flex-col rounded-2xl border border-border bg-card p-6">
-              <div className="flex gap-0.5 text-warning">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star key={i} className="size-4 fill-current" />
-                ))}
-              </div>
-              <blockquote className="mt-4 flex-1 text-sm leading-relaxed text-foreground">
-                “{t.quote}”
-              </blockquote>
-              <figcaption className="mt-5 flex items-center gap-3">
-                <span
-                  className="flex size-9 items-center justify-center rounded-full text-sm font-semibold text-white"
-                  style={{ backgroundColor: t.color }}
-                >
-                  {t.name.split(' ').map((n) => n[0]).join('')}
-                </span>
-                <div>
-                  <p className="text-sm font-medium text-foreground">{t.name}</p>
-                  <p className="text-xs text-muted">{t.title}</p>
-                </div>
-              </figcaption>
-            </figure>
-          ))}
+      <section className="border-y border-white/10 bg-[#0a0a0f] py-20">
+        <div className="mx-auto max-w-6xl px-6">
+          <div className="mb-10 text-center text-xs tracking-[3px] text-white/50">TRUSTED BY THE BEST</div>
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {TESTIMONIALS.slice(0, 6).map((t, i) => (
+              <figure key={i} className="rounded-2xl border border-white/10 bg-[#111114] p-8">
+                <blockquote className="text-[15px] leading-snug text-white/90">“{t.quote}”</blockquote>
+                <figcaption className="mt-6 flex items-center gap-3 text-sm">
+                  <div className="size-9 rounded-full" style={{ backgroundColor: t.color }} />
+                  <div>
+                    <div className="font-medium text-white">{t.name}</div>
+                    <div className="text-xs text-white/50">{t.title}</div>
+                  </div>
+                </figcaption>
+              </figure>
+            ))}
+          </div>
         </div>
       </section>
 
       <Pricing />
       <Faq />
 
-      {/* CTA */}
-      <section className="mx-auto max-w-6xl px-4 pb-24 sm:px-6">
-        <div
-          className={cn(
-            'relative overflow-hidden rounded-3xl border border-border px-6 py-16 text-center sm:px-16',
-          )}
-          style={{
-            background:
-              'linear-gradient(135deg, color-mix(in srgb, var(--accent) 16%, var(--surface)), var(--surface))',
-          }}
-        >
-          <h2 className="mx-auto max-w-2xl text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-            Ready to protect your community?
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-lg text-muted">
-            Join thousands of communities keeping their members safe with Aegis. Add it to your
-            server in minutes.
-          </p>
-          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
-            <Link href="/register" className={buttonVariants({ variant: 'primary', size: 'lg' })}>
-              Start free trial
-              <ArrowRight className="size-4" />
-            </Link>
-            <Link href="/login" className={buttonVariants({ variant: 'outline', size: 'lg' })}>
-              Sign in
-            </Link>
-          </div>
+      {/* Final CTA */}
+      <section className="mx-auto max-w-4xl px-6 pb-24 pt-16 text-center">
+        <h2 className="text-5xl font-semibold tracking-[-1.5px]">Ready to take control?</h2>
+        <p className="mx-auto mt-4 max-w-md text-lg text-white/60">Sign in with Discord and add Aegis to your server in under 60 seconds.</p>
+
+        <div className="mt-8 flex justify-center">
+          <Link
+            href="/api/auth/discord/authorize"
+            className={buttonVariants({ variant: 'primary', size: 'lg', className: 'gap-3 px-10 text-lg' })}
+          >
+            <LogIn className="size-5" /> Sign in with Discord
+          </Link>
         </div>
       </section>
     </>
