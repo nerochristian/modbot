@@ -2,7 +2,7 @@ import { requireUser, handleError, ok } from '@/lib/api'
 import { getKpi, getMetricSeries } from '@/lib/metrics'
 import { rangeDays, type DateRange } from '@/lib/dashboard-config'
 
-const METRICS = ['revenue', 'mrr', 'active', 'users', 'sessions', 'conversion', 'retention', 'churn']
+const METRICS = ['actions', 'automodBlocks', 'members', 'online', 'joins', 'leaves', 'bans', 'warns']
 
 export async function GET(request: Request) {
   try {
