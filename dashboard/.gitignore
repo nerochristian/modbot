@@ -39,3 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local SQLite database — regenerate with `npm run db:reset`
+/dev.db
+/dev.db-journal
+*.db-shm
+*.db-wal
+
+# Commit the zero-config dev env so the project runs immediately on clone.
+# (Contains only a clearly-labeled development secret — rotate for production.)
+!.env
