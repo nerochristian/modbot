@@ -47,14 +47,14 @@ export type DashboardConfig = {
 }
 
 export const ACCENT_COLORS: { key: string; label: string; value: string }[] = [
-  { key: 'indigo', label: 'Indigo', value: '#6366f1' },
+  { key: 'iris', label: 'Iris', value: '#6e56f8' },
   { key: 'violet', label: 'Violet', value: '#8b5cf6' },
   { key: 'blue', label: 'Blue', value: '#3b82f6' },
   { key: 'sky', label: 'Sky', value: '#0ea5e9' },
-  { key: 'emerald', label: 'Emerald', value: '#10b981' },
+  { key: 'mint', label: 'Mint', value: '#12b981' },
   { key: 'amber', label: 'Amber', value: '#f59e0b' },
   { key: 'rose', label: 'Rose', value: '#f43f5e' },
-  { key: 'pink', label: 'Pink', value: '#ec4899' },
+  { key: 'crimson', label: 'Crimson', value: '#dc2f55' },
 ]
 
 export function accentValue(key: string): string {
