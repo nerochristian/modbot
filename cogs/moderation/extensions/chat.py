@@ -273,10 +273,9 @@ class ChatCommands:
             description=f"This channel has been nuked by {user.mention}.\n**Reason:** {reason}",
             color=Colors.ERROR
         )
-        file = discord.File("assets/nuke.gif", filename="nuke.gif")
-        embed.set_image(url="attachment://nuke.gif")
         
-        await new_channel.send(embed=embed, file=file)
+        # Send the link as text content so Discord automatically previews the GIF
+        await new_channel.send(content="https://klipy.com/gifs/atomic-bomb-explosion-6", embed=embed)
 
     async def _glock_logic(self, source, channel: discord.TextChannel = None, role: discord.Role = None, reason: str = "No reason provided"):
         author_id = source.user.id if isinstance(source, discord.Interaction) else source.author.id
