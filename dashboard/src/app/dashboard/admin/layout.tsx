@@ -17,7 +17,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             Admin <Badge tone="accent">Restricted</Badge>
           </span>
         }
-        description="Configure workspace-wide settings, roles, and features."
+        description="Configure server-wide settings, roles, and features."
       />
       <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
         <aside className="lg:sticky lg:top-20 lg:self-start">

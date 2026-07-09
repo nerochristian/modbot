@@ -10,8 +10,8 @@ import type { Permission } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 
 const SECTION_LABELS: Record<string, string> = {
-  main: 'Workspace',
-  account: 'Account',
+  main: 'Moderation',
+  account: 'Workspace',
   admin: 'Administration',
 }
 
