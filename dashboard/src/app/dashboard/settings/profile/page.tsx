@@ -14,8 +14,6 @@ import { ACCENT_COLORS } from '@/lib/dashboard-config'
 import { ROLE_LABELS, type Role } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
 
-void _
-
 type Profile = {
   name: string
   email: string
