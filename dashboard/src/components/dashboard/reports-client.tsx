@@ -263,7 +263,7 @@ function ReportForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
           <div className="rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">{errors.form}</div>
         )}
         <Field label="Report name" error={errors.name}>
-          <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Q3 Revenue Summary" />
+          <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Weekly Moderation Digest" />
         </Field>
         <div className="grid grid-cols-2 gap-4">
           <Field label="Type">
