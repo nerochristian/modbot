@@ -16,8 +16,8 @@ function makeKey() {
 }
 
 const INTEGRATIONS = [
-  { key: 'slack', name: 'Slack', description: 'Send alerts and reports to channels.', icon: Slack, connected: true },
-  { key: 'github', name: 'GitHub', description: 'Link deploys to activity events.', icon: Github, connected: false },
+  { key: 'slack', name: 'Slack', description: 'Send alerts and reports to channels.', icon: MessageSquare, connected: true },
+  { key: 'github', name: 'GitHub', description: 'Link deploys to activity events.', icon: GitBranch, connected: false },
   { key: 'email', name: 'Email digests', description: 'Weekly summaries to your inbox.', icon: Mail, connected: true },
   { key: 'webhook', name: 'Webhooks', description: 'POST events to your own endpoint.', icon: Webhook, connected: false },
 ]
