@@ -131,7 +131,7 @@ export function BillingClient() {
                 {sub.cancelAtPeriodEnd && <Badge tone="warning">Cancels at period end</Badge>}
               </div>
               <p className="mt-1 text-sm text-muted">
-                {formatCurrency(sub.amount)} / month · {sub.seats} seats ·{' '}
+                {formatCurrency(sub.amount)} / month ·{' '}
                 {sub.cancelAtPeriodEnd ? 'Ends' : 'Renews'} {format(new Date(sub.currentPeriodEnd), 'MMM d, yyyy')}
               </p>
             </div>
@@ -159,9 +159,9 @@ export function BillingClient() {
             <CardTitle>Usage this period</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-5 pt-4 sm:grid-cols-3">
-            <UsageMeter label="Seats" used={18} total={sub.seats} />
-            <UsageMeter label="Events" used={612000} total={1000000} format={(n) => `${(n / 1000).toFixed(0)}k`} />
-            <UsageMeter label="API requests" used={284000} total={500000} format={(n) => `${(n / 1000).toFixed(0)}k`} />
+            <UsageMeter label="Moderators" used={9} total={25} />
+            <UsageMeter label="Messages scanned" used={2140000} total={5000000} format={(n) => `${(n / 1000000).toFixed(1)}M`} />
+            <UsageMeter label="Automod rules" used={10} total={50} />
           </CardContent>
         </Card>
       )}

@@ -18,21 +18,21 @@ type Plan = {
 
 const PLANS: Plan[] = [
   {
-    name: 'Starter',
-    tagline: 'For small teams getting started.',
-    monthly: 29,
-    features: ['Up to 3 seats', '10k tracked events', 'Core dashboards', 'CSV export', 'Email support'],
-    cta: 'Start free trial',
+    name: 'Free',
+    tagline: 'For a single server getting started.',
+    monthly: 0,
+    features: ['1 server', 'Core automod', 'Basic case tracking', 'Community support'],
+    cta: 'Add to Discord',
   },
   {
     name: 'Pro',
-    tagline: 'For growing teams that need more.',
-    monthly: 99,
+    tagline: 'For growing communities that need more.',
+    monthly: 9,
     highlighted: true,
     features: [
-      'Up to 25 seats',
-      '1M tracked events',
-      'Advanced analytics & cohorts',
+      'Unlimited automod rules',
+      'Full case & infraction system',
+      'Appeals workflow',
       'Custom widgets & saved views',
       'Roles & permissions',
       'Priority support',
@@ -40,18 +40,18 @@ const PLANS: Plan[] = [
     cta: 'Start free trial',
   },
   {
-    name: 'Enterprise',
-    tagline: 'For organizations at scale.',
-    monthly: 499,
+    name: 'Premium',
+    tagline: 'For networks and communities at scale.',
+    monthly: 29,
     features: [
-      'Unlimited seats',
-      'Unlimited events',
-      'SAML SSO & audit logs',
-      'Custom integrations',
-      'Dedicated success manager',
-      '99.99% uptime SLA',
+      'Everything in Pro',
+      'Multi-server management',
+      'Raid shield & AI content scoring',
+      'SAML SSO for your mod team',
+      'Audit log exports',
+      '99.99% uptime',
     ],
-    cta: 'Contact sales',
+    cta: 'Contact us',
   },
 ]
 
@@ -91,7 +91,7 @@ export function Pricing() {
             <div
               key={plan.name}
               className={cn(
-                'relative flex flex-col rounded-2xl border p-6',
+                'relative flex flex-col rounded-xl border p-6',
                 plan.highlighted
                   ? 'border-accent bg-card shadow-xl shadow-accent/10 ring-1 ring-accent'
                   : 'border-border bg-card',
