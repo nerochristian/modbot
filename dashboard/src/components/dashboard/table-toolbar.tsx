@@ -17,6 +17,8 @@ export function SearchBox({
   placeholder?: string
 }) {
   const [local, setLocal] = useState(value)
+  // Re-sync when the value is changed externally (e.g. applying a saved view).
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => setLocal(value), [value])
   useEffect(() => {
     const id = setTimeout(() => {
