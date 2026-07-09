@@ -66,14 +66,14 @@ export function BillingClient() {
 
   function downloadInvoice(inv: Invoice) {
     const receipt = [
-      'NEBULA, INC. — RECEIPT',
-      '========================',
+      'AEGIS — SERVER PREMIUM RECEIPT',
+      '==============================',
       `Invoice:   ${inv.number}`,
       `Date:      ${format(new Date(inv.issuedAt), 'PPP')}`,
       `Status:    ${inv.status.toUpperCase()}`,
       `Amount:    ${formatCurrency(inv.amount)}`,
       '',
-      'Thank you for your business.',
+      'Thank you for supporting your community.',
     ].join('\n')
     downloadFile(`${inv.number}.txt`, receipt, 'text/plain')
   }
@@ -81,7 +81,7 @@ export function BillingClient() {
   if (error && !data) {
     return (
       <>
-        <PageHeader title="Billing" />
+        <PageHeader title="Server Premium" />
         <Card>
           <ErrorState onRetry={refetch} description={error} />
         </Card>
@@ -92,7 +92,7 @@ export function BillingClient() {
   if (loading && !data) {
     return (
       <>
-        <PageHeader title="Billing" description="Manage your subscription, payment method, and invoices." />
+        <PageHeader title="Server Premium" description="Manage your server's premium plan, payment method, and invoices." />
         <div className="space-y-4">
           <Card className="p-5">
             <Skeleton className="h-24 w-full" />
@@ -109,7 +109,7 @@ export function BillingClient() {
 
   return (
     <>
-      <PageHeader title="Billing" description="Manage your subscription, payment method, and invoices." />
+      <PageHeader title="Server Premium" description="Manage your server's premium plan, payment method, and invoices." />
 
       {!sub ? (
         <Card>
