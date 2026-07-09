@@ -24,28 +24,29 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
 
   let rows: Record<string, unknown>[] = []
   switch (report.type) {
-    case 'revenue': {
-      const series = await getMetricSeries('revenue', 90)
-      rows = series.map((p) => ({ date: p.date.slice(0, 10), revenue: p.value }))
+    case 'actions': {
+      const series = await getMetricSeries('actions', 90)
+      rows = series.map((p) => ({ date: p.date.slice(0, 10), mod_actions: p.value }))
       break
     }
-    case 'retention': {
-      const series = await getMetricSeries('retention', 90)
-      rows = series.map((p) => ({ date: p.date.slice(0, 10), retention_pct: p.value }))
+    case 'automod': {
+      const series = await getMetricSeries('automodBlocks', 90)
+      rows = series.map((p) => ({ date: p.date.slice(0, 10), automod_blocks: p.value }))
       break
     }
-    case 'users':
+    case 'members':
     case 'activity':
     case 'custom':
     default: {
-      const customers = await prisma.customer.findMany({ take: 500, orderBy: { mrr: 'desc' } })
-      rows = customers.map((c) => ({
-        name: c.name,
-        email: c.email,
-        company: c.company ?? '',
-        plan: c.plan,
-        status: c.status,
-        mrr_usd: (c.mrr / 100).toFixed(2),
+      const members = await prisma.member.findMany({ take: 500, orderBy: { warnings: 'desc' } })
+      rows = members.map((m) => ({
+        username: m.username,
+        display_name: m.displayName,
+        discord_id: m.discordId,
+        standing: m.standing,
+        risk_level: m.riskLevel,
+        warnings: m.warnings,
+        messages: m.messages,
       }))
     }
   }
