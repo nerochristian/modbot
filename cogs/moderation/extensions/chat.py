@@ -14,6 +14,9 @@ from utils.transcript import EphemeralTranscriptView, generate_html_transcript
 from utils.status_emojis import get_app_emoji
 
 class ChatCommands:
+    NUKE_SOURCE_URL = "https://klipy.com/gifs/atomic-bomb-explosion-6"
+    NUKE_GIF_URL = "https://static2.klipy.com/ii/4e7bea9f7a3371424e6c16ebc93252fe/33/62/nEc9cN9bAMciTQvr.gif"
+
     @staticmethod
     def _has_reason(reason: Optional[str]) -> bool:
         if not reason:
@@ -270,12 +273,13 @@ class ChatCommands:
         
         embed = discord.Embed(
             title="💥 Channel Nuked",
+            url=self.NUKE_SOURCE_URL,
             description=f"This channel has been nuked by {user.mention}.\n**Reason:** {reason}",
             color=Colors.ERROR
         )
+        embed.set_image(url=self.NUKE_GIF_URL)
         
-        # Send the link as text content so Discord automatically previews the GIF
-        await new_channel.send(content="https://klipy.com/gifs/atomic-bomb-explosion-6", embed=embed)
+        await new_channel.send(embed=embed)
 
     async def _glock_logic(self, source, channel: discord.TextChannel = None, role: discord.Role = None, reason: str = "No reason provided"):
         author_id = source.user.id if isinstance(source, discord.Interaction) else source.author.id
