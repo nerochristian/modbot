@@ -34,10 +34,10 @@ type Payload = { data: Report[]; page: number; pageSize: number; total: number; 
 
 const TYPE_OPTIONS = [
   { label: 'All types', value: '' },
-  { label: 'Revenue', value: 'revenue' },
-  { label: 'Users', value: 'users' },
+  { label: 'Mod actions', value: 'actions' },
+  { label: 'Members', value: 'members' },
   { label: 'Activity', value: 'activity' },
-  { label: 'Retention', value: 'retention' },
+  { label: 'Automod', value: 'automod' },
   { label: 'Custom', value: 'custom' },
 ]
 const STATUS_OPTIONS = [
