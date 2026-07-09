@@ -34,7 +34,7 @@ class Moderation(
         self._hierarchy_cache = {}
         self._slash_commands = []
 
-    async def cog_load(self):
+    async def _register_top_level_commands(self):
         """Register all commands as top-level commands"""
         def cmd(name: str, desc: str, callback):
             command = app_commands.Command(name=name, description=desc, callback=callback)
@@ -116,10 +116,14 @@ class Moderation(
         # Helper
         cmd("modguide", "Show the simplified moderation guide", self.guide_slash)
 
-    async def cog_unload(self):
+    def _unregister_top_level_commands(self):
         """Clean up commands when cog is unloaded"""
         for command in self._slash_commands:
-            self.bot.tree.remove_command(command.name)
+            try:
+                self.bot.tree.remove_command(command.name)
+            except Exception:
+                pass
+        self._slash_commands.clear()
 
     async def guide_slash(self, interaction: discord.Interaction):
         """Show a compact moderation guide focused on day-to-day commands."""
@@ -165,6 +169,8 @@ class Moderation(
 
     async def cog_load(self):
         """Initialize database table for quarantines and start tasks"""
+        await self._register_top_level_commands()
+
         async with self.bot.db.get_connection() as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS quarantines (
@@ -187,6 +193,8 @@ class Moderation(
     async def cog_unload(self):
         if self.check_quarantine_expiry.is_running():
             self.check_quarantine_expiry.cancel()
+
+        self._unregister_top_level_commands()
 
         for command_name in ("moderation", "emoji", "mod"):
             try:
