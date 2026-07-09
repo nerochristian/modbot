@@ -3,10 +3,10 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import {
-  DollarSign,
-  Users,
-  Percent,
-  TrendingDown,
+  Gavel,
+  FolderOpen,
+  ShieldAlert,
+  Scale,
   SlidersHorizontal,
   Download,
 } from 'lucide-react'
@@ -15,7 +15,7 @@ import { StatCard } from '@/components/dashboard/stat-card'
 import { WidgetCustomizer } from '@/components/dashboard/widget-customizer'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge, statusTone } from '@/components/ui/badge'
+import { Badge, statusTone, severityTone, severitySpine } from '@/components/ui/badge'
 import { Avatar } from '@/components/ui/avatar'
 import { SegmentedControl } from '@/components/ui/segmented'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -24,46 +24,58 @@ import { TrendChart, GroupedBarChart, DonutChart } from '@/components/charts'
 import { useConfigStore } from '@/lib/store'
 import { useApi } from '@/lib/use-api'
 import { exportRecords } from '@/lib/export-client'
-import { formatCompact, formatCurrency, formatNumber } from '@/lib/utils'
+import { formatCompact, formatNumber } from '@/lib/utils'
 import { DATE_RANGES, type ChartType, type DateRange } from '@/lib/dashboard-config'
 import { formatDistanceToNow } from 'date-fns'
 
 type Kpi = { value: number; delta: number }
 type OverviewData = {
-  kpis: { revenue: Kpi; active: Kpi; conversion: Kpi; churn: Kpi }
-  revenueSeries: { label: string; value: number }[]
-  retentionSeries: { label: string; value: number }[]
-  growth: { label: string; new: number; churned: number }[]
-  plans: { name: string; value: number; color: string }[]
-  totalCustomers: number
-  topCustomers: { id: string; name: string; company: string | null; plan: string; mrr: number; avatarColor: string }[]
+  kpis: { actions: Kpi; openCases: Kpi; automod: Kpi; pendingAppeals: Kpi }
+  actionsSeries: { label: string; value: number }[]
+  automodSeries: { label: string; value: number }[]
+  growth: { label: string; joined: number; left: number }[]
+  infractions: { name: string; value: number; color: string }[]
+  totalMembers: number
+  watchlist: { id: string; displayName: string; username: string; riskLevel: string; warnings: number; avatarColor: string }[]
+  topRules: { id: string; name: string; trigger: string; action: string; severity: string; hits: number; enabled: boolean }[]
   recentActivity: { id: string; actorName: string; action: string; target: string | null; createdAt: string }[]
   systemStatus: { name: string; status: string; uptime: string }[]
 }
 
 const SPAN: Record<string, string> = {
-  'kpi-revenue': 'lg:col-span-3',
-  'kpi-users': 'lg:col-span-3',
-  'kpi-conversion': 'lg:col-span-3',
-  'kpi-churn': 'lg:col-span-3',
-  'chart-revenue': 'lg:col-span-8',
-  'chart-plans': 'lg:col-span-4',
-  'chart-growth': 'lg:col-span-6',
-  'chart-retention': 'lg:col-span-6',
+  'kpi-actions': 'lg:col-span-3',
+  'kpi-openCases': 'lg:col-span-3',
+  'kpi-automod': 'lg:col-span-3',
+  'kpi-appeals': 'lg:col-span-3',
+  'chart-actions': 'lg:col-span-8',
+  'chart-infractions': 'lg:col-span-4',
+  'chart-joins': 'lg:col-span-6',
+  'chart-rules': 'lg:col-span-6',
   'list-activity': 'lg:col-span-6',
-  'list-customers': 'lg:col-span-6',
+  'list-members': 'lg:col-span-6',
   'status-system': 'lg:col-span-4',
-  'chart-traffic': 'lg:col-span-8',
+  'chart-channels': 'lg:col-span-8',
 }
 
-const TRAFFIC = [
-  { label: 'Organic', value: 4200 },
-  { label: 'Direct', value: 3100 },
-  { label: 'Referral', value: 2200 },
-  { label: 'Social', value: 1800 },
-  { label: 'Email', value: 1400 },
-  { label: 'Paid', value: 900 },
+const CHANNELS = [
+  { label: '#general', value: 320 },
+  { label: '#memes', value: 254 },
+  { label: '#spam-hell', value: 198 },
+  { label: '#off-topic', value: 142 },
+  { label: '#gaming', value: 96 },
+  { label: '#trades', value: 61 },
 ]
+
+const TRIGGER_LABELS: Record<string, string> = {
+  keyword: 'Keyword',
+  regex: 'Regex',
+  spam: 'Spam',
+  mention_spam: 'Mentions',
+  invite: 'Invites',
+  link: 'Links',
+  caps: 'Caps',
+  attachment: 'Files',
+}
 
 function humanAction(action: string) {
   return action.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase())
@@ -88,9 +100,9 @@ export function OverviewClient() {
   function handleExport() {
     if (!data) return
     exportRecords(
-      data.revenueSeries.map((p) => ({ period: p.label, revenue: p.value })),
+      data.actionsSeries.map((p) => ({ period: p.label, actions: p.value })),
       exportFormat,
-      `revenue-${dateRange}`,
+      `mod-actions-${dateRange}`,
     )
   }
 
@@ -98,7 +110,7 @@ export function OverviewClient() {
     <>
       <PageHeader
         title="Overview"
-        description="A real-time snapshot of your business performance."
+        description="A real-time snapshot of your server's health and moderation load."
         actions={
           <>
             <SegmentedControl
@@ -171,79 +183,81 @@ function Widget({
   data: OverviewData
 }) {
   switch (widgetKey) {
-    case 'kpi-revenue':
+    case 'kpi-actions':
       return (
         <StatCard
-          label="Revenue"
-          value={`$${formatCompact(data.kpis.revenue.value)}`}
-          delta={data.kpis.revenue.delta}
-          icon={DollarSign}
-          spark={data.revenueSeries}
-        />
-      )
-    case 'kpi-users':
-      return (
-        <StatCard
-          label="Active users"
-          value={formatCompact(data.kpis.active.value)}
-          delta={data.kpis.active.delta}
-          icon={Users}
-        />
-      )
-    case 'kpi-conversion':
-      return (
-        <StatCard
-          label="Conversion rate"
-          value={`${data.kpis.conversion.value.toFixed(1)}%`}
-          delta={data.kpis.conversion.delta}
-          icon={Percent}
-        />
-      )
-    case 'kpi-churn':
-      return (
-        <StatCard
-          label="Churn rate"
-          value={`${data.kpis.churn.value.toFixed(1)}%`}
-          delta={data.kpis.churn.delta}
-          icon={TrendingDown}
+          label="Mod actions"
+          value={formatCompact(data.kpis.actions.value)}
+          delta={data.kpis.actions.delta}
+          icon={Gavel}
+          spark={data.actionsSeries}
           invertDelta
         />
       )
-    case 'chart-revenue':
+    case 'kpi-openCases':
       return (
-        <ChartCard title="Revenue over time">
+        <StatCard
+          label="Open cases"
+          value={formatNumber(data.kpis.openCases.value)}
+          delta={data.kpis.openCases.delta}
+          icon={FolderOpen}
+          invertDelta
+        />
+      )
+    case 'kpi-automod':
+      return (
+        <StatCard
+          label="Automod blocks"
+          value={formatCompact(data.kpis.automod.value)}
+          delta={data.kpis.automod.delta}
+          icon={ShieldAlert}
+        />
+      )
+    case 'kpi-appeals':
+      return (
+        <StatCard
+          label="Pending appeals"
+          value={formatNumber(data.kpis.pendingAppeals.value)}
+          delta={data.kpis.pendingAppeals.delta}
+          icon={Scale}
+          invertDelta
+        />
+      )
+    case 'chart-actions':
+      return (
+        <ChartCard title="Moderation actions over time">
           <TrendChart
-            data={data.revenueSeries}
+            data={data.actionsSeries}
             type={chartType}
-            valueFormatter={(v) => `$${formatCompact(v)}`}
+            valueFormatter={(v) => formatCompact(v)}
           />
         </ChartCard>
       )
-    case 'chart-retention':
+    case 'chart-channels':
       return (
-        <ChartCard title="Retention">
-          <TrendChart data={data.retentionSeries} type={chartType} valueFormatter={(v) => `${v.toFixed(0)}%`} />
+        <ChartCard title="Flagged channels">
+          <TrendChart data={CHANNELS} type="bar" showAxes valueFormatter={(v) => formatCompact(v)} />
         </ChartCard>
       )
-    case 'chart-growth':
+    case 'chart-joins':
       return (
-        <ChartCard title="User growth">
+        <ChartCard title="Member growth">
           <GroupedBarChart
             data={data.growth as unknown as Record<string, number | string>[]}
             keys={[
-              { key: 'new', color: 'var(--accent)', label: 'New' },
-              { key: 'churned', color: '#f43f5e', label: 'Churned' },
+              { key: 'joined', color: 'var(--mint)', label: 'Joined' },
+              { key: 'left', color: '#f0476b', label: 'Left' },
             ]}
           />
         </ChartCard>
       )
-    case 'chart-plans':
+    case 'chart-infractions':
       return (
-        <ChartCard title="Customers by plan">
+        <ChartCard title="Infractions by type">
           <div className="flex flex-col items-center">
-            <DonutChart data={data.plans} valueFormatter={(v) => formatNumber(v)} />
+            <DonutChart data={data.infractions} valueFormatter={(v) => formatNumber(v)} />
             <div className="mt-3 grid w-full grid-cols-2 gap-2">
-              {data.plans.map((p) => (
+              {data.infractions.map((p) => (
                 <div key={p.name} className="flex items-center gap-2 text-xs">
                   <span className="size-2.5 rounded-full" style={{ background: p.color }} />
                   <span className="text-muted">{p.name}</span>
@@ -254,11 +268,27 @@ function Widget({
           </div>
         </ChartCard>
       )
-    case 'chart-traffic':
+    case 'chart-rules':
       return (
-        <ChartCard title="Traffic sources">
-          <TrendChart data={TRAFFIC} type="bar" showAxes valueFormatter={(v) => formatCompact(v)} />
-        </ChartCard>
+        <Card className="h-full">
+          <CardHeader>
+            <CardTitle>Top automod rules</CardTitle>
+            <Link href="/dashboard/automod" className="text-xs font-medium text-accent hover:underline">
+              Manage
+            </Link>
+          </CardHeader>
+          <CardContent className="space-y-2 pt-3">
+            {data.topRules.map((r) => (
+              <div key={r.id} className={`${severitySpine(r.severity)} flex items-center gap-3 rounded-lg py-1.5 pl-3 pr-1`}>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-foreground">{r.name}</p>
+                  <p className="text-xs text-muted">{TRIGGER_LABELS[r.trigger] ?? r.trigger} · {r.action}</p>
+                </div>
+                <span className="text-sm font-medium tabular-nums text-foreground">{formatCompact(r.hits)}</span>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       )
     case 'list-activity':
       return (
@@ -278,7 +308,7 @@ function Widget({
                     <p className="text-sm text-foreground">
                       <span className="font-medium">{a.actorName}</span>{' '}
                       <span className="text-muted">{humanAction(a.action).toLowerCase()}</span>
-                      {a.target && <span className="font-medium"> {a.target}</span>}
+                      {a.target && <span className="mono-id text-xs font-medium"> {a.target}</span>}
                     </p>
                     <p className="text-xs text-muted-2">
                       {formatDistanceToNow(new Date(a.createdAt), { addSuffix: true })}
@@ -290,31 +320,35 @@ function Widget({
           </CardContent>
         </Card>
       )
-    case 'list-customers':
+    case 'list-members':
       return (
         <Card className="h-full">
           <CardHeader>
-            <CardTitle>Top customers</CardTitle>
-            <Link href="/dashboard/customers" className="text-xs font-medium text-accent hover:underline">
+            <CardTitle>Watchlist</CardTitle>
+            <Link href="/dashboard/members" className="text-xs font-medium text-accent hover:underline">
               View all
             </Link>
           </CardHeader>
           <CardContent className="pt-3">
-            <ul className="space-y-1">
-              {data.topCustomers.map((c) => (
-                <li key={c.id} className="flex items-center gap-3 rounded-lg px-1 py-1.5">
-                  <Avatar name={c.name} color={c.avatarColor} size="sm" />
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-foreground">{c.name}</p>
-                    <p className="truncate text-xs text-muted">{c.company ?? '—'}</p>
-                  </div>
-                  <Badge tone="accent">{c.plan}</Badge>
-                  <span className="w-20 text-right text-sm font-medium text-foreground">
-                    {formatCurrency(c.mrr)}
-                  </span>
-                </li>
-              ))}
-            </ul>
+            {data.watchlist.length === 0 ? (
+              <p className="py-6 text-center text-sm text-muted">No flagged members. All quiet.</p>
+            ) : (
+              <ul className="space-y-1">
+                {data.watchlist.map((m) => (
+                  <li key={m.id} className={`${severitySpine(m.riskLevel)} flex items-center gap-3 rounded-lg py-1.5 pl-3 pr-1`}>
+                    <Avatar name={m.displayName} color={m.avatarColor} size="sm" />
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-foreground">{m.displayName}</p>
+                      <p className="truncate text-xs text-muted">@{m.username}</p>
+                    </div>
+                    <Badge tone={severityTone(m.riskLevel)}>{m.riskLevel}</Badge>
+                    <span className="w-14 text-right text-sm font-medium tabular-nums text-foreground">
+                      {m.warnings} warns
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </CardContent>
         </Card>
       )
@@ -322,7 +356,7 @@ function Widget({
       return (
         <Card className="h-full">
           <CardHeader>
-            <CardTitle>System status</CardTitle>
+            <CardTitle>Bot status</CardTitle>
             <Badge tone="success" dot>
               Operational
             </Badge>
@@ -342,9 +376,7 @@ function Widget({
                   />
                   {s.name}
                 </span>
-                <Badge tone={statusTone(s.status === 'operational' ? 'active' : s.status === 'degraded' ? 'warning' : 'failed')}>
-                  {s.uptime}
-                </Badge>
+                <Badge tone={statusTone(s.status)}>{s.uptime}</Badge>
               </div>
             ))}
           </CardContent>
