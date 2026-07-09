@@ -39,6 +39,8 @@ export function CommandSearch() {
 
   useEffect(() => {
     if (open) {
+      // Reset the palette's query/selection each time it opens.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setQuery('')
       setActive(0)
       setTimeout(() => inputRef.current?.focus(), 0)
