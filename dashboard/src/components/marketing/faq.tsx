@@ -7,27 +7,27 @@ import { cn } from '@/lib/utils'
 const FAQS = [
   {
     q: 'How long does it take to get set up?',
-    a: 'Most teams are up and running in under 10 minutes. Sign up, connect a data source (or use our sample data), and your dashboards populate automatically. No engineering required for the core setup.',
+    a: 'Most servers are protected in under 10 minutes. Add the bot to your server, invite your mod team, and turn on a starter automod ruleset — your command deck populates automatically. No engineering required for the core setup.',
   },
   {
-    q: 'Can I customize the dashboards?',
-    a: 'Extensively. Every user can reorder, show, or hide widgets, switch chart types, choose date ranges, pick a theme and accent color, adjust layout density, and save custom views — all persisted to their account.',
+    q: 'Can I customize how moderation works?',
+    a: 'Extensively. Build layered automod rules with your own severity thresholds and actions, then let every moderator reorder, show, or hide deck widgets, choose date ranges, pick a theme and accent color, adjust density, and save custom views — all persisted to their account.',
   },
   {
     q: 'Do you support roles and permissions?',
-    a: 'Yes. Nebula ships with Admin, Manager, and Viewer roles out of the box, and admins can edit the exact permission matrix per role at any time. UI visibility and API access are both enforced against permissions.',
+    a: 'Yes. Aegis ships with Admin, Moderator, and Helper roles out of the box, and admins can edit the exact permission matrix per role at any time. Command deck visibility and API access are both enforced against permissions.',
   },
   {
     q: 'Is my data secure?',
-    a: 'Sessions use signed, httpOnly cookies with server-side revocation, passwords are hashed with bcrypt, and every sensitive action is written to an immutable audit log. Enterprise plans add SAML SSO and 2FA enforcement.',
+    a: 'Sessions use signed, httpOnly cookies with server-side revocation, passwords are hashed with bcrypt, and every moderation action is written to an immutable audit log. Premium plans add SAML SSO and 2FA enforcement for your mod team.',
   },
   {
-    q: 'Can I export my data?',
-    a: 'Anytime. Export any table or report as CSV, JSON, XLSX, or PDF. Server-side filtering and sorting mean exports reflect exactly what you see on screen.',
+    q: 'Can I export cases and member data?',
+    a: 'Anytime. Export any case, member list, or report as CSV, JSON, XLSX, or PDF. Server-side filtering and sorting mean exports reflect exactly what you see on screen.',
   },
   {
     q: 'What happens after the free trial?',
-    a: 'Your data stays intact. Choose a plan to keep going, or downgrade to a limited free tier. We will never delete your data without warning, and there are no cancellation fees.',
+    a: 'Your cases, rules, and audit history stay intact. Choose a plan to keep going, or downgrade to the limited free tier. We will never delete your data without warning, and there are no cancellation fees.',
   },
 ]
 
@@ -44,7 +44,7 @@ export function Faq() {
         <p className="mt-4 text-lg text-muted">Everything you need to know about the product.</p>
       </div>
 
-      <div className="mt-12 divide-y divide-border rounded-2xl border border-border bg-card">
+      <div className="mt-12 divide-y divide-border rounded-xl border border-border bg-card">
         {FAQS.map((item, i) => {
           const isOpen = open === i
           return (
