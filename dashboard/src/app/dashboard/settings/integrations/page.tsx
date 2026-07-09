@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Copy, RefreshCw, Check, Slack, Github, Mail, Webhook } from 'lucide-react'
+import { Copy, RefreshCw, Check, MessageSquare, GitBranch, Mail, Webhook } from 'lucide-react'
 import { SettingsCard, SettingRow } from '@/components/dashboard/setting-section'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
