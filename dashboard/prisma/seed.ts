@@ -193,7 +193,7 @@ async function seedMembers(): Promise<SeededMember[]> {
   const created: SeededMember[] = []
   const usedIds = new Set<string>()
   for (let i = 0; i < 200; i++) {
-    const username = handle(i)
+    const username = handle()
     const displayName = rng() < 0.5 ? username : `${pick(FIRST)}`
     let discordId = snowflake()
     while (usedIds.has(discordId)) discordId = snowflake()
