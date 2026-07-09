@@ -15,11 +15,11 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     if (!existing) return apiError('Automod rule not found', 404)
 
     const body = await request.json()
-    const data = automodRuleSchema.partial().parse(body)
+    const { exemptRoles, ...rest } = automodRuleSchema.partial().parse(body)
 
-    const update: Prisma.AutomodRuleUpdateInput = { ...data }
-    if (data.exemptRoles !== undefined) {
-      update.exemptRoles = JSON.stringify(data.exemptRoles)
+    const update: Prisma.AutomodRuleUpdateInput = { ...rest }
+    if (exemptRoles !== undefined) {
+      update.exemptRoles = JSON.stringify(exemptRoles)
     }
 
     const rule = await prisma.automodRule.update({ where: { id }, data: update })
