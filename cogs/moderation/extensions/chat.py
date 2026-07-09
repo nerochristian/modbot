@@ -2,7 +2,6 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 from datetime import datetime, timezone
-from pathlib import Path
 import asyncio
 import io
 import re
@@ -15,9 +14,7 @@ from utils.transcript import EphemeralTranscriptView, generate_html_transcript
 from utils.status_emojis import get_app_emoji
 
 class ChatCommands:
-    NUKE_SOURCE_URL = "https://klipy.com/gifs/atomic-bomb-explosion-6"
-    NUKE_GIF_URL = "https://static2.klipy.com/ii/4e7bea9f7a3371424e6c16ebc93252fe/33/62/nEc9cN9bAMciTQvr.gif"
-    NUKE_GIF_PATH = Path(__file__).resolve().parents[3] / "assets" / "nuke.gif"
+    NUKE_SOURCE_URL = "https://tenor.com/view/explosion-mushroom-cloud-atomic-bomb-bomb-boom-gif-4464831"
 
     @staticmethod
     def _has_reason(reason: Optional[str]) -> bool:
@@ -279,13 +276,7 @@ class ChatCommands:
             description=f"This channel has been nuked by {user.mention}.\n**Reason:** {reason}",
             color=Colors.ERROR
         )
-        if self.NUKE_GIF_PATH.is_file():
-            embed.set_image(url="attachment://nuke.gif")
-            file = discord.File(str(self.NUKE_GIF_PATH), filename="nuke.gif")
-            await new_channel.send(embed=embed, file=file)
-        else:
-            embed.set_image(url=self.NUKE_GIF_URL)
-            await new_channel.send(embed=embed)
+        await new_channel.send(content=self.NUKE_SOURCE_URL, embed=embed)
 
     async def _glock_logic(self, source, channel: discord.TextChannel = None, role: discord.Role = None, reason: str = "No reason provided"):
         author_id = source.user.id if isinstance(source, discord.Interaction) else source.author.id
