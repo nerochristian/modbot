@@ -32,9 +32,9 @@ type Invoice = { id: string; number: string; amount: number; status: string; iss
 type BillingData = { subscription: Subscription | null; invoices: Invoice[] }
 
 const PLANS = [
-  { key: 'starter', name: 'Starter', price: 2900, features: ['Up to 3 seats', '10k events', 'Core dashboards'] },
-  { key: 'pro', name: 'Pro', price: 9900, features: ['Up to 25 seats', '1M events', 'Advanced analytics', 'Roles & permissions'] },
-  { key: 'enterprise', name: 'Enterprise', price: 49900, features: ['Unlimited seats', 'Unlimited events', 'SSO & audit logs', 'Dedicated support'] },
+  { key: 'starter', name: 'Free', price: 0, features: ['1 server', 'Core automod', 'Basic cases', 'Community support'] },
+  { key: 'pro', name: 'Pro', price: 999, features: ['Unlimited automod rules', 'Full case system', 'Appeals workflow', 'Roles & permissions'] },
+  { key: 'enterprise', name: 'Premium', price: 2999, features: ['Everything in Pro', 'Multi-server', 'Raid shield & AI scoring', 'SSO & audit exports'] },
 ]
 
 export function BillingClient() {
