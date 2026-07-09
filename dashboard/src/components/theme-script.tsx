@@ -5,9 +5,9 @@
  */
 export function ThemeScript() {
   const script = `(function(){try{
-    var t=localStorage.getItem('nebula-theme')||'system';
-    var a=localStorage.getItem('nebula-accent')||'#6366f1';
-    var d=localStorage.getItem('nebula-density')||'comfortable';
+    var t=localStorage.getItem('aegis-theme')||'dark';
+    var a=localStorage.getItem('aegis-accent')||'#6e56f8';
+    var d=localStorage.getItem('aegis-density')||'compact';
     var m=window.matchMedia('(prefers-color-scheme: dark)').matches;
     var dark=t==='dark'||(t==='system'&&m);
     var el=document.documentElement;

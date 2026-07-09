@@ -63,9 +63,9 @@ export function applyTheme(config: DashboardConfig) {
   el.style.setProperty('--accent', accentValue(config.accent))
   el.setAttribute('data-density', config.density)
   try {
-    localStorage.setItem('nebula-theme', config.theme)
-    localStorage.setItem('nebula-accent', accentValue(config.accent))
-    localStorage.setItem('nebula-density', config.density)
+    localStorage.setItem('aegis-theme', config.theme)
+    localStorage.setItem('aegis-accent', accentValue(config.accent))
+    localStorage.setItem('aegis-density', config.density)
   } catch {
     /* ignore quota / privacy-mode errors */
   }
