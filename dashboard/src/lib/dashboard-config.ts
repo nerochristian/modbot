@@ -89,22 +89,24 @@ export const WIDGET_CATALOG: {
   chartType?: ChartType
   defaultVisible: boolean
 }[] = [
-  { key: 'kpi-revenue', name: 'Revenue', description: 'Monthly recurring revenue KPI', category: 'kpi', defaultVisible: true },
-  { key: 'kpi-users', name: 'Active users', description: 'Active users KPI', category: 'kpi', defaultVisible: true },
-  { key: 'kpi-conversion', name: 'Conversion rate', description: 'Trial-to-paid conversion KPI', category: 'kpi', defaultVisible: true },
-  { key: 'kpi-churn', name: 'Churn rate', description: 'Monthly churn KPI', category: 'kpi', defaultVisible: true },
-  { key: 'chart-revenue', name: 'Revenue over time', description: 'Revenue trend chart', category: 'chart', chartType: 'area', defaultVisible: true },
-  { key: 'chart-growth', name: 'User growth', description: 'New vs. churned users', category: 'chart', chartType: 'bar', defaultVisible: true },
-  { key: 'chart-retention', name: 'Retention', description: 'Cohort retention curve', category: 'chart', chartType: 'line', defaultVisible: true },
-  { key: 'list-activity', name: 'Recent activity', description: 'Latest team activity feed', category: 'list', defaultVisible: true },
-  { key: 'list-customers', name: 'Top customers', description: 'Highest-revenue customers', category: 'list', defaultVisible: true },
-  { key: 'chart-plans', name: 'Plan distribution', description: 'Customers by plan', category: 'chart', chartType: 'bar', defaultVisible: true },
-  { key: 'status-system', name: 'System status', description: 'Service health indicators', category: 'status', defaultVisible: true },
-  { key: 'chart-traffic', name: 'Traffic sources', description: 'Acquisition channels', category: 'chart', chartType: 'bar', defaultVisible: false },
+  { key: 'kpi-actions', name: 'Mod actions', description: 'Moderation actions taken KPI', category: 'kpi', defaultVisible: true },
+  { key: 'kpi-openCases', name: 'Open cases', description: 'Currently open infraction cases', category: 'kpi', defaultVisible: true },
+  { key: 'kpi-automod', name: 'Automod blocks', description: 'Messages auto-blocked KPI', category: 'kpi', defaultVisible: true },
+  { key: 'kpi-appeals', name: 'Pending appeals', description: 'Appeals awaiting review KPI', category: 'kpi', defaultVisible: true },
+  { key: 'chart-actions', name: 'Actions over time', description: 'Moderation actions trend', category: 'chart', chartType: 'area', defaultVisible: true },
+  { key: 'chart-infractions', name: 'Infractions by type', description: 'Warns vs mutes vs bans', category: 'chart', chartType: 'bar', defaultVisible: true },
+  { key: 'chart-joins', name: 'Member growth', description: 'Joins vs leaves', category: 'chart', chartType: 'line', defaultVisible: true },
+  { key: 'list-activity', name: 'Recent activity', description: 'Latest moderation actions feed', category: 'list', defaultVisible: true },
+  { key: 'list-members', name: 'Watchlist', description: 'Highest-risk flagged members', category: 'list', defaultVisible: true },
+  { key: 'chart-rules', name: 'Top automod rules', description: 'Rules by hit count', category: 'chart', chartType: 'bar', defaultVisible: true },
+  { key: 'status-system', name: 'Bot status', description: 'Gateway & shard health indicators', category: 'status', defaultVisible: true },
+  { key: 'chart-channels', name: 'Flagged channels', description: 'Where infractions originate', category: 'chart', chartType: 'bar', defaultVisible: false },
 ]
 
 export const DEFAULT_TABLE_COLUMNS: Record<string, string[]> = {
-  customers: ['name', 'company', 'plan', 'status', 'mrr', 'country', 'lastActiveAt'],
+  members: ['name', 'discordId', 'standing', 'riskLevel', 'warnings', 'messages', 'joinedAt'],
+  cases: ['ref', 'member', 'type', 'severity', 'status', 'moderator', 'createdAt'],
+  appeals: ['ref', 'member', 'caseRef', 'status', 'submittedAt'],
   users: ['name', 'email', 'role', 'status', 'lastLoginAt'],
   reports: ['name', 'type', 'status', 'format', 'createdAt'],
 }
