@@ -35,6 +35,8 @@ class HelpSystemTests(unittest.TestCase):
         self.assertIn("/help", embed.description)
         self.assertIn(",help", embed.description)
         self.assertTrue(any(field.name == "Fast Start" for field in embed.fields))
+        self.assertNotIn("/modpanel", "\n".join(str(field.value) for field in embed.fields))
+        self.assertNotIn("/adminpanel", "\n".join(str(field.value) for field in embed.fields))
 
     def test_detail_embed_has_usage_and_parameters(self) -> None:
         help_cog = Help(SimpleNamespace())
@@ -43,6 +45,11 @@ class HelpSystemTests(unittest.TestCase):
         self.assertEqual(embed.title, "Help: ,warn")
         self.assertTrue(any(field.name == "Run it" for field in embed.fields))
         self.assertTrue(any(field.name == "Inputs" for field in embed.fields))
+
+    def test_panel_commands_are_not_registered_on_help_cog(self) -> None:
+        self.assertFalse(hasattr(Help, "modpanel"))
+        self.assertFalse(hasattr(Help, "adminpanel"))
+        self.assertFalse(hasattr(Help, "ownerpanel"))
 
 
 if __name__ == "__main__":
