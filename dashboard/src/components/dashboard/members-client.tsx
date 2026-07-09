@@ -1,8 +1,8 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Download, MoreHorizontal, Pencil, Trash2, Gavel, Users2, ShieldAlert } from 'lucide-react'
-import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { Plus, Download, MoreHorizontal, Pencil, Trash2, Gavel, Users2 } from 'lucide-react'
 import { PageHeader } from '@/components/dashboard/page-header'
 import { SearchBox, SortableTH, ColumnsMenu } from '@/components/dashboard/table-toolbar'
 import { SavedViews } from '@/components/dashboard/saved-views'
@@ -87,6 +87,7 @@ const STANDING_LABELS: Record<string, string> = {
 
 export function MembersClient() {
   const toast = useToast()
+  const router = useRouter()
   const canWrite = useConfigStore((s) => s.can('members.write'))
   const canCase = useConfigStore((s) => s.can('cases.write'))
   const exportFormat = useConfigStore((s) => s.config.exportFormat)
