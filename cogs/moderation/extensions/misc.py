@@ -171,6 +171,13 @@ class MiscCommands:
             return None
 
         return channel
+
+    @commands.group(name="emoji", invoke_without_command=True)
+    async def emoji_group(self, ctx: commands.Context):
+        """
+        Emoji tools (add, steal, tutorial)
+        Usage:
+          ,emoji add <name> <url>
           ,emoji steal <emojis>
           ,emoji tutorial
         """
