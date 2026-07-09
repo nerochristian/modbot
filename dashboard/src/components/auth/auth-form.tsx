@@ -10,9 +10,9 @@ import { useToast } from '@/components/ui/toast'
 type Mode = 'login' | 'register'
 
 const DEMO_ACCOUNTS = [
-  { label: 'Admin', email: 'admin@nebula.dev' },
-  { label: 'Manager', email: 'manager@nebula.dev' },
-  { label: 'Viewer', email: 'viewer@nebula.dev' },
+  { label: 'Admin', email: 'admin@aegisbot.gg' },
+  { label: 'Manager', email: 'manager@aegisbot.gg' },
+  { label: 'Viewer', email: 'viewer@aegisbot.gg' },
 ]
 
 export function AuthForm({ mode, next }: { mode: Mode; next: string }) {
@@ -61,7 +61,7 @@ export function AuthForm({ mode, next }: { mode: Mode; next: string }) {
   return (
     <div>
       <h1 className="text-2xl font-bold tracking-tight text-foreground">
-        {mode === 'login' ? 'Sign in to Nebula' : 'Create your account'}
+        {mode === 'login' ? 'Sign in to Aegis' : 'Create your account'}
       </h1>
       <p className="mt-1.5 text-sm text-muted">
         {mode === 'login' ? (

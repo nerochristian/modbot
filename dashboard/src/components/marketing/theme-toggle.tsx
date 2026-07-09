@@ -22,7 +22,7 @@ export function PublicThemeToggle({ className }: { className?: string }) {
     setDark(next)
     document.documentElement.classList.toggle('dark', next)
     try {
-      localStorage.setItem('nebula-theme', next ? 'dark' : 'light')
+      localStorage.setItem('aegis-theme', next ? 'dark' : 'light')
     } catch {
       /* ignore */
     }
