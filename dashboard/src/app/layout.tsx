@@ -7,22 +7,22 @@ import { ToastProvider } from '@/components/ui/toast'
 const geistSans = Geist({ variable: '--font-geist-sans', subsets: ['latin'] })
 const geistMono = Geist_Mono({ variable: '--font-geist-mono', subsets: ['latin'] })
 
-const appName = process.env.NEXT_PUBLIC_APP_NAME ?? 'Nebula'
+const appName = process.env.NEXT_PUBLIC_APP_NAME ?? 'Aegis'
 
 export const metadata: Metadata = {
   title: {
-    default: `${appName} — Analytics & operations for modern SaaS`,
+    default: `${appName} — Moderation & safety for Discord communities`,
     template: `%s · ${appName}`,
   },
   description:
-    'Nebula is a complete analytics and operations platform: revenue, customers, retention, and a fully configurable dashboard for your whole team.',
+    'Aegis is a complete moderation platform for Discord servers: automod, cases, appeals, member intelligence, and a fully configurable command deck for your whole mod team.',
 }
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html
       lang="en"
-      data-density="comfortable"
+      data-density="compact"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
       suppressHydrationWarning
     >

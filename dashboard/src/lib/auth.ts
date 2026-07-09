@@ -10,7 +10,7 @@ import bcrypt from 'bcryptjs'
  * jose/bcrypt need) so the token can be verified inside proxy.ts too.
  */
 
-export const SESSION_COOKIE = 'nebula_session'
+export const SESSION_COOKIE = 'aegis_session'
 
 export type SessionPayload = {
   sub: string // user id

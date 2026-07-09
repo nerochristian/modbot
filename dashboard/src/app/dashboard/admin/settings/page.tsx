@@ -70,7 +70,7 @@ export default function GlobalSettingsAdminPage() {
           <SettingRow label="Application name" description="Shown in the UI and emails.">
             <Input
               className="w-56"
-              value={get('app.name', 'Nebula')}
+              value={get('app.name', 'Aegis')}
               onChange={(e) => setSettings({ ...settings, 'app.name': e.target.value })}
             />
           </SettingRow>

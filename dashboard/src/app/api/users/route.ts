@@ -81,7 +81,7 @@ export async function POST(request: Request) {
     await notify({
       userId: user.id,
       type: 'system',
-      title: 'Welcome to Nebula',
+      title: 'Welcome to Aegis',
       body: 'Your account has been created. Explore your dashboard to get started.',
       href: '/dashboard',
     })

@@ -16,7 +16,7 @@ export default function AppearanceSettingsPage() {
   const setDensity = useConfigStore((s) => s.setDensity)
 
   return (
-    <SettingsCard title="Appearance" description="Personalize how Nebula looks. Changes save automatically.">
+    <SettingsCard title="Appearance" description="Personalize how Aegis looks. Changes save automatically.">
       <div className="divide-y divide-border">
         <SettingRow label="Theme" description="Choose light, dark, or match your system.">
           <SegmentedControl
