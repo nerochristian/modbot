@@ -152,7 +152,7 @@ export function SavedViews({
             id="view-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Enterprise churn risk"
+            placeholder="e.g. Critical watchlist"
             onKeyDown={(e) => e.key === 'Enter' && save()}
           />
         </Field>

@@ -19,7 +19,7 @@ export function StatCard({
   invertDelta?: boolean
 }) {
   const positive = delta !== undefined && delta >= 0
-  // For metrics like churn, a lower value is good — invert the color meaning.
+  // For metrics like bans, a lower value is good — invert the color meaning.
   const good = invertDelta ? !positive : positive
 
   return (

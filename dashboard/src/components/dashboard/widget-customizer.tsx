@@ -8,7 +8,7 @@ import { useConfigStore } from '@/lib/store'
 import { WIDGET_CATALOG, type ChartType } from '@/lib/dashboard-config'
 
 const CATALOG_BY_KEY = Object.fromEntries(WIDGET_CATALOG.map((w) => [w.key, w]))
-const SUPPORTS_CHART_TYPE = new Set(['chart-revenue', 'chart-retention'])
+const SUPPORTS_CHART_TYPE = new Set(['chart-actions', 'chart-joins'])
 
 export function WidgetCustomizer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const widgets = useConfigStore((s) => s.config.widgets)
