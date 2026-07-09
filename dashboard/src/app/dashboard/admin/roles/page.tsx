@@ -109,8 +109,8 @@ export default function RolesAdminPage() {
           </thead>
           <tbody>
             {data.groups.map((group) => (
-              <>
-                <tr key={group.label}>
+              <Fragment key={group.label}>
+                <tr>
                   <td colSpan={4} className="pb-1 pt-4">
                     <Badge tone="neutral">{group.label}</Badge>
                   </td>
@@ -136,7 +136,7 @@ export default function RolesAdminPage() {
                     })}
                   </tr>
                 ))}
-              </>
+              </Fragment>
             ))}
           </tbody>
         </table>
