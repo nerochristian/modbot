@@ -9,7 +9,6 @@ import {
   TrendingDown,
   SlidersHorizontal,
   Download,
-  RefreshCw,
 } from 'lucide-react'
 import { PageHeader } from '@/components/dashboard/page-header'
 import { StatCard } from '@/components/dashboard/stat-card'
