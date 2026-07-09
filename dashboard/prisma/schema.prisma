@@ -263,7 +263,61 @@ model Appeal {
   subscription    Subscription?
   invoices        Invoice[]
 }
+  email         String   @unique
+  name          String
+  passwordHash  String
+  role          String   @default("viewer") // admin | manager | viewer
+  status        String   @default("active") // active | invited | suspended
+  avatarColor   String   @default("#6366f1")
+  title         String?
+  phone         String?
+  timezone      String   @default("UTC")
+  bio           String?
+  twoFactorEnabled Boolean @default(false)
+  emailVerified Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastLoginAt   DateTime?
+
+  sessions        Session[]
+  notifications   Notification[]
+  activityLogs    ActivityLog[]
+  auditLogs       AuditLog[]
+  reports         Report[]
+  savedViews      SavedView[]
+  dashboardConfig DashboardConfig?
+  subscription    Subscription?
+  invoices        Invoice[]
+}
   id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  passwordHash  String
+  role          String   @default("viewer") // admin | manager | viewer
+  status        String   @default("active") // active | invited | suspended
+  avatarColor   String   @default("#6366f1")
+  title         String?
+  phone         String?
+  timezone      String   @default("UTC")
+  bio           String?
+  twoFactorEnabled Boolean @default(false)
+  emailVerified Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastLoginAt   DateTime?
+
+  sessions        Session[]
+  notifications   Notification[]
+  activityLogs    ActivityLog[]
+  auditLogs       AuditLog[]
+  reports         Report[]
+  savedViews      SavedView[]
+  dashboardConfig DashboardConfig?
+  subscription    Subscription?
+  invoices        Invoice[]
+}
+
+model Session {
   email         String   @unique
   name          String
   passwordHash  String
