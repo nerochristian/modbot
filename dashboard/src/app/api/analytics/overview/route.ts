@@ -50,6 +50,7 @@ export async function GET(request: Request) {
       range,
       kpis: { revenue, active, conversion, churn },
       revenueSeries,
+      retentionSeries,
       growth,
       plans,
       totalCustomers: totals,
