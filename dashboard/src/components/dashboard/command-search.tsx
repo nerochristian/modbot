@@ -62,7 +62,7 @@ export function CommandSearch() {
         className="focus-ring flex h-9 w-full items-center gap-2 rounded-lg border border-border bg-surface-2/60 px-3 text-sm text-muted-2 transition-colors hover:bg-surface-2 sm:w-64"
       >
         <Search className="size-4" />
-        <span className="flex-1 text-left">Search…</span>
+        <span className="flex-1 text-left">Jump to…</span>
         <kbd className="hidden rounded border border-border bg-surface px-1.5 py-0.5 font-mono text-[10px] text-muted-2 sm:inline">
           ⌘K
         </kbd>
@@ -100,7 +100,7 @@ export function CommandSearch() {
                       setOpen(false)
                     }
                   }}
-                  placeholder="Search pages…"
+                  placeholder="Jump to a page…"
                   className="h-12 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-2"
                 />
               </div>
