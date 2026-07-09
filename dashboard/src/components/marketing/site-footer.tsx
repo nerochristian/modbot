@@ -5,10 +5,10 @@ const GROUPS = [
   {
     title: 'Product',
     links: [
-      { label: 'Features', href: '#features' },
+      { label: 'Automod', href: '#features' },
+      { label: 'Cases', href: '#features' },
+      { label: 'Appeals', href: '#features' },
       { label: 'Pricing', href: '#pricing' },
-      { label: 'Changelog', href: '#' },
-      { label: 'Roadmap', href: '#' },
     ],
   },
   {
@@ -24,7 +24,7 @@ const GROUPS = [
     title: 'Resources',
     links: [
       { label: 'Documentation', href: '#' },
-      { label: 'API reference', href: '#' },
+      { label: 'Setup guide', href: '#' },
       { label: 'Status', href: '#' },
       { label: 'Support', href: '#' },
     ],
@@ -48,8 +48,8 @@ export function SiteFooter() {
           <div className="space-y-4">
             <Logo />
             <p className="max-w-xs text-sm text-muted">
-              The analytics and operations platform for modern SaaS teams. Ship faster with
-              real-time insight into revenue, customers, and growth.
+              The moderation platform for serious Discord communities. Stop raids and spam
+              automatically, track every case, and give your whole mod team one command deck.
             </p>
           </div>
           {GROUPS.map((group) => (
@@ -71,7 +71,7 @@ export function SiteFooter() {
           ))}
         </div>
         <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-border pt-6 sm:flex-row">
-          <p className="text-sm text-muted-2">© 2026 Nebula, Inc. All rights reserved.</p>
+          <p className="text-sm text-muted-2">© 2026 Aegis, Inc. All rights reserved.</p>
           <p className="text-sm text-muted-2">Built for demonstration — no real data.</p>
         </div>
       </div>
