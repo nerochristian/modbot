@@ -45,69 +45,88 @@ export async function getKpi(metric: string, days: number): Promise<Kpi> {
 
   if (current.length === 0) return { value: 0, delta: 0 }
 
-  // Point-in-time metrics use the latest value; flow metrics compare averages.
-  const pointInTime = ['users', 'active', 'mrr', 'retention', 'churn', 'conversion'].includes(metric)
-  const currentValue = pointInTime ? current[0].value : average(current.map((p) => p.value))
+  // Point-in-time metrics use the latest value; flow metrics compare summed volume.
+  const pointInTime = ['members', 'online', 'openCases', 'pendingAppeals'].includes(metric)
+  const currentValue = pointInTime ? current[0].value : sum(current.map((p) => p.value))
   const prevValue = pointInTime
     ? previous[0]?.value ?? currentValue
-    : average(previous.map((p) => p.value))
+    : sum(previous.map((p) => p.value))
 
   const delta = prevValue === 0 ? 0 : ((currentValue - prevValue) / prevValue) * 100
   return { value: currentValue, delta }
 }
 
-function average(nums: number[]): number {
-  if (nums.length === 0) return 0
-  return nums.reduce((s, n) => s + n, 0) / nums.length
+function sum(nums: number[]): number {
+  return nums.reduce((s, n) => s + n, 0)
 }
 
-export type PlanDistribution = { name: string; value: number; color: string }
-const PLAN_COLORS: Record<string, string> = {
-  free: '#94a3b8',
-  starter: '#0ea5e9',
-  pro: '#6366f1',
-  enterprise: '#8b5cf6',
+/** Distribution of cases by infraction type — powers the donut/bar. */
+export type TypeDistribution = { name: string; value: number; color: string }
+const TYPE_COLORS: Record<string, string> = {
+  note: '#626c7d',
+  warn: '#38bdf8',
+  mute: '#f5a524',
+  timeout: '#fb923c',
+  kick: '#f97316',
+  ban: '#f0476b',
+  unban: '#3ddc97',
 }
 
-export async function getPlanDistribution(): Promise<PlanDistribution[]> {
-  const grouped = await prisma.customer.groupBy({
-    by: ['plan'],
-    _count: { plan: true },
+export async function getInfractionDistribution(): Promise<TypeDistribution[]> {
+  const grouped = await prisma.case.groupBy({
+    by: ['type'],
+    _count: { type: true },
   })
-  const order = ['free', 'starter', 'pro', 'enterprise']
+  const order = ['note', 'warn', 'mute', 'timeout', 'kick', 'ban', 'unban']
   return grouped
     .map((g) => ({
-      name: g.plan.charAt(0).toUpperCase() + g.plan.slice(1),
-      value: g._count.plan,
-      color: PLAN_COLORS[g.plan] ?? '#94a3b8',
-      _plan: g.plan,
+      name: g.type.charAt(0).toUpperCase() + g.type.slice(1),
+      value: g._count.type,
+      color: TYPE_COLORS[g.type] ?? '#626c7d',
+      _type: g.type,
     }))
-    .sort((a, b) => order.indexOf(a._plan) - order.indexOf(b._plan))
+    .sort((a, b) => order.indexOf(a._type) - order.indexOf(b._type))
     .map(({ name, value, color }) => ({ name, value, color }))
 }
 
-/** New vs. churned customers per month for the growth chart. */
+/** Member joins vs. leaves per month for the growth chart. */
 export async function getGrowthByMonth(months = 6) {
-  const customers = await prisma.customer.findMany({ select: { createdAt: true, status: true, lastActiveAt: true } })
-  const buckets: { label: string; new: number; churned: number }[] = []
+  const [joins, leaves] = await Promise.all([
+    prisma.metricPoint.findMany({ where: { metric: 'joins' }, orderBy: { date: 'asc' } }),
+    prisma.metricPoint.findMany({ where: { metric: 'leaves' }, orderBy: { date: 'asc' } }),
+  ])
+  const buckets: { label: string; joined: number; left: number }[] = []
   const now = new Date()
   for (let m = months - 1; m >= 0; m--) {
     const d = new Date(now.getFullYear(), now.getMonth() - m, 1)
     const next = new Date(now.getFullYear(), now.getMonth() - m + 1, 1)
     const label = d.toLocaleDateString('en-US', { month: 'short' })
-    const created = customers.filter((c) => c.createdAt >= d && c.createdAt < next).length
-    const churned = customers.filter(
-      (c) => c.status === 'churned' && c.lastActiveAt >= d && c.lastActiveAt < next,
-    ).length
-    buckets.push({ label, new: created, churned })
+    const joined = joins.filter((p) => p.date >= d && p.date < next).reduce((s, p) => s + p.value, 0)
+    const left = leaves.filter((p) => p.date >= d && p.date < next).reduce((s, p) => s + p.value, 0)
+    buckets.push({ label, joined: Math.round(joined), left: Math.round(left) })
   }
   return buckets
 }
 
-export async function getTopCustomers(limit = 5) {
-  return prisma.customer.findMany({
-    where: { status: { in: ['active', 'trialing'] } },
-    orderBy: { mrr: 'desc' },
+/** Highest-risk flagged members for the watchlist widget. */
+export async function getWatchlist(limit = 5) {
+  const RISK_RANK: Record<string, number> = { critical: 0, high: 1, medium: 2, low: 3 }
+  const members = await prisma.member.findMany({
+    where: { standing: { in: ['watchlist', 'muted'] } },
+    take: 40,
+  })
+  return members
+    .sort(
+      (a, b) =>
+        (RISK_RANK[a.riskLevel] ?? 3) - (RISK_RANK[b.riskLevel] ?? 3) || b.warnings - a.warnings,
+    )
+    .slice(0, limit)
+}
+
+/** Top automod rules by hit count. */
+export async function getTopRules(limit = 6) {
+  return prisma.automodRule.findMany({
+    orderBy: { hits: 'desc' },
     take: limit,
   })
 }
@@ -115,11 +134,11 @@ export async function getTopCustomers(limit = 5) {
 export type ServiceStatus = { name: string; status: 'operational' | 'degraded' | 'down'; uptime: string }
 export function getSystemStatus(): ServiceStatus[] {
   return [
-    { name: 'API', status: 'operational', uptime: '99.99%' },
-    { name: 'Dashboard', status: 'operational', uptime: '99.98%' },
-    { name: 'Ingestion pipeline', status: 'operational', uptime: '99.95%' },
-    { name: 'Webhooks', status: 'degraded', uptime: '99.21%' },
-    { name: 'Exports', status: 'operational', uptime: '99.97%' },
+    { name: 'Gateway', status: 'operational', uptime: '99.99%' },
+    { name: 'Shard 0', status: 'operational', uptime: '99.98%' },
+    { name: 'Shard 1', status: 'operational', uptime: '99.96%' },
+    { name: 'Automod engine', status: 'operational', uptime: '99.95%' },
+    { name: 'Audit webhook', status: 'degraded', uptime: '99.21%' },
   ]
 }
 
