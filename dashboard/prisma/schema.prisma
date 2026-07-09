@@ -20,16 +20,9 @@ datasource db {
 
 model User {
   id            String   @id @default(cuid())
-  // Discord primary identity
-  discordId     String   @unique
-  discordUsername String?
-  discordAvatar String?  // hash or full CDN url
-
-  // Optional email/password fallback (kept for admin invites if needed)
-  email         String?  @unique
-  passwordHash  String?
-
+  email         String   @unique
   name          String
+  passwordHash  String
   role          String   @default("viewer") // admin | manager | viewer
   status        String   @default("active") // active | invited | suspended
   avatarColor   String   @default("#6366f1")
@@ -43,9 +36,14 @@ model User {
   updatedAt     DateTime @updatedAt
   lastLoginAt   DateTime?
 
-  // Discord OAuth tokens (encrypted at rest in production)
-  discordAccessToken  String?
-  discordRefreshToken String?
+  // Discord is the primary identity for production dashboard accounts.
+  // Existing local demo accounts remain valid while deployments migrate.
+  discordId             String?   @unique
+  discordUsername       String?
+  discordGlobalName     String?
+  discordAvatar         String?
+  discordAccessToken    String?
+  discordRefreshToken   String?
   discordTokenExpiresAt DateTime?
 
   sessions        Session[]
