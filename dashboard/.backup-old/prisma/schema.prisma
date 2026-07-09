@@ -1,0 +1,265 @@
+// Nebula SaaS — Prisma schema
+// SQLite by default for zero-config local dev. To scale to Postgres:
+//   1. change `provider` to "postgresql"
+//   2. set DATABASE_URL to your Postgres connection string
+//   3. run `npm run db:push`
+// JSON-shaped data is stored as String columns for cross-database portability
+// (see src/lib/json.ts for typed (de)serialization helpers).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ---------------------------------------------------------------------------
+// Identity & access
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String   @id @default(cuid())
+  email         String   @unique
+  name          String
+  passwordHash  String
+  role          String   @default("viewer") // admin | manager | viewer
+  status        String   @default("active") // active | invited | suspended
+  avatarColor   String   @default("#6366f1")
+  title         String?
+  phone         String?
+  timezone      String   @default("UTC")
+  bio           String?
+  twoFactorEnabled Boolean @default(false)
+  emailVerified Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastLoginAt   DateTime?
+
+  sessions        Session[]
+  notifications   Notification[]
+  activityLogs    ActivityLog[]
+  auditLogs       AuditLog[]
+  reports         Report[]
+  savedViews      SavedView[]
+  dashboardConfig DashboardConfig?
+  subscription    Subscription?
+  invoices        Invoice[]
+}
+
+model Session {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jti        String   @unique
+  userAgent  String?
+  ip         String?
+  createdAt  DateTime @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+
+  @@index([userId])
+}
+
+// Role -> permission grants. Editable by admins so the permission matrix is
+// data-driven rather than hard-coded.
+model RolePermission {
+  id         String  @id @default(cuid())
+  role       String  // admin | manager | viewer
+  permission String  // e.g. "users.write", "billing.read"
+  allowed    Boolean @default(true)
+
+  @@unique([role, permission])
+}
+
+// ---------------------------------------------------------------------------
+// Customers (the SaaS's end-customers shown across the dashboard)
+// ---------------------------------------------------------------------------
+
+model Customer {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  company      String?
+  plan         String   @default("free") // free | starter | pro | enterprise
+  status       String   @default("active") // active | churned | trialing | past_due
+  country      String   @default("US")
+  mrr          Int      @default(0) // monthly recurring revenue in cents
+  avatarColor  String   @default("#0ea5e9")
+  createdAt    DateTime @default(now())
+  lastActiveAt DateTime @default(now())
+
+  @@index([status])
+  @@index([plan])
+}
+
+// ---------------------------------------------------------------------------
+// Billing
+// ---------------------------------------------------------------------------
+
+model Subscription {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan               String   @default("pro") // starter | pro | enterprise
+  status             String   @default("active") // active | trialing | past_due | canceled
+  seats              Int      @default(1)
+  interval           String   @default("month") // month | year
+  amount             Int      @default(4900) // per-interval amount in cents
+  currentPeriodEnd   DateTime
+  cancelAtPeriodEnd  Boolean  @default(false)
+  createdAt          DateTime @default(now())
+}
+
+model Invoice {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  number    String   @unique
+  amount    Int // cents
+  status    String   @default("paid") // paid | open | void | uncollectible
+  issuedAt  DateTime @default(now())
+  periodStart DateTime
+  periodEnd   DateTime
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Analytics — daily time-series points keyed by metric name
+// ---------------------------------------------------------------------------
+
+model MetricPoint {
+  id     String   @id @default(cuid())
+  metric String // revenue | users | active | conversion | retention | churn | mrr | sessions
+  date   DateTime
+  value  Float
+
+  @@unique([metric, date])
+  @@index([metric])
+}
+
+// ---------------------------------------------------------------------------
+// Activity, audit & notifications
+// ---------------------------------------------------------------------------
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  actorName String
+  action    String // e.g. "created_report", "invited_user"
+  target    String?
+  metadata  String?  // JSON string
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  actorName String
+  action    String
+  entity    String
+  entityId  String?
+  ip        String?
+  userAgent String?
+  metadata  String?  // JSON string
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   @default("system") // system | billing | security | mention | report
+  level     String   @default("info") // info | success | warning | error
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  href      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([read])
+}
+
+// ---------------------------------------------------------------------------
+// Reports
+// ---------------------------------------------------------------------------
+
+model Report {
+  id        String   @id @default(cuid())
+  name      String
+  type      String   @default("revenue") // revenue | users | activity | retention | custom
+  status    String   @default("ready") // ready | generating | scheduled | failed
+  format    String   @default("csv") // csv | json | pdf | xlsx
+  params    String?  // JSON string (date range, filters)
+  createdById String?
+  createdBy   User?  @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// Per-user preferences & saved views
+// ---------------------------------------------------------------------------
+
+model DashboardConfig {
+  id       String @id @default(cuid())
+  userId   String @unique
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // JSON string capturing widgets, order, visibility, chart types, theme,
+  // accent, density, sidebar state, refresh interval, export format, etc.
+  config   String
+  updatedAt DateTime @updatedAt
+}
+
+model SavedView {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  page      String // users | customers | reports | activity
+  state     String // JSON string: filters, sort, columns, pageSize
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Admin-controlled catalog & global config
+// ---------------------------------------------------------------------------
+
+// The catalog of widgets an admin can enable/disable app-wide.
+model Widget {
+  id          String  @id @default(cuid())
+  key         String  @unique
+  name        String
+  description String
+  category    String  @default("general")
+  defaultVisible Boolean @default(true)
+  enabled     Boolean @default(true) // admin kill-switch
+  order       Int     @default(0)
+}
+
+model FeatureToggle {
+  key         String  @id
+  name        String
+  description String
+  enabled     Boolean @default(false)
+  rolloutRole String  @default("all") // all | admin | manager
+  updatedAt   DateTime @updatedAt
+}
+
+model AppSetting {
+  key       String   @id
+  value     String   // JSON string
+  updatedAt DateTime @updatedAt
+}
