@@ -211,7 +211,7 @@ function ReportForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
   const exportFormat = useConfigStore((s) => s.config.exportFormat)
   const [busy, setBusy] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [form, setForm] = useState({ name: '', type: 'revenue', format: exportFormat })
+  const [form, setForm] = useState({ name: '', type: 'actions', format: exportFormat })
 
   async function submit() {
     setBusy(true)
