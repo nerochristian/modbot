@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { DollarSign, Users, Percent, Repeat, Download, Activity, TrendingDown } from 'lucide-react'
+import { Gavel, Users, ShieldAlert, UserPlus, Download, UserMinus, Ban } from 'lucide-react'
 import { PageHeader } from '@/components/dashboard/page-header'
 import { StatCard } from '@/components/dashboard/stat-card'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -25,17 +25,17 @@ type AnalyticsData = {
 }
 
 const METRIC_META: Record<string, { label: string; format: (v: number) => string; invert?: boolean }> = {
-  revenue: { label: 'Revenue', format: (v) => `$${formatCompact(v)}` },
-  mrr: { label: 'MRR', format: (v) => `$${formatCompact(v)}` },
-  active: { label: 'Active users', format: (v) => formatCompact(v) },
-  users: { label: 'Total users', format: (v) => formatCompact(v) },
-  sessions: { label: 'Sessions', format: (v) => formatCompact(v) },
-  conversion: { label: 'Conversion', format: (v) => `${v.toFixed(1)}%` },
-  retention: { label: 'Retention', format: (v) => `${v.toFixed(1)}%` },
-  churn: { label: 'Churn', format: (v) => `${v.toFixed(1)}%`, invert: true },
+  actions: { label: 'Mod actions', format: (v) => formatCompact(v), invert: true },
+  automodBlocks: { label: 'Automod blocks', format: (v) => formatCompact(v) },
+  members: { label: 'Total members', format: (v) => formatCompact(v) },
+  online: { label: 'Online now', format: (v) => formatCompact(v) },
+  joins: { label: 'Joins', format: (v) => formatCompact(v) },
+  leaves: { label: 'Leaves', format: (v) => formatCompact(v), invert: true },
+  bans: { label: 'Bans', format: (v) => formatCompact(v), invert: true },
+  warns: { label: 'Warnings', format: (v) => formatCompact(v), invert: true },
 }
 
-const SECONDARY = ['retention', 'churn', 'sessions', 'conversion']
+const SECONDARY = ['joins', 'leaves', 'bans', 'warns']
 
 export function AnalyticsClient() {
   const dateRange = useConfigStore((s) => s.config.dateRange)
@@ -43,7 +43,7 @@ export function AnalyticsClient() {
   const exportFormat = useConfigStore((s) => s.config.exportFormat)
   const setDateRange = useConfigStore((s) => s.setDateRange)
 
-  const [metric, setMetric] = useState('revenue')
+  const [metric, setMetric] = useState('actions')
   const [chartType, setChartType] = useState<ChartType>('area')
 
   const { data, loading, error, refetch } = useApi<AnalyticsData>(
@@ -63,7 +63,7 @@ export function AnalyticsClient() {
     <>
       <PageHeader
         title="Analytics"
-        description="Deep-dive into revenue, growth, retention, and engagement."
+        description="Deep-dive into moderation load, membership, and automod performance."
         actions={
           <>
             <SegmentedControl
@@ -102,10 +102,10 @@ export function AnalyticsClient() {
       ) : data ? (
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Revenue" value={`$${formatCompact(data.kpis.revenue.value)}`} delta={data.kpis.revenue.delta} icon={DollarSign} spark={data.series.revenue} />
-            <StatCard label="MRR" value={`$${formatCompact(data.kpis.mrr.value)}`} delta={data.kpis.mrr.delta} icon={Repeat} spark={data.series.mrr} />
-            <StatCard label="Active users" value={formatCompact(data.kpis.active.value)} delta={data.kpis.active.delta} icon={Users} spark={data.series.active} />
-            <StatCard label="Conversion" value={`${data.kpis.conversion.value.toFixed(1)}%`} delta={data.kpis.conversion.delta} icon={Percent} spark={data.series.conversion} />
+            <StatCard label="Mod actions" value={formatCompact(data.kpis.actions.value)} delta={data.kpis.actions.delta} icon={Gavel} spark={data.series.actions} invertDelta />
+            <StatCard label="Automod blocks" value={formatCompact(data.kpis.automodBlocks.value)} delta={data.kpis.automodBlocks.delta} icon={ShieldAlert} spark={data.series.automodBlocks} />
+            <StatCard label="Total members" value={formatCompact(data.kpis.members.value)} delta={data.kpis.members.delta} icon={Users} spark={data.series.members} />
+            <StatCard label="Joins" value={formatCompact(data.kpis.joins.value)} delta={data.kpis.joins.delta} icon={UserPlus} spark={data.series.joins} />
           </div>
 
           <Card>
@@ -138,7 +138,7 @@ export function AnalyticsClient() {
           <div className="grid gap-4 lg:grid-cols-2">
             {SECONDARY.map((m) => {
               const mm = METRIC_META[m]
-              const Icon = m === 'churn' ? TrendingDown : m === 'sessions' ? Activity : Percent
+              const Icon = m === 'bans' ? Ban : m === 'leaves' ? UserMinus : m === 'joins' ? UserPlus : ShieldAlert
               return (
                 <Card key={m}>
                   <CardHeader>
@@ -151,7 +151,7 @@ export function AnalyticsClient() {
                   <CardContent className="pt-4">
                     <TrendChart
                       data={data.series[m]}
-                      type={m === 'sessions' ? 'bar' : 'line'}
+                      type={m === 'joins' ? 'area' : 'bar'}
                       height={200}
                       valueFormatter={mm.format}
                     />
