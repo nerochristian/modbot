@@ -43,7 +43,13 @@ export function AuthForm({ mode, next }: { mode: Mode; next: string }) {
         return
       }
       toast.success(mode === 'login' ? 'Welcome back!' : 'Account created!')
-      router.push(next)
+      // Honor the user's configured default landing page unless a specific
+      // protected destination was requested.
+      const target =
+        mode === 'login' && next === '/dashboard' && typeof data.landingPage === 'string'
+          ? data.landingPage
+          : next
+      router.push(target)
       router.refresh()
     } catch {
       setErrors({ form: 'Network error. Please try again.' })
