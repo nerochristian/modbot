@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Check, Download, CreditCard, AlertTriangle } from 'lucide-react'
+import { Check, Download, CreditCard } from 'lucide-react'
 import { PageHeader } from '@/components/dashboard/page-header'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table'
