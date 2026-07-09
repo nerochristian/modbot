@@ -3,6 +3,29 @@ import { requireUser, handleError, ok } from '@/lib/api'
 import { updateProfileSchema } from '@/lib/validation'
 import { logActivity } from '@/lib/log'
 
+const PROFILE_SELECT = {
+  id: true,
+  name: true,
+  email: true,
+  role: true,
+  title: true,
+  phone: true,
+  timezone: true,
+  bio: true,
+  avatarColor: true,
+  createdAt: true,
+} as const
+
+export async function GET() {
+  const guard = await requireUser()
+  if (guard instanceof Response) return guard
+  const profile = await prisma.user.findUnique({
+    where: { id: guard.id },
+    select: PROFILE_SELECT,
+  })
+  return ok({ profile })
+}
+
 export async function PATCH(request: Request) {
   try {
     const guard = await requireUser()
