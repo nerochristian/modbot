@@ -76,21 +76,104 @@ model RolePermission {
 // Customers (the SaaS's end-customers shown across the dashboard)
 // ---------------------------------------------------------------------------
 
-model Customer {
+// ---------------------------------------------------------------------------
+// Community members — the people being moderated in the Discord server
+// ---------------------------------------------------------------------------
+
+model Member {
   id           String   @id @default(cuid())
-  name         String
-  email        String   @unique
-  company      String?
-  plan         String   @default("free") // free | starter | pro | enterprise
-  status       String   @default("active") // active | churned | trialing | past_due
-  country      String   @default("US")
-  mrr          Int      @default(0) // monthly recurring revenue in cents
-  avatarColor  String   @default("#0ea5e9")
-  createdAt    DateTime @default(now())
+  username     String // Discord username, e.g. "shadowfox"
+  displayName  String // server nickname / global display name
+  discordId    String   @unique // 17-19 digit snowflake
+  avatarColor  String   @default("#5865f2")
+  standing     String   @default("good") // good | watchlist | muted | banned | left
+  riskLevel    String   @default("low") // low | medium | high | critical
+  warnings     Int      @default(0)
+  messages     Int      @default(0)
+  roles        String   @default("[]") // JSON array of role names
+  note         String? // moderator note
+  joinedAt     DateTime @default(now())
   lastActiveAt DateTime @default(now())
 
+  cases   Case[]
+  appeals Appeal[]
+
+  @@index([standing])
+  @@index([riskLevel])
+}
+
+// ---------------------------------------------------------------------------
+// Cases / infractions — the moderation action log
+// ---------------------------------------------------------------------------
+
+model Case {
+  id         String   @id @default(cuid())
+  ref        Int      @unique // human case number, e.g. 421 -> #CASE-0421
+  memberId   String
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  type       String // note | warn | mute | timeout | kick | ban | unban
+  severity   String   @default("low") // low | medium | high | critical
+  status     String   @default("open") // open | resolved | expired | appealed
+  reason     String
+  moderator  String // display name of the acting moderator
+  moderatorId String?
+  channel    String? // originating channel name
+  evidence   String? // JSON array of evidence links/notes
+  expiresAt  DateTime? // for temporary mutes/timeouts/bans
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now())
+
+  appeals Appeal[]
+
+  @@index([memberId])
+  @@index([type])
   @@index([status])
-  @@index([plan])
+  @@index([severity])
+}
+
+// ---------------------------------------------------------------------------
+// Automod rules — the automated filter/enforcement engine
+// ---------------------------------------------------------------------------
+
+model AutomodRule {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  trigger     String // keyword | regex | spam | mention_spam | invite | link | caps | attachment
+  pattern     String? // keywords/regex/thresholds depending on trigger
+  action      String   @default("delete") // delete | warn | mute | timeout | kick | ban | flag
+  severity    String   @default("low") // low | medium | high | critical
+  exemptRoles String   @default("[]") // JSON array of role names
+  enabled     Boolean  @default(true)
+  hits        Int      @default(0) // number of times this rule has fired
+  lastTriggeredAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @default(now())
+
+  @@index([enabled])
+  @@index([trigger])
+}
+
+// ---------------------------------------------------------------------------
+// Appeals — member requests to overturn a case
+// ---------------------------------------------------------------------------
+
+model Appeal {
+  id         String   @id @default(cuid())
+  ref        Int      @unique // human appeal number
+  memberId   String
+  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  caseId     String
+  case       Case     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  status     String   @default("pending") // pending | approved | denied
+  message    String // the member's appeal text
+  decision   String? // moderator's decision note
+  reviewedBy String? // display name of reviewer
+  submittedAt DateTime @default(now())
+  reviewedAt  DateTime?
+
+  @@index([memberId])
+  @@index([status])
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +214,7 @@ model Invoice {
 
 model MetricPoint {
   id     String   @id @default(cuid())
-  metric String // revenue | users | active | conversion | retention | churn | mrr | sessions
+  metric String // actions | warns | mutes | bans | kicks | automodBlocks | joins | leaves | messages
   date   DateTime
   value  Float
 
