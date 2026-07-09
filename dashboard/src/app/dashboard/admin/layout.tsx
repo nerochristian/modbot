@@ -13,11 +13,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <>
       <PageHeader
         title={
-          (
-            <span className="flex items-center gap-2">
-              Admin <Badge tone="accent">Restricted</Badge>
-            </span>
-          ) as unknown as string
+          <span className="flex items-center gap-2">
+            Admin <Badge tone="accent">Restricted</Badge>
+          </span>
         }
         description="Configure workspace-wide settings, roles, and features."
       />
