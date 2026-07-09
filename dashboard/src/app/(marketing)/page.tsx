@@ -68,7 +68,14 @@ export default function LandingPage() {
               automatically, track every case in one place, and give your whole mod team a command
               deck built exactly for how they work.
             </p>
-            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <Link href="/register" className={buttonVariants({ variant: 'primary', size: 'lg' })}>
+                Start free trial
+                <ArrowRight className="size-4" />
+              </Link>
+              <Link href="/login" className={buttonVariants({ variant: 'outline', size: 'lg' })}>
+                Live demo
+              </Link>
+            </div>
               <Link href="/register" className={buttonVariants({ variant: 'primary', size: 'lg' })}>
                 Start free trial
                 <ArrowRight className="size-4" />
