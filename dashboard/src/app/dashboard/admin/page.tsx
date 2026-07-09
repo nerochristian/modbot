@@ -7,28 +7,28 @@ import { Card, CardContent } from '@/components/ui/card'
 export const metadata: Metadata = { title: 'Admin' }
 
 export default async function AdminOverviewPage() {
-  const [users, customers, features, enabledFeatures, widgets, auditCount] = await Promise.all([
+  const [users, members, features, enabledFeatures, rules, auditCount] = await Promise.all([
     prisma.user.count(),
-    prisma.customer.count(),
+    prisma.member.count(),
     prisma.featureToggle.count(),
     prisma.featureToggle.count({ where: { enabled: true } }),
-    prisma.widget.count(),
+    prisma.automodRule.count(),
     prisma.auditLog.count(),
   ])
 
   const stats = [
     { label: 'Team members', value: users, href: '/dashboard/users', icon: Users2 },
-    { label: 'Customers', value: customers, href: '/dashboard/customers', icon: Users2 },
+    { label: 'Server members', value: members, href: '/dashboard/members', icon: Users2 },
     { label: 'Features enabled', value: `${enabledFeatures}/${features}`, href: '/dashboard/admin/features', icon: ToggleRight },
-    { label: 'Widgets', value: widgets, href: '/dashboard/admin/widgets', icon: Blocks },
+    { label: 'Automod rules', value: rules, href: '/dashboard/automod', icon: Blocks },
     { label: 'Audit events', value: auditCount, href: '/dashboard/admin/audit', icon: ScrollText },
   ]
 
   const shortcuts = [
-    { label: 'Roles & permissions', description: 'Edit what each role can access.', href: '/dashboard/admin/roles', icon: ShieldCheck },
-    { label: 'Feature flags', description: 'Toggle features across the workspace.', href: '/dashboard/admin/features', icon: ToggleRight },
-    { label: 'Global settings', description: 'App name, sign-ups, security policy.', href: '/dashboard/admin/settings', icon: Blocks },
-    { label: 'Send broadcast', description: 'Notify all users of an announcement.', href: '/dashboard/admin/broadcast', icon: Megaphone },
+    { label: 'Roles & permissions', description: 'Edit what each mod role can access.', href: '/dashboard/admin/roles', icon: ShieldCheck },
+    { label: 'Feature flags', description: 'Toggle features across the server.', href: '/dashboard/admin/features', icon: ToggleRight },
+    { label: 'Global settings', description: 'Bot name, sign-ups, security policy.', href: '/dashboard/admin/settings', icon: Blocks },
+    { label: 'Send broadcast', description: 'Notify the whole mod team of an announcement.', href: '/dashboard/admin/broadcast', icon: Megaphone },
   ]
 
   return (
