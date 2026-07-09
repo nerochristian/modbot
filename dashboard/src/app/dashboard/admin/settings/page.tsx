@@ -38,7 +38,7 @@ export default function GlobalSettingsAdminPage() {
   async function saveText() {
     setSavingText(true)
     await Promise.all([
-      save('app.name', settings?.['app.name'] ?? 'Nebula'),
+      save('app.name', settings?.['app.name'] ?? 'Aegis'),
       save('app.supportEmail', settings?.['app.supportEmail'] ?? ''),
     ])
     setSavingText(false)
