@@ -272,7 +272,6 @@ class ChatCommands:
         
         embed = discord.Embed(
             title="💥 Channel Nuked",
-            url=self.NUKE_SOURCE_URL,
             description=f"This channel has been nuked by {user.mention}.\n**Reason:** {reason}",
             color=Colors.ERROR
         )
