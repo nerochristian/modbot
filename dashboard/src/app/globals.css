@@ -4,54 +4,74 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ------------------------------------------------------------------ */
-/* Semantic design tokens. Light values live on :root, dark values on  */
-/* .dark. --accent is overridden inline from the user's saved config.  */
+/* Aegis — Trust & Safety console.                                     */
+/* Dark-first, control-room aesthetic. Light values live on :root,     */
+/* dark values on .dark. --accent is overridden inline from the user's */
+/* saved config. The "mint" signal channel marks protected/active      */
+/* states and is unique to this product.                               */
 /* ------------------------------------------------------------------ */
 :root {
-  --bg: #f6f7f9;
+  --bg: #f4f5f7;
   --surface: #ffffff;
-  --surface-2: #f1f3f5;
+  --surface-2: #eef0f3;
   --card: #ffffff;
-  --overlay: rgba(15, 23, 42, 0.45);
-  --border: #e6e8ec;
-  --border-strong: #d3d7de;
-  --foreground: #0f172a;
-  --muted: #5b6472;
-  --muted-2: #8b94a3;
-  --accent: #6366f1;
+  --overlay: rgba(10, 12, 16, 0.5);
+  --border: #e2e5ea;
+  --border-strong: #cbd0d9;
+  --foreground: #10131a;
+  --muted: #5a6472;
+  --muted-2: #8a93a2;
+  --accent: #6e56f8;
   --accent-foreground: #ffffff;
   --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
-  --success: #0f9d6b;
-  --success-soft: color-mix(in srgb, #0f9d6b 14%, transparent);
-  --warning: #d98a00;
-  --warning-soft: color-mix(in srgb, #d98a00 16%, transparent);
-  --danger: #e0463f;
-  --danger-soft: color-mix(in srgb, #e0463f 12%, transparent);
-  --info: #2f7ff0;
-  --info-soft: color-mix(in srgb, #2f7ff0 12%, transparent);
+  --mint: #12b981;
+  --mint-soft: color-mix(in srgb, #12b981 14%, transparent);
+  --success: #12a06b;
+  --success-soft: color-mix(in srgb, #12a06b 14%, transparent);
+  --warning: #c77700;
+  --warning-soft: color-mix(in srgb, #c77700 16%, transparent);
+  --danger: #dc2f55;
+  --danger-soft: color-mix(in srgb, #dc2f55 12%, transparent);
+  --info: #0a8bd6;
+  --info-soft: color-mix(in srgb, #0a8bd6 12%, transparent);
+
+  /* Severity spine — the signature motif. */
+  --sev-none: #8a93a2;
+  --sev-low: #0a8bd6;
+  --sev-medium: #c77700;
+  --sev-high: #e0602a;
+  --sev-critical: #dc2f55;
 }
 
 .dark {
-  --bg: #0a0e17;
-  --surface: #111726;
-  --surface-2: #161d2e;
-  --card: #111726;
-  --overlay: rgba(2, 6, 12, 0.6);
-  --border: #202839;
-  --border-strong: #303a4f;
-  --foreground: #e6e9ef;
-  --muted: #93a0b4;
-  --muted-2: #5f6b7f;
+  --bg: #0a0c10;
+  --surface: #12151c;
+  --surface-2: #1a1e27;
+  --card: #12151c;
+  --overlay: rgba(2, 4, 8, 0.66);
+  --border: #232833;
+  --border-strong: #333a48;
+  --foreground: #e8eaf0;
+  --muted: #9aa3b2;
+  --muted-2: #626c7d;
   --accent-foreground: #ffffff;
   --accent-soft: color-mix(in srgb, var(--accent) 22%, transparent);
-  --success: #2fbd85;
-  --success-soft: color-mix(in srgb, #2fbd85 18%, transparent);
-  --warning: #f0a92b;
-  --warning-soft: color-mix(in srgb, #f0a92b 18%, transparent);
-  --danger: #f2685f;
-  --danger-soft: color-mix(in srgb, #f2685f 16%, transparent);
-  --info: #4c95ff;
-  --info-soft: color-mix(in srgb, #4c95ff 18%, transparent);
+  --mint: #3ddc97;
+  --mint-soft: color-mix(in srgb, #3ddc97 18%, transparent);
+  --success: #3ddc97;
+  --success-soft: color-mix(in srgb, #3ddc97 18%, transparent);
+  --warning: #f5a524;
+  --warning-soft: color-mix(in srgb, #f5a524 18%, transparent);
+  --danger: #f0476b;
+  --danger-soft: color-mix(in srgb, #f0476b 16%, transparent);
+  --info: #38bdf8;
+  --info-soft: color-mix(in srgb, #38bdf8 18%, transparent);
+
+  --sev-none: #626c7d;
+  --sev-low: #38bdf8;
+  --sev-medium: #f5a524;
+  --sev-high: #fb923c;
+  --sev-critical: #f0476b;
 }
 
 /* Map tokens to Tailwind color/utility names (bg-surface, text-muted, …). */
@@ -68,6 +88,8 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent-soft: var(--accent-soft);
+  --color-mint: var(--mint);
+  --color-mint-soft: var(--mint-soft);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
@@ -76,12 +98,17 @@
   --color-danger-soft: var(--danger-soft);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
+  --color-sev-none: var(--sev-none);
+  --color-sev-low: var(--sev-low);
+  --color-sev-medium: var(--sev-medium);
+  --color-sev-high: var(--sev-high);
+  --color-sev-critical: var(--sev-critical);
 
   --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
-  --radius-xl: 1rem;
-  --radius-2xl: 1.25rem;
+  --radius-xl: 0.875rem;
+  --radius-2xl: 1.125rem;
 }
 
 * {
@@ -108,8 +135,54 @@ body {
   --control-h: 2rem;
 }
 [data-density="comfortable"] {
-  --row-py: 0.6875rem;
-  --control-h: 2.5rem;
+  --row-py: 0.625rem;
+  --control-h: 2.375rem;
+}
+
+/* ------------------------------------------------------------------ */
+/* Severity spine — the signature UI element. A colored left rail that */
+/* repeats on rows, case panels, automod rules, and appeals.          */
+/* ------------------------------------------------------------------ */
+.spine {
+  position: relative;
+}
+.spine::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--spine-color, transparent);
+  border-radius: 0 2px 2px 0;
+}
+.spine-none {
+  --spine-color: var(--sev-none);
+}
+.spine-low {
+  --spine-color: var(--sev-low);
+}
+.spine-medium {
+  --spine-color: var(--sev-medium);
+}
+.spine-high {
+  --spine-color: var(--sev-high);
+}
+.spine-critical {
+  --spine-color: var(--sev-critical);
+}
+.spine-accent {
+  --spine-color: var(--accent);
+}
+.spine-mint {
+  --spine-color: var(--mint);
+}
+
+/* Monospace identifier chip — case IDs, Discord IDs, rule tokens. */
+.mono-id {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
 }
 
 /* Thin, theme-aware scrollbars. */
@@ -140,12 +213,20 @@ body {
   from { opacity: 0; transform: translateY(8px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
+@keyframes pulse-ring {
+  0% { box-shadow: 0 0 0 0 var(--mint-soft); }
+  70% { box-shadow: 0 0 0 6px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
 
 .animate-fade-in {
   animation: fade-in 0.25s ease-out both;
 }
 .animate-toast-in {
   animation: toast-in 0.2s ease-out both;
+}
+.animate-pulse-ring {
+  animation: pulse-ring 2s ease-out infinite;
 }
 .skeleton {
   background: linear-gradient(
@@ -157,6 +238,14 @@ body {
   background-size: 200% 100%;
   animation: shimmer 1.4s ease-in-out infinite;
   border-radius: 0.5rem;
+}
+
+/* Subtle grid texture for hero / command surfaces. */
+.grid-texture {
+  background-image:
+    linear-gradient(to right, color-mix(in srgb, var(--border) 60%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--border) 60%, transparent) 1px, transparent 1px);
+  background-size: 44px 44px;
 }
 
 /* Focus ring utility used across interactive elements. */
