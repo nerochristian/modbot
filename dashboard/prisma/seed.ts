@@ -23,6 +23,7 @@ const pick = <T>(arr: T[]): T => arr[Math.floor(rng() * arr.length)]
 const between = (min: number, max: number) => min + rng() * (max - min)
 const intBetween = (min: number, max: number) => Math.floor(between(min, max + 1))
 const daysAgo = (n: number) => new Date(Date.now() - n * 86_400_000)
+const hoursFromNow = (n: number) => new Date(Date.now() + n * 3_600_000)
 const weighted = <T>(items: [T, number][]): T => {
   const total = items.reduce((s, [, w]) => s + w, 0)
   let r = rng() * total
@@ -32,18 +33,29 @@ const weighted = <T>(items: [T, number][]): T => {
   return items[0][0]
 }
 
-const FIRST = ['Ava', 'Marcus', 'Priya', 'Liam', 'Sofia', 'Noah', 'Emma', 'Kai', 'Zara', 'Diego', 'Yuki', 'Omar', 'Lena', 'Theo', 'Nina', 'Ravi', 'Clara', 'Mateo', 'Ivy', 'Hugo', 'Aria', 'Felix', 'Maya', 'Leon', 'Ruby', 'Elias', 'Nora', 'Amir', 'Isla', 'Oscar']
-const LAST = ['Thompson', 'Lee', 'Nair', 'Walker', 'Garcia', 'Chen', 'Novak', 'Okafor', 'Rossi', 'Haddad', 'Kim', 'Silva', 'Meyer', 'Patel', 'Dubois', 'Ivanov', 'Costa', 'Nguyen', 'Schmidt', 'Ahmed', 'Reyes', 'Berg', 'Fischer', 'Moreau', 'Santos', 'Wagner', 'Romano', 'Larsen', 'Yamada', 'Flores']
-const COMPANIES = ['Acme Corp', 'Globex', 'Initech', 'Umbrella', 'Hooli', 'Stark Industries', 'Wayne Enterprises', 'Cyberdyne', 'Soylent', 'Wonka Labs', 'Massive Dynamic', 'Pied Piper', 'Aperture', 'Tyrell Corp', 'Nakatomi', 'Vandelay', 'Gekko & Co', 'Duff', 'Prestige Worldwide', 'Bluth Company']
-const COUNTRIES = ['US', 'GB', 'DE', 'FR', 'CA', 'AU', 'IN', 'BR', 'JP', 'NL', 'SE', 'ES']
-const AVATAR_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#ec4899', '#14b8a6']
-const PLAN_MRR: Record<string, number> = { free: 0, starter: 2900, pro: 9900, enterprise: 49900 }
+// Team (moderator) names.
+const FIRST = ['Ava', 'Marcus', 'Priya', 'Liam', 'Sofia', 'Noah', 'Emma', 'Kai', 'Zara', 'Diego', 'Yuki', 'Omar', 'Lena', 'Theo', 'Nina', 'Ravi', 'Clara', 'Mateo', 'Ivy', 'Hugo']
+const LAST = ['Thompson', 'Lee', 'Nair', 'Walker', 'Garcia', 'Chen', 'Novak', 'Okafor', 'Rossi', 'Haddad', 'Kim', 'Silva', 'Meyer', 'Patel', 'Dubois', 'Ivanov', 'Costa', 'Nguyen', 'Schmidt', 'Ahmed']
+
+// Discord-style member handles.
+const HANDLE_ADJ = ['shadow', 'crimson', 'frost', 'neon', 'lunar', 'toxic', 'silent', 'rapid', 'cosmic', 'void', 'pixel', 'turbo', 'ghost', 'ember', 'cyber', 'hyper', 'mystic', 'rogue', 'zen', 'atomic', 'velvet', 'iron', 'salty', 'based', 'grim']
+const HANDLE_NOUN = ['fox', 'wolf', 'byte', 'raven', 'blade', 'ninja', 'reaper', 'phoenix', 'gamer', 'wizard', 'knight', 'dragon', 'sniper', 'panda', 'goblin', 'hydra', 'falcon', 'titan', 'specter', 'yeti', 'otter', 'moth', 'crab', 'lynx', 'orca']
+const SERVER_ROLES = ['@everyone', 'Member', 'Regular', 'Active', 'Nitro Booster', 'Verified', 'Level 10', 'Level 30', 'Artist', 'Event Team', 'Muted']
+const CHANNELS = ['#general', '#off-topic', '#memes', '#help', '#gaming', '#music', '#art-share', '#introductions', '#voice-chat', '#trades', '#clips', '#spam-hell']
+const AVATAR_COLORS = ['#5865f2', '#3ddc97', '#f5a524', '#f0476b', '#38bdf8', '#8b5cf6', '#fb923c', '#14b8a6']
 
 function fullName() {
   return `${pick(FIRST)} ${pick(LAST)}`
 }
 function emailFor(name: string, domain: string, i: number) {
   return `${name.toLowerCase().replace(/[^a-z]+/g, '.')}.${i}@${domain}`
+}
+function handle() {
+  return `${pick(HANDLE_ADJ)}${pick(HANDLE_NOUN)}${rng() < 0.4 ? intBetween(1, 99) : ''}`
+}
+function snowflake() {
+  // 17–19 digit Discord-style ID.
+  return String(intBetween(1, 9)) + Array.from({ length: intBetween(16, 18) }, () => intBetween(0, 9)).join('')
 }
 
 async function reset() {
@@ -58,7 +70,10 @@ async function reset() {
   await prisma.savedView.deleteMany()
   await prisma.dashboardConfig.deleteMany()
   await prisma.metricPoint.deleteMany()
-  await prisma.customer.deleteMany()
+  await prisma.appeal.deleteMany()
+  await prisma.case.deleteMany()
+  await prisma.automodRule.deleteMany()
+  await prisma.member.deleteMany()
   await prisma.rolePermission.deleteMany()
   await prisma.widget.deleteMany()
   await prisma.featureToggle.deleteMany()
@@ -89,24 +104,26 @@ async function seedRolesAndCatalog() {
   }
 
   const toggles = [
-    { key: 'analytics.v2', name: 'Analytics v2', description: 'New analytics engine with cohort breakdowns.', enabled: true, rolloutRole: 'all' },
-    { key: 'export.pdf', name: 'PDF export', description: 'Allow exporting reports as PDF.', enabled: true, rolloutRole: 'all' },
-    { key: 'billing.invoices', name: 'Self-serve invoices', description: 'Customers can download invoices.', enabled: true, rolloutRole: 'all' },
-    { key: 'ai.insights', name: 'AI insights', description: 'Automated anomaly detection on metrics.', enabled: false, rolloutRole: 'admin' },
+    { key: 'automod.ai', name: 'AI content scoring', description: 'Score messages for toxicity with an ML model before actioning.', enabled: true, rolloutRole: 'all' },
+    { key: 'export.pdf', name: 'PDF export', description: 'Allow exporting reports and case logs as PDF.', enabled: true, rolloutRole: 'all' },
+    { key: 'appeals.selfService', name: 'Self-service appeals', description: 'Let banned members submit appeals via a web form.', enabled: true, rolloutRole: 'all' },
+    { key: 'raid.shield', name: 'Raid shield', description: 'Auto-lockdown on join spikes.', enabled: false, rolloutRole: 'admin' },
     { key: 'beta.layouts', name: 'Beta layouts', description: 'Experimental dashboard layouts.', enabled: false, rolloutRole: 'manager' },
-    { key: 'sso.saml', name: 'SAML SSO', description: 'Enterprise single sign-on.', enabled: false, rolloutRole: 'admin' },
+    { key: 'sso.saml', name: 'SAML SSO', description: 'Enterprise single sign-on for the mod team.', enabled: false, rolloutRole: 'admin' },
   ]
   for (const t of toggles) await prisma.featureToggle.create({ data: t })
 
   const settings: Record<string, unknown> = {
-    'app.name': 'Nebula',
-    'app.supportEmail': 'support@nebula.dev',
+    'app.name': 'Aegis',
+    'app.supportEmail': 'support@aegisbot.gg',
     'app.signupsEnabled': true,
     'app.defaultRole': 'viewer',
     'app.maintenanceMode': false,
     'security.enforce2fa': false,
     'security.sessionTtlDays': 7,
-    'branding.primaryColor': '#6366f1',
+    'branding.primaryColor': '#6e56f8',
+    'guild.name': 'The Nexus',
+    'guild.id': '984157203847561216',
   }
   for (const [key, value] of Object.entries(settings)) {
     await prisma.appSetting.create({ data: { key, value: JSON.stringify(value) } })
@@ -118,9 +135,9 @@ type SeededUser = { id: string; name: string; role: string }
 async function seedUsers(): Promise<SeededUser[]> {
   const passwordHash = await hashPassword('password123')
   const core = [
-    { email: 'admin@nebula.dev', name: 'Ava Thompson', role: 'admin', title: 'Founder & CEO' },
-    { email: 'manager@nebula.dev', name: 'Marcus Lee', role: 'manager', title: 'Head of Growth' },
-    { email: 'viewer@nebula.dev', name: 'Priya Nair', role: 'viewer', title: 'Data Analyst' },
+    { email: 'admin@aegisbot.gg', name: 'Ava Thompson', role: 'admin', title: 'Server Owner' },
+    { email: 'manager@aegisbot.gg', name: 'Marcus Lee', role: 'manager', title: 'Head Moderator' },
+    { email: 'viewer@aegisbot.gg', name: 'Priya Nair', role: 'viewer', title: 'Trial Helper' },
   ]
 
   const users: SeededUser[] = []
@@ -145,19 +162,19 @@ async function seedUsers(): Promise<SeededUser[]> {
     users.push({ id: u.id, name: u.name, role: u.role })
   }
 
-  // Additional team members.
-  for (let i = 0; i < 11; i++) {
+  // Additional moderators / helpers.
+  for (let i = 0; i < 9; i++) {
     const name = fullName()
     const role = weighted([['viewer', 5], ['manager', 3], ['admin', 1]])
     const status = weighted([['active', 8], ['invited', 2], ['suspended', 1]])
     const u = await prisma.user.create({
       data: {
-        email: emailFor(name, 'nebula.dev', i),
+        email: emailFor(name, 'aegisbot.gg', i),
         name,
         passwordHash,
         role,
         status,
-        title: pick(['Engineer', 'Designer', 'Support Lead', 'Account Manager', 'Marketer', 'Ops']),
+        title: pick(['Moderator', 'Helper', 'Admin', 'Community Manager', 'Event Host', 'Automod Engineer']),
         emailVerified: status === 'active',
         avatarColor: pick(AVATAR_COLORS),
         timezone: pick(['UTC', 'America/Los_Angeles', 'Europe/Berlin', 'Australia/Sydney']),
@@ -170,57 +187,243 @@ async function seedUsers(): Promise<SeededUser[]> {
   return users
 }
 
-async function seedCustomers() {
-  const rows = []
-  for (let i = 0; i < 160; i++) {
-    const name = fullName()
-    const plan = weighted([['free', 4], ['starter', 3], ['pro', 2], ['enterprise', 1]])
-    const status = weighted([['active', 7], ['trialing', 2], ['past_due', 1], ['churned', 2]])
-    const baseMrr = PLAN_MRR[plan]
-    rows.push({
-      name,
-      email: emailFor(name, pick(['acme.co', 'globex.com', 'initech.io', 'hooli.com', 'stark.io']), i),
-      company: pick(COMPANIES),
-      plan,
-      status,
-      country: pick(COUNTRIES),
-      mrr: status === 'churned' || plan === 'free' ? 0 : Math.round(baseMrr * between(0.9, 1.2)),
-      avatarColor: pick(AVATAR_COLORS),
-      createdAt: daysAgo(intBetween(1, 365)),
-      lastActiveAt: daysAgo(intBetween(0, status === 'churned' ? 120 : 14)),
+type SeededMember = { id: string; displayName: string; standing: string }
+
+async function seedMembers(): Promise<SeededMember[]> {
+  const created: SeededMember[] = []
+  const usedIds = new Set<string>()
+  for (let i = 0; i < 200; i++) {
+    const username = handle(i)
+    const displayName = rng() < 0.5 ? username : `${pick(FIRST)}`
+    let discordId = snowflake()
+    while (usedIds.has(discordId)) discordId = snowflake()
+    usedIds.add(discordId)
+
+    const standing = weighted([
+      ['good', 68],
+      ['watchlist', 12],
+      ['muted', 6],
+      ['banned', 8],
+      ['left', 6],
+    ])
+    const riskLevel =
+      standing === 'banned'
+        ? weighted([['high', 4], ['critical', 6]])
+        : standing === 'muted'
+          ? weighted([['medium', 5], ['high', 5]])
+          : standing === 'watchlist'
+            ? weighted([['medium', 6], ['high', 3], ['low', 1]])
+            : weighted([['low', 8], ['medium', 2]])
+    const warnings =
+      standing === 'good' ? intBetween(0, 1) : standing === 'watchlist' ? intBetween(1, 3) : intBetween(2, 6)
+    const roleCount = intBetween(1, 4)
+    const roles = Array.from(new Set(Array.from({ length: roleCount }, () => pick(SERVER_ROLES))))
+
+    const m = await prisma.member.create({
+      data: {
+        username,
+        displayName,
+        discordId,
+        avatarColor: pick(AVATAR_COLORS),
+        standing,
+        riskLevel,
+        warnings,
+        messages: standing === 'left' ? intBetween(5, 400) : intBetween(20, 24000),
+        roles: JSON.stringify(roles),
+        note: rng() < 0.15 ? pick(['Repeat offender — watch closely.', 'Alt of a banned user (suspected).', 'Good contributor, one bad day.', 'Ticket opened re: harassment.']) : null,
+        joinedAt: daysAgo(intBetween(1, 720)),
+        lastActiveAt: daysAgo(standing === 'left' || standing === 'banned' ? intBetween(10, 200) : intBetween(0, 14)),
+      },
+    })
+    created.push({ id: m.id, displayName: m.displayName, standing: m.standing })
+  }
+  return created
+}
+
+const CASE_REASONS: Record<string, string[]> = {
+  note: ['Flagged for monitoring after heated argument.', 'Verbal reminder about channel rules.', 'Context note: friend of reported user.'],
+  warn: ['Spamming emotes in #general.', 'Mild insult toward another member.', 'Off-topic posting after reminder.', 'Backseat moderating repeatedly.', 'Posting NSFW-adjacent memes.'],
+  mute: ['Continued spam after warning.', 'Argument escalated, needs cooldown.', 'Mic spam in voice channels.', 'Repeated pings to staff.'],
+  timeout: ['Flooding chat during event.', 'Caps-lock ranting after warning.', 'Ignoring mod instructions.'],
+  kick: ['Advertising another server.', 'Ban evasion attempt (first).', 'Refused to follow rules after multiple warnings.'],
+  ban: ['Posting scam / phishing links.', 'Targeted harassment of a member.', 'Hate speech, zero tolerance.', 'Raid participation.', 'Doxxing threat.', 'NSFW content in SFW channel.'],
+  unban: ['Appeal approved — genuine apology.', 'Ban was a mistake / mistaken identity.', 'Served time, second chance granted.'],
+}
+
+async function seedCases(members: SeededMember[], users: SeededUser[]) {
+  const mods = users.filter((u) => u.role !== 'viewer')
+  // Weight cases toward flagged members.
+  const flagged = members.filter((m) => m.standing !== 'good')
+  const pool = [...flagged, ...flagged, ...members] // over-represent flagged
+
+  const created: { id: string; ref: number; memberId: string; type: string; severity: string; status: string }[] = []
+  let ref = 1000
+  const total = 210
+  for (let i = 0; i < total; i++) {
+    ref += 1
+    const member = pick(pool)
+    const type = weighted([
+      ['note', 2],
+      ['warn', 8],
+      ['mute', 4],
+      ['timeout', 3],
+      ['kick', 2],
+      ['ban', 3],
+      ['unban', 1],
+    ])
+    const severity =
+      type === 'ban'
+        ? weighted([['high', 4], ['critical', 6]])
+        : type === 'kick'
+          ? weighted([['medium', 5], ['high', 5]])
+          : type === 'mute' || type === 'timeout'
+            ? weighted([['low', 3], ['medium', 6], ['high', 1]])
+            : type === 'note'
+              ? 'low'
+              : weighted([['low', 6], ['medium', 4]])
+    const createdAt = daysAgo(intBetween(0, 180))
+    const isTemporary = type === 'mute' || type === 'timeout'
+    const status = weighted([
+      ['resolved', 6],
+      ['open', 3],
+      ['expired', type === 'mute' || type === 'timeout' ? 3 : 0],
+      ['appealed', type === 'ban' ? 2 : 0],
+    ])
+    const mod = pick(mods)
+
+    const c = await prisma.case.create({
+      data: {
+        ref,
+        memberId: member.id,
+        type,
+        severity,
+        status,
+        reason: pick(CASE_REASONS[type]),
+        moderator: mod.name,
+        moderatorId: mod.id,
+        channel: pick(CHANNELS),
+        evidence: rng() < 0.4 ? JSON.stringify([`https://discord.com/channels/984157203847561216/${intBetween(1, 9)}${'0'.repeat(17)}`]) : null,
+        expiresAt: isTemporary ? hoursFromNow(intBetween(-72, 168)) : null,
+        createdAt,
+        updatedAt: createdAt,
+      },
+    })
+    created.push({ id: c.id, ref, memberId: member.id, type, severity, status })
+  }
+  return created
+}
+
+const TRIGGER_DEFS: { name: string; description: string; trigger: string; pattern: string | null; action: string; severity: string; exempt: string[] }[] = [
+  { name: 'Blocked slurs', description: 'Instant removal of slurs and hate terms.', trigger: 'keyword', pattern: 'slur1, slur2, hate-term', action: 'ban', severity: 'critical', exempt: [] },
+  { name: 'Scam link filter', description: 'Catches free-nitro and steal-gift phishing domains.', trigger: 'regex', pattern: '(?i)(free\\s*nitro|steam?community\\.ru|dlscord\\.gift)', action: 'ban', severity: 'critical', exempt: ['Nitro Booster'] },
+  { name: 'Invite advertising', description: 'Removes third-party server invites.', trigger: 'invite', pattern: null, action: 'delete', severity: 'medium', exempt: ['Event Team', 'Verified'] },
+  { name: 'Mass mention guard', description: 'Mutes users pinging too many members at once.', trigger: 'mention_spam', pattern: '5', action: 'mute', severity: 'high', exempt: ['Event Team'] },
+  { name: 'Message flood', description: 'Timeouts rapid-fire message flooding.', trigger: 'spam', pattern: '6', action: 'timeout', severity: 'medium', exempt: ['Nitro Booster'] },
+  { name: 'Excessive caps', description: 'Warns on messages that are mostly uppercase.', trigger: 'caps', pattern: '75', action: 'warn', severity: 'low', exempt: [] },
+  { name: 'Suspicious links', description: 'Flags shortened / unknown links for review.', trigger: 'link', pattern: null, action: 'flag', severity: 'low', exempt: ['Verified', 'Regular'] },
+  { name: 'Sketchy attachments', description: 'Deletes executable and script attachments.', trigger: 'attachment', pattern: '.exe, .scr, .bat, .js', action: 'delete', severity: 'high', exempt: [] },
+  { name: 'Zalgo / spam text', description: 'Removes zalgo and unicode spam.', trigger: 'regex', pattern: '[\\u0300-\\u036f]{4,}', action: 'delete', severity: 'low', exempt: [] },
+  { name: 'Discord token grabber', description: 'Bans on known token-grabber payload domains.', trigger: 'keyword', pattern: 'grabify, iplogger, token-grab', action: 'ban', severity: 'critical', exempt: [] },
+]
+
+async function seedAutomod() {
+  for (const d of TRIGGER_DEFS) {
+    const enabled = rng() < 0.85
+    await prisma.automodRule.create({
+      data: {
+        name: d.name,
+        description: d.description,
+        trigger: d.trigger,
+        pattern: d.pattern,
+        action: d.action,
+        severity: d.severity,
+        exemptRoles: JSON.stringify(d.exempt),
+        enabled,
+        hits: enabled ? intBetween(12, 4200) : intBetween(0, 40),
+        lastTriggeredAt: enabled ? daysAgo(intBetween(0, 6)) : null,
+        createdAt: daysAgo(intBetween(30, 400)),
+        updatedAt: daysAgo(intBetween(0, 20)),
+      },
     })
   }
-  await prisma.customer.createMany({ data: rows })
+}
+
+const APPEAL_MESSAGES = [
+  'I was hacked and my account sent those links. I have 2FA on now — please give me another chance.',
+  "Honestly I didn't know that channel was SFW only. Won't happen again, I love this community.",
+  'The mute was a misunderstanding, I was quoting someone else. Can you review the context?',
+  "I know I broke the rules and I'm genuinely sorry. I've been here two years and this was a one-off.",
+  'That was my little brother on my PC. I take full responsibility and will keep it locked from now on.',
+  'I think this was mistaken identity — I never posted in that channel. Happy to show my message history.',
+]
+
+async function seedAppeals(cases: { id: string; ref: number; memberId: string; type: string; status: string }[], users: SeededUser[]) {
+  const mods = users.filter((u) => u.role !== 'viewer')
+  // Appeals target bans/kicks/mutes.
+  const appealable = cases.filter((c) => ['ban', 'kick', 'mute', 'timeout'].includes(c.type))
+  let ref = 1000
+  const count = Math.min(32, appealable.length)
+  const shuffled = [...appealable].sort(() => rng() - 0.5).slice(0, count)
+  for (let i = 0; i < shuffled.length; i++) {
+    ref += 1
+    const c = shuffled[i]
+    const status = weighted([['pending', 4], ['approved', 2], ['denied', 3]])
+    const submittedAt = daysAgo(intBetween(0, 60))
+    const reviewed = status !== 'pending'
+    const reviewer = reviewed ? pick(mods) : null
+    await prisma.appeal.create({
+      data: {
+        ref,
+        memberId: c.memberId,
+        caseId: c.id,
+        status,
+        message: pick(APPEAL_MESSAGES),
+        decision: reviewed
+          ? status === 'approved'
+            ? pick(['Appeal accepted, action reversed. Welcome back.', 'Verified the context, this was a mistake on our end.'])
+            : pick(['Evidence is clear, appeal denied.', 'Pattern of behavior, denied. May reapply in 90 days.'])
+          : null,
+        reviewedBy: reviewer?.name ?? null,
+        reviewedAt: reviewed ? new Date(submittedAt.getTime() + intBetween(2, 72) * 3_600_000) : null,
+        submittedAt,
+      },
+    })
+  }
 }
 
 async function seedMetrics() {
   const days = 365
-  const metrics: { name: string; base: number; growth: number; noise: number; min?: number; max?: number }[] = [
-    { name: 'revenue', base: 42000, growth: 0.0028, noise: 0.06 },
-    { name: 'mrr', base: 128000, growth: 0.0022, noise: 0.03 },
-    { name: 'users', base: 8600, growth: 0.0035, noise: 0.02 },
-    { name: 'active', base: 5200, growth: 0.003, noise: 0.05 },
-    { name: 'sessions', base: 18500, growth: 0.0025, noise: 0.09 },
-    { name: 'conversion', base: 3.4, growth: 0.0006, noise: 0.08, min: 1.5, max: 7 },
-    { name: 'retention', base: 88, growth: 0.0002, noise: 0.02, min: 70, max: 98 },
-    { name: 'churn', base: 3.1, growth: -0.0004, noise: 0.06, min: 0.8, max: 6 },
+  // Flow metrics accumulate per day; point-in-time metrics are gauges.
+  const metrics: { name: string; base: number; growth: number; noise: number; min?: number; max?: number; decimals?: boolean }[] = [
+    { name: 'actions', base: 34, growth: 0.0012, noise: 0.35 },
+    { name: 'warns', base: 18, growth: 0.001, noise: 0.4 },
+    { name: 'mutes', base: 7, growth: 0.0008, noise: 0.5 },
+    { name: 'timeouts', base: 5, growth: 0.0008, noise: 0.5 },
+    { name: 'kicks', base: 2.2, growth: 0.0004, noise: 0.7, min: 0 },
+    { name: 'bans', base: 3.1, growth: 0.0006, noise: 0.6, min: 0 },
+    { name: 'automodBlocks', base: 410, growth: 0.0018, noise: 0.25 },
+    { name: 'joins', base: 120, growth: 0.0009, noise: 0.3 },
+    { name: 'leaves', base: 74, growth: 0.0007, noise: 0.3 },
+    { name: 'messages', base: 48000, growth: 0.0015, noise: 0.12 },
+    // Gauges (point-in-time)
+    { name: 'members', base: 24000, growth: 0.0011, noise: 0.01 },
+    { name: 'online', base: 3400, growth: 0.001, noise: 0.08 },
+    { name: 'openCases', base: 22, growth: 0.0003, noise: 0.25, min: 3 },
+    { name: 'pendingAppeals', base: 9, growth: 0.0002, noise: 0.4, min: 0 },
   ]
   const rows: { metric: string; date: Date; value: number }[] = []
   for (const m of metrics) {
     for (let d = days; d >= 0; d--) {
       const t = days - d
-      const weekly = 1 + 0.05 * Math.sin((t / 7) * Math.PI * 2)
+      const weekly = 1 + 0.08 * Math.sin((t / 7) * Math.PI * 2)
       const trend = m.base * Math.pow(1 + m.growth, t)
       let value = trend * weekly * (1 + (rng() - 0.5) * 2 * m.noise)
       if (m.min !== undefined) value = Math.max(m.min, value)
       if (m.max !== undefined) value = Math.min(m.max, value)
-      value = m.name === 'conversion' || m.name === 'retention' || m.name === 'churn'
-        ? Math.round(value * 10) / 10
-        : Math.round(value)
+      value = Math.round(value)
       rows.push({ metric: m.name, date: daysAgo(d), value })
     }
   }
-  // createMany in chunks to stay well within SQLite variable limits.
   for (let i = 0; i < rows.length; i += 500) {
     await prisma.metricPoint.createMany({ data: rows.slice(i, i + 500) })
   }
@@ -228,14 +431,15 @@ async function seedMetrics() {
 
 async function seedBillingFor(users: SeededUser[]) {
   const admin = users[0]
+  // "Server Premium" plans instead of SaaS billing.
   await prisma.subscription.create({
     data: {
       userId: admin.id,
       plan: 'enterprise',
       status: 'active',
-      seats: 25,
+      seats: 1,
       interval: 'month',
-      amount: 49900,
+      amount: 2999,
       currentPeriodEnd: daysAgo(-18),
     },
   })
@@ -244,19 +448,18 @@ async function seedBillingFor(users: SeededUser[]) {
       userId: users[1].id,
       plan: 'pro',
       status: 'active',
-      seats: 5,
+      seats: 1,
       interval: 'month',
-      amount: 9900,
+      amount: 999,
       currentPeriodEnd: daysAgo(-11),
     },
   })
-  // 12 months of invoices for the admin account.
   for (let m = 12; m >= 1; m--) {
     await prisma.invoice.create({
       data: {
         userId: admin.id,
-        number: `INV-2026-${String(13 - m).padStart(4, '0')}`,
-        amount: 49900,
+        number: `AEG-2026-${String(13 - m).padStart(4, '0')}`,
+        amount: 2999,
         status: m === 1 ? 'open' : 'paid',
         issuedAt: daysAgo(m * 30),
         periodStart: daysAgo(m * 30),
@@ -266,28 +469,29 @@ async function seedBillingFor(users: SeededUser[]) {
   }
 }
 
-async function seedActivityAndAudit(users: SeededUser[]) {
-  const actions = [
-    ['created_report', 'Q3 Revenue report'],
-    ['invited_user', 'new teammate'],
-    ['updated_settings', 'notification preferences'],
-    ['exported_data', 'customers.csv'],
-    ['changed_role', 'Marcus Lee → manager'],
-    ['closed_ticket', '#4821'],
-    ['upgraded_plan', 'Acme Corp → enterprise'],
-    ['archived_customer', 'Globex'],
-    ['saved_view', 'Churned customers'],
-    ['toggled_feature', 'AI insights'],
+async function seedActivityAndAudit(users: SeededUser[], members: SeededMember[]) {
+  const mods = users.filter((u) => u.role !== 'viewer')
+  const actionTemplates: [string, () => string][] = [
+    ['banned_member', () => pick(members).displayName],
+    ['warned_member', () => pick(members).displayName],
+    ['muted_member', () => pick(members).displayName],
+    ['created_case', () => `#CASE-${String(intBetween(1001, 1210)).padStart(4, '0')}`],
+    ['resolved_case', () => `#CASE-${String(intBetween(1001, 1210)).padStart(4, '0')}`],
+    ['approved_appeal', () => `#APL-${String(intBetween(1001, 1032)).padStart(4, '0')}`],
+    ['denied_appeal', () => `#APL-${String(intBetween(1001, 1032)).padStart(4, '0')}`],
+    ['updated_automod_rule', () => pick(TRIGGER_DEFS).name],
+    ['exported_data', () => 'cases.csv'],
+    ['saved_view', () => 'Watchlist — critical'],
   ]
-  for (let i = 0; i < 60; i++) {
-    const u = pick(users)
-    const [action, target] = pick(actions)
+  for (let i = 0; i < 70; i++) {
+    const u = pick(mods)
+    const [action, target] = pick(actionTemplates)
     await prisma.activityLog.create({
       data: {
         userId: u.id,
         actorName: u.name,
         action,
-        target,
+        target: target(),
         metadata: JSON.stringify({ ip: `192.168.${intBetween(0, 255)}.${intBetween(0, 255)}` }),
         createdAt: daysAgo(intBetween(0, 30)),
       },
@@ -295,15 +499,15 @@ async function seedActivityAndAudit(users: SeededUser[]) {
   }
 
   const auditActions = [
-    ['user.role.update', 'User'],
-    ['feature.toggle', 'FeatureToggle'],
+    ['member.ban', 'Member'],
+    ['automod.rule.update', 'AutomodRule'],
     ['setting.update', 'AppSetting'],
-    ['user.suspend', 'User'],
+    ['user.role.update', 'User'],
     ['permission.update', 'RolePermission'],
-    ['widget.disable', 'Widget'],
+    ['appeal.review', 'Appeal'],
   ]
   const admins = users.filter((u) => u.role === 'admin')
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 44; i++) {
     const u = pick(admins.length ? admins : users)
     const [action, entity] = pick(auditActions)
     await prisma.auditLog.create({
@@ -315,7 +519,7 @@ async function seedActivityAndAudit(users: SeededUser[]) {
         entityId: `id_${intBetween(1000, 9999)}`,
         ip: `10.0.${intBetween(0, 255)}.${intBetween(0, 255)}`,
         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)',
-        metadata: JSON.stringify({ before: 'viewer', after: 'manager' }),
+        metadata: JSON.stringify({ before: 'good', after: 'banned' }),
         createdAt: daysAgo(intBetween(0, 60)),
       },
     })
@@ -325,14 +529,14 @@ async function seedActivityAndAudit(users: SeededUser[]) {
 async function seedNotificationsAndReports(users: SeededUser[]) {
   const admin = users[0]
   const notes = [
-    { type: 'billing', level: 'warning', title: 'Invoice due soon', body: 'Invoice INV-2026-0012 is due in 3 days.', href: '/dashboard/billing' },
-    { type: 'security', level: 'error', title: 'New sign-in detected', body: 'A new device signed in from London, UK.', href: '/dashboard/settings/security' },
-    { type: 'system', level: 'info', title: 'Scheduled maintenance', body: 'Planned maintenance this Sunday 02:00 UTC.', href: null },
-    { type: 'report', level: 'success', title: 'Report ready', body: 'Your "Q3 Revenue" report finished generating.', href: '/dashboard/reports' },
-    { type: 'mention', level: 'info', title: 'You were mentioned', body: 'Marcus mentioned you in Churn analysis.', href: '/dashboard/activity' },
-    { type: 'billing', level: 'success', title: 'Payment received', body: 'We received your payment of $499.00.', href: '/dashboard/billing' },
-    { type: 'system', level: 'info', title: 'New feature: AI insights', body: 'Anomaly detection is now available in analytics.', href: '/dashboard/analytics' },
-    { type: 'security', level: 'warning', title: 'Enable 2FA', body: 'Protect your account with two-factor authentication.', href: '/dashboard/settings/security' },
+    { type: 'security', level: 'error', title: 'Raid detected', body: '38 accounts joined in 60s — raid shield engaged.', href: '/dashboard/activity' },
+    { type: 'report', level: 'warning', title: 'Appeal awaiting review', body: 'Appeal #APL-1007 has been pending for 3 days.', href: '/dashboard/appeals' },
+    { type: 'system', level: 'info', title: 'Automod updated', body: 'Rule "Scam link filter" blocked 214 messages today.', href: '/dashboard/automod' },
+    { type: 'report', level: 'success', title: 'Report ready', body: 'Your "Weekly Moderation Digest" finished generating.', href: '/dashboard/reports' },
+    { type: 'mention', level: 'info', title: 'You were mentioned', body: 'Marcus mentioned you on case #CASE-1194.', href: '/dashboard/cases' },
+    { type: 'billing', level: 'success', title: 'Premium renewed', body: 'Server Premium renewed — thanks for supporting Aegis.', href: '/dashboard/billing' },
+    { type: 'security', level: 'warning', title: 'Enable 2FA', body: 'Protect the mod team — require two-factor authentication.', href: '/dashboard/settings/security' },
+    { type: 'system', level: 'info', title: 'New member spike', body: 'Joins are up 42% week-over-week.', href: '/dashboard/analytics' },
   ]
   for (let i = 0; i < notes.length; i++) {
     const n = notes[i]
@@ -351,14 +555,14 @@ async function seedNotificationsAndReports(users: SeededUser[]) {
   }
 
   const reportDefs = [
-    ['Q3 Revenue Breakdown', 'revenue', 'ready', 'pdf'],
-    ['Monthly Active Users', 'users', 'ready', 'csv'],
-    ['Cohort Retention 2026', 'retention', 'ready', 'xlsx'],
-    ['Weekly Activity Digest', 'activity', 'scheduled', 'csv'],
-    ['Enterprise Accounts', 'custom', 'ready', 'json'],
-    ['Churn Deep Dive', 'users', 'generating', 'pdf'],
-    ['Conversion Funnel', 'custom', 'ready', 'csv'],
-    ['Annual Revenue Summary', 'revenue', 'ready', 'pdf'],
+    ['Weekly Moderation Digest', 'actions', 'ready', 'pdf'],
+    ['Automod Hit Report', 'automod', 'ready', 'csv'],
+    ['New Member Audit', 'members', 'ready', 'xlsx'],
+    ['Daily Activity Digest', 'activity', 'scheduled', 'csv'],
+    ['Ban Wave Analysis', 'custom', 'ready', 'json'],
+    ['Appeal Outcomes Q3', 'custom', 'generating', 'pdf'],
+    ['Top Flagged Channels', 'actions', 'ready', 'csv'],
+    ['Annual Safety Summary', 'actions', 'ready', 'pdf'],
   ]
   for (let i = 0; i < reportDefs.length; i++) {
     const [name, type, status, format] = reportDefs[i]
@@ -385,17 +589,17 @@ async function seedConfigsAndViews(users: SeededUser[]) {
   await prisma.savedView.create({
     data: {
       userId: users[0].id,
-      name: 'Churned enterprise',
-      page: 'customers',
-      state: JSON.stringify({ filters: { status: 'churned', plan: 'enterprise' }, sort: 'mrr', order: 'desc', pageSize: 25 }),
+      name: 'Critical watchlist',
+      page: 'members',
+      state: JSON.stringify({ filters: { standing: 'watchlist', riskLevel: 'critical' }, sort: 'warnings', order: 'desc', pageSize: 25 }),
     },
   })
   await prisma.savedView.create({
     data: {
       userId: users[0].id,
-      name: 'Active trials',
-      page: 'customers',
-      state: JSON.stringify({ filters: { status: 'trialing' }, sort: 'createdAt', order: 'desc', pageSize: 10 }),
+      name: 'Open bans',
+      page: 'cases',
+      state: JSON.stringify({ filters: { type: 'ban', status: 'open' }, sort: 'createdAt', order: 'desc', pageSize: 10 }),
     },
   })
 }
@@ -405,17 +609,20 @@ async function main() {
   await reset()
   await seedRolesAndCatalog()
   const users = await seedUsers()
-  await seedCustomers()
+  const members = await seedMembers()
+  const cases = await seedCases(members, users)
+  await seedAutomod()
+  await seedAppeals(cases, users)
   await seedMetrics()
   await seedBillingFor(users)
-  await seedActivityAndAudit(users)
+  await seedActivityAndAudit(users, members)
   await seedNotificationsAndReports(users)
   await seedConfigsAndViews(users)
   console.log('Seed complete.')
   console.log('Demo logins (password: password123):')
-  console.log('  admin@nebula.dev    (Admin)')
-  console.log('  manager@nebula.dev  (Manager)')
-  console.log('  viewer@nebula.dev   (Viewer)')
+  console.log('  admin@aegisbot.gg    (Admin / Server Owner)')
+  console.log('  manager@aegisbot.gg  (Moderator)')
+  console.log('  viewer@aegisbot.gg   (Helper / read-only)')
 }
 
 main()
