@@ -1,32 +1,33 @@
-# Build the React Frontend
-FROM node:20 AS frontend-builder
-WORKDIR /app/website
-COPY website/package*.json ./
-RUN npm install
-COPY website/ ./
+FROM node:20-bookworm-slim AS dashboard-builder
+WORKDIR /build/dashboard
+COPY dashboard/package*.json ./
+COPY dashboard/prisma ./prisma
+RUN npm ci
+COPY dashboard/ ./
 RUN npm run build
 
-# Setup the Python Environment
-FROM python:3.11-slim
+FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
+ENV NODE_ENV=production \
+    PORT=10547 \
+    HOSTNAME=0.0.0.0 \
+    PYTHONUNBUFFERED=1
 
-# Install system dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    python3 \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install --global pm2
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt ./
+RUN pip3 install --break-system-packages --no-cache-dir -r requirements.txt
 
-# Copy Python source code
-COPY . .
+COPY . ./
+RUN rm -rf dashboard/.next dashboard/node_modules
+COPY --from=dashboard-builder /build/dashboard/.next/standalone ./dashboard/
+COPY --from=dashboard-builder /build/dashboard/.next/static ./dashboard/.next/static
+COPY --from=dashboard-builder /build/dashboard/public ./dashboard/public
 
-# Copy built frontend from the builder stage
-COPY --from=frontend-builder /app/website/dist /app/website/dist
-
-# Expose the port Render/DigitalOcean expects
 EXPOSE 10547
-
-# Start the bot
-CMD ["python", "bot.py"]
+CMD ["pm2-runtime", "ecosystem.config.cjs"]

@@ -55,14 +55,11 @@ install_dependencies() {
     .venv/bin/python -m playwright install chromium
   fi
 
-  if [[ -f "website/package.json" ]] && command -v npm >/dev/null 2>&1; then
+  if [[ -f "dashboard/package.json" ]] && command -v npm >/dev/null 2>&1; then
     (
-      cd website
-      if [[ -f package-lock.json ]]; then
-        npm ci
-      else
-        npm install
-      fi
+      cd dashboard
+      npm ci
+      npx prisma db push --accept-data-loss
       npm run build
     )
   fi
@@ -92,7 +89,7 @@ compile_check() {
 
   if [[ "${RESET_DIRTY}" == "1" ]]; then
     git reset --hard
-    git clean -fd -e .env -e .env_remote -e .venv/ -e venv/ -e data/ -e backups/ -e website/dist/
+    git clean -fd -e .env -e .env_remote -e .venv/ -e venv/ -e data/ -e backups/ -e dashboard/dev.db
   elif [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
     log "Refusing to deploy because tracked files are dirty. Set MODBOT_DEPLOY_RESET_DIRTY=1 to discard tracked VPS edits."
     git status --short

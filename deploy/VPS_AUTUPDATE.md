@@ -17,7 +17,7 @@ cd /opt/modbot
 sudo bash deploy/install_vps_autoupdate.sh
 ```
 
-Keep the live environment in `/opt/modbot/.env`. The deploy script preserves `.env`, `.venv`, `data/`, `backups/`, and `website/dist/`.
+Keep the live environment in `/opt/modbot/.env`. The deploy script preserves `.env`, `.venv`, `data/`, `backups/`, and the dashboard session database at `dashboard/dev.db`.
 
 ## Multiple bots on one VPS
 
