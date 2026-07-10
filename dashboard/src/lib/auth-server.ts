@@ -5,6 +5,7 @@ import {
   signSession,
   sessionExpiryDate,
   sessionMaxAge,
+  secureCookies,
 } from '@/lib/auth'
 
 /**
@@ -44,7 +45,7 @@ export async function startSession(user: {
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: secureCookies(),
     path: '/',
     maxAge: sessionMaxAge(),
   })

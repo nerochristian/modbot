@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/session'
 import { getManageableGuilds } from '@/lib/discord'
 import { SELECTED_GUILD_COOKIE } from '@/lib/guild-context'
 import { handleError, ok } from '@/lib/api'
+import { secureCookies } from '@/lib/auth'
 
 export async function POST(request: Request) {
   const user = await getCurrentUser()
@@ -22,7 +23,7 @@ export async function POST(request: Request) {
     cookieStore.set(SELECTED_GUILD_COOKIE, guild.id, {
       httpOnly: true,
       sameSite: 'lax',
-      secure: process.env.NODE_ENV === 'production',
+      secure: secureCookies(),
       path: '/',
       maxAge: 60 * 60 * 24 * 30,
       priority: 'high',
