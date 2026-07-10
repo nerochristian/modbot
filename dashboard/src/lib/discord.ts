@@ -180,6 +180,12 @@ export async function getBotGuildMembers(
   return collected.slice(offset, offset + pageSize)
 }
 
+export async function getBotGuildMember(guildId: string, userId: string): Promise<DiscordGuildMember> {
+  const token = process.env.DISCORD_TOKEN?.trim()
+  if (!token) throw new Error('DISCORD_TOKEN is not configured')
+  return discordRequest<DiscordGuildMember>(`/guilds/${guildId}/members/${userId}`, `Bot ${token}`)
+}
+
 export async function executeModerationAction(
   guildId: string,
   userId: string,
