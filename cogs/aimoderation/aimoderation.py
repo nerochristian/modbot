@@ -3078,12 +3078,17 @@ You have access to the following local variables in the script:
 - `message`: The discord.Message object of the prompt
 - `guild`: The discord.Guild object
 - `channel`: The discord.TextChannel object
+- `discord`: The discord module
 
 Example script for purging:
 ```python
 import asyncio
-channel = message.channel
-await channel.purge(limit=100, check=lambda m: m.author.id == SOME_ID)
+target_name = "USERNAME".lower()
+target_member = discord.utils.find(lambda m: target_name in m.name.lower() or target_name in m.display_name.lower(), guild.members)
+if target_member:
+    await channel.purge(limit=100, check=lambda m: m.author.id == target_member.id)
+else:
+    await channel.send("User not found.")
 ```
 Only write safe discord.py code. State the reason in the mod logs if possible.
 '''
