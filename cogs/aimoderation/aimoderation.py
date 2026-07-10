@@ -2809,6 +2809,201 @@ class AIModeration(commands.Cog):
             await interaction.response.send_message(
                 f"Run this again with `confirm:True` to clear AI memory for **{target.display_name}**.",
                 ephemeral=True,
+        if self._can_manage(interaction):
+            return True
+        await interaction.response.send_message(
+            "You need the `Manage Server` permission to use this command.",
+            ephemeral=True,
+        )
+        return False
+
+    aimod_group = app_commands.Group(name="aimod", description="AI Moderation settings")
+    ai_group = app_commands.Group(name="ai", description="AI tools and controls")
+    ai_memory_group = app_commands.Group(name="memory", description="AI memory controls", parent=ai_group)
+
+    @aimod_group.command(name="setup")
+    @app_commands.describe(
+        enabled="Enable AI moderation mention handling.",
+        talking="Enable casual AI replies when no moderation action is needed.",
+        context_messages="Recent messages AI can use as context.",
+        proactive_percent="Chance to reply without being mentioned. Recommended: 0.",
+    )
+    async def aimod_setup(
+        self,
+        interaction: discord.Interaction,
+        enabled: bool = True,
+        talking: bool = True,
+        context_messages: app_commands.Range[int, 1, 50] = 30,
+        proactive_percent: app_commands.Range[int, 0, 100] = 0,
+    ) -> None:
+        """Apply simple AI moderation defaults."""
+        if not await self._require_manage(interaction):
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        guild_id = interaction.guild.id
+        await self.update_guild_setting(guild_id, "aimod_enabled", enabled)
+        await self.update_guild_setting(guild_id, "aimod_chat_enabled", talking)
+        await self.update_guild_setting(guild_id, "aimod_confirm_enabled", False)
+        await self.update_guild_setting(guild_id, "aimod_context_messages", int(context_messages))
+        await self.update_guild_setting(guild_id, "aimod_proactive_chance", float(proactive_percent) / 100)
+
+        embed = discord.Embed(
+            title="AI Moderation Setup",
+            description=compact_kv_lines(
+                [
+                    ("Enabled", "Yes" if enabled else "No"),
+                    ("Talking", "On" if talking else "Off"),
+                    ("Context", f"{int(context_messages)} messages"),
+                    ("Proactive Replies", f"{int(proactive_percent)}%"),
+                    ("Try It", "Mention the bot: `timeout @User 1h for spam` or use `/aihelp`."),
+                ]
+            ),
+            color=discord.Color.blurple(),
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @aimod_group.command(name="status")
+    async def aimod_status(self, interaction: discord.Interaction) -> None:
+        """View current AI moderation settings."""
+        if not await self._require_manage(interaction):
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        settings = await self.get_guild_settings(interaction.guild.id)
+        color = discord.Color.blurple() if settings.enabled else discord.Color.greyple()
+        embed = discord.Embed(
+            title="AI Moderation Status",
+            description=compact_kv_lines(
+                [
+                    ("Enabled", "Yes" if settings.enabled else "No"),
+                    ("Talking", "On" if settings.chat_enabled else "Off"),
+                    ("Model", f"`{settings.model or self.config.model}`"),
+                    ("Context Messages", settings.context_messages),
+                    ("Proactive Chance", f"{settings.proactive_chance * 100:.1f}%"),
+                    ("Provider Available", "Yes" if self.ai.is_available else "No"),
+                    ("Provider", f"`{self.ai.provider}`"),
+                    ("Health", self.ai.availability_message()),
+                ],
+                max_value_length=480,
+            ),
+            color=color,
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @aimod_group.command(name="doctor")
+    async def aimod_doctor(self, interaction: discord.Interaction) -> None:
+        """Diagnose why AI moderation is not responding."""
+        if not await self._require_manage(interaction):
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        settings = await self.get_guild_settings(interaction.guild.id)
+        checks = [
+            f"AI moderation toggle: {'on' if settings.enabled else 'off'}",
+            f"AI talking toggle: {'on' if settings.chat_enabled else 'off'}",
+            "Staff mention actions: available for members with mod/server permissions",
+            *self.ai.diagnostic_lines(),
+        ]
+        direct_action_note = (
+            "Direct actions such as `@bot warn @user reason`, `@bot kick @user`, "
+            "and `@bot timeout @user 10m reason` use deterministic routing first, "
+            "so they can still work even when the model provider is down."
+        )
+        embed = discord.Embed(
+            title="AI Moderation Doctor",
+            description=(
+                "\n".join(f"- {line}" for line in checks)
+                + "\n"
+                + compact_kv_lines([("Important", direct_action_note)], max_value_length=700)
+            )[:4000],
+            color=discord.Color.blurple() if self.ai.is_available else discord.Color.orange(),
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @aimod_group.command(name="toggle")
+    async def aimod_toggle(self, interaction: discord.Interaction) -> None:
+        """Toggle AI moderation on or off."""
+        if not await self._require_manage(interaction):
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        settings = await self.get_guild_settings(interaction.guild.id)
+        new_value = not settings.enabled
+        await self.update_guild_setting(interaction.guild.id, "aimod_enabled", new_value)
+        status = "enabled" if new_value else "disabled"
+        await interaction.followup.send(f"AI Moderation is now **{status}**.", ephemeral=True)
+
+    @aimod_group.command(name="talking")
+    @app_commands.describe(enabled="Turn casual AI replies on or off. Leave empty to toggle.")
+    async def aimod_talking(self, interaction: discord.Interaction, enabled: Optional[bool] = None) -> None:
+        """Toggle casual AI conversation replies on or off."""
+        if not await self._require_manage(interaction):
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        settings = await self.get_guild_settings(interaction.guild.id)
+        new_value = (not settings.chat_enabled) if enabled is None else bool(enabled)
+        await self.update_guild_setting(interaction.guild.id, "aimod_chat_enabled", new_value)
+        status = "enabled" if new_value else "disabled"
+        detail = (
+            "I will answer normal mentions and chat prompts."
+            if new_value else
+            "I will stay quiet for casual chat and only handle moderation flows."
+        )
+        await interaction.followup.send(f"AI talking is now **{status}**. {detail}", ephemeral=True)
+
+    @ai_memory_group.command(name="view")
+    @app_commands.describe(user="User whose AI memory should be shown. Defaults to you.")
+    async def ai_memory_view(self, interaction: discord.Interaction, user: Optional[discord.Member] = None) -> None:
+        """View stored AI memory for a user."""
+        if not await self._require_manage(interaction):
+            return
+
+        await interaction.response.defer(ephemeral=True)
+        target = user or interaction.user
+        record = await self.bot.db.get_ai_memory_record(target.id)
+        if not record or not str(record.get("memory_text") or "").strip():
+            await interaction.followup.send(f"No AI memory is stored for **{target.display_name}**.", ephemeral=True)
+            return
+
+        memory = str(record["memory_text"])
+        shown = memory[:1800]
+        if len(memory) > len(shown):
+            shown += f"\n\n...trimmed {len(memory) - len(shown):,} characters"
+        shown = shown.replace("```", "'''")
+        embed = discord.Embed(
+            title="AI Memory",
+            description=f"Stored memory for **{target.display_name}**",
+            color=discord.Color.blurple(),
+        )
+        embed.add_field(name="Last Updated", value=str(record.get("last_updated") or "Unknown"), inline=True)
+        embed.add_field(name="Size", value=f"{len(memory):,} characters", inline=True)
+        embed.add_field(name="Memory", value=f"```\n{shown}\n```", inline=False)
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
+    @ai_memory_group.command(name="clear")
+    @app_commands.describe(user="User whose AI memory should be cleared. Defaults to you.", confirm="Required to clear memory.")
+    async def ai_memory_clear(
+        self,
+        interaction: discord.Interaction,
+        user: Optional[discord.Member] = None,
+        confirm: bool = False,
+    ) -> None:
+        """Clear stored AI memory for a user."""
+        if not await self._require_manage(interaction):
+            return
+
+        target = user or interaction.user
+        if not confirm:
+            await interaction.response.send_message(
+                f"Run this again with `confirm:True` to clear AI memory for **{target.display_name}**.",
+                ephemeral=True,
             )
             return
 
@@ -2819,19 +3014,30 @@ class AIModeration(commands.Cog):
     @ai_memory_group.command(name="user")
     @app_commands.describe(user="User whose AI memory status should be checked.")
     async def ai_memory_user(self, interaction: discord.Interaction, user: discord.Member) -> None:
-        """Show memory metadata for one user without dumping the full memory."""
+        """Show full memory for one user."""
         if not await self._require_manage(interaction):
             return
 
         await interaction.response.defer(ephemeral=True)
         record = await self.bot.db.get_ai_memory_record(user.id)
         memory = str((record or {}).get("memory_text") or "")
+        
         embed = discord.Embed(title="AI Memory User", color=discord.Color.blurple())
         embed.add_field(name="User", value=f"{user.mention}\n`{user.id}`", inline=True)
         embed.add_field(name="Stored", value="Yes" if memory.strip() else "No", inline=True)
         embed.add_field(name="Size", value=f"{len(memory):,} characters", inline=True)
         embed.add_field(name="Last Updated", value=str((record or {}).get("last_updated") or "Never"), inline=False)
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        
+        if memory.strip():
+            if len(memory) <= 4000:
+                embed.description = f"**Saved Memory:**\n{memory}"
+                await interaction.followup.send(embed=embed, ephemeral=True)
+            else:
+                import io
+                file = discord.File(io.BytesIO(memory.encode("utf-8")), filename="memory.txt")
+                await interaction.followup.send(embed=embed, file=file, ephemeral=True)
+        else:
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
     async def handle_casual_mention(self, message: discord.Message) -> bool:
         """Handles conversational AI when the bot is mentioned. 
