@@ -3152,6 +3152,11 @@ Determine the user's intent. If it's a normal conversation, just reply with text
                             return False
 
                 if "```python" in content:
+                    # Security check: Ensure the user has moderation permissions before executing scripts
+                    if not message.author.guild_permissions.administrator and not message.author.guild_permissions.manage_messages:
+                        await message.reply("You do not have permission to execute moderation actions.", mention_author=False)
+                        return True
+
                     # Extract script
                     script = content.split("```python")[1].split("```")[0].strip()
                     
