@@ -1363,6 +1363,32 @@ class Database:
                         timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
+
+                # ===== DASHBOARD TELEMETRY =====
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS automod_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        guild_id INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        channel_id INTEGER,
+                        category TEXT NOT NULL,
+                        severity TEXT NOT NULL,
+                        action TEXT NOT NULL,
+                        reason TEXT,
+                        message_deleted BOOLEAN DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS guild_member_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        guild_id INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        event_type TEXT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
                 
                 # Auto-migrate missing columns
                 await self._migrate_schema(db)
@@ -1404,6 +1430,14 @@ class Database:
                     """
                     CREATE INDEX IF NOT EXISTS idx_user_messages_guild_user
                     ON user_messages(guild_id, user_id)
+                    """,
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_automod_events_guild_created
+                    ON automod_events(guild_id, created_at)
+                    """,
+                    """
+                    CREATE INDEX IF NOT EXISTS idx_member_events_guild_created
+                    ON guild_member_events(guild_id, created_at)
                     """,
                 ]
                 for sql in index_statements:
