@@ -12,6 +12,13 @@ import bcrypt from 'bcryptjs'
 
 export const SESSION_COOKIE = 'aegis_session'
 
+export function secureCookies(): boolean {
+  const configured = process.env.SESSION_COOKIE_SECURE?.trim().toLowerCase()
+  if (configured === 'true') return true
+  if (configured === 'false') return false
+  return process.env.NODE_ENV === 'production'
+}
+
 export type SessionPayload = {
   sub: string // user id
   role: string
