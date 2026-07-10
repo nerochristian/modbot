@@ -21,9 +21,9 @@ export type SessionPayload = {
 }
 
 function secret(): Uint8Array {
-  const value = process.env.AUTH_SECRET
+  const value = process.env.AUTH_SECRET || process.env.SESSION_SECRET
   if (!value) {
-    throw new Error('AUTH_SECRET is not set. Add it to your .env file.')
+    throw new Error('AUTH_SECRET or SESSION_SECRET is not set. Add one to the project .env file.')
   }
   return new TextEncoder().encode(value)
 }
