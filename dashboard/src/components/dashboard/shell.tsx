@@ -11,6 +11,7 @@ import { Sidebar } from './sidebar'
 import { NAV_ITEMS } from '@/lib/nav'
 import type { Permission } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
+import type { ManagedGuild } from '@/lib/discord'
 
 const SECTION_LABELS: Record<string, string> = {
   main: 'Moderation',
@@ -92,9 +93,13 @@ function MobileDrawer({
 
 export function DashboardShell({
   permissions,
+  guilds,
+  currentGuild,
   children,
 }: {
   permissions: Permission[]
+  guilds: ManagedGuild[]
+  currentGuild: ManagedGuild
   children: React.ReactNode
 }) {
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -103,7 +108,7 @@ export function DashboardShell({
       <Sidebar permissions={permissions} />
       <MobileDrawer open={mobileOpen} onClose={() => setMobileOpen(false)} permissions={permissions} />
       <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar onOpenMobile={() => setMobileOpen(true)} />
+        <Topbar onOpenMobile={() => setMobileOpen(true)} guilds={guilds} currentGuild={currentGuild} />
         <main className="flex-1 px-4 py-6 sm:px-6 lg:px-8">
           <div className="mx-auto w-full max-w-7xl">{children}</div>
         </main>
