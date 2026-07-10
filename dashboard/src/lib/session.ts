@@ -6,6 +6,7 @@ import { DEFAULT_ROLE_MATRIX, isRole, type Permission, type Role } from '@/lib/r
 
 export type CurrentUser = {
   id: string
+  discordId: string | null
   name: string
   email: string
   role: Role
@@ -44,6 +45,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
 
   return {
     id: user.id,
+    discordId: user.discordId,
     name: user.name,
     email: user.email,
     role,

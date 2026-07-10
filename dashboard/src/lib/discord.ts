@@ -36,6 +36,19 @@ type DiscordGuild = {
   approximate_presence_count?: number
 }
 
+export type DiscordGuildMember = {
+  user: {
+    id: string
+    username: string
+    global_name: string | null
+    avatar: string | null
+  }
+  nick: string | null
+  avatar: string | null
+  joined_at: string
+  communication_disabled_until?: string | null
+}
+
 export type ManagedGuild = {
   id: string
   name: string
@@ -116,6 +129,80 @@ async function discordRequest<T>(path: string, authorization: string): Promise<T
     throw new Error(`Discord API request failed (${response.status})`)
   }
   return response.json() as Promise<T>
+}
+
+async function discordMutation(path: string, method: string, body?: unknown): Promise<void> {
+  const token = process.env.DISCORD_TOKEN?.trim()
+  if (!token) throw new Error('DISCORD_TOKEN is not configured')
+  const response = await fetch(`${DISCORD_API}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bot ${token}`,
+      ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    cache: 'no-store',
+  })
+  if (!response.ok) throw new Error(`Discord moderation request failed (${response.status})`)
+}
+
+export async function getBotGuildMembers(
+  guildId: string,
+  page: number,
+  pageSize: number,
+  query = '',
+): Promise<DiscordGuildMember[]> {
+  const token = process.env.DISCORD_TOKEN?.trim()
+  if (!token) throw new Error('DISCORD_TOKEN is not configured')
+  const offset = Math.max(0, page - 1) * pageSize
+  if (query) {
+    const params = new URLSearchParams({ query: query.slice(0, 100), limit: '1000' })
+    const matches = await discordRequest<DiscordGuildMember[]>(
+      `/guilds/${guildId}/members/search?${params}`,
+      `Bot ${token}`,
+    )
+    return matches.slice(offset, offset + pageSize)
+  }
+
+  const collected: DiscordGuildMember[] = []
+  let after = '0'
+  const needed = offset + pageSize
+  while (collected.length < needed) {
+    const params = new URLSearchParams({ limit: String(Math.min(1000, needed - collected.length)), after })
+    const batch = await discordRequest<DiscordGuildMember[]>(
+      `/guilds/${guildId}/members?${params}`,
+      `Bot ${token}`,
+    )
+    collected.push(...batch)
+    if (batch.length === 0 || batch.length < Number(params.get('limit'))) break
+    after = batch.at(-1)?.user.id ?? after
+  }
+  return collected.slice(offset, offset + pageSize)
+}
+
+export async function executeModerationAction(
+  guildId: string,
+  userId: string,
+  action: string,
+  durationHours = 0,
+): Promise<void> {
+  if (!/^\d{15,22}$/.test(guildId) || !/^\d{15,22}$/.test(userId)) {
+    throw new Error('Invalid Discord ID')
+  }
+  if (action === 'timeout' || action === 'mute') {
+    const hours = durationHours > 0 ? Math.min(durationHours, 24 * 28) : 1
+    await discordMutation(`/guilds/${guildId}/members/${userId}`, 'PATCH', {
+      communication_disabled_until: new Date(Date.now() + hours * 3_600_000).toISOString(),
+    })
+  } else if (action === 'kick') {
+    await discordMutation(`/guilds/${guildId}/members/${userId}`, 'DELETE')
+  } else if (action === 'ban') {
+    await discordMutation(`/guilds/${guildId}/bans/${userId}`, 'PUT', { delete_message_seconds: 0 })
+  } else if (action === 'unban') {
+    await discordMutation(`/guilds/${guildId}/bans/${userId}`, 'DELETE')
+  } else if (!['warn', 'note'].includes(action)) {
+    throw new Error(`Unsupported moderation action: ${action}`)
+  }
 }
 
 async function tokenRequest(params: URLSearchParams): Promise<DiscordTokenResponse> {
