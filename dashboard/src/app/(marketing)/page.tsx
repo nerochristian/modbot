@@ -7,15 +7,12 @@ import {
   SlidersHorizontal,
   Activity,
   Sparkles,
-  ArrowRight,
-  Star,
   LogIn,
 } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import { HeroPreview } from '@/components/marketing/hero-preview'
 import { Pricing } from '@/components/marketing/pricing'
 import { Faq } from '@/components/marketing/faq'
-import { cn } from '@/lib/utils'
 
 const FEATURES = [
   { icon: ShieldAlert, title: 'Automod rule builder', desc: 'Compose layered rules for spam, slurs, invite links, mention floods, and raid patterns. Every rule scores content in real time and acts before your team ever sees it.' },
