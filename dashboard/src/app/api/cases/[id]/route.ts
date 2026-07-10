@@ -1,51 +1,57 @@
-import { prisma } from '@/lib/prisma'
-import { requireUser, handleError, ok, apiError } from '@/lib/api'
+import { apiError, handleError, ok, requireUser } from '@/lib/api'
+import { botQuery } from '@/lib/bot-db'
+import { getSelectedGuild } from '@/lib/guild-context'
 import { updateCaseSchema } from '@/lib/validation'
-import { logActivity } from '@/lib/log'
 
-export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
+function validId(id: string): boolean {
+  return /^\d+$/.test(id)
+}
+
+export async function PATCH(request: Request, ctx: RouteContext<'/api/cases/[id]'>) {
   try {
     const guard = await requireUser('cases.write')
     if (guard instanceof Response) return guard
-    const user = guard
+    const guild = await getSelectedGuild()
+    if (!guild) return apiError('Choose a connected server first', 409)
     const { id } = await ctx.params
+    if (!validId(id)) return apiError('Case not found', 404)
+    const data = updateCaseSchema.parse(await request.json())
 
-    const existing = await prisma.case.findUnique({ where: { id } })
-    if (!existing) return apiError('Case not found', 404)
-
-    const body = await request.json()
-    const data = updateCaseSchema.parse(body)
-
-    const updated = await prisma.case.update({ where: { id }, data })
-    await logActivity({
-      userId: user.id,
-      actorName: user.name,
-      action: 'updated_case',
-      target: `#CASE-${String(existing.ref).padStart(4, '0')}`,
-    })
-    return ok(updated)
+    const sets: string[] = []
+    const values: unknown[] = [guild.id, id]
+    if (data.status) {
+      values.push(data.status === 'open')
+      sets.push(`active = $${values.length}`)
+    }
+    if (data.reason) {
+      values.push(data.reason)
+      sets.push(`reason = $${values.length}`)
+    }
+    if (sets.length === 0) return ok({ success: true })
+    const rows = await botQuery<{ id: string }>(
+      `UPDATE cases SET ${sets.join(', ')} WHERE guild_id = $1::bigint AND id = $2::bigint RETURNING id::text`,
+      values,
+    )
+    if (!rows[0]) return apiError('Case not found', 404)
+    return ok({ success: true, id })
   } catch (error) {
     return handleError(error)
   }
 }
 
-export async function DELETE(_request: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function DELETE(_request: Request, ctx: RouteContext<'/api/cases/[id]'>) {
   try {
     const guard = await requireUser('cases.delete')
     if (guard instanceof Response) return guard
-    const user = guard
+    const guild = await getSelectedGuild()
+    if (!guild) return apiError('Choose a connected server first', 409)
     const { id } = await ctx.params
-
-    const existing = await prisma.case.findUnique({ where: { id } })
-    if (!existing) return apiError('Case not found', 404)
-
-    await prisma.case.delete({ where: { id } })
-    await logActivity({
-      userId: user.id,
-      actorName: user.name,
-      action: 'deleted_case',
-      target: `#CASE-${String(existing.ref).padStart(4, '0')}`,
-    })
+    if (!validId(id)) return apiError('Case not found', 404)
+    const rows = await botQuery<{ id: string }>(
+      'DELETE FROM cases WHERE guild_id = $1::bigint AND id = $2::bigint RETURNING id::text',
+      [guild.id, id],
+    )
+    if (!rows[0]) return apiError('Case not found', 404)
     return ok({ success: true })
   } catch (error) {
     return handleError(error)
