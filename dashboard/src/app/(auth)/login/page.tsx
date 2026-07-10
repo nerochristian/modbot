@@ -6,9 +6,9 @@ export const metadata: Metadata = { title: 'Sign in' }
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string }>
+  searchParams: Promise<{ next?: string; error?: string }>
 }) {
-  const { next } = await searchParams
-  const target = next && next.startsWith('/dashboard') ? next : '/dashboard'
-  return <AuthForm mode="login" next={target} />
+  const { next, error } = await searchParams
+  const target = next?.startsWith('/') && !next.startsWith('//') ? next : '/servers'
+  return <AuthForm mode="login" next={target} error={error} />
 }
