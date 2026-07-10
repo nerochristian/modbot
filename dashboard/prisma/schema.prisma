@@ -164,4 +164,166 @@ model AutomodRule {
   @@index([trigger])
 }
 
+model Appeal {
+  id          String    @id @default(cuid())
+  ref         Int       @unique
+  memberId    String
+  member      Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  caseId      String
+  case        Case      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  status      String    @default("pending")
+  message     String
+  decision    String?
+  reviewedBy  String?
+  submittedAt DateTime  @default(now())
+  reviewedAt  DateTime?
+
+  @@index([memberId])
+  @@index([status])
+}
+
+model Subscription {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan              String   @default("pro")
+  status            String   @default("active")
+  seats             Int      @default(1)
+  interval          String   @default("month")
+  amount            Int      @default(4900)
+  currentPeriodEnd  DateTime
+  cancelAtPeriodEnd Boolean  @default(false)
+  createdAt         DateTime @default(now())
+}
+
+model Invoice {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  number      String   @unique
+  amount      Int
+  status      String   @default("paid")
+  issuedAt    DateTime @default(now())
+  periodStart DateTime
+  periodEnd   DateTime
+
+  @@index([userId])
+}
+
+model MetricPoint {
+  id     String   @id @default(cuid())
+  metric String
+  date   DateTime
+  value  Float
+
+  @@unique([metric, date])
+  @@index([metric])
+}
+
+model ActivityLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  actorName String
+  action    String
+  target    String?
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  actorName String
+  action    String
+  entity    String
+  entityId  String?
+  ip        String?
+  userAgent String?
+  metadata  String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   @default("system")
+  level     String   @default("info")
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  href      String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([read])
+}
+
+model Report {
+  id          String   @id @default(cuid())
+  name        String
+  type        String   @default("revenue")
+  status      String   @default("ready")
+  format      String   @default("csv")
+  params      String?
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+model DashboardConfig {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  config    String
+  updatedAt DateTime @updatedAt
+}
+
+model SavedView {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  page      String
+  state     String
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model Widget {
+  id             String  @id @default(cuid())
+  key            String  @unique
+  name           String
+  description    String
+  category       String  @default("general")
+  defaultVisible Boolean @default(true)
+  enabled        Boolean @default(true)
+  order          Int     @default(0)
+}
+
+model FeatureToggle {
+  key         String   @id
+  name        String
+  description String
+  enabled     Boolean  @default(false)
+  rolloutRole String   @default("all")
+  updatedAt   DateTime @updatedAt
+}
+
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
+
 // (rest of schema remains unchanged — truncated here for brevity in this response)
