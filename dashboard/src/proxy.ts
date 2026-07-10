@@ -14,10 +14,10 @@ export async function proxy(request: NextRequest) {
   const token = request.cookies.get(SESSION_COOKIE)?.value
   const session = token ? await verifySession(token) : null
 
-  const isDashboard = pathname.startsWith('/dashboard')
+  const isProtected = pathname.startsWith('/dashboard') || pathname.startsWith('/servers')
   const isAuthPage = AUTH_PAGES.some((p) => pathname === p || pathname.startsWith(`${p}/`))
 
-  if (isDashboard && !session) {
+  if (isProtected && !session) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.searchParams.set('next', pathname)
@@ -26,7 +26,7 @@ export async function proxy(request: NextRequest) {
 
   if (isAuthPage && session) {
     const url = request.nextUrl.clone()
-    url.pathname = '/dashboard'
+    url.pathname = '/servers'
     url.search = ''
     return NextResponse.redirect(url)
   }
@@ -35,5 +35,5 @@ export async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/login', '/register'],
+  matcher: ['/dashboard/:path*', '/servers/:path*', '/login', '/register'],
 }
