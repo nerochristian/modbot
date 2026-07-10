@@ -4,8 +4,8 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:
 import { prisma } from '@/lib/prisma'
 
 const DISCORD_API = 'https://discord.com/api/v10'
-const ADMINISTRATOR = 1n << 3n
-const MANAGE_GUILD = 1n << 5n
+const ADMINISTRATOR = BigInt(8)
+const MANAGE_GUILD = BigInt(32)
 const TOKEN_REFRESH_SKEW_MS = 60_000
 const CACHE_TTL_MS = 30_000
 
