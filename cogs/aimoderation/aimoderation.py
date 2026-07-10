@@ -3080,15 +3080,26 @@ You have access to the following local variables in the script:
 - `channel`: The discord.TextChannel object
 - `discord`: The discord module
 
-Example script for purging:
+Example script for purging from a specific user:
 ```python
 import asyncio
-target_name = "USERNAME".lower()
-target_member = discord.utils.find(lambda m: target_name in m.name.lower() or target_name in m.display_name.lower(), guild.members)
+import re
+
+target_input = "TARGET_FROM_MESSAGE"
+target_member = None
+
+# If the target is a ping, it will look like <@12345>
+match = re.search(r"<@!?(\\d+)>", target_input)
+if match:
+    target_member = guild.get_member(int(match.group(1)))
+else:
+    target_name = target_input.lower()
+    target_member = discord.utils.find(lambda m: target_name in m.name.lower() or target_name in m.display_name.lower(), guild.members)
+
 if target_member:
     await channel.purge(limit=100, check=lambda m: m.author.id == target_member.id)
 else:
-    await channel.send("User not found.")
+    await channel.send("Target user not found. Aborting purge to prevent deleting all messages.")
 ```
 Only write safe discord.py code. State the reason in the mod logs if possible.
 '''
