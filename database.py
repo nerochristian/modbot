@@ -1641,6 +1641,54 @@ class Database:
                 await db.commit()
                 return cursor.rowcount > 0
 
+    # ==================== DASHBOARD TELEMETRY ====================
+
+    async def record_automod_event(
+        self,
+        guild_id: int,
+        user_id: int,
+        channel_id: Optional[int],
+        category: str,
+        severity: str,
+        action: str,
+        reason: str,
+        message_deleted: bool,
+    ) -> None:
+        """Persist an AutoMod decision for guild-scoped dashboard telemetry."""
+        self._validate_guild_id(guild_id)
+        async with self.get_connection() as db:
+            await db.execute(
+                """
+                INSERT INTO automod_events
+                    (guild_id, user_id, channel_id, category, severity, action, reason, message_deleted)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    guild_id,
+                    int(user_id),
+                    int(channel_id) if channel_id else None,
+                    str(category)[:64],
+                    str(severity)[:32],
+                    str(action)[:32],
+                    str(reason)[:1000],
+                    bool(message_deleted),
+                ),
+            )
+            await db.commit()
+
+    async def record_member_event(self, guild_id: int, user_id: int, event_type: str) -> None:
+        """Record joins and leaves so dashboard growth charts use real events."""
+        self._validate_guild_id(guild_id)
+        normalized = str(event_type).strip().lower()
+        if normalized not in {"join", "leave"}:
+            raise ValueError(f"Invalid member event type: {event_type}")
+        async with self.get_connection() as db:
+            await db.execute(
+                "INSERT INTO guild_member_events (guild_id, user_id, event_type) VALUES (?, ?, ?)",
+                (guild_id, int(user_id), normalized),
+            )
+            await db.commit()
+
     # ==================== CHANNEL MESSAGE BATCHES ====================
 
     async def get_recent_channel_messages(
