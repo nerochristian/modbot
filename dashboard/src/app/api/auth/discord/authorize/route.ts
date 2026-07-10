@@ -1,28 +1,31 @@
-import { NextResponse } from 'next/server'
+import { NextResponse, type NextRequest } from 'next/server'
 import { randomBytes } from 'crypto'
+import { discordRedirectUri } from '@/lib/discord'
 
-const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID!
-const DISCORD_REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/discord/callback`
-const DISCORD_SCOPES = ['identify', 'guilds'].join(' ')
+const DISCORD_SCOPES = ['identify', 'email', 'guilds'].join(' ')
 
-export async function GET() {
-  if (!DISCORD_CLIENT_ID) {
+export async function GET(request: NextRequest) {
+  const clientId = process.env.DISCORD_CLIENT_ID?.trim()
+  if (!clientId) {
     return NextResponse.json({ error: 'Discord OAuth not configured' }, { status: 500 })
   }
 
   const state = randomBytes(16).toString('hex')
+  const requestedNext = request.nextUrl.searchParams.get('next')
+  const next = requestedNext?.startsWith('/') && !requestedNext.startsWith('//')
+    ? requestedNext
+    : '/servers'
 
   const params = new URLSearchParams({
-    client_id: DISCORD_CLIENT_ID,
-    redirect_uri: DISCORD_REDIRECT_URI,
+    client_id: clientId,
+    redirect_uri: discordRedirectUri(request.url),
     response_type: 'code',
     scope: DISCORD_SCOPES,
     state,
   })
 
-  // Store state in a short-lived cookie for CSRF protection (production: use Redis or signed cookie)
   const response = NextResponse.redirect(
-    `https://discord.com/api/oauth2/authorize?${params.toString()}`
+    `https://discord.com/oauth2/authorize?${params.toString()}`
   )
 
   response.cookies.set('discord_oauth_state', state, {
@@ -30,6 +33,14 @@ export async function GET() {
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
     maxAge: 600, // 10 minutes
+    path: '/',
+    priority: 'high',
+  })
+  response.cookies.set('discord_oauth_next', next, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 600,
     path: '/',
   })
 

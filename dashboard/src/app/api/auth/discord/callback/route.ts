@@ -1,92 +1,99 @@
-import { NextResponse } from 'next/server'
+import { randomBytes, timingSafeEqual } from 'node:crypto'
+import { cookies } from 'next/headers'
+import { NextResponse, type NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
+import { hashPassword } from '@/lib/auth'
 import { startSession } from '@/lib/auth-server'
-import { signSession } from '@/lib/auth'
+import { DEFAULT_DASHBOARD_CONFIG } from '@/lib/dashboard-config'
+import {
+  discordRedirectUri,
+  exchangeDiscordCode,
+  fetchDiscordUser,
+  sealDiscordToken,
+} from '@/lib/discord'
 
-const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID!
-const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET!
-const DISCORD_REDIRECT_URI = `${process.env.NEXT_PUBLIC_APP_URL}/api/auth/discord/callback`
+function sameState(actual: string | null, expected: string | undefined): boolean {
+  if (!actual || !expected) return false
+  const a = Buffer.from(actual)
+  const b = Buffer.from(expected)
+  return a.length === b.length && timingSafeEqual(a, b)
+}
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url)
-  const code = searchParams.get('code')
-  const state = searchParams.get('state')
-  const storedState = request.headers.get('cookie')?.match(/discord_oauth_state=([^;]+)/)?.[1]
+function authError(request: NextRequest, message: string) {
+  const url = new URL('/login', request.url)
+  url.searchParams.set('error', message)
+  return NextResponse.redirect(url)
+}
 
-  if (!code || !state || state !== storedState) {
-    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/login?error=invalid_state`)
-  }
+export async function GET(request: NextRequest) {
+  const cookieStore = await cookies()
+  const state = request.nextUrl.searchParams.get('state')
+  const expectedState = cookieStore.get('discord_oauth_state')?.value
+  const oauthError = request.nextUrl.searchParams.get('error')
+  const code = request.nextUrl.searchParams.get('code')
 
-  // Exchange code for tokens
-  const tokenRes = await fetch('https://discord.com/api/oauth2/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      client_id: DISCORD_CLIENT_ID,
-      client_secret: DISCORD_CLIENT_SECRET,
-      grant_type: 'authorization_code',
-      code,
-      redirect_uri: DISCORD_REDIRECT_URI,
-    }),
-  })
+  if (oauthError) return authError(request, 'Discord sign-in was cancelled.')
+  if (!sameState(state, expectedState)) return authError(request, 'Discord sign-in expired. Please try again.')
+  if (!code) return authError(request, 'Discord did not return an authorization code.')
 
-  if (!tokenRes.ok) {
-    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/login?error=token_exchange`)
-  }
+  try {
+    const tokens = await exchangeDiscordCode(code, discordRedirectUri(request.url))
+    const profile = await fetchDiscordUser(tokens.access_token)
+    const email = profile.email?.trim().toLowerCase() || `${profile.id}@discord.invalid`
+    const displayName = profile.global_name?.trim() || profile.username
+    const ownerIds = new Set(
+      (process.env.OWNER_IDS || '').split(',').map((value) => value.trim()).filter(Boolean),
+    )
 
-  const tokens = await tokenRes.json()
-  const accessToken = tokens.access_token
-  const refreshToken = tokens.refresh_token
-  const expiresIn = tokens.expires_in
-
-  // Fetch user profile
-  const userRes = await fetch('https://discord.com/api/users/@me', {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  })
-  if (!userRes.ok) {
-    return NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/login?error=user_fetch`)
-  }
-  const discordUser = await userRes.json()
-
-  // Upsert user (Discord-first)
-  const user = await prisma.user.upsert({
-    where: { discordId: discordUser.id },
-    update: {
-      discordUsername: discordUser.username,
-      discordAvatar: discordUser.avatar
-        ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
-        : null,
-      discordAccessToken: accessToken,
-      discordRefreshToken: refreshToken,
-      discordTokenExpiresAt: new Date(Date.now() + expiresIn * 1000),
+    const existingByDiscord = await prisma.user.findUnique({ where: { discordId: profile.id } })
+    const existingByEmail = existingByDiscord
+      ? null
+      : await prisma.user.findUnique({ where: { email } })
+    const existing = existingByDiscord ?? existingByEmail
+    const tokenData = {
+      discordId: profile.id,
+      discordUsername: profile.username,
+      discordGlobalName: profile.global_name,
+      discordAvatar: profile.avatar,
+      discordAccessToken: sealDiscordToken(tokens.access_token),
+      discordRefreshToken: tokens.refresh_token ? sealDiscordToken(tokens.refresh_token) : null,
+      discordTokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000),
+      email,
+      emailVerified: Boolean(profile.verified),
+      name: displayName,
+      status: 'active',
       lastLoginAt: new Date(),
-    },
-    create: {
-      discordId: discordUser.id,
-      discordUsername: discordUser.username,
-      discordAvatar: discordUser.avatar
-        ? `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png`
-        : null,
-      name: discordUser.global_name || discordUser.username,
-      email: null,
-      passwordHash: null,
-      discordAccessToken: accessToken,
-      discordRefreshToken: refreshToken,
-      discordTokenExpiresAt: new Date(Date.now() + expiresIn * 1000),
-      lastLoginAt: new Date(),
-    },
-  })
+    }
 
-  // Start session
-  await startSession({
-    id: user.id,
-    role: user.role,
-    name: user.name,
-    email: user.email || '',
-  })
+    const user = existing
+      ? await prisma.user.update({
+          where: { id: existing.id },
+          data: { ...tokenData, role: ownerIds.has(profile.id) ? 'admin' : existing.role },
+        })
+      : await prisma.user.create({
+          data: {
+            ...tokenData,
+            passwordHash: await hashPassword(randomBytes(48).toString('base64url')),
+            role: ownerIds.has(profile.id) ? 'admin' : 'manager',
+            dashboardConfig: { create: { config: JSON.stringify(DEFAULT_DASHBOARD_CONFIG) } },
+          },
+        })
 
-  // Clear state cookie
-  const response = NextResponse.redirect(`${process.env.NEXT_PUBLIC_APP_URL}/dashboard/servers`)
-  response.cookies.delete('discord_oauth_state')
-  return response
+    await prisma.dashboardConfig.upsert({
+      where: { userId: user.id },
+      update: {},
+      create: { userId: user.id, config: JSON.stringify(DEFAULT_DASHBOARD_CONFIG) },
+    })
+    await startSession({ id: user.id, role: user.role, name: user.name, email: user.email })
+
+    const nextCookie = cookieStore.get('discord_oauth_next')?.value
+    const next = nextCookie?.startsWith('/') && !nextCookie.startsWith('//') ? nextCookie : '/servers'
+    cookieStore.delete('discord_oauth_state')
+    cookieStore.delete('discord_oauth_next')
+    cookieStore.delete('aegis_guild')
+    return NextResponse.redirect(new URL(next, request.url))
+  } catch (error) {
+    console.error('[auth.discord.callback]', error instanceof Error ? error.message : error)
+    return authError(request, 'Discord sign-in failed. Please try again.')
+  }
 }

@@ -60,6 +60,21 @@ function requiredEnv(name: 'DISCORD_CLIENT_ID' | 'DISCORD_CLIENT_SECRET'): strin
   return value
 }
 
+export function dashboardBaseUrl(requestUrl?: string): string {
+  if (process.env.NODE_ENV !== 'production' && requestUrl) return new URL(requestUrl).origin
+  const configured =
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.DASHBOARD_PUBLIC_URL ||
+    process.env.FRONTEND_PUBLIC_URL
+  if (configured) return configured.replace(/\/$/, '')
+  if (requestUrl) return new URL(requestUrl).origin
+  return `http://localhost:${process.env.DASHBOARD_PORT || '3000'}`
+}
+
+export function discordRedirectUri(requestUrl?: string): string {
+  return `${dashboardBaseUrl(requestUrl)}/api/auth/discord/callback`
+}
+
 function encryptionKey(): Buffer {
   const secret = process.env.AUTH_SECRET || process.env.SESSION_SECRET
   if (!secret) throw new Error('AUTH_SECRET or SESSION_SECRET is not configured')
