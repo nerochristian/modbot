@@ -14,7 +14,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url)
     const query = parseListQuery(url, { defaultSort: 'createdAt' })
 
-    const where: Prisma.ReportWhereInput = {}
+    const where: Prisma.ReportWhereInput = { createdById: guard.id }
     if (query.q) where.name = { contains: query.q }
     if (query.filters.type) where.type = query.filters.type
     if (query.filters.status) where.status = query.filters.status
