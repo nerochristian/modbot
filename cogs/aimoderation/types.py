@@ -82,7 +82,7 @@ TARGETED_TOOLS: Final[Set[ToolType]] = {
     ToolType.KICK, ToolType.BAN, ToolType.UNBAN,
     ToolType.ADD_ROLE, ToolType.REMOVE_ROLE,
     ToolType.SET_NICKNAME, ToolType.MOVE_MEMBER, ToolType.DISCONNECT_MEMBER,
-    ToolType.DM_USER, ToolType.GET_WARNINGS,
+    ToolType.DM_USER, ToolType.GET_WARNINGS, ToolType.PURGE,
 }
 
 REASONED_MODERATION_TOOLS: Final[Set[ToolType]] = {
