@@ -1371,6 +1371,7 @@ class Database:
                         guild_id INTEGER NOT NULL,
                         user_id INTEGER NOT NULL,
                         channel_id INTEGER,
+                        rule TEXT NOT NULL,
                         category TEXT NOT NULL,
                         severity TEXT NOT NULL,
                         action TEXT NOT NULL,
@@ -1648,6 +1649,7 @@ class Database:
         guild_id: int,
         user_id: int,
         channel_id: Optional[int],
+        rule: str,
         category: str,
         severity: str,
         action: str,
@@ -1660,13 +1662,14 @@ class Database:
             await db.execute(
                 """
                 INSERT INTO automod_events
-                    (guild_id, user_id, channel_id, category, severity, action, reason, message_deleted)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (guild_id, user_id, channel_id, rule, category, severity, action, reason, message_deleted)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     guild_id,
                     int(user_id),
                     int(channel_id) if channel_id else None,
+                    str(rule)[:64],
                     str(category)[:64],
                     str(severity)[:32],
                     str(action)[:32],

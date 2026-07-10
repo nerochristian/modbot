@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Any, Literal, Optional
 
 import discord
@@ -23,6 +24,7 @@ from .wizard import AutoModWizardSession
 
 ModuleName = Literal["all", "spam", "links", "invites", "mentions", "caps", "badwords", "duplicates", "fast_messages", "emoji_spam", "wall_spam", "attachments", "unicode_spam", "new_accounts", "raid"]
 PunishmentName = Literal["none", "log", "warn", "mute", "timeout", "kick", "ban"]
+logger = logging.getLogger(__name__)
 
 
 class AutoMod(commands.Cog):
@@ -88,6 +90,10 @@ class AutoMod(commands.Cog):
     async def on_member_join(self, member: discord.Member) -> None:
         if member.bot:
             return
+        try:
+            await self.bot.db.record_member_event(member.guild.id, member.id, "join")
+        except Exception:
+            logger.exception("Failed to record dashboard member join for guild %s", member.guild.id)
         settings = await self._settings(member.guild.id)
         if not settings.get("automod_enabled", True):
             return
@@ -105,6 +111,15 @@ class AutoMod(commands.Cog):
                 action,
                 error=result.error if result else None,
             )
+
+    @commands.Cog.listener()
+    async def on_member_remove(self, member: discord.Member) -> None:
+        if member.bot:
+            return
+        try:
+            await self.bot.db.record_member_event(member.guild.id, member.id, "leave")
+        except Exception:
+            logger.exception("Failed to record dashboard member leave for guild %s", member.guild.id)
 
     async def _handle_message_match(self, message: discord.Message, match: RuleMatch, settings: dict[str, Any]) -> None:
         deleted = False
@@ -125,6 +140,20 @@ class AutoMod(commands.Cog):
             action = result.action
 
         self.engine.record_action(message, match, action)
+        try:
+            await self.bot.db.record_automod_event(
+                message.guild.id,
+                message.author.id,
+                message.channel.id,
+                match.rule,
+                match.category.value,
+                match.severity.name.lower(),
+                action.value,
+                match.reason,
+                deleted,
+            )
+        except Exception:
+            logger.exception("Failed to record AutoMod dashboard event for guild %s", message.guild.id)
         await self.logger.log_message_action(
             message,
             match,
