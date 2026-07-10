@@ -2833,7 +2833,110 @@ class AIModeration(commands.Cog):
         embed.add_field(name="Last Updated", value=str((record or {}).get("last_updated") or "Never"), inline=False)
         await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="aihelp")
+    async def handle_casual_mention(self, message: discord.Message) -> bool:
+        """Handles conversational AI when the bot is mentioned. 
+        Detects if it's a normal convo or a moderation task.
+        Generates and executes a python script if it's a moderation ask.
+        """
+        import aiohttp
+        import os
+        import ast
+
+        if message.author.bot:
+            return False
+
+        # Get API key from env
+        api_key = os.getenv("DO_API_KEY", "").strip()
+        url = "https://inference.do-ai.run/v1/chat/completions"
+        
+        # Pull previous messages for context
+        history = [msg async for msg in message.channel.history(limit=50, before=message)]
+        history.reverse()
+        context_lines = []
+        for msg in history:
+            context_lines.append(f"{msg.author.name}: {msg.content}")
+        context_str = "\\n".join(context_lines)
+
+        prompt = f'''You are a conversational AI for a Discord server. 
+You can either respond normally to a casual conversation OR perform moderation actions if requested by an admin/mod.
+
+Context of conversation:
+{context_str}
+Current message from {message.author.name}: {message.content}
+
+Check if the user is asking for a normal conversation OR a moderation ask (e.g., purge messages, mute, kick).
+If it's a normal conversation, just reply with the text response.
+If it's a moderation ask, you MUST output ONLY a python script enclosed in ```python ... ``` that will use discord.py to perform the action.
+You have access to the following local variables in the script:
+- `bot`: The commands.Bot instance
+- `message`: The discord.Message object of the prompt
+- `guild`: The discord.Guild object
+- `channel`: The discord.TextChannel object
+
+Example script for purging:
+```python
+import asyncio
+channel = message.channel
+await channel.purge(limit=100, check=lambda m: m.author.id == SOME_ID)
+```
+Only write safe discord.py code. State the reason in the mod logs if possible.
+'''
+
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "deepseek-4-flash",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.2
+        }
+
+        async with message.channel.typing():
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, headers=headers, json=payload, timeout=30) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                        else:
+                            return False
+
+                if "```python" in content:
+                    # Extract script
+                    script = content.split("```python")[1].split("```")[0].strip()
+                    
+                    # Wrap the script in an async function to execute it
+                    func_code = f"async def _exec_script():\\n"
+                    for line in script.split("\\n"):
+                        func_code += f"    {line}\\n"
+
+                    # Execute safely
+                    local_env = {
+                        "bot": self.bot,
+                        "message": message,
+                        "guild": message.guild,
+                        "channel": message.channel,
+                        "discord": discord,
+                        "asyncio": asyncio
+                    }
+                    try:
+                        exec(func_code, local_env)
+                        await local_env["_exec_script"]()
+                        await message.reply("Action completed.", mention_author=False)
+                    except Exception as e:
+                        logger.error(f"Failed to execute AI moderation script: {e}")
+                        await message.reply("Failed to execute the requested action.", mention_author=False)
+                    return True
+                else:
+                    await message.reply(content, mention_author=False)
+                    return True
+
+            except Exception as e:
+                logger.error(f"Casual mention handling failed: {e}")
+                return False
+
+
     async def aihelp(self, interaction: discord.Interaction) -> None:
         """Show AI moderation help."""
         await interaction.response.send_message(

@@ -19,12 +19,12 @@ from utils.embeds import ModEmbed
 
 logger = logging.getLogger("ModBot.Behavior")
 
-DATABASE_MESSAGE_LIMIT = 1_000
-MAX_COLLECTED_MESSAGES = 1_000
+DATABASE_MESSAGE_LIMIT = 2_000
+MAX_COLLECTED_MESSAGES = 2_000
 MIN_PROFILE_MESSAGES = 5
-MAX_PROMPT_MESSAGES = 1_000
-MAX_PROMPT_SAMPLES = 120
-MAX_CONTEXT_CHARS = 8_500
+MAX_PROMPT_MESSAGES = 2_000
+MAX_PROMPT_SAMPLES = 500
+MAX_CONTEXT_CHARS = 30_000
 MAX_MESSAGE_CHARS = 320
 MAX_PROFILE_CHARS = 5_200
 MAX_PROFILE_WORDS = 800
@@ -450,28 +450,38 @@ class BehaviorProfiling(commands.Cog):
         )
 
     async def _generate_profile(self, ai_client: object, prompt: str) -> str:
-        call = getattr(ai_client, "_call", None)
-        if not callable(call):
-            raise RuntimeError(
-                "The active AI client does not expose the provider call interface."
-            )
-
-        config = getattr(ai_client, "config", None)
-        model = getattr(config, "model", None)
+        # Override to use DigitalOcean Deepseek Flash directly as requested
+        import aiohttp
+        import os
+        api_key = os.getenv("DO_API_KEY", "").strip()
+        url = "https://inference.do-ai.run/v1/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "model": "deepseek-4-flash",
+            "messages": [
+                {"role": "system", "content": PROFILE_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt}
+            ],
+            "temperature": 0.2,
+            "max_tokens": 2000
+        }
         async with self._ai_slots:
-            response = await asyncio.wait_for(
-                call(
-                    [
-                        {"role": "system", "content": PROFILE_SYSTEM_PROMPT},
-                        {"role": "user", "content": prompt},
-                    ],
-                    temperature=0.2,
-                    max_tokens=1_800,
-                    model=model,
-                    long_answer=True,
-                ),
-                timeout=PROFILE_TIMEOUT_SECONDS,
-            )
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.post(url, headers=headers, json=payload, timeout=PROFILE_TIMEOUT_SECONDS) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            response = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+                        else:
+                            text = await resp.text()
+                            raise RuntimeError(f"DO API returned {resp.status}: {text}")
+            except Exception as e:
+                logger.error(f"Error during DO deepseek flash API call: {e}")
+                raise
+
         return _clean_profile_output(response)
 
     async def _send_status(
