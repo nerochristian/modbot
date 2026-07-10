@@ -33,6 +33,7 @@ type OverviewData = {
   kpis: { actions: Kpi; openCases: Kpi; automod: Kpi; pendingAppeals: Kpi }
   actionsSeries: { label: string; value: number }[]
   automodSeries: { label: string; value: number }[]
+  channels: { label: string; value: number }[]
   growth: { label: string; joined: number; left: number }[]
   infractions: { name: string; value: number; color: string }[]
   totalMembers: number
@@ -56,15 +57,6 @@ const SPAN: Record<string, string> = {
   'status-system': 'lg:col-span-4',
   'chart-channels': 'lg:col-span-8',
 }
-
-const CHANNELS = [
-  { label: '#general', value: 320 },
-  { label: '#memes', value: 254 },
-  { label: '#spam-hell', value: 198 },
-  { label: '#off-topic', value: 142 },
-  { label: '#gaming', value: 96 },
-  { label: '#trades', value: 61 },
-]
 
 const TRIGGER_LABELS: Record<string, string> = {
   keyword: 'Keyword',
@@ -236,7 +228,7 @@ function Widget({
     case 'chart-channels':
       return (
         <ChartCard title="Flagged channels">
-          <TrendChart data={CHANNELS} type="bar" showAxes valueFormatter={(v) => formatCompact(v)} />
+          <TrendChart data={data.channels} type="bar" showAxes valueFormatter={(v) => formatCompact(v)} />
         </ChartCard>
       )
     case 'chart-joins':
