@@ -1,0 +1,4 @@
+  modbot.service                                                                 loaded active running   Ass Moderation Discord bot
+  soul-bot.service                                                               loaded active running   Soul Discord bot and website
+● soul-updater.service                                                           loaded failed failed    Soul Bot Auto Updater
+  soul-updater.timer                                                             loaded active waiting   Run Soul Bot Auto Updater Every Minute
