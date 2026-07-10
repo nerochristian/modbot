@@ -3063,45 +3063,72 @@ class AIModeration(commands.Cog):
             context_lines.append(f"{msg.author.name}: {msg.content}")
         context_str = "\\n".join(context_lines)
 
-        prompt = f'''You are a conversational AI for a Discord server. 
-You can either respond normally to a casual conversation OR perform moderation actions if requested by an admin/mod.
+        prompt = f'''You are a highly capable Discord Server Assistant.
+You handle two types of requests from server moderators/administrators:
+1. Casual Conversation: Respond naturally with helpful text.
+2. Moderation Actions: (e.g., purge, mute/timeout, kick, ban). When a moderation action is requested, you MUST NOT output conversational text. Instead, you MUST output ONLY a Python script enclosed in ```python ... ``` that executes the requested action using discord.py.
 
-Context of conversation:
+### Context of Conversation
 {context_str}
-Current message from {message.author.name}: {message.content}
+Current request from {message.author.name}: {message.content}
 
-Check if the user is asking for a normal conversation OR a moderation ask (e.g., purge messages, mute, kick).
-If it's a normal conversation, just reply with the text response.
-If it's a moderation ask, you MUST output ONLY a python script enclosed in ```python ... ``` that will use discord.py to perform the action.
-You have access to the following local variables in the script:
+### Script Execution Environment
+Your script will be executed safely. You have access to the following local variables:
 - `bot`: The commands.Bot instance
 - `message`: The discord.Message object of the prompt
 - `guild`: The discord.Guild object
 - `channel`: The discord.TextChannel object
 - `discord`: The discord module
+- `asyncio`: The asyncio module
 
-Example script for purging from a specific user:
+### Rules for Generating Moderation Scripts
+1. **Target Extraction**: ALWAYS prioritize extracting the user ID from a mention (which looks like `<@1234567890>` or `<@!1234567890>`). Fallback to searching by name only if no mention is present.
+2. **Safety First**: NEVER execute destructive actions (like `channel.purge()`) without a strict `check` function if a specific target was requested. If the target is not found, abort.
+3. **Timeouts**: Use `datetime.timedelta` for timeouts.
+4. **No Explanations**: Do not include any text outside the ```python ... ``` block when providing a script.
+
+### Example Scripts
+
+**Example 1: Purging messages from a specific user**
 ```python
-import asyncio
 import re
-
-target_input = "TARGET_FROM_MESSAGE"
+target_input = "TARGET_FROM_MESSAGE" # Replace with the actual requested target
 target_member = None
 
-# If the target is a ping, it will look like <@12345>
 match = re.search(r"<@!?(\\d+)>", target_input)
 if match:
     target_member = guild.get_member(int(match.group(1)))
 else:
-    target_name = target_input.lower()
-    target_member = discord.utils.find(lambda m: target_name in m.name.lower() or target_name in m.display_name.lower(), guild.members)
+    target_member = discord.utils.find(lambda m: target_input.lower() in m.name.lower() or target_input.lower() in m.display_name.lower(), guild.members)
 
 if target_member:
     await channel.purge(limit=100, check=lambda m: m.author.id == target_member.id)
 else:
-    await channel.send("Target user not found. Aborting purge to prevent deleting all messages.")
+    await channel.send("Target user not found. Aborting purge.")
 ```
-Only write safe discord.py code. State the reason in the mod logs if possible.
+
+**Example 2: Muting (Timeout) a user**
+```python
+import datetime
+import re
+target_input = "TARGET_FROM_MESSAGE"
+target_member = None
+
+match = re.search(r"<@!?(\\d+)>", target_input)
+if match:
+    target_member = guild.get_member(int(match.group(1)))
+else:
+    target_member = discord.utils.find(lambda m: target_input.lower() in m.name.lower() or target_input.lower() in m.display_name.lower(), guild.members)
+
+if target_member:
+    # Set the duration based on the request (e.g., 10 minutes)
+    duration = datetime.timedelta(minutes=10)
+    await target_member.timeout(duration, reason="Requested by moderation AI")
+else:
+    await channel.send("Target user not found. Cannot apply timeout.")
+```
+
+Determine the user's intent. If it's a normal conversation, just reply with text. If it's a moderation command, provide ONLY the python script.
 '''
 
         headers = {
