@@ -19,22 +19,22 @@ datasource db {
 // ---------------------------------------------------------------------------
 
 model User {
-  id            String   @id @default(cuid())
-  email         String   @unique
-  name          String
-  passwordHash  String
-  role          String   @default("viewer") // admin | manager | viewer
-  status        String   @default("active") // active | invited | suspended
-  avatarColor   String   @default("#6366f1")
-  title         String?
-  phone         String?
-  timezone      String   @default("UTC")
-  bio           String?
-  twoFactorEnabled Boolean @default(false)
-  emailVerified Boolean  @default(false)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  lastLoginAt   DateTime?
+  id               String    @id @default(cuid())
+  email            String    @unique
+  name             String
+  passwordHash     String
+  role             String    @default("viewer") // admin | manager | viewer
+  status           String    @default("active") // active | invited | suspended
+  avatarColor      String    @default("#6366f1")
+  title            String?
+  phone            String?
+  timezone         String    @default("UTC")
+  bio              String?
+  twoFactorEnabled Boolean   @default(false)
+  emailVerified    Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  lastLoginAt      DateTime?
 
   // Discord is the primary identity for production dashboard accounts.
   // Existing local demo accounts remain valid while deployments migrate.
@@ -58,15 +58,15 @@ model User {
 }
 
 model Session {
-  id         String   @id @default(cuid())
-  userId     String
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  jti        String   @unique
-  userAgent  String?
-  ip         String?
-  createdAt  DateTime @default(now())
-  expiresAt  DateTime
-  revokedAt  DateTime?
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jti       String    @unique
+  userAgent String?
+  ip        String?
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
 
   @@index([userId])
 }
@@ -75,8 +75,8 @@ model Session {
 // data-driven rather than hard-coded.
 model RolePermission {
   id         String  @id @default(cuid())
-  role       String  // admin | manager | viewer
-  permission String  // e.g. "users.write", "billing.read"
+  role       String // admin | manager | viewer
+  permission String // e.g. "users.write", "billing.read"
   allowed    Boolean @default(true)
 
   @@unique([role, permission])
@@ -117,21 +117,21 @@ model Member {
 // ---------------------------------------------------------------------------
 
 model Case {
-  id         String   @id @default(cuid())
-  ref        Int      @unique // human case number, e.g. 421 -> #CASE-0421
-  memberId   String
-  member     Member   @relation(fields: [memberId], references: [id], onDelete: Cascade)
-  type       String // note | warn | mute | timeout | kick | ban | unban
-  severity   String   @default("low") // low | medium | high | critical
-  status     String   @default("open") // open | resolved | expired | appealed
-  reason     String
-  moderator  String // display name of the acting moderator
+  id          String    @id @default(cuid())
+  ref         Int       @unique // human case number, e.g. 421 -> #CASE-0421
+  memberId    String
+  member      Member    @relation(fields: [memberId], references: [id], onDelete: Cascade)
+  type        String // note | warn | mute | timeout | kick | ban | unban
+  severity    String    @default("low") // low | medium | high | critical
+  status      String    @default("open") // open | resolved | expired | appealed
+  reason      String
+  moderator   String // display name of the acting moderator
   moderatorId String?
-  channel    String? // originating channel name
-  evidence   String? // JSON array of evidence links/notes
-  expiresAt  DateTime? // for temporary mutes/timeouts/bans
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @default(now())
+  channel     String? // originating channel name
+  evidence    String? // JSON array of evidence links/notes
+  expiresAt   DateTime? // for temporary mutes/timeouts/bans
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @default(now())
 
   appeals Appeal[]
 
@@ -146,19 +146,19 @@ model Case {
 // ---------------------------------------------------------------------------
 
 model AutomodRule {
-  id          String   @id @default(cuid())
-  name        String
-  description String?
-  trigger     String // keyword | regex | spam | mention_spam | invite | link | caps | attachment
-  pattern     String? // keywords/regex/thresholds depending on trigger
-  action      String   @default("delete") // delete | warn | mute | timeout | kick | ban | flag
-  severity    String   @default("low") // low | medium | high | critical
-  exemptRoles String   @default("[]") // JSON array of role names
-  enabled     Boolean  @default(true)
-  hits        Int      @default(0) // number of times this rule has fired
+  id              String    @id @default(cuid())
+  name            String
+  description     String?
+  trigger         String // keyword | regex | spam | mention_spam | invite | link | caps | attachment
+  pattern         String? // keywords/regex/thresholds depending on trigger
+  action          String    @default("delete") // delete | warn | mute | timeout | kick | ban | flag
+  severity        String    @default("low") // low | medium | high | critical
+  exemptRoles     String    @default("[]") // JSON array of role names
+  enabled         Boolean   @default(true)
+  hits            Int       @default(0) // number of times this rule has fired
   lastTriggeredAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @default(now())
 
   @@index([enabled])
   @@index([trigger])
