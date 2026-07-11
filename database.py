@@ -357,7 +357,18 @@ class PostgresCompatCursor:
         rowcount: int = 0,
         lastrowid: Optional[int] = None,
     ) -> None:
-        self._rows = [tuple(row) if not isinstance(row, tuple) else row for row in (rows or [])]
+        # Convert asyncpg.Record objects to dicts for dict-like column access
+        # asyncpg.Record supports both tuple and dict-like access, but converting
+        # to dict ensures compatibility with code expecting Mapping protocol
+        converted_rows = []
+        for row in (rows or []):
+            if hasattr(row, 'keys'):  # asyncpg.Record or similar dict-like object
+                converted_rows.append(dict(row))
+            elif isinstance(row, tuple):
+                converted_rows.append(row)
+            else:
+                converted_rows.append(tuple(row))
+        self._rows = converted_rows
         self._index = 0
         self.rowcount = rowcount
         self.lastrowid = lastrowid
