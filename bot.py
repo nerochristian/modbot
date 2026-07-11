@@ -1629,32 +1629,6 @@ class ModBot(commands.Bot):
         # Ensure cogs directory exists
         cogs_path = Path("./cogs")
         if not cogs_path.exists():
-            logger.warning("[WARN] Cogs directory not found, creating...")
-            cogs_path.mkdir(exist_ok=True)
-
-        # Cog list
-        cogs = [
-            "cogs.moderation",
-            "cogs.setup",
-            "cogs.verification",
-            "cogs.help",
-            "cogs.roles",
-            "cogs.logging_cog",
-            "cogs.pin",
-            "cogs.reports",
-            "cogs.blacklist",
-            "cogs.forum_moderation",
-            "cogs.prefix_commands",
-            "cogs.aimoderation",
-            "cogs.ai_scheduler",
-            "cogs.automod",
-            "cogs.antiraid",
-            except commands.ExtensionNotFound:
-                skipped.append(cog)
-                logger.debug(f"  [--] Skipped: {cog} (not found)")
-            except commands.ExtensionAlreadyLoaded:
-                logger.debug(f"  [--] Skipped: {cog} (already loaded)")
-            except Exception as e:
                 failed.append((cog, str(e)))
                 logger.error(f"  [ERR] Failed: {cog} - {e}")
 
