@@ -9,7 +9,7 @@ from discord.ext import commands
 from datetime import datetime
 from typing import Optional, Literal, Union
 from utils.embeds import ModEmbed
-from utils.checks import is_mod, is_admin, is_bot_owner_id
+from utils.checks import is_mod, is_admin, is_bot_owner_id, can_moderate
 from config import Config
 
 # TTS for voice announcements
@@ -758,6 +758,12 @@ class Voice(commands.Cog):
     
     async def _kick(self, source, user: discord.Member, reason: str):
         author = source.user if isinstance(source, discord.Interaction) else source.author
+        if not isinstance(author, discord.Member) or not can_moderate(user, author):
+            return await self._respond(
+                source,
+                embed=ModEmbed.error("Insufficient Permissions", f"You can't disconnect {user.mention} — they're equal to or above you in the role hierarchy."),
+                ephemeral=True
+            )
         if not user.voice:
             return await self._respond(
                 source,
