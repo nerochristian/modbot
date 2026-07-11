@@ -1649,18 +1649,6 @@ class ModBot(commands.Bot):
             "cogs.ai_scheduler",
             "cogs.automod",
             "cogs.antiraid",
-            "cogs.voice",
-            "cogs.settings",
-            "cogs.polls",
-            "cogs.tickets",
-            "cogs.modmail",
-            "cogs.utility",
-
-        for cog in cogs:
-            try:
-                await self.load_extension(cog)
-                loaded.append(cog)
-                logger.info(f"  [OK] Loaded: {cog}")
             except commands.ExtensionNotFound:
                 skipped.append(cog)
                 logger.debug(f"  [--] Skipped: {cog} (not found)")
