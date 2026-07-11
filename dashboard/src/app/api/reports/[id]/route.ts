@@ -11,6 +11,9 @@ export async function DELETE(_request: Request, ctx: { params: Promise<{ id: str
 
     const report = await prisma.report.findUnique({ where: { id } })
     if (!report) return apiError('Report not found', 404)
+    // Object-level authorization: reports are per-user, so a user may only
+    // delete their own report (prevents IDOR by id-guessing).
+    if (report.createdById !== user.id) return apiError('Report not found', 404)
 
     await prisma.report.delete({ where: { id } })
     await logActivity({ userId: user.id, actorName: user.name, action: 'deleted_report', target: report.name })

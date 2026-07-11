@@ -21,6 +21,10 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
 
   const report = await prisma.report.findUnique({ where: { id } })
   if (!report) return apiError('Report not found', 404)
+  // Object-level authorization: reports are per-user (the list route scopes by
+  // createdById), so a user may only download their own report. Without this,
+  // any reports.read user could download any report by guessing its id (IDOR).
+  if (report.createdById !== guard.id) return apiError('Report not found', 404)
 
   let rows: Record<string, unknown>[] = []
   switch (report.type) {
