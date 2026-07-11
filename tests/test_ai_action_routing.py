@@ -50,6 +50,8 @@ class AIActionRoutingTests(unittest.TestCase):
             ToolType.PURGE,
             ToolType.DELETE_CHANNEL,
             ToolType.DELETE_ROLE,
+            ToolType.DELETE_EMOJI,
+            ToolType.EDIT_GUILD,
             ToolType.EXECUTE_RAW_API,
             ToolType.EXECUTE_PYTHON,
         ):
@@ -71,6 +73,30 @@ class AIActionRoutingTests(unittest.TestCase):
             arguments={},
         )
         self.assertFalse(self.cog._requires_confirmation(settings, timeout))
+
+        long_timeout = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="test",
+            tool=ToolType.TIMEOUT,
+            arguments={"seconds": 86_400},
+        )
+        self.assertTrue(
+            self.cog._requires_confirmation(
+                GuildSettings(confirm_enabled=False), long_timeout
+            )
+        )
+
+        ban = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="test",
+            tool=ToolType.BAN,
+            arguments={},
+        )
+        self.assertTrue(
+            self.cog._requires_confirmation(
+                GuildSettings(confirm_enabled=False, confirm_actions=set()), ban
+            )
+        )
 
     def test_confirmation_settings_round_trip(self) -> None:
         settings = GuildSettings.from_dict(

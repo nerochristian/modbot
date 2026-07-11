@@ -2048,10 +2048,18 @@ class AIModeration(commands.Cog):
 
     @staticmethod
     def _requires_confirmation(settings: GuildSettings, decision: Decision) -> bool:
+        if decision.type != DecisionType.TOOL_CALL or not decision.tool:
+            return False
+        if decision.tool.value in GuildSettings._DEFAULT_CONFIRM_ACTIONS:
+            return True
+        if decision.tool == ToolType.TIMEOUT:
+            try:
+                if int(decision.arguments.get("seconds", 0)) >= 86_400:
+                    return True
+            except (TypeError, ValueError):
+                return True
         return bool(
             settings.confirm_enabled
-            and decision.type == DecisionType.TOOL_CALL
-            and decision.tool
             and decision.tool.value in settings.confirm_actions
         )
 

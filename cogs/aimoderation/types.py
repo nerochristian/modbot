@@ -164,6 +164,8 @@ class GuildSettings:
             "purge_messages",
             "delete_channel",
             "delete_role",
+            "delete_emoji",
+            "edit_guild",
             "execute_raw_api",
             "execute_python",
         }
@@ -178,6 +180,8 @@ class GuildSettings:
         "purge_messages",
         "delete_channel",
         "delete_role",
+        "delete_emoji",
+        "edit_guild",
         "execute_raw_api",
         "execute_python",
     }
