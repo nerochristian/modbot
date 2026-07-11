@@ -16,6 +16,19 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     const body = await request.json()
     const data = updateUserSchema.parse(body)
 
+    // Privilege-escalation guard: only an admin may grant the admin role, or
+    // modify an existing admin. `users.write` is granted to managers, so
+    // without this a non-admin could promote an account (or itself via a
+    // second account) to admin.
+    if (actor.role !== 'admin') {
+      if (data.role === 'admin') {
+        return apiError('Only an admin can grant the admin role.', 403)
+      }
+      if (target.role === 'admin') {
+        return apiError('Only an admin can modify an admin account.', 403)
+      }
+    }
+
     // Guard: prevent removing the last admin (by demotion or suspension).
     if ((data.role && data.role !== 'admin' && target.role === 'admin') ||
         (data.status === 'suspended' && target.role === 'admin')) {

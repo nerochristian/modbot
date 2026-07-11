@@ -61,6 +61,14 @@ export async function POST(request: Request) {
     const body = await request.json()
     const data = createUserSchema.parse(body)
 
+    // Privilege-escalation guard: only an admin may create an admin account.
+    // `users.write` is granted to managers, so without this a non-admin could
+    // mint an admin and escalate. Role removal is guarded elsewhere; this
+    // guards role *granting*.
+    if (data.role === 'admin' && actor.role !== 'admin') {
+      return apiError('Only an admin can create an admin account.', 403)
+    }
+
     const existing = await prisma.user.findUnique({ where: { email: data.email.toLowerCase() } })
     if (existing) return apiError('A user with that email already exists.', 409)
 
