@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 import discord
 from discord.ext import commands, tasks
 
+from utils.checks import is_bot_owner_id
+
 logger = logging.getLogger("ModBot.AIScheduler")
 
 
@@ -26,7 +28,7 @@ class AIScheduler(commands.Cog):
 
             async with self.bot.db.get_connection() as db:
                 cursor = await db.execute(
-                    "SELECT id, guild_id, task_type, payload, execute_at "
+                    "SELECT id, guild_id, task_type, payload, execute_at, author_id "
                     "FROM scheduled_tasks "
                     "WHERE status = 'pending' AND execute_at <= ?",
                     (now,),
@@ -41,10 +43,11 @@ class AIScheduler(commands.Cog):
                 guild_id = row[1]
                 task_type = row[2]
                 payload_str = row[3]
+                author_id = row[5] if len(row) > 5 else None
 
                 try:
                     payload = json.loads(payload_str) if payload_str else {}
-                    await self._execute_task(guild_id, task_type, payload)
+                    await self._execute_task(guild_id, task_type, payload, author_id)
                     async with self.bot.db.get_connection() as db:
                         await db.execute(
                             "UPDATE scheduled_tasks SET status = 'completed' WHERE id = ?",
