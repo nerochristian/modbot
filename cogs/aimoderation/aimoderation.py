@@ -2052,6 +2052,111 @@ class AIModeration(commands.Cog):
             )
         return await self.reply(message, content=result.message, delete_after=result.delete_after)
 
+    @staticmethod
+    def _requires_confirmation(settings: GuildSettings, decision: Decision) -> bool:
+        return bool(
+            settings.confirm_enabled
+            and decision.type == DecisionType.TOOL_CALL
+            and decision.tool
+            and decision.tool.value in settings.confirm_actions
+        )
+
+    def _confirmation_preview(
+        self,
+        message: discord.Message,
+        decision: Decision,
+    ) -> str:
+        assert decision.tool is not None
+        metadata = ToolRegistry.get_metadata(decision.tool)
+        args = decision.arguments or {}
+        rows: list[tuple[str, object]] = [
+            ("Action", metadata.display_name),
+            ("Requested By", message.author.mention),
+        ]
+
+        target_id = args.get("target_user_id")
+        if target_id:
+            rows.append(("Target", f"<@{target_id}> (`{target_id}`)"))
+        if role_name := str(args.get("role_name") or "").strip():
+            rows.append(("Role", role_name))
+        if channel_id := args.get("channel_id"):
+            rows.append(("Channel", f"<#{channel_id}> (`{channel_id}`)"))
+        elif channel_name := str(args.get("channel_name") or "").strip():
+            rows.append(("Channel", channel_name))
+        if decision.tool == ToolType.PURGE:
+            rows.append(("Messages", int(args.get("amount", 10))))
+            rows.append(
+                (
+                    "Scope",
+                    "All accessible channels"
+                    if args.get("all_channels_requested")
+                    else message.channel.mention,
+                )
+            )
+        if seconds := args.get("seconds"):
+            try:
+                rows.append(("Duration", str(timedelta(seconds=int(seconds)))))
+            except (TypeError, ValueError, OverflowError):
+                pass
+        reason = self._clean_moderation_reason(args.get("reason", ""))
+        if reason:
+            rows.append(("Reason", reason))
+        if decision.tool in {ToolType.EXECUTE_PYTHON, ToolType.EXECUTE_RAW_API}:
+            rows.append(
+                (
+                    "Safety",
+                    "Owner-only automation; implementation details remain in mod logs.",
+                )
+            )
+
+        return (
+            compact_kv_lines(rows, max_value_length=700)
+            + "\n\nReview the target and scope carefully before confirming."
+        )[:3_800]
+
+    async def _request_confirmation(
+        self,
+        message: discord.Message,
+        decision: Decision,
+        settings: GuildSettings,
+    ) -> None:
+        view = AIActionConfirmationView(
+            self,
+            message,
+            decision,
+            timeout=float(settings.confirm_timeout_seconds),
+        )
+        sent = await message.channel.send(
+            view=view,
+            reference=message,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
+        view.confirmation_message = sent
+
+    async def _execute_decision(
+        self,
+        message: discord.Message,
+        decision: Decision,
+        *,
+        send_result: bool,
+    ) -> ToolResult:
+        assert decision.tool is not None
+        result = await ToolRegistry.execute(
+            decision.tool,
+            self,
+            message,
+            decision.arguments,
+            decision,
+        )
+        if result.success and (target_id := decision.arguments.get("target_user_id")):
+            try:
+                self._remember_target(message.author.id, int(target_id))
+            except (TypeError, ValueError):
+                pass
+        if send_result:
+            await self.reply_tool_result(message, result)
+        return result
+
     async def _generate_execute_python_code(
         self,
         *,
