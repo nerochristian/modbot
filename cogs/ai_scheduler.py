@@ -71,7 +71,7 @@ class AIScheduler(commands.Cog):
                 return
             logger.exception("AI Scheduler loop failed")
 
-    async def _execute_task(self, guild_id: int, task_type: str, payload: dict):
+    async def _execute_task(self, guild_id: int, task_type: str, payload: dict, author_id: int | None = None):
         guild = self.bot.get_guild(guild_id)
         if not guild:
             return
@@ -88,6 +88,18 @@ class AIScheduler(commands.Cog):
                     logger.warning(f"Reminder delivery failed for user {user_id}: {e}")
 
         elif task_type == "execute_python":
+            # SECURITY: scheduled Python runs arbitrary code with full bot
+            # privileges. Re-authorize at execution time — the task's original
+            # author must STILL be a bot owner. This closes the privilege-
+            # escalation gap where a non-owner could persist a task that later
+            # ran unchecked. Never trust the row alone.
+            if author_id is None or not is_bot_owner_id(int(author_id)):
+                logger.warning(
+                    "Blocked scheduled execute_python for guild %s: author %s is not a bot owner.",
+                    guild_id, author_id,
+                )
+                raise PermissionError("Scheduled execute_python author is not an authorized bot owner.")
+
             code = payload.get("code")
             if code:
                 env = {
@@ -99,8 +111,9 @@ class AIScheduler(commands.Cog):
                 wrapped = "async def _scheduled_task():\n"
                 for line in code.splitlines():
                     wrapped += f"    {line}\n"
+                logger.info("Running scheduled execute_python authored by owner %s in guild %s.", author_id, guild_id)
                 exec(wrapped, env)
-                await env["_scheduled_task"]()
+                await asyncio.wait_for(env["_scheduled_task"](), timeout=60)
 
     @_task_loop.before_loop
     async def _before_task_loop(self):
