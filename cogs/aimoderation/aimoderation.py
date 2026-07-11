@@ -2504,15 +2504,11 @@ class AIModeration(commands.Cog):
                     return
                 decision.arguments["code"] = code_response
 
-            result = await ToolRegistry.execute(
-                decision.tool, self, message, decision.arguments, decision
-            )
-            if result.success and (target_id := decision.arguments.get("target_user_id")):
-                try:
-                    self._remember_target(message.author.id, int(target_id))
-                except (TypeError, ValueError):
-                    pass
-            await self.reply_tool_result(message, result)
+            if self._requires_confirmation(settings, decision):
+                await self._request_confirmation(message, decision, settings)
+                return
+
+            await self._execute_decision(message, decision, send_result=True)
 
         elif decision.type == DecisionType.CHAT:
             # If this looks like an action request from an admin, the AI may have
@@ -2897,7 +2893,7 @@ class AIModeration(commands.Cog):
         guild_id = interaction.guild.id
         await self.update_guild_setting(guild_id, "aimod_enabled", enabled)
         await self.update_guild_setting(guild_id, "aimod_chat_enabled", talking)
-        await self.update_guild_setting(guild_id, "aimod_confirm_enabled", False)
+        await self.update_guild_setting(guild_id, "aimod_confirm_enabled", True)
         await self.update_guild_setting(guild_id, "aimod_context_messages", int(context_messages))
         await self.update_guild_setting(guild_id, "aimod_proactive_chance", float(proactive_percent) / 100)
 
@@ -3093,7 +3089,7 @@ class AIModeration(commands.Cog):
         guild_id = interaction.guild.id
         await self.update_guild_setting(guild_id, "aimod_enabled", enabled)
         await self.update_guild_setting(guild_id, "aimod_chat_enabled", talking)
-        await self.update_guild_setting(guild_id, "aimod_confirm_enabled", False)
+        await self.update_guild_setting(guild_id, "aimod_confirm_enabled", True)
         await self.update_guild_setting(guild_id, "aimod_context_messages", int(context_messages))
         await self.update_guild_setting(guild_id, "aimod_proactive_chance", float(proactive_percent) / 100)
 
