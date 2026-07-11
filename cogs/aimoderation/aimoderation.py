@@ -3136,7 +3136,7 @@ Determine the user's intent. If it's a normal conversation, just reply with text
             "Content-Type": "application/json"
         }
         payload = {
-            "model": "deepseek-4-flash",
+            "model": "doo_v1_df79f397c3690dc1b3c12d6d70c2d8d1a768610f6599f7eb3f205d52db47cb35",
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.2
         }
