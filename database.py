@@ -3685,7 +3685,15 @@ class Database:
                 )
                 rows = await cursor.fetchall()
                 # Return in chronological order
-                return [dict(row) for row in reversed(rows)]
+                return [
+                    {
+                        "message_id": row[0],
+                        "channel_id": row[1],
+                        "content": row[2] or "",
+                        "timestamp": row[3],
+                    }
+                    for row in reversed(rows)
+                ]
         except Exception as e:
             logger.error("Failed to get recent user messages: %s", e)
             return []

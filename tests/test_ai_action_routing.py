@@ -655,7 +655,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
                             INSERT INTO user_messages (message_id, guild_id, channel_id, user_id, content, timestamp)
                             VALUES (?, ?, ?, ?, ?, ?)
                             """,
-                            (1, 123, 999, 10, "old", "2026-07-07T00:00:01+00:00"),
+                            (1, 123, 999, 11, "old", "2026-07-07T00:00:01+00:00"),
                         )
                         await conn.execute(
                             """
@@ -683,6 +683,14 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
                     rows = await db.get_recent_channel_messages(999, limit=2)
                     self.assertEqual([row["message_id"] for row in rows], [2, 3])
                     self.assertEqual([row["content"] for row in rows], ["middle", "new"])
+
+                    user_rows = await db.get_recent_user_messages(123, 11, limit=2)
+                    self.assertEqual(
+                        [row["message_id"] for row in user_rows], [1, 2]
+                    )
+                    self.assertEqual(
+                        [row["content"] for row in user_rows], ["old", "middle"]
+                    )
 
                     self.assertTrue(await db.clear_guild_memory(123))
                     self.assertIsNone(await db.get_guild_memory(123))
