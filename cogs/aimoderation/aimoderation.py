@@ -2809,13 +2809,14 @@ class AIModeration(commands.Cog):
             await interaction.response.send_message(
                 f"Run this again with `confirm:True` to clear AI memory for **{target.display_name}**.",
                 ephemeral=True,
-        if self._can_manage(interaction):
-            return True
+            )
+            return
+
+        removed = await self.bot.db.clear_ai_memory(target.id)
+        text = "Cleared" if removed else "No stored memory found for"
         await interaction.response.send_message(
-            "You need the `Manage Server` permission to use this command.",
-            ephemeral=True,
+            f"{text} **{target.display_name}**.", ephemeral=True
         )
-        return False
 
     aimod_group = app_commands.Group(name="aimod", description="AI Moderation settings")
     ai_group = app_commands.Group(name="ai", description="AI tools and controls")
