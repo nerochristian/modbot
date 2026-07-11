@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from datetime import timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 from cogs.behavior_profiling import (
     DATABASE_MESSAGE_LIMIT,
@@ -126,17 +126,23 @@ class BehaviorProfilingAsyncTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         cog = BehaviorProfiling(SimpleNamespace())
         ai_client = SimpleNamespace(
-            config=SimpleNamespace(model="configured-model"),
-            _call=AsyncMock(return_value="```\n- Communication: calm\n```"),
+            _call_digitalocean=AsyncMock(
+                return_value="```\n- Communication: calm\n```"
+            ),
         )
 
-        result = await cog._generate_profile(ai_client, "prompt")
+        with patch.dict("os.environ", {"DO_PROFILE_MODEL": "deepseek-4-flash"}):
+            result = await cog._generate_profile(ai_client, "prompt")
 
         self.assertEqual(result, "- Communication: calm")
-        ai_client._call.assert_awaited_once()
-        self.assertEqual(ai_client._call.await_args.kwargs["model"], "configured-model")
-        self.assertEqual(ai_client._call.await_args.kwargs["max_tokens"], 1_800)
-        self.assertTrue(ai_client._call.await_args.kwargs["long_answer"])
+        ai_client._call_digitalocean.assert_awaited_once()
+        self.assertEqual(
+            ai_client._call_digitalocean.await_args.kwargs["model"],
+            "deepseek-4-flash",
+        )
+        self.assertEqual(
+            ai_client._call_digitalocean.await_args.kwargs["max_tokens"], 1_800
+        )
 
     async def test_cooldown_blocks_immediate_repeat(self) -> None:
         cog = BehaviorProfiling(SimpleNamespace())

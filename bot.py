@@ -1966,17 +1966,7 @@ class ModBot(commands.Bot):
 
         ctx = await self.get_context(message)
         if ctx.command is None:
-            # Mention-prefix messages without a valid command are often natural chat for AIModeration.
-            # Avoid treating "@bot how are u" as an unknown command error.
             if self._starts_with_bot_mention(message):
-                aimod = self.get_cog("AIModeration")
-                if aimod and hasattr(aimod, "handle_casual_mention"):
-                    try:
-                        handled = await aimod.handle_casual_mention(message)
-                        if handled:
-                            return
-                    except Exception:
-                        logger.exception("AIModeration casual mention handler failed")
                 return
 
             invoked = (ctx.invoked_with or "").strip()

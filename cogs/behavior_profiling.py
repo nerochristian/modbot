@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -19,19 +20,19 @@ from utils.embeds import ModEmbed
 
 logger = logging.getLogger("ModBot.Behavior")
 
-DATABASE_MESSAGE_LIMIT = 2_000
-MAX_COLLECTED_MESSAGES = 2_000
+DATABASE_MESSAGE_LIMIT = 1_000
+MAX_COLLECTED_MESSAGES = 1_000
 MIN_PROFILE_MESSAGES = 5
-MAX_PROMPT_MESSAGES = 2_000
-MAX_PROMPT_SAMPLES = 2_000
+PROFILE_TARGET_MESSAGES = 500
+MAX_PROMPT_MESSAGES = 1_000
+MAX_PROMPT_SAMPLES = 1_000
 MAX_CONTEXT_CHARS = 200_000
 MAX_MESSAGE_CHARS = 320
 MAX_PROFILE_CHARS = 5_200
 MAX_PROFILE_WORDS = 800
 EMBED_DESCRIPTION_LIMIT = 3_800
-HISTORY_CHANNEL_LIMIT = 15
 HISTORY_SCAN_PER_CHANNEL = 1000
-HISTORY_MATCH_LIMIT_PER_CHANNEL = 200
+HISTORY_MATCH_LIMIT_PER_CHANNEL = 500
 HISTORY_SCAN_CONCURRENCY = 3
 PROFILE_AI_CONCURRENCY = 2
 PROFILE_TIMEOUT_SECONDS = 90
@@ -347,7 +348,7 @@ class BehaviorProfiling(commands.Cog):
             ),
             reverse=True,
         )
-        return channels[:HISTORY_CHANNEL_LIMIT]
+        return channels
 
     async def _scan_channel_history(
         self,
@@ -429,7 +430,7 @@ class BehaviorProfiling(commands.Cog):
             )
 
         history_messages: list[ProfileMessage] = []
-        if len(database_messages) < MIN_PROFILE_MESSAGES:
+        if len(database_messages) < PROFILE_TARGET_MESSAGES:
             history_messages = await self._history_messages(interaction, target_id)
 
         merged = _merge_messages(database_messages, history_messages)
@@ -450,37 +451,28 @@ class BehaviorProfiling(commands.Cog):
         )
 
     async def _generate_profile(self, ai_client: object, prompt: str) -> str:
-        # Override to use DigitalOcean Deepseek Flash directly as requested
-        import aiohttp
-        import os
-        api_key = os.getenv("DO_API_KEY", "").strip()
-        url = "https://inference.do-ai.run/v1/chat/completions"
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        payload = {
-            "model": os.getenv("DO_AUTOMOD_MODEL", "deepseek-chat"),
-            "messages": [
-                {"role": "system", "content": PROFILE_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt}
-            ],
-            "temperature": 0.2,
-            "max_tokens": 2000
-        }
+        call = getattr(ai_client, "_call_digitalocean", None)
+        if not callable(call):
+            raise RuntimeError(
+                "The active AI client does not expose DigitalOcean inference."
+            )
+
+        model = os.getenv("DO_PROFILE_MODEL", "deepseek-4-flash").strip()
+        if not model:
+            model = "deepseek-4-flash"
         async with self._ai_slots:
-            try:
-                async with aiohttp.ClientSession() as session:
-                    async with session.post(url, headers=headers, json=payload, timeout=PROFILE_TIMEOUT_SECONDS) as resp:
-                        if resp.status == 200:
-                            data = await resp.json()
-                            response = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-                        else:
-                            text = await resp.text()
-                            raise RuntimeError(f"DO API returned {resp.status}: {text}")
-            except Exception as e:
-                logger.error(f"Error during DO deepseek flash API call: {e}")
-                raise
+            response = await asyncio.wait_for(
+                call(
+                    [
+                        {"role": "system", "content": PROFILE_SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
+                    temperature=0.2,
+                    max_tokens=1_800,
+                    model=model,
+                ),
+                timeout=PROFILE_TIMEOUT_SECONDS,
+            )
 
         return _clean_profile_output(response)
 

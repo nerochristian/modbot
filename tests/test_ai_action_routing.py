@@ -36,6 +36,11 @@ class AIActionRoutingTests(unittest.TestCase):
 
         self.assertEqual(client.provider, "digitalocean")
 
+    def test_purge_is_a_targeted_tool(self) -> None:
+        from cogs.aimoderation.types import TARGETED_TOOLS
+
+        self.assertIn(ToolType.PURGE, TARGETED_TOOLS)
+
     def test_casual_conditional_question_is_conversation(self) -> None:
         content = "if someone is gay, are they gay?"
 

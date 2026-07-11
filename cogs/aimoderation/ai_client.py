@@ -1774,16 +1774,18 @@ class AIClient:
                 {"role": "system", "content": self._MEMORY_SUMMARY_PROMPT},
                 {"role": "user", "content": prompt},
             ]
-            # Use a short, cheap call. Use DigitalOcean model if DeepSeek web is off.
+            memory_model = os.getenv(
+                "DO_MEMORY_MODEL",
+                os.getenv("DO_PROFILE_MODEL", "deepseek-4-flash"),
+            ).strip() or "deepseek-4-flash"
             content = await asyncio.wait_for(
-                self._call(
+                self._call_digitalocean(
                     messages,
                     temperature=0.2,
                     max_tokens=800,
-                    session_key="ai-memory",
-                    session_name="AI memory curator",
+                    model=memory_model,
                 ),
-                timeout=_deepseek_web_primary_timeout(),
+                timeout=60,
             )
             if content:
                 content = self._CODE_FENCE_RE.sub("", content).strip()
