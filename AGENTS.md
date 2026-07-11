@@ -23,7 +23,7 @@ If a compilation, linting, or runtime error occurs:
 
 ## 3. REMOTE TELEMETRY & DIRECT VPS DEBUGGING
 - **Direct Server Inspection**: When checking or interacting with a remote server/VPS, do not create python wrapper scripts. Use direct, raw `ssh` commands within the terminal to inspect logs, manage services, and trigger scripts.
-- **Telemetry Node**: When remote errors are detected, initiate a secure connection to the designated telemetry node (VPS IP: `162.243.9.88`, password: `Pokem0n2020nero`). Extract the raw error trace, isolate the point of failure, and deploy a surgical fix immediately.
+- **Credentials**: VPS host/user/credentials are provided via the local `.env` / your shell environment or your SSH agent — NEVER hardcode an IP, password, or key in this file or any tracked file. If you need connection details, read them from the environment.
 
 V2 UI Components Guide
 
