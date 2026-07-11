@@ -2528,10 +2528,12 @@ class AIModeration(commands.Cog):
                     )
                 if code_response:
                     decision.arguments = {"code": code_response}
-                    result = await ToolRegistry.execute(
-                        ToolType.EXECUTE_PYTHON, self, message, decision.arguments, decision
-                    )
-                    await self.reply_tool_result(message, result)
+                    if self._requires_confirmation(settings, decision):
+                        await self._request_confirmation(message, decision, settings)
+                    else:
+                        await self._execute_decision(
+                            message, decision, send_result=True
+                        )
                 else:
                     await self.reply(message, content="I tried to handle that but couldn't generate the code. Try rephrasing?")
                 return
@@ -2556,10 +2558,12 @@ class AIModeration(commands.Cog):
                         tool=ToolType.EXECUTE_PYTHON,
                         arguments={"code": code_response},
                     )
-                    result = await ToolRegistry.execute(
-                        ToolType.EXECUTE_PYTHON, self, message, decision.arguments, decision
-                    )
-                    await self.reply_tool_result(message, result)
+                    if self._requires_confirmation(settings, decision):
+                        await self._request_confirmation(message, decision, settings)
+                    else:
+                        await self._execute_decision(
+                            message, decision, send_result=True
+                        )
                     return
 
             if not is_mentioned and not is_reply_to_bot:
