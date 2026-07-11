@@ -19,3 +19,10 @@ vps_bot.py
 plan.txt
 .pytest_cache/
 .ruff_cache/
+# rewrite cleanup: tracked dead weight / local artifacts
+backups/
+ai_mod_temp/
+refs/
+work*.txt
+*.zip
+dashboard/.env
