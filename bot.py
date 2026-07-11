@@ -487,19 +487,22 @@ class ModBot(commands.Bot):
 
     @staticmethod
     def _load_owner_ids() -> set[int]:
-        """Load bot owner IDs from environment."""
+        """Load bot owner IDs from environment.
+
+        Owner IDs come ONLY from `OWNER_IDS`/`OWNER_ID` — no hardcoded
+        fallback (a baked-in ID is an unrevocable backdoor; see utils.checks).
+        """
         owner_ids_str = os.getenv("OWNER_IDS") or os.getenv("OWNER_ID") or ""
-        try:
-            owner_ids: set[int] = {1512848256789647560}
-            for part in re.split(r"[,\s]+", owner_ids_str.strip()):
-                part = part.strip()
-                if not part:
-                    continue
+        owner_ids: set[int] = set()
+        for part in re.split(r"[,\s]+", owner_ids_str.strip()):
+            part = part.strip()
+            if not part:
+                continue
+            try:
                 owner_ids.add(int(part))
-            return owner_ids
-        except ValueError:
-            logger.warning("[WARN] Invalid OWNER_IDS in .env, using default")
-            return set()
+            except ValueError:
+                logger.warning("[WARN] Ignoring invalid OWNER_IDS entry: %r", part)
+        return owner_ids
 
     @classmethod
     def _normalize_module_id(cls, module_id: object) -> str:
