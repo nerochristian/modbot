@@ -555,8 +555,9 @@ class AIClient:
             reply_suffix = f" {reply_tag}" if reply_tag else ""
             return f"[{label}] {m.author} ({m.author.id}): {content}{reply_suffix}"
 
+        history_window = max(1, int(self.config.memory_window))
         history = "\n".join(
-            _format_line(m) for m in recent_messages[-10:]
+            _format_line(m) for m in recent_messages[-history_window:]
         ) or "None"
         mention_lines = "\n".join(
             f"- index={m.index} is_bot={m.is_bot} name={m.display_name} id={m.user_id}"

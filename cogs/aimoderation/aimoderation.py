@@ -2187,7 +2187,14 @@ class AIModeration(commands.Cog):
             else PermissionFlags()
         )
         mentions = self.extract_mentions(message)
-        recent = await self.fetch_recent_messages(message.channel, limit=settings.context_messages)
+        routing_context_limit = max(
+            settings.context_messages,
+            int(self.config.memory_window),
+        )
+        recent = await self.fetch_recent_messages(
+            message.channel,
+            limit=routing_context_limit,
+        )
 
         decision = self._quick_route(message, content)
         if (
