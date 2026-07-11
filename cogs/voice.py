@@ -868,7 +868,8 @@ class Voice(commands.Cog):
         failed = 0
 
         for member in list(channel.members):
-            if is_bot_owner_id(member.id) and not is_bot_owner_id(author.id):
+            # Skip members the actor can't moderate (role hierarchy / owners).
+            if isinstance(author, discord.Member) and not can_moderate(member, author):
                 skipped_owner += 1
                 continue
 
