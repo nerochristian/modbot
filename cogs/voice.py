@@ -783,6 +783,12 @@ class Voice(commands.Cog):
     
     async def _move(self, source, user: discord.Member, channel: discord.VoiceChannel):
         author = source.user if isinstance(source, discord.Interaction) else source.author
+        if not isinstance(author, discord.Member) or not can_moderate(user, author):
+            return await self._respond(
+                source,
+                embed=ModEmbed.error("Insufficient Permissions", f"You can't move {user.mention} — they're equal to or above you in the role hierarchy."),
+                ephemeral=True
+            )
         if not user.voice:
             return await self._respond(
                 source,
@@ -816,7 +822,8 @@ class Voice(commands.Cog):
 
         count = 0
         for member in from_channel.members:
-            if is_bot_owner_id(member.id) and not is_bot_owner_id(author.id):
+            # Skip members the actor can't moderate (role hierarchy / owners).
+            if isinstance(author, discord.Member) and not can_moderate(member, author):
                 continue
             try:
                 await member.move_to(to_channel, reason=f"Mass move by {author}")
@@ -901,10 +908,16 @@ class Voice(commands.Cog):
         if not source.guild:
             return await self._respond(source, embed=ModEmbed.error("Guild Only", "This command can only be used in a server."), ephemeral=True)
 
+        author = source.user if isinstance(source, discord.Interaction) else source.author
+        if not isinstance(author, discord.Member) or not can_moderate(user, author):
+            return await self._respond(
+                source,
+                embed=ModEmbed.error("Insufficient Permissions", f"You can't voice-ban {user.mention} — they're equal to or above you in the role hierarchy."),
+                ephemeral=True
+            )
+
         if isinstance(source, discord.Interaction):
             await source.response.defer()
-
-        author = source.user if isinstance(source, discord.Interaction) else source.author
 
         # Disconnect user from voice if currently connected
         if user.voice:
