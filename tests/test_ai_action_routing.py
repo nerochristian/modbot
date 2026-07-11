@@ -425,6 +425,39 @@ class AIActionRoutingTests(unittest.TestCase):
 
 
 class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
+    async def test_member_prefix_resolution_refuses_ambiguous_targets(self) -> None:
+        cog = object.__new__(AIModeration)
+        guild = SimpleNamespace(
+            members=[
+                SimpleNamespace(id=1, name="alex", display_name="Alex"),
+                SimpleNamespace(id=2, name="alexander", display_name="Alexander"),
+            ],
+            get_member=lambda _member_id: None,
+        )
+
+        self.assertIsNone(await cog.resolve_member(guild, "ale"))
+        resolved = await cog.resolve_member(guild, "alexander")
+        self.assertIsNotNone(resolved)
+        self.assertEqual(resolved.id, 2)
+
+    def test_confirmation_preview_never_exposes_generated_code(self) -> None:
+        cog = object.__new__(AIModeration)
+        message = SimpleNamespace(
+            author=SimpleNamespace(mention="<@1>"),
+            channel=SimpleNamespace(mention="<#2>"),
+        )
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="advanced action",
+            tool=ToolType.EXECUTE_PYTHON,
+            arguments={"code": "await guild.delete()"},
+        )
+
+        preview = cog._confirmation_preview(message, decision)
+
+        self.assertIn("Owner-only automation", preview)
+        self.assertNotIn("guild.delete", preview)
+
     async def test_memory_summarization_uses_digitalocean_flash(self) -> None:
         client = AIClient(
             SimpleNamespace(),
