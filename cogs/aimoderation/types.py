@@ -157,7 +157,17 @@ class GuildSettings:
     context_messages: int = 30
     confirm_enabled: bool = True
     confirm_timeout_seconds: int = 25
-    confirm_actions: Set[str] = field(default_factory=set)
+    confirm_actions: Set[str] = field(
+        default_factory=lambda: {
+            "ban_member",
+            "kick_member",
+            "purge_messages",
+            "delete_channel",
+            "delete_role",
+            "execute_raw_api",
+            "execute_python",
+        }
+    )
     proactive_chance: float = 0.02
     location_context: str = ""
 

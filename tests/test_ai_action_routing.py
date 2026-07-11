@@ -41,6 +41,59 @@ class AIActionRoutingTests(unittest.TestCase):
 
         self.assertIn(ToolType.PURGE, TARGETED_TOOLS)
 
+    def test_risky_actions_require_confirmation_by_default(self) -> None:
+        settings = GuildSettings()
+
+        for tool in (
+            ToolType.BAN,
+            ToolType.KICK,
+            ToolType.PURGE,
+            ToolType.DELETE_CHANNEL,
+            ToolType.DELETE_ROLE,
+            ToolType.EXECUTE_RAW_API,
+            ToolType.EXECUTE_PYTHON,
+        ):
+            with self.subTest(tool=tool):
+                decision = Decision(
+                    type=DecisionType.TOOL_CALL,
+                    reason="test",
+                    tool=tool,
+                    arguments={},
+                )
+                self.assertTrue(
+                    self.cog._requires_confirmation(settings, decision)
+                )
+
+        timeout = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="test",
+            tool=ToolType.TIMEOUT,
+            arguments={},
+        )
+        self.assertFalse(self.cog._requires_confirmation(settings, timeout))
+
+    def test_confirmation_settings_round_trip(self) -> None:
+        settings = GuildSettings.from_dict(
+            {
+                "aimod_confirm_enabled": "true",
+                "aimod_confirm_timeout_seconds": 45,
+                "aimod_confirm_actions": ["ban_member", "purge_messages"],
+            }
+        )
+
+        self.assertTrue(settings.confirm_enabled)
+        self.assertEqual(settings.confirm_timeout_seconds, 45)
+        self.assertEqual(
+            settings.confirm_actions,
+            {"ban_member", "purge_messages"},
+        )
+        serialized = settings.to_dict()
+        self.assertTrue(serialized["aimod_confirm_enabled"])
+        self.assertEqual(
+            serialized["aimod_confirm_actions"],
+            ["ban_member", "purge_messages"],
+        )
+
     def test_casual_conditional_question_is_conversation(self) -> None:
         content = "if someone is gay, are they gay?"
 

@@ -6,7 +6,6 @@ Imports from: types, prompts, context, registry, ai_client, handlers
 from __future__ import annotations
 
 import asyncio
-import difflib
 import logging
 import random
 import re
@@ -1947,19 +1946,15 @@ class AIModeration(commands.Cog):
         )
         if m:
             return m
-        m = discord.utils.find(
-            lambda x: x.name.lower().startswith(q) or x.display_name.lower().startswith(q),
-            guild.members,
-        )
-        if m:
-            return m
-        index: Dict[str, discord.Member] = {}
-        for member in guild.members:
-            index[member.name.lower()] = member
-            index[member.display_name.lower()] = member
-            index[str(member).lower()] = member
-        close = difflib.get_close_matches(q, list(index), n=1, cutoff=0.75)
-        return index[close[0]] if close else None
+        prefix_matches = {
+            member.id: member
+            for member in guild.members
+            if member.name.lower().startswith(q)
+            or member.display_name.lower().startswith(q)
+        }
+        if len(prefix_matches) == 1:
+            return next(iter(prefix_matches.values()))
+        return None
 
     async def resolve_role(
         self, guild: discord.Guild, query: Union[int, str, None]
@@ -1983,9 +1978,8 @@ class AIModeration(commands.Cog):
         r = discord.utils.find(lambda x: x.name.lower() == q, guild.roles)
         if r:
             return r
-        index = {r.name.lower(): r for r in guild.roles}
-        close = difflib.get_close_matches(q, list(index), n=1, cutoff=0.7)
-        return index[close[0]] if close else None
+        prefix_matches = [role for role in guild.roles if role.name.lower().startswith(q)]
+        return prefix_matches[0] if len(prefix_matches) == 1 else None
 
     # ------------------------------------------------------------------
     # Reply helpers
