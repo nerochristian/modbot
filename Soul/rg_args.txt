@@ -1,5 +1,0 @@
-arg[0] = rg.exe
-arg[1] = -nH
-arg[2] = -F
-arg[3] = def rob
-arg[4] = -r
