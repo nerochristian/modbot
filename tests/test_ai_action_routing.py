@@ -372,6 +372,28 @@ class AIActionRoutingTests(unittest.TestCase):
 
 
 class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
+    async def test_memory_summarization_uses_digitalocean_flash(self) -> None:
+        client = AIClient(
+            SimpleNamespace(),
+            AIConfig(provider="deepseek-web", model="deepseek-web"),
+        )
+        client._call_digitalocean = AsyncMock(return_value="- Likes concise replies")
+
+        with patch.dict(
+            "os.environ",
+            {"DO_MEMORY_MODEL": "deepseek-4-flash"},
+        ):
+            result = await client._summarize_memory(
+                "", "Keep it short", "Understood."
+            )
+
+        self.assertEqual(result, "- Likes concise replies")
+        client._call_digitalocean.assert_awaited_once()
+        self.assertEqual(
+            client._call_digitalocean.await_args.kwargs["model"],
+            "deepseek-4-flash",
+        )
+
     async def test_conversation_includes_guild_memory_for_standard_chat(self) -> None:
         client = object.__new__(AIClient)
         client.provider = "deepseek-web"

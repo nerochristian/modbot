@@ -3030,7 +3030,7 @@ class AIModeration(commands.Cog):
         embed.add_field(name="Last Updated", value=str((record or {}).get("last_updated") or "Never"), inline=False)
         
         if memory.strip():
-            if len(memory) <= 4000:
+            if len(memory) <= 3_800:
                 embed.description = f"**Saved Memory:**\n{memory}"
                 await interaction.followup.send(embed=embed, ephemeral=True)
             else:
@@ -3040,6 +3040,7 @@ class AIModeration(commands.Cog):
         else:
             await interaction.followup.send(embed=embed, ephemeral=True)
 
+    @app_commands.command(name="aihelp")
     async def aihelp(self, interaction: discord.Interaction) -> None:
         """Show AI moderation help."""
         await interaction.response.send_message(
