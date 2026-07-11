@@ -1655,20 +1655,6 @@ class ModBot(commands.Bot):
             "cogs.tickets",
             "cogs.modmail",
             "cogs.utility",
-            "cogs.admin",
-            "cogs.staff",
-            "cogs.court",
-            "cogs.whitelist",
-            "cogs.server_backup",
-            "cogs.risk_scoring",
-            "cogs.alt_detection",
-            "cogs.staff_reports",
-            "cogs.behavior_profiling",
-        ]
-
-        loaded: list[str] = []
-        failed: list[tuple[str, str]] = []
-        skipped: list[str] = []
 
         for cog in cogs:
             try:
