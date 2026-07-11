@@ -155,14 +155,22 @@ class GuildSettings:
     chat_enabled: bool = False
     model: Optional[str] = None
     context_messages: int = 30
-    confirm_enabled: bool = False
+    confirm_enabled: bool = True
     confirm_timeout_seconds: int = 25
     confirm_actions: Set[str] = field(default_factory=set)
     proactive_chance: float = 0.02
     location_context: str = ""
 
     _VALID_ACTIONS: ClassVar[Set[str]] = {t.value for t in ToolType}
-    _DEFAULT_CONFIRM_ACTIONS: ClassVar[Set[str]] = {"ban_member", "kick_member", "purge_messages"}
+    _DEFAULT_CONFIRM_ACTIONS: ClassVar[Set[str]] = {
+        "ban_member",
+        "kick_member",
+        "purge_messages",
+        "delete_channel",
+        "delete_role",
+        "execute_raw_api",
+        "execute_python",
+    }
 
     @classmethod
     def _coerce_confirm_actions(cls, raw: Any) -> Set[str]:
@@ -222,9 +230,13 @@ class GuildSettings:
             chat_enabled=cls._coerce_bool(data.get("aimod_chat_enabled", False), False),
             model=data.get("aimod_model"),
             context_messages=cls._coerce_int(data.get("aimod_context_messages", 30), 30, minimum=1, maximum=50),
-            confirm_enabled=False,
+            confirm_enabled=cls._coerce_bool(
+                data.get("aimod_confirm_enabled", True), True
+            ),
             confirm_timeout_seconds=cls._coerce_int(data.get("aimod_confirm_timeout_seconds", 25), 25, minimum=1, maximum=300),
-            confirm_actions=set(),
+            confirm_actions=cls._coerce_confirm_actions(
+                data.get("aimod_confirm_actions")
+            ),
             proactive_chance=cls._coerce_float(data.get("aimod_proactive_chance", 0.02), 0.02, minimum=0.0, maximum=1.0),
             location_context=str(data.get("aimod_location_context") or data.get("server_location") or "").strip(),
         )
@@ -235,9 +247,9 @@ class GuildSettings:
             "aimod_chat_enabled": self.chat_enabled,
             "aimod_model": self.model,
             "aimod_context_messages": self.context_messages,
-            "aimod_confirm_enabled": False,
+            "aimod_confirm_enabled": self.confirm_enabled,
             "aimod_confirm_timeout_seconds": self.confirm_timeout_seconds,
-            "aimod_confirm_actions": [],
+            "aimod_confirm_actions": sorted(self.confirm_actions),
             "aimod_proactive_chance": self.proactive_chance,
             "aimod_location_context": self.location_context,
         }

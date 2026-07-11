@@ -21,7 +21,11 @@ from discord.ext import commands, tasks
 from utils.classic_send import send_classic_message
 from utils.checks import is_bot_owner_id
 from utils.embeds import compact_kv_lines
-from utils.components_v2 import ensure_layout_view_action_rows, layout_view_from_embeds
+from utils.components_v2 import (
+    branded_panel_container,
+    ensure_layout_view_action_rows,
+    layout_view_from_embeds,
+)
 from utils.status_emojis import apply_status_emoji_overrides
 
 from .types import (
@@ -78,6 +82,137 @@ def _strip_code_fences(raw: str) -> str:
         lns = [line for line in lns if not line.strip().startswith("```")]
         cleaned = "\n".join(lns)
     return cleaned.strip()
+
+
+class AIActionConfirmationView(discord.ui.LayoutView):
+    """Actor-bound confirmation for destructive AI moderation actions."""
+
+    def __init__(
+        self,
+        cog: "AIModeration",
+        source_message: discord.Message,
+        decision: Decision,
+        *,
+        timeout: float,
+    ) -> None:
+        super().__init__(timeout=timeout)
+        self.cog = cog
+        self.source_message = source_message
+        self.decision = decision
+        self.confirmation_message: Optional[discord.Message] = None
+        self._finished = False
+        self._lock = asyncio.Lock()
+
+        confirm = discord.ui.Button(
+            label="Confirm Action",
+            style=discord.ButtonStyle.danger,
+        )
+        cancel = discord.ui.Button(
+            label="Cancel",
+            style=discord.ButtonStyle.secondary,
+        )
+        confirm.callback = self._confirm
+        cancel.callback = self._cancel
+
+        container = branded_panel_container(
+            title="Confirm AI Moderation Action",
+            description=cog._confirmation_preview(source_message, decision),
+            accent_color=discord.Color.orange().value,
+        )
+        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
+        container.add_item(discord.ui.ActionRow(confirm, cancel))
+        self.add_item(container)
+
+    @staticmethod
+    def _status_layout(title: str, description: str, color: discord.Color) -> discord.ui.LayoutView:
+        view = discord.ui.LayoutView(timeout=None)
+        view.add_item(
+            branded_panel_container(
+                title=title,
+                description=description,
+                accent_color=color.value,
+            )
+        )
+        return view
+
+    async def _reject_other_actor(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id == self.source_message.author.id:
+            return False
+        await interaction.response.send_message(
+            "Only the moderator who requested this action can confirm it.",
+            ephemeral=True,
+        )
+        return True
+
+    async def _confirm(self, interaction: discord.Interaction) -> None:
+        if await self._reject_other_actor(interaction):
+            return
+        async with self._lock:
+            if self._finished:
+                await interaction.response.send_message(
+                    "This confirmation has already been handled.", ephemeral=True
+                )
+                return
+            self._finished = True
+            self.stop()
+            await interaction.response.edit_message(
+                view=self._status_layout(
+                    "Executing AI Moderation Action",
+                    "Permissions and role hierarchy are being checked again.",
+                    discord.Color.orange(),
+                )
+            )
+
+        result = await self.cog._execute_decision(
+            self.source_message,
+            self.decision,
+            send_result=True,
+        )
+        if self.confirmation_message:
+            status_title = "Action Completed" if result.success else "Action Failed"
+            status_text = result.message[:1_500]
+            with suppress(discord.HTTPException):
+                await self.confirmation_message.edit(
+                    view=self._status_layout(
+                        status_title,
+                        status_text,
+                        discord.Color.green() if result.success else discord.Color.red(),
+                    )
+                )
+
+    async def _cancel(self, interaction: discord.Interaction) -> None:
+        if await self._reject_other_actor(interaction):
+            return
+        async with self._lock:
+            if self._finished:
+                await interaction.response.send_message(
+                    "This confirmation has already been handled.", ephemeral=True
+                )
+                return
+            self._finished = True
+            self.stop()
+            await interaction.response.edit_message(
+                view=self._status_layout(
+                    "Action Cancelled",
+                    "No moderation action was executed.",
+                    discord.Color.greyple(),
+                )
+            )
+
+    async def on_timeout(self) -> None:
+        async with self._lock:
+            if self._finished:
+                return
+            self._finished = True
+        if self.confirmation_message:
+            with suppress(discord.HTTPException):
+                await self.confirmation_message.edit(
+                    view=self._status_layout(
+                        "Confirmation Expired",
+                        "No moderation action was executed.",
+                        discord.Color.greyple(),
+                    )
+                )
 
 
 # =============================================================================
