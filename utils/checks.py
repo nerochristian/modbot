@@ -13,9 +13,16 @@ from functools import wraps
 
 
 def get_owner_ids() -> set[int]:
-    """Return bot owner IDs from `OWNER_IDS`/`OWNER_ID` env vars."""
+    """Return bot owner IDs from `OWNER_IDS`/`OWNER_ID` env vars.
+
+    Owner IDs come ONLY from configuration — there is deliberately no
+    hardcoded fallback. A baked-in ID cannot be revoked without a code
+    change and silently grants that account full, permission-check-bypassing
+    power (including the ``execute_python`` gate), so it is treated as a
+    backdoor and excluded.
+    """
     raw = os.getenv("OWNER_IDS") or os.getenv("OWNER_ID") or ""
-    owner_ids: set[int] = {1512848256789647560}
+    owner_ids: set[int] = set()
 
     for part in re.split(r"[,\s]+", raw.strip()):
         part = part.strip()
