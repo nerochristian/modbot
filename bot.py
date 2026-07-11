@@ -1629,9 +1629,61 @@ class ModBot(commands.Bot):
         # Ensure cogs directory exists
         cogs_path = Path("./cogs")
         if not cogs_path.exists():
+            logger.warning("[WARN] Cogs directory not found, creating...")
+            cogs_path.mkdir(exist_ok=True)
+
+        # Cog list
+        cogs = [
+            "cogs.moderation",
+            "cogs.setup",
+            "cogs.verification",
+            "cogs.help",
+            "cogs.roles",
+            "cogs.logging_cog",
+            "cogs.pin",
+            "cogs.reports",
+            "cogs.blacklist",
+            "cogs.forum_moderation",
+            "cogs.prefix_commands",
+            "cogs.aimoderation",
+            "cogs.ai_scheduler",
+            "cogs.automod",
+            "cogs.antiraid",
+            "cogs.voice",
+            "cogs.settings",
+            "cogs.polls",
+            "cogs.tickets",
+            "cogs.modmail",
+            "cogs.utility",
+            "cogs.admin",
+            "cogs.staff",
+            "cogs.court",
+            "cogs.whitelist",
+            "cogs.server_backup",
+            "cogs.risk_scoring",
+            "cogs.alt_detection",
+            "cogs.staff_reports",
+            "cogs.behavior_profiling",
+            "cogs.ai_moderation",
+        ]
+
+        loaded: list[str] = []
+        failed: list[tuple[str, str]] = []
+        skipped: list[str] = []
+
+        for cog in cogs:
+            try:
+                await self.load_extension(cog)
+                loaded.append(cog)
+                logger.info(f"  [OK] Loaded: {cog}")
+            except commands.ExtensionNotFound:
+                skipped.append(cog)
+                logger.debug(f"  [--] Skipped: {cog} (not found)")
+            except commands.ExtensionAlreadyLoaded:
+                logger.debug(f"  [--] Skipped: {cog} (already loaded)")
+            except Exception as e:
                 failed.append((cog, str(e)))
                 logger.error(f"  [ERR] Failed: {cog} - {e}")
-
         # Summary
         logger.info("=" * 60)
         logger.info("[COG] Cog Loading Summary:")
