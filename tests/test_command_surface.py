@@ -8,6 +8,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from cogs.moderation import Moderation
+from cogs.roles import Roles
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -65,3 +66,19 @@ def test_modmail_is_not_exposed_by_bot_or_cogs() -> None:
         if "modmail" in path.read_text(encoding="utf-8-sig").lower():
             exposed.append(str(path.relative_to(ROOT)))
     assert not exposed, f"ModMail remains exposed in runtime code: {exposed}"
+
+
+def test_role_is_one_parameterized_command_with_only_action_required() -> None:
+    command = Roles.role_command
+    assert isinstance(command, app_commands.Command)
+    assert command.name == "role"
+    required = {parameter.name for parameter in command.parameters if parameter.required}
+    assert required == {"action"}
+    actions = {choice.value for choice in command.parameters[0].choices}
+    assert {"add", "remove", "addall", "removeall", "create", "delete", "info"} <= actions
+
+
+def test_nuke_deletes_original_before_best_effort_reposition() -> None:
+    source = (COGS / "moderation" / "extensions" / "chat.py").read_text(encoding="utf-8-sig")
+    function = source[source.index("    async def _nuke_logic"):source.index("    async def _glock_logic")]
+    assert function.index("await channel.delete") < function.index("await new_channel.edit")

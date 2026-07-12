@@ -94,8 +94,6 @@ class Moderation(
         # Bulk Operations
         cmd("massban", "Ban multiple users", self.massban_slash)
         cmd("banlist", "View banned users", self.banlist_slash)
-        cmd("roleall", "Give role to everyone", self.roleall_slash)
-        cmd("removeall", "Remove role from everyone", self.removeall_slash)
         cmd("inrole", "List users with role", self.inrole_slash)
         cmd("nicknameall", "Set nickname for all", self.nicknameall_slash)
         cmd("resetnicks", "Reset all nicknames", self.resetnicks_slash)
