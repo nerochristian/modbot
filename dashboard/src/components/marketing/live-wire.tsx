@@ -63,8 +63,6 @@ export function LiveWire() {
       return () => timers.forEach(clearTimeout)
     }
 
-    const timers: ReturnType<typeof setTimeout>[] = []
-
     // Stream the rows in.
     RAID.forEach((row, i) => {
       timers.push(
