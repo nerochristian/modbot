@@ -5,6 +5,7 @@ Importing this package registers all handlers with the ToolRegistry.
 from .members import (  # noqa: F401
     handle_warn,
     handle_get_warnings,
+    handle_get_history,
     handle_timeout,
     handle_untimeout,
     handle_kick,
