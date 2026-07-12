@@ -106,8 +106,14 @@ export function LiveWire() {
         </span>
       </div>
 
-      {/* The feed */}
-      <div className="scanfield relative h-[320px] overflow-hidden px-3 py-3">
+      {/* The feed — older rows dissolve into a mask at the top, like a live console. */}
+      <div
+        className="scanfield relative h-[300px] overflow-hidden px-3 py-3"
+        style={{
+          maskImage: 'linear-gradient(to bottom, transparent 0, #000 56px)',
+          WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, #000 56px)',
+        }}
+      >
         <ul className="flex flex-col justify-end gap-1.5">
           {visible.map((row) => (
             <li
