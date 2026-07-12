@@ -46,15 +46,22 @@ export function LiveWire() {
       typeof window !== 'undefined' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
-    if (prefersReduced) {
-      setVisible(RAID)
-      setCount(FINAL_COUNT)
-      setSettled(true)
-      return
-    }
-
     if (startedRef.current) return
     startedRef.current = true
+
+    const timers: ReturnType<typeof setTimeout>[] = []
+
+    if (prefersReduced) {
+      // Settle to the end-state on the next tick (avoids sync setState in effect).
+      timers.push(
+        setTimeout(() => {
+          setVisible(RAID)
+          setCount(FINAL_COUNT)
+          setSettled(true)
+        }, 0),
+      )
+      return () => timers.forEach(clearTimeout)
+    }
 
     const timers: ReturnType<typeof setTimeout>[] = []
 
