@@ -1498,7 +1498,7 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
                     (guild_id,),
                 )
                 row = await cursor.fetchone()
-                settings = json.loads(row[0]) if row and row[0] else {}
+                settings = json.loads(_row_get(row, "settings")) if row and _row_get(row, "settings") else {}
         except aiosqlite.OperationalError as e:
             if "no such table: guild_settings" not in str(e).lower():
                 raise
@@ -1511,7 +1511,7 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
                     (guild_id,),
                 )
                 row = await cursor.fetchone()
-                settings = json.loads(row[0]) if row and row[0] else {}
+                settings = json.loads(_row_get(row, "settings")) if row and _row_get(row, "settings") else {}
                 
         # Merge with defaults, but resolve explicit module/flat toggle state
         # before defaults can make a missing key look enabled.
