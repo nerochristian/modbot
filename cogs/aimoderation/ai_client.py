@@ -405,6 +405,33 @@ class AIClient:
             model=model,
         )
 
+    async def _conversation_via_http(
+        self,
+        prompt: str,
+        *,
+        model: Optional[str] = None,
+        long_answer: bool = False,
+    ) -> Optional[str]:
+        """Text conversation over an HTTP provider: DeepSeek API, then DigitalOcean.
+
+        Used when the browser scraper is disabled/unavailable. Vision and native
+        web-search remain browser-only; this covers plain text turns.
+        """
+        max_tokens = max(self.config.max_tokens_chat, 2400) if long_answer else self.config.max_tokens_chat
+        if _deepseek_api_enabled():
+            try:
+                result = await self._call_deepseek_api(
+                    [{"role": "user", "content": prompt}],
+                    temperature=self.config.temperature_chat,
+                    max_tokens=max_tokens,
+                    model=model,
+                )
+                if result is not None:
+                    return result
+            except Exception:
+                logger.warning("DeepSeek API conversation failed; trying DigitalOcean.", exc_info=True)
+        return await self._call_digitalocean_conversation(prompt, model=model, long_answer=long_answer)
+
     @classmethod
     def _normalize_text_messages(cls, messages: List[Dict[str, Any]]) -> List[Dict[str, str]]:
         normalized: List[Dict[str, str]] = []
@@ -853,7 +880,19 @@ class AIClient:
         try:
             await self._rate_limiter.record_call(author.id)
             if not self._deepseek_web.enabled:
-                return "DeepSeek is not configured on this deployment."
+                # Browser scraper off — use the HTTP conversation path (DeepSeek
+                # API, then DigitalOcean). Image uploads need the browser client,
+                # so vision is unavailable here; the text answer still goes through.
+                content = await self._conversation_via_http(
+                    prompt, model=model, long_answer=signals.asks_for_long_answer
+                )
+                if not content:
+                    return None
+                content = self._postprocess_chat_response(content)
+                asyncio.create_task(
+                    self._update_memory_smart(author.id, user_content, content, stored_memory)
+                )
+                return content
             session_key, session_name = self._deepseek_session_identity(
                 guild,
                 source_message,
