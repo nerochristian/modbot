@@ -30,7 +30,11 @@ RoleAction = Literal[
 ]
 
 
-class Roles(commands.Cog):
+class Roles(
+    commands.GroupCog,
+    group_name="role",
+    group_description="Manage server roles",
+):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot = bot
 
@@ -153,20 +157,7 @@ class Roles(commands.Cog):
             embed.add_field(name="Failed", value=str(failed))
         await self._send(interaction, embed)
 
-    @app_commands.command(name="role", description="Manage roles with one command")
-    @app_commands.describe(
-        action="What to do; this is the only required parameter",
-        role="Existing role used by the selected action",
-        user="Member used by add or remove",
-        name="New role name used by create",
-        color="Hex color for create, such as #FF0000",
-        hoist="Show a created role separately",
-        mentionable="Allow everyone to mention a created role",
-        position="Position for a newly created role",
-        reason="Audit-log reason",
-    )
-    @app_commands.guild_only()
-    async def role_command(
+    async def _execute_role_action(
         self,
         interaction: discord.Interaction,
         action: RoleAction,
@@ -348,6 +339,96 @@ class Roles(commands.Cog):
         except discord.HTTPException as exc:
             return await self._send(interaction, ModEmbed.error("Role Update Failed", str(exc)), ephemeral=True)
         await self._send(interaction, ModEmbed.success("Role Updated", message))
+
+    @app_commands.command(name="info", description="View detailed information about a role")
+    async def role_info(self, interaction: discord.Interaction, role: discord.Role) -> None:
+        await self._execute_role_action(interaction, "info", role=role)
+
+    @app_commands.command(name="create", description="Create a new role")
+    @app_commands.describe(color="Hex color such as #FF0000", position="Role position from 1 to 250")
+    async def role_create(
+        self,
+        interaction: discord.Interaction,
+        name: str,
+        color: Optional[str] = None,
+        hoist: Optional[bool] = None,
+        mentionable: Optional[bool] = None,
+        position: Optional[app_commands.Range[int, 1, 250]] = None,
+        reason: Optional[str] = None,
+    ) -> None:
+        await self._execute_role_action(
+            interaction,
+            "create",
+            name=name,
+            color=color,
+            hoist=hoist,
+            mentionable=mentionable,
+            position=position,
+            reason=reason,
+        )
+
+    @app_commands.command(name="delete", description="Delete a role")
+    async def role_delete(
+        self,
+        interaction: discord.Interaction,
+        role: discord.Role,
+        reason: Optional[str] = None,
+    ) -> None:
+        await self._execute_role_action(interaction, "delete", role=role, reason=reason)
+
+    @app_commands.command(name="add", description="Add a role to a member")
+    async def role_add(
+        self,
+        interaction: discord.Interaction,
+        user: discord.Member,
+        role: discord.Role,
+        reason: Optional[str] = None,
+    ) -> None:
+        await self._execute_role_action(interaction, "add", role=role, user=user, reason=reason)
+
+    @app_commands.command(name="remove", description="Remove a role from a member")
+    async def role_remove(
+        self,
+        interaction: discord.Interaction,
+        user: discord.Member,
+        role: discord.Role,
+        reason: Optional[str] = None,
+    ) -> None:
+        await self._execute_role_action(interaction, "remove", role=role, user=user, reason=reason)
+
+    @app_commands.command(name="addall", description="Add a role to every human member")
+    async def role_addall(
+        self,
+        interaction: discord.Interaction,
+        role: discord.Role,
+        reason: Optional[str] = None,
+    ) -> None:
+        await self._execute_role_action(interaction, "addall", role=role, reason=reason)
+
+    @app_commands.command(name="removeall", description="Remove a role from every human member")
+    async def role_removeall(
+        self,
+        interaction: discord.Interaction,
+        role: discord.Role,
+        reason: Optional[str] = None,
+    ) -> None:
+        await self._execute_role_action(interaction, "removeall", role=role, reason=reason)
+
+    @app_commands.command(name="auto", description="Set the role automatically given to new members")
+    async def role_auto(self, interaction: discord.Interaction, role: discord.Role) -> None:
+        await self._execute_role_action(interaction, "auto", role=role)
+
+    @app_commands.command(name="allowlist-add", description="Allow bot owners to assign a role")
+    async def role_allowlist_add(self, interaction: discord.Interaction, role: discord.Role) -> None:
+        await self._execute_role_action(interaction, "allowlist-add", role=role)
+
+    @app_commands.command(name="allowlist-remove", description="Remove a role from the owner allowlist")
+    async def role_allowlist_remove(self, interaction: discord.Interaction, role: discord.Role) -> None:
+        await self._execute_role_action(interaction, "allowlist-remove", role=role)
+
+    @app_commands.command(name="allowlist-list", description="List roles bot owners may assign")
+    async def role_allowlist_list(self, interaction: discord.Interaction) -> None:
+        await self._execute_role_action(interaction, "allowlist-list")
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:

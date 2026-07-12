@@ -68,14 +68,18 @@ def test_modmail_is_not_exposed_by_bot_or_cogs() -> None:
     assert not exposed, f"ModMail remains exposed in runtime code: {exposed}"
 
 
-def test_role_is_one_parameterized_command_with_only_action_required() -> None:
-    command = Roles.role_command
-    assert isinstance(command, app_commands.Command)
-    assert command.name == "role"
-    required = {parameter.name for parameter in command.parameters if parameter.required}
-    assert required == {"action"}
-    actions = {choice.value for choice in command.parameters[0].choices}
-    assert {"add", "remove", "addall", "removeall", "create", "delete", "info"} <= actions
+def test_role_actions_expose_only_their_relevant_parameters() -> None:
+    commands_by_name = {command.name: command for command in Roles.__cog_app_commands__}
+    assert {
+        "info", "create", "delete", "add", "remove", "addall", "removeall",
+        "auto", "allowlist-add", "allowlist-remove", "allowlist-list",
+    } == commands_by_name.keys()
+    assert [parameter.name for parameter in commands_by_name["auto"].parameters] == ["role"]
+    assert [parameter.name for parameter in commands_by_name["add"].parameters] == ["user", "role", "reason"]
+    assert [parameter.name for parameter in commands_by_name["create"].parameters] == [
+        "name", "color", "hoist", "mentionable", "position", "reason",
+    ]
+    assert [parameter.name for parameter in commands_by_name["removeall"].parameters] == ["role", "reason"]
 
 
 def test_nuke_deletes_original_before_best_effort_reposition() -> None:
