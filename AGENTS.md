@@ -27,66 +27,41 @@ If a compilation, linting, or runtime error occurs:
 
 V2 UI Components Guide
 
-When creating UI elements like embeds, interactive panels, shops, or help menus, you **must** use the `components_v2` UI framework rather than standard `discord.Embed`. 
-`components_v2` builds on Discord's UI components to create visually stunning, branded interfaces.
+The `components_v2` helpers live in `utils/components_v2.py` and build Discord
+`LayoutView`/`Container` UIs. Use them for rich panels; plain `discord.Embed` is
+still fine for simple messages (most cogs use embeds, and a global monkeypatch —
+`patch_components_v2()`, opt-in — can auto-upgrade embeds to V2 layouts).
 
-## Core Principles
-1. **Never use `discord.Embed`** directly for major interactive or beautiful views (like `.shop`, `.help`).
-2. **Use `branded_notice_view`** or **`branded_panel_container`** from `components_v2.py`.
-3. **Always send/edit with `send_v2` or `edit_v2`** (usually defined at the top of the cog file, e.g., in `core.py`).
-4. **Always pass buttons via `actions`**: All buttons must be added to the `actions` array in `branded_panel_container` or `branded_notice_view`. Do not attach buttons directly to the layout view unless completely unavoidable.
+## Real API (verified against utils/components_v2.py)
+Only these functions exist — do not invent others:
+- `branded_panel_container(*, title, description, banner_url=None, logo_url=None, accent_color=None, banner_separated=False) -> discord.ui.Container`
+- `container_from_embed(embed) -> discord.ui.Container`
+- `layout_view_from_embeds(embed=..., ...) -> discord.ui.LayoutView` (async)
+- `ensure_layout_view_action_rows(view) -> discord.ui.LayoutView`
 
-## Beautiful Code Example
-Instead of placeholders, always write production-ready, beautiful code like this:
+There is **no** `branded_notice_view`, `branded_asset_url`, `thumbnail_text_section`,
+`send_v2`, `edit_v2`, `get_valk_emoji`, or `branded_asset_files`. Attach buttons
+to the container/layout view with `view.add_item(...)`; send with the normal
+`interaction.response.send_message(view=...)` / `channel.send(view=...)`.
+
+## Example (matches actual usage in cogs/tickets.py, cogs/logging_cog.py)
 ```python
-from components_v2 import branded_panel_container, branded_asset_url, thumbnail_text_section
+import discord
+from utils.components_v2 import branded_panel_container, ensure_layout_view_action_rows
 
-def build_shop_container():
-    # Adding an accessory header, e.g. for user balance
-    header_accessory = discord.ui.Button(
-        label="1,000,000 Coins", 
-        emoji="\U0001fa99", # Coin Emoji
-        style=discord.ButtonStyle.secondary, 
-        disabled=True
-    )
-
+def build_panel() -> discord.ui.LayoutView:
     container = branded_panel_container(
-        title="Soul Premium Shop",
-        description="Welcome to the Soul marketplace! Select an item below to purchase.",
-        accent_color=0xF1C40F, # Vibrant Gold
-        banner_url=branded_asset_url("banner"), 
-        logo_url=branded_asset_url("logo"),
-        header_accessory=header_accessory,
-        actions=[
-            discord.ui.Button(label="Buy Item A", style=discord.ButtonStyle.primary, custom_id="buy_a"),
-            discord.ui.Button(label="Buy Item B", style=discord.ButtonStyle.secondary, custom_id="buy_b")
-        ]
+        title="Support",
+        description="Select an option below.",
+        accent_color=0x5865F2,
     )
+    view = discord.ui.LayoutView()
+    view.add_item(container)
+    view.add_item(discord.ui.Button(label="Open Ticket", custom_id="open"))
+    return ensure_layout_view_action_rows(view)
 
-    # You can add rich thumbnail sections for each item inside the container!
-    item_section = thumbnail_text_section(
-        text="**Epic Sword**\nAn epic blade that increases your stats by 20%.",
-        thumbnail_url="https://example.com/epic-sword.png"
-    )
-    container.add_item(item_section)
-    
-    return container
-```
-
-## Available Components
-- `branded_panel_container`: The core beautiful V2 layout.
-- `branded_notice_view`: A quick alert or notice layout.
-- `thumbnail_text_section`: A text snippet with an image.
-- `get_valk_emoji`: Fetches emojis via their name.
-
-## How to Send V2 Views
-Do not use `ctx.send(embed=...)` for V2 views. Use `send_v2` provided in the cog file.
-```python
-# Sending a V2 View
-from components_v2 import branded_asset_files
-# Make sure to include the asset files so the attachment:// URLs resolve correctly
-files = branded_asset_files(some_path_to_icons)
-await send_v2(ctx, embed=None, view=view, files=files)
+# Send it with the standard API:
+# await interaction.response.send_message(view=build_panel())
 ```
 
 ## 4. ABSOLUTE PROHIBITION ON AUXILIARY SCRIPTS
