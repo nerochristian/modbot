@@ -2307,10 +2307,6 @@ async def _run_modbot(bot: ModBot, token: str) -> int:
     return 0
 
 
-async def _run_lifesimbot() -> int:
-    return 0
-
-
 def _load_groupbot_module():
     groupbot_path = Path(__file__).resolve().parent / "gc" / "bot.py"
     spec = importlib.util.spec_from_file_location("embedded_groupbot", groupbot_path)
