@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { Zap } from 'lucide-react'
 
 /**
  * The Live Wire — the landing page's signature moment. On load, a raid of
