@@ -501,7 +501,7 @@ class AutoMod(commands.Cog):
     ) -> None:
         await self._whitelist_update(interaction, True, role=role, user=user, channel=channel)
 
-    @whitelist.command(name="remove", description="Remove one role, user, or channel from the whitelist")
+    @bypass.command(name="remove", description="Remove one role, user, or channel from AutoMod bypass")
     async def whitelist_remove_command(
         self,
         interaction: discord.Interaction,
