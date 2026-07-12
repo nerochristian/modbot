@@ -37,6 +37,17 @@ logger = logging.getLogger("ModBot.AIModeration.Client")
 _DO_API_KEY: Final[str] = os.getenv("DO_API_KEY", "").strip()
 _DO_BASE_URL: Final[str] = os.getenv("DO_INFERENCE_BASE_URL", "https://inference.do-ai.run/v1").strip().rstrip("/")
 
+# Real DeepSeek HTTP API (OpenAI-compatible). Preferred over the Playwright
+# browser scraper when a key is configured — same request shape as DigitalOcean.
+_DEEPSEEK_API_KEY: Final[str] = os.getenv("DEEPSEEK_API_KEY", "").strip()
+_DEEPSEEK_BASE_URL: Final[str] = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").strip().rstrip("/")
+_DEEPSEEK_API_MODEL: Final[str] = os.getenv("DEEPSEEK_MODEL", "deepseek-chat").strip()
+
+
+def _deepseek_api_enabled() -> bool:
+    """The DeepSeek HTTP API is usable when an API key is configured."""
+    return bool(_DEEPSEEK_API_KEY)
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
