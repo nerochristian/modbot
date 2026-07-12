@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import Image from 'next/image'
 import { ArrowRight, LogIn } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import { LiveWire } from '@/components/marketing/live-wire'
