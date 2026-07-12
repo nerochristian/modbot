@@ -31,7 +31,7 @@ class AutoMod(commands.Cog):
     """Production AutoMod system with split rules, storage, logging, and commands."""
 
     automod = app_commands.Group(name="automod", description="Manage server AutoMod")
-    whitelist = app_commands.Group(name="whitelist", description="Manage AutoMod bypasses", parent=automod)
+    bypass = app_commands.Group(name="bypass", description="Manage AutoMod bypasses", parent=automod)
     badwords = app_commands.Group(name="badwords", description="Manage blocked words", parent=automod)
     logs = app_commands.Group(name="logs", description="Manage AutoMod logging", parent=automod)
     punishment = app_commands.Group(name="punishment", description="Manage AutoMod punishments", parent=automod)
