@@ -1,55 +1,27 @@
 import Link from 'next/link'
-import {
-  ShieldAlert,
-  Gavel,
-  Scale,
-  Users2,
-  SlidersHorizontal,
-  Activity,
-  ArrowRight,
-  LogIn,
-} from 'lucide-react'
+import { ArrowRight, LogIn } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
-import { HeroPreview } from '@/components/marketing/hero-preview'
+import { LiveWire } from '@/components/marketing/live-wire'
 import { Pricing } from '@/components/marketing/pricing'
 import { Faq } from '@/components/marketing/faq'
 
-const FEATURES = [
+// The three things a shift actually does, in order. Numbered because it IS a
+// sequence: a threat arrives, it's judged, it becomes a permanent record.
+const PIPELINE = [
   {
-    tag: 'AUTOMOD',
-    icon: ShieldAlert,
-    title: 'Rules that act before you wake up',
-    desc: 'Layer rules for spam, slurs, invite links, mention floods, and raid patterns. Each one scores content in real time and files the case itself — so the log is already clean when your shift starts.',
+    n: '01',
+    head: 'It arrives',
+    body: 'Raids, spam floods, scam links, mention storms. Docket watches every message the instant it posts — before a human is even online.',
   },
   {
-    tag: 'CASES',
-    icon: Gavel,
-    title: 'Every action becomes a record',
-    desc: 'Warns, mutes, kicks, and bans open a case with full history, evidence, and moderator notes. Nothing gets lost in the handoff between shifts.',
+    n: '02',
+    head: 'It’s judged',
+    body: 'Layered rules score content in real time and act: block, mute, timeout, ban. Severity decides the response. No queue, no delay.',
   },
   {
-    tag: 'APPEALS',
-    icon: Scale,
-    title: 'Decisions stay consistent',
-    desc: 'Members appeal through a structured queue your team reviews, votes on, and resolves. Every ruling is attributable and on the record.',
-  },
-  {
-    tag: 'MEMBERS',
-    icon: Users2,
-    title: 'Read the whole history at a glance',
-    desc: 'A complete file on every member — join date, prior infractions, risk signals, watchlist status — with server-side search, filters, and sorting.',
-  },
-  {
-    tag: 'ROLES',
-    icon: SlidersHorizontal,
-    title: 'Access maps to how your team works',
-    desc: 'Admin, Moderator, and Helper roles with an editable permission matrix. Enforced in the console and on every API route — not just hidden in the UI.',
-  },
-  {
-    tag: 'CONSOLE',
-    icon: Activity,
-    title: 'Configure the desk to your shift',
-    desc: 'Reorder widgets, hide what you don’t need, set severity thresholds, themes, and density. Every preference is saved to your account.',
+    n: '03',
+    head: 'It’s on the record',
+    body: 'Every action opens a case with evidence, reason, and the moderator or rule behind it. Nothing is lost between shifts.',
   },
 ]
 
@@ -60,66 +32,77 @@ const STATS = [
   { value: '99.99%', label: 'Uptime' },
 ]
 
+// One real case file, shown in full — not six feature cards.
+const CASE = {
+  ref: 'CASE-0421',
+  filed: '07·12 14:22Z',
+  subject: 'user4821',
+  type: 'Ban',
+  severity: 'critical',
+  reason: 'Coordinated raid — 1 of 300 spoofed accounts posting scam links to @everyone within a 9-second window.',
+  rule: 'raid-shield · mention-flood',
+  evidence: '@everyone free nitro → grabnitro.gg',
+}
+
 const TESTIMONIALS = [
-  { quote: 'Docket caught a 300-account raid before a single message landed in general. Our mods woke up to a clean log instead of a cleanup.', name: 'Sarah Chen', title: 'Head Moderator, The Nexus' },
-  { quote: 'The case system replaced a messy spreadsheet and three bots. Every mod sees the full history the moment they open a member.', name: 'Marcus Reid', title: 'Server Owner, Forge & Anvil' },
+  { quote: 'Docket caught a 300-account raid before a single message landed in general. We woke up to a clean log instead of a cleanup.', name: 'Sarah Chen', title: 'Head Moderator, The Nexus' },
+  { quote: 'The case system replaced a spreadsheet and three bots. Every mod sees the full history the moment they open a member.', name: 'Marcus Reid', title: 'Server Owner, Forge & Anvil' },
   { quote: 'Appeals finally feel fair. The queue keeps every decision consistent, and members can see we actually reviewed them.', name: 'Priya Nair', title: 'Community Manager, Vela' },
-  { quote: 'Automod scoring cut our workload in half. The team spends time on people now, not deleting spam links.', name: 'Diego Santos', title: 'Head Mod, Kite Lounge' },
-  { quote: 'The watchlist flags repeat offenders across alt accounts. We stop problems days before they escalate.', name: 'Emma Wagner', title: 'Owner, Nova Collective' },
-  { quote: 'Roles map exactly to how our team works — Helpers triage, Mods act, Admins configure. Onboarding takes minutes.', name: 'Kai Fischer', title: 'Admin, Drift Guild' },
 ]
 
 export default function LandingPage() {
   return (
-    <>
-      {/* Hero — the records desk. Editorial headline + a live docket sheet. */}
+    <div className="situation">
+      {/* ============================================================ */}
+      {/* ACT I — the incident. The hero IS the product, mid-raid.     */}
+      {/* ============================================================ */}
       <section className="relative overflow-hidden border-b border-border">
-        <div className="pointer-events-none absolute inset-0 -z-10 grid-texture opacity-60" />
-        <div className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-px bg-accent-line" />
-        <div className="mx-auto grid max-w-6xl items-center gap-14 px-6 py-20 lg:grid-cols-[1.05fr_1fr] lg:py-28">
-          <div>
-            <p className="inline-flex items-center gap-2 rounded-sm border border-border bg-surface px-3 py-1 font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.16em] text-accent">
-              <span className="size-1.5 rounded-full bg-accent" />
-              Moderation records desk
+        <div className="pointer-events-none absolute inset-0 scanfield opacity-60" />
+        <div className="mx-auto max-w-6xl px-6 pb-16 pt-16 lg:pt-20">
+          <div className="mx-auto max-w-3xl text-center">
+            <p className="inline-flex items-center gap-2 rounded-sm border border-border bg-surface px-3 py-1 font-mono text-[0.6875rem] font-medium uppercase tracking-[0.16em] text-accent">
+              <span className="inline-flex size-1.5 rounded-full bg-threat wire-blip" />
+              Raid in progress — watch it stop
             </p>
-
-            <h1 className="mt-6 font-display text-[3.25rem] font-semibold leading-[0.98] tracking-[-0.03em] text-foreground sm:text-[4rem]">
-              Work your<br />caseload.
+            <h1 className="mt-7 font-display text-[2.75rem] font-semibold leading-[0.98] tracking-[-0.03em] text-foreground sm:text-6xl">
+              300 accounts hit your server.
+              <br />
+              <span className="text-accent">Nobody saw a thing.</span>
             </h1>
-            <p className="mt-6 max-w-md text-lg leading-relaxed text-muted">
-              Docket turns raids, spam, and reports into a clean queue of cases — each one filed,
-              attributable, and resolved on the record. Moderation your whole team can read back.
-            </p>
-
-            <div className="mt-8 flex flex-wrap items-center gap-3">
-              <Link
-                href="/api/auth/discord/authorize"
-                className={buttonVariants({ variant: 'primary', size: 'lg', className: 'gap-2.5 px-7' })}
-              >
-                <LogIn className="size-4" />
-                Sign in with Discord
-              </Link>
-              <Link
-                href="#features"
-                className={buttonVariants({ variant: 'outline', size: 'lg', className: 'gap-2' })}
-              >
-                See how it works
-                <ArrowRight className="size-4" />
-              </Link>
-            </div>
-
-            <p className="mt-5 font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-muted-2">
-              Free under 5k members · No card required
+            <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-muted">
+              Docket reads every message the moment it posts and stops raids, spam, and scams before
+              your community ever notices. Each action becomes a case you can read back.
             </p>
           </div>
 
-          <div className="relative lg:pl-4">
-            <HeroPreview />
+          {/* The Live Wire board — centerpiece, wide and cinematic. */}
+          <div className="mx-auto mt-12 max-w-3xl">
+            <LiveWire />
           </div>
+
+          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
+            <Link
+              href="/api/auth/discord/authorize"
+              className={buttonVariants({ variant: 'primary', size: 'lg', className: 'gap-2.5 px-7' })}
+            >
+              <LogIn className="size-4" />
+              Deploy Docket
+            </Link>
+            <Link
+              href="#pipeline"
+              className={buttonVariants({ variant: 'outline', size: 'lg', className: 'gap-2' })}
+            >
+              How it works
+              <ArrowRight className="size-4" />
+            </Link>
+          </div>
+          <p className="mt-5 text-center font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-muted-2">
+            Free under 5k members · No card required
+          </p>
         </div>
       </section>
 
-      {/* Stats — a ledger strip. */}
+      {/* Stats — an instrument readout strip. */}
       <section className="border-b border-border bg-surface">
         <div className="mx-auto grid max-w-6xl grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
           {STATS.map((s) => (
@@ -131,59 +114,118 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Features — filed as records, each with a mono tag. */}
-      <section id="features" className="mx-auto max-w-6xl scroll-mt-20 px-6 py-24">
+      {/* ============================================================ */}
+      {/* ACT II — the pipeline. A real 3-step sequence, numbered.     */}
+      {/* ============================================================ */}
+      <section id="pipeline" className="mx-auto max-w-6xl scroll-mt-20 px-6 py-24">
         <div className="max-w-2xl">
           <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">
-            What’s on the desk
+            Threat to record, in one pass
           </p>
           <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.02em] text-foreground">
-            Everything a shift needs.<br />Nothing it doesn’t.
+            Three seconds from arrival to filed.
           </h2>
         </div>
 
-        <div className="mt-12 grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map((f) => (
-            <div key={f.tag} className="group flex flex-col bg-surface p-7 transition-colors hover:bg-surface-2">
-              <div className="flex items-center justify-between">
-                <span className="grid size-9 place-items-center rounded-md bg-accent-soft text-accent">
-                  <f.icon className="size-4.5" />
-                </span>
-                <span className="font-mono text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-2">
-                  {f.tag}
-                </span>
-              </div>
-              <h3 className="mt-5 font-display text-lg font-semibold tracking-tight text-foreground">{f.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted">{f.desc}</p>
+        <div className="mt-14 grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-3">
+          {PIPELINE.map((step) => (
+            <div key={step.n} className="relative bg-surface p-8">
+              <span className="font-mono text-5xl font-semibold tracking-tight text-accent/25">{step.n}</span>
+              <h3 className="mt-5 font-display text-xl font-semibold tracking-tight text-foreground">{step.head}</h3>
+              <p className="mt-2.5 text-sm leading-relaxed text-muted">{step.body}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* Testimonials — filed quotes. */}
-      <section id="testimonials" className="border-y border-border bg-surface py-20">
-        <div className="mx-auto max-w-6xl px-6">
-          <p className="mb-10 font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-muted-2">
-            On the record
-          </p>
-          <div className="grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-2 lg:grid-cols-3">
-            {TESTIMONIALS.map((t) => (
-              <figure key={t.name} className="flex flex-col justify-between bg-surface p-7">
-                <blockquote className="rail rail-accent text-[15px] leading-snug text-foreground">
-                  {t.quote}
-                </blockquote>
-                <figcaption className="mt-6 flex items-center gap-3">
-                  <div className="grid size-8 place-items-center rounded-md bg-accent-soft font-display text-xs font-semibold text-accent">
-                    {t.name.split(' ').map((w) => w[0]).join('')}
-                  </div>
-                  <div className="text-sm">
-                    <div className="font-medium text-foreground">{t.name}</div>
-                    <div className="text-xs text-muted">{t.title}</div>
-                  </div>
-                </figcaption>
-              </figure>
-            ))}
+      {/* ============================================================ */}
+      {/* ACT III — the record. ONE case file, in full.               */}
+      {/* ============================================================ */}
+      <section className="border-y border-border bg-surface">
+        <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-24 lg:grid-cols-2">
+          <div>
+            <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">
+              What’s left behind
+            </p>
+            <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.02em] text-foreground">
+              Every action becomes a file you can read back.
+            </h2>
+            <p className="mt-5 max-w-md text-base leading-relaxed text-muted">
+              No disappearing DM logs, no “who muted this person and why.” The moment automod acts —
+              or a moderator does — Docket opens a case with the evidence, the reason, and the rule
+              or person behind it. Months later, it still reads clearly.
+            </p>
+            <Link
+              href="/api/auth/discord/authorize"
+              className={buttonVariants({ variant: 'subtle', size: 'md', className: 'mt-7 gap-2' })}
+            >
+              Open the caseload
+              <ArrowRight className="size-4" />
+            </Link>
           </div>
+
+          {/* The case file — a single detailed record. */}
+          <div className="rounded-lg border border-border bg-card">
+            <div className="flex items-center justify-between border-b border-border px-5 py-3">
+              <span className="font-mono text-xs font-semibold tracking-wide text-foreground">{CASE.ref}</span>
+              <span className="font-mono text-[0.6875rem] uppercase tracking-[0.12em] text-muted-2">
+                Filed {CASE.filed}
+              </span>
+            </div>
+            <div className="space-y-4 p-5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-sm border border-threat/40 bg-threat-soft px-2 py-0.5 font-mono text-[0.625rem] font-bold uppercase tracking-[0.1em] text-threat">
+                  {CASE.type}
+                </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="tickmeter" style={{ ['--tick-color' as string]: 'var(--sev-critical)' }}>
+                    <span className="tick on" /><span className="tick on" /><span className="tick on" /><span className="tick on" /><span className="tick on" />
+                  </span>
+                  <span className="font-mono text-[0.6875rem] uppercase tracking-wider text-threat">{CASE.severity}</span>
+                </span>
+              </div>
+
+              <Field label="Subject">
+                <span className="font-mono text-sm text-foreground">@{CASE.subject}</span>
+              </Field>
+              <Field label="Reason">
+                <span className="text-sm leading-relaxed text-muted">{CASE.reason}</span>
+              </Field>
+              <Field label="Evidence">
+                <span className="block rounded-sm bg-surface-2 px-2.5 py-1.5 font-mono text-xs text-muted line-through decoration-threat/50">
+                  {CASE.evidence}
+                </span>
+              </Field>
+              <Field label="Acted by">
+                <span className="font-mono text-xs text-accent">{CASE.rule}</span>
+              </Field>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Proof — filed quotes with the docket rail. */}
+      <section id="testimonials" className="mx-auto max-w-6xl px-6 py-24">
+        <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-muted-2">
+          On the record
+        </p>
+        <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-3">
+          {TESTIMONIALS.map((t) => (
+            <figure key={t.name} className="flex flex-col justify-between bg-surface p-7">
+              <blockquote className="rail rail-accent text-[15px] leading-snug text-foreground">
+                {t.quote}
+              </blockquote>
+              <figcaption className="mt-6 flex items-center gap-3">
+                <div className="grid size-8 place-items-center rounded-md bg-accent-soft font-display text-xs font-semibold text-accent">
+                  {t.name.split(' ').map((w) => w[0]).join('')}
+                </div>
+                <div className="text-sm">
+                  <div className="font-medium text-foreground">{t.name}</div>
+                  <div className="text-xs text-muted">{t.title}</div>
+                </div>
+              </figcaption>
+            </figure>
+          ))}
         </div>
       </section>
 
@@ -191,22 +233,33 @@ export default function LandingPage() {
       <Faq />
 
       {/* Final CTA */}
-      <section className="mx-auto max-w-4xl px-6 pb-24 pt-16 text-center">
-        <h2 className="font-display text-4xl font-semibold tracking-[-0.02em] text-foreground">
-          Open your first case.
-        </h2>
-        <p className="mx-auto mt-4 max-w-md text-lg text-muted">
-          Sign in with Discord and add Docket to your server in under 60 seconds.
-        </p>
-        <div className="mt-8 flex justify-center">
-          <Link
-            href="/api/auth/discord/authorize"
-            className={buttonVariants({ variant: 'primary', size: 'lg', className: 'gap-2.5 px-8' })}
-          >
-            <LogIn className="size-4.5" /> Sign in with Discord
-          </Link>
+      <section className="border-t border-border">
+        <div className="mx-auto max-w-4xl px-6 pb-24 pt-20 text-center">
+          <h2 className="font-display text-4xl font-semibold tracking-[-0.02em] text-foreground sm:text-5xl">
+            The next raid is already being planned.
+          </h2>
+          <p className="mx-auto mt-4 max-w-md text-lg text-muted">
+            Deploy Docket in under 60 seconds and be ready before it lands.
+          </p>
+          <div className="mt-8 flex justify-center">
+            <Link
+              href="/api/auth/discord/authorize"
+              className={buttonVariants({ variant: 'primary', size: 'lg', className: 'gap-2.5 px-8' })}
+            >
+              <LogIn className="size-4.5" /> Deploy Docket
+            </Link>
+          </div>
         </div>
       </section>
-    </>
+    </div>
+  )
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="grid grid-cols-[88px_1fr] items-start gap-3">
+      <span className="pt-0.5 font-mono text-[0.625rem] uppercase tracking-[0.14em] text-muted-2">{label}</span>
+      <div className="min-w-0">{children}</div>
+    </div>
   )
 }
