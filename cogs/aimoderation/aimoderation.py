@@ -308,7 +308,7 @@ class AIModeration(commands.Cog):
     }
     _DURATION_RE: ClassVar[re.Pattern] = re.compile(
         r"(\d+)\s*(s|sec|secs|second|seconds|m|min|mins|minute|minutes"
-        r"|h|hr|hrs|hour|hours|d|day|days|w|week|weeks)\b",
+        r"|h|hr|hrs|hour|hours|d|day|days|w|week|weeks)(?![a-z])",
         re.IGNORECASE,
     )
     _ACTION_PREFIX_RE: ClassVar[re.Pattern] = re.compile(
