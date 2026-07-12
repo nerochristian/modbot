@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { ArrowRight, LogIn } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import { LiveWire } from '@/components/marketing/live-wire'
+import { CircuitField } from '@/components/marketing/circuit-field'
+import { CommandDemo } from '@/components/marketing/command-demo'
 import { Pricing } from '@/components/marketing/pricing'
 import { Faq } from '@/components/marketing/faq'
 
