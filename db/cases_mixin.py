@@ -118,6 +118,36 @@ class CasesMixin:
                 for r in rows
             ]
 
+    async def get_cases_by_moderator(
+        self, guild_id: int, moderator_id: int
+    ) -> List[Dict[str, Any]]:
+        """Get all cases created by a specific moderator."""
+        async with self.get_connection() as db:
+            cursor = await db.execute(
+                """
+                SELECT * FROM cases
+                WHERE guild_id = ? AND moderator_id = ?
+                ORDER BY created_at DESC
+                """,
+                (guild_id, moderator_id),
+            )
+            rows = await cursor.fetchall()
+            return [
+                {
+                    "id": r[0],
+                    "guild_id": r[1],
+                    "case_number": r[2],
+                    "user_id": r[3],
+                    "moderator_id": r[4],
+                    "action": r[5],
+                    "reason": r[6],
+                    "duration": r[7],
+                    "created_at": r[8],
+                    "active": r[9],
+                }
+                for r in rows
+            ]
+
     async def add_warning(
         self, guild_id: int, user_id: int, moderator_id: int, reason: str
     ):
