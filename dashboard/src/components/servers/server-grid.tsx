@@ -119,7 +119,7 @@ export function ServerGrid({ guilds }: { guilds: ManagedGuild[] }) {
                   <h2 className="truncate font-semibold text-foreground">{guild.name}</h2>
                   <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
                     <span className={cn('size-1.5 rounded-full', guild.installed ? 'bg-mint' : 'bg-muted-2')} />
-                    {guild.installed ? 'Aegis connected' : 'Aegis not installed'}
+                    {guild.installed ? 'Docket connected' : 'Docket not installed'}
                   </p>
                 </div>
                 {guild.owner && (
@@ -150,7 +150,7 @@ export function ServerGrid({ guilds }: { guilds: ManagedGuild[] }) {
                     className={buttonVariants({ variant: 'secondary', size: 'sm' })}
                   >
                     <Plus className="size-4" />
-                    Add Aegis
+                    Add Docket
                     <ArrowUpRight className="size-3.5" />
                   </a>
                 )}

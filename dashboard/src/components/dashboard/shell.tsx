@@ -41,19 +41,19 @@ function MobileDrawer({
           <Logo />
           <button
             onClick={onClose}
-            className="focus-ring inline-flex size-8 items-center justify-center rounded-lg text-muted hover:bg-surface-2"
+            className="focus-ring inline-flex size-8 items-center justify-center rounded-md text-muted hover:bg-surface-2"
             aria-label="Close menu"
           >
             <X className="size-5" />
           </button>
         </div>
-        <nav className="flex-1 space-y-6 overflow-y-auto p-3">
+        <nav className="flex-1 space-y-5 overflow-y-auto p-3">
           {sections.map((section) => {
             const items = visible.filter((i) => i.section === section)
             if (!items.length) return null
             return (
               <div key={section}>
-                <p className="mb-1.5 px-2 text-xs font-medium uppercase tracking-wide text-muted-2">
+                <p className="mb-2 px-2 font-mono text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-2">
                   {SECTION_LABELS[section]}
                 </p>
                 <ul className="space-y-0.5">
@@ -68,7 +68,7 @@ function MobileDrawer({
                           href={item.href}
                           onClick={onClose}
                           className={cn(
-                            'flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium',
+                            'flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium',
                             active
                               ? 'bg-accent-soft text-accent'
                               : 'text-muted hover:bg-surface-2 hover:text-foreground',

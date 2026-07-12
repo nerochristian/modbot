@@ -48,13 +48,13 @@ export function SiteFooter() {
           <div className="space-y-4">
             <Logo />
             <p className="max-w-xs text-sm text-muted">
-              The moderation platform for serious Discord communities. Stop raids and spam
-              automatically, track every case, and give your whole mod team one command deck.
+              The moderation records desk for serious Discord communities. Stop raids and spam
+              automatically, file every action as a case, and give your whole team one console.
             </p>
           </div>
           {GROUPS.map((group) => (
             <div key={group.title}>
-              <h3 className="text-sm font-semibold text-foreground">{group.title}</h3>
+              <h3 className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.16em] text-muted-2">{group.title}</h3>
               <ul className="mt-3 space-y-2.5">
                 {group.links.map((link) => (
                   <li key={link.label}>
@@ -71,8 +71,8 @@ export function SiteFooter() {
           ))}
         </div>
         <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-border pt-6 sm:flex-row">
-          <p className="text-sm text-muted-2">© 2026 Aegis, Inc. All rights reserved.</p>
-          <p className="text-sm text-muted-2">Built for demonstration — no real data.</p>
+          <p className="font-mono text-xs text-muted-2">© 2026 Docket, Inc. All rights reserved.</p>
+          <p className="font-mono text-xs text-muted-2">Built for demonstration — no real data.</p>
         </div>
       </div>
     </footer>

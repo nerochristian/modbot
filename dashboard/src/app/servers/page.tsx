@@ -25,10 +25,10 @@ export default async function ServersPage() {
       </header>
       <main className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
         <div className="mb-10 max-w-2xl">
-          <p className="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-mint">Server switchboard</p>
-          <h1 className="mt-3 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">Where are you moderating?</h1>
+          <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">Server switchboard</p>
+          <h1 className="mt-3 font-display text-3xl font-semibold tracking-[-0.02em] text-foreground sm:text-4xl">Where are you moderating?</h1>
           <p className="mt-3 text-base leading-7 text-muted">
-            Open a connected server or install Aegis in another server you manage. Every dashboard view stays scoped to the server you choose.
+            Open a connected server or install Docket in another server you manage. Every dashboard view stays scoped to the server you choose.
           </p>
         </div>
         <ServerGrid guilds={guilds} />

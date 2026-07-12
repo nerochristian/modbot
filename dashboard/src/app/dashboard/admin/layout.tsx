@@ -12,6 +12,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <>
       <PageHeader
+        eyebrow="Administration"
         title={
           <span className="flex items-center gap-2">
             Admin <Badge tone="accent">Restricted</Badge>

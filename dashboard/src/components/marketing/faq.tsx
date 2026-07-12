@@ -15,7 +15,7 @@ const FAQS = [
   },
   {
     q: 'Do you support roles and permissions?',
-    a: 'Yes. Aegis ships with Admin, Moderator, and Helper roles out of the box, and admins can edit the exact permission matrix per role at any time. Command deck visibility and API access are both enforced against permissions.',
+    a: 'Yes. Docket ships with Admin, Moderator, and Helper roles out of the box, and admins can edit the exact permission matrix per role at any time. Console visibility and API access are both enforced against permissions.',
   },
   {
     q: 'Is my data secure?',
@@ -37,14 +37,14 @@ export function Faq() {
   return (
     <section id="faq" className="mx-auto max-w-3xl scroll-mt-20 px-4 py-24 sm:px-6">
       <div className="text-center">
-        <span className="text-sm font-semibold text-accent">FAQ</span>
-        <h2 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-          Frequently asked questions
+        <span className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">FAQ</span>
+        <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.02em] text-foreground sm:text-4xl">
+          Questions, on the record
         </h2>
-        <p className="mt-4 text-lg text-muted">Everything you need to know about the product.</p>
+        <p className="mt-4 text-lg text-muted">Everything you need to know before you file the first case.</p>
       </div>
 
-      <div className="mt-12 divide-y divide-border rounded-xl border border-border bg-card">
+      <div className="mt-12 divide-y divide-border rounded-lg border border-border bg-card">
         {FAQS.map((item, i) => {
           const isOpen = open === i
           return (

@@ -61,9 +61,9 @@ export function Pricing() {
   return (
     <section id="pricing" className="mx-auto max-w-6xl scroll-mt-20 px-4 py-24 sm:px-6">
       <div className="mx-auto max-w-2xl text-center">
-        <span className="text-sm font-semibold text-accent">Pricing</span>
-        <h2 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-          Simple, transparent pricing
+        <span className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">Pricing</span>
+        <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.02em] text-foreground sm:text-4xl">
+          One rate card. No surprises.
         </h2>
         <p className="mt-4 text-lg text-muted">
           Start with a 14-day free trial. No credit card required. Cancel anytime.
@@ -78,7 +78,7 @@ export function Pricing() {
               { label: 'Annual', value: 'annual' },
             ]}
           />
-          <span className="rounded-full bg-success-soft px-2.5 py-0.5 text-xs font-medium text-success">
+          <span className="rounded-sm bg-success-soft px-2.5 py-0.5 text-xs font-medium text-success">
             Save 20%
           </span>
         </div>
@@ -91,21 +91,21 @@ export function Pricing() {
             <div
               key={plan.name}
               className={cn(
-                'relative flex flex-col rounded-xl border p-6',
+                'relative flex flex-col rounded-lg border p-6',
                 plan.highlighted
-                  ? 'border-accent bg-card shadow-xl shadow-accent/10 ring-1 ring-accent'
+                  ? 'border-accent bg-card ring-1 ring-accent'
                   : 'border-border bg-card',
               )}
             >
               {plan.highlighted && (
-                <span className="absolute -top-3 left-6 rounded-full bg-accent px-3 py-1 text-xs font-semibold text-accent-foreground">
+                <span className="absolute -top-2.5 left-6 rounded-sm bg-accent px-2.5 py-0.5 font-mono text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-accent-foreground">
                   Most popular
                 </span>
               )}
-              <h3 className="text-lg font-semibold text-foreground">{plan.name}</h3>
+              <h3 className="font-display text-lg font-semibold text-foreground">{plan.name}</h3>
               <p className="mt-1 text-sm text-muted">{plan.tagline}</p>
               <div className="mt-5 flex items-baseline gap-1">
-                <span className="text-4xl font-bold tracking-tight text-foreground">${price}</span>
+                <span className="font-display text-4xl font-semibold tracking-tight text-foreground">${price}</span>
                 <span className="text-sm text-muted">/mo</span>
               </div>
               {cycle === 'annual' && (

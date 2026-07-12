@@ -49,7 +49,7 @@ export default function IntegrationsSettingsPage() {
     <>
       <SettingsCard
         title="API keys"
-        description="Use these keys to authenticate requests to the Aegis API."
+        description="Use these keys to authenticate requests to the Docket API."
         footer={
           <Button variant="outline" onClick={regenerate}>
             <RefreshCw className="size-4" />

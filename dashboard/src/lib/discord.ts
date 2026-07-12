@@ -74,13 +74,32 @@ function requiredEnv(name: 'DISCORD_CLIENT_ID' | 'DISCORD_CLIENT_SECRET'): strin
 }
 
 export function dashboardBaseUrl(requestUrl?: string): string {
-  if (process.env.NODE_ENV !== 'production' && requestUrl) return new URL(requestUrl).origin
-  const configured =
-    process.env.NEXT_PUBLIC_APP_URL ||
-    process.env.DASHBOARD_PUBLIC_URL ||
-    process.env.FRONTEND_PUBLIC_URL
-  if (configured) return configured.replace(/\/$/, '')
-  if (requestUrl) return new URL(requestUrl).origin
+  const candidates = [
+    process.env.DASHBOARD_PUBLIC_URL,
+    process.env.FRONTEND_PUBLIC_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.NEXT_PUBLIC_BASE_URL,
+  ]
+  for (const candidate of candidates) {
+    if (!candidate) continue
+    try {
+      const url = new URL(candidate)
+      if (
+        ['http:', 'https:'].includes(url.protocol) &&
+        !['0.0.0.0', '127.0.0.1', 'localhost', '::'].includes(url.hostname)
+      ) {
+        return url.origin
+      }
+    } catch {
+      continue
+    }
+  }
+  if (requestUrl) {
+    const requestOrigin = new URL(requestUrl)
+    if (!['0.0.0.0', '127.0.0.1', 'localhost', '::'].includes(requestOrigin.hostname)) {
+      return requestOrigin.origin
+    }
+  }
   return `http://localhost:${process.env.DASHBOARD_PORT || '3000'}`
 }
 

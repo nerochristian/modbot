@@ -9,7 +9,7 @@ import { SavedViews } from '@/components/dashboard/saved-views'
 import { Card } from '@/components/ui/card'
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
-import { Badge, statusTone, severityTone } from '@/components/ui/badge'
+import { Badge, statusTone, severityTone, TickMeter } from '@/components/ui/badge'
 import { Avatar } from '@/components/ui/avatar'
 import { Select } from '@/components/ui/select'
 import { Field, Input } from '@/components/ui/input'
@@ -140,6 +140,7 @@ export function MembersClient() {
   return (
     <>
       <PageHeader
+        eyebrow="Directory"
         title="Members"
         description={
           data
@@ -345,7 +346,8 @@ function renderCell(m: Member, key: string) {
       )
     case 'riskLevel':
       return (
-        <span className={`spine spine-${m.riskLevel} inline-flex pl-2.5`}>
+        <span className="inline-flex items-center gap-2">
+          <TickMeter severity={m.riskLevel} />
           <Badge tone={severityTone(m.riskLevel)}>{m.riskLevel}</Badge>
         </span>
       )

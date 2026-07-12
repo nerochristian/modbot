@@ -38,10 +38,10 @@ export default async function AdminOverviewPage() {
           <Link key={s.label} href={s.href}>
             <Card className="p-5 transition-colors hover:border-border-strong">
               <div className="flex items-center justify-between">
-                <p className="text-sm text-muted">{s.label}</p>
+                <p className="font-mono text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-muted">{s.label}</p>
                 <s.icon className="size-4.5 text-muted-2" />
               </div>
-              <p className="mt-2 text-2xl font-bold text-foreground">{s.value}</p>
+              <p className="mt-2 font-display text-2xl font-semibold text-foreground">{s.value}</p>
             </Card>
           </Link>
         ))}
@@ -52,7 +52,7 @@ export default async function AdminOverviewPage() {
           <Link key={s.label} href={s.href}>
             <Card className="transition-colors hover:border-border-strong">
               <CardContent className="flex items-start gap-4">
-                <span className="flex size-10 items-center justify-center rounded-xl bg-accent-soft text-accent">
+                <span className="flex size-10 items-center justify-center rounded-md bg-accent-soft text-accent">
                   <s.icon className="size-5" />
                 </span>
                 <div>

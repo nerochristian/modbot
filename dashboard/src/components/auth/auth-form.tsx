@@ -17,20 +17,20 @@ export function AuthForm({
 
   return (
     <div>
-      <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted">
-        <span className="size-1.5 rounded-full bg-mint shadow-[0_0_10px_var(--mint)]" />
+      <div className="mb-7 inline-flex items-center gap-2 rounded-sm border border-border bg-surface px-3 py-1.5 font-mono text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted">
+        <span className="size-1.5 rounded-full bg-success" />
         Discord-secured access
       </div>
-      <h1 className="text-3xl font-bold tracking-tight text-foreground">
-        {mode === 'login' ? 'Choose the servers you protect.' : 'Connect your Discord account.'}
+      <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">
+        {mode === 'login' ? 'Open your caseload.' : 'Connect your Discord account.'}
       </h1>
       <p className="mt-3 text-sm leading-6 text-muted">
         Sign in with Discord to see every server you can manage, open installed servers, or add
-        Aegis where it is missing.
+        Docket where it’s missing.
       </p>
 
       {error && (
-        <div className="mt-5 rounded-xl border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
+        <div className="mt-5 rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-sm text-danger">
           {error}
         </div>
       )}

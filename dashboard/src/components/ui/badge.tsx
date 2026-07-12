@@ -4,8 +4,8 @@ type Tone = 'neutral' | 'accent' | 'mint' | 'success' | 'warning' | 'danger' | '
 
 const TONES: Record<Tone, string> = {
   neutral: 'bg-surface-2 text-muted border-border',
-  accent: 'bg-accent-soft text-accent border-transparent',
-  mint: 'bg-mint-soft text-mint border-transparent',
+  accent: 'bg-accent-soft text-accent border-accent-line',
+  mint: 'bg-success-soft text-success border-transparent',
   success: 'bg-success-soft text-success border-transparent',
   warning: 'bg-warning-soft text-warning border-transparent',
   danger: 'bg-danger-soft text-danger border-transparent',
@@ -26,7 +26,7 @@ export function Badge({
   return (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-xs font-medium',
+        'inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5 text-xs font-medium',
         TONES[tone],
         className,
       )}
@@ -99,18 +99,56 @@ export function severityTone(severity: string): Tone {
   }
 }
 
-/** Maps a severity to its spine class (the signature left-rail motif). */
-export function severitySpine(severity: string): string {
+const SEVERITY_ORDER = ['none', 'low', 'medium', 'high', 'critical'] as const
+
+/** Maps a severity to the docket-rail modifier (the thin left gutter marker). */
+export function severityRail(severity: string): string {
+  const level = (SEVERITY_ORDER as readonly string[]).includes(severity) ? severity : 'none'
+  return `rail rail-${level}`
+}
+
+/** Back-compat alias — older call sites still import severitySpine. */
+export const severitySpine = severityRail
+
+/** Severity as a filled level 1–5 for the tick-meter signature. */
+export function severityLevel(severity: string): number {
   switch (severity) {
     case 'low':
-      return 'spine spine-low'
+      return 2
     case 'medium':
-      return 'spine spine-medium'
+      return 3
     case 'high':
-      return 'spine spine-high'
+      return 4
     case 'critical':
-      return 'spine spine-critical'
+      return 5
     default:
-      return 'spine spine-none'
+      return 1
   }
+}
+
+/**
+ * Tick-meter — the signature severity gauge. Renders a 5-tick bar filled to
+ * the severity level and colored only toward the vermilion (critical) end.
+ */
+export function TickMeter({
+  severity,
+  className,
+}: {
+  severity: string
+  className?: string
+}) {
+  const level = severityLevel(severity)
+  const color = `var(--sev-${(SEVERITY_ORDER as readonly string[]).includes(severity) ? severity : 'none'})`
+  return (
+    <span
+      className={cn('tickmeter', className)}
+      role="img"
+      aria-label={`Severity: ${severity || 'none'} (${level} of 5)`}
+      style={{ ['--tick-color' as string]: color }}
+    >
+      {[0, 1, 2, 3, 4].map((i) => (
+        <span key={i} className={cn('tick', i < level && 'on')} />
+      ))}
+    </span>
+  )
 }

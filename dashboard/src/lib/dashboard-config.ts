@@ -47,13 +47,13 @@ export type DashboardConfig = {
 }
 
 export const ACCENT_COLORS: { key: string; label: string; value: string }[] = [
-  { key: 'iris', label: 'Iris', value: '#6e56f8' },
-  { key: 'violet', label: 'Violet', value: '#8b5cf6' },
+  { key: 'cobalt', label: 'Cobalt', value: '#2743e6' },
+  { key: 'ink', label: 'Ink', value: '#14161c' },
   { key: 'blue', label: 'Blue', value: '#3b82f6' },
-  { key: 'sky', label: 'Sky', value: '#0ea5e9' },
-  { key: 'mint', label: 'Mint', value: '#12b981' },
-  { key: 'amber', label: 'Amber', value: '#f59e0b' },
-  { key: 'rose', label: 'Rose', value: '#f43f5e' },
+  { key: 'teal', label: 'Teal', value: '#0d9488' },
+  { key: 'iris', label: 'Iris', value: '#6e56f8' },
+  { key: 'amber', label: 'Amber', value: '#b56a00' },
+  { key: 'vermilion', label: 'Vermilion', value: '#e8442a' },
   { key: 'crimson', label: 'Crimson', value: '#dc2f55' },
 ]
 
@@ -114,8 +114,8 @@ export const DEFAULT_TABLE_COLUMNS: Record<string, string[]> = {
 const defaultChannel: NotificationChannelPrefs = { email: true, push: false, inApp: true }
 
 export const DEFAULT_DASHBOARD_CONFIG: DashboardConfig = {
-  theme: 'dark',
-  accent: 'iris',
+  theme: 'light',
+  accent: 'cobalt',
   density: 'compact',
   sidebarCollapsed: false,
   refreshInterval: 0,

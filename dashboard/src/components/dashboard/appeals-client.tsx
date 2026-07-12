@@ -8,7 +8,7 @@ import { SavedViews } from '@/components/dashboard/saved-views'
 import { Card } from '@/components/ui/card'
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
-import { Badge, statusTone, severityTone, severitySpine } from '@/components/ui/badge'
+import { Badge, statusTone, severityTone, severityRail, TickMeter } from '@/components/ui/badge'
 import { Avatar } from '@/components/ui/avatar'
 import { Select } from '@/components/ui/select'
 import { Field, Textarea } from '@/components/ui/input'
@@ -109,6 +109,7 @@ export function AppealsClient() {
   return (
     <>
       <PageHeader
+        eyebrow="Review queue"
         title="Appeals"
         description={
           data
@@ -249,7 +250,7 @@ function renderCell(a: Appeal, key: string) {
   switch (key) {
     case 'ref':
       return (
-        <span className={severitySpine(a.case.severity) + ' inline-flex items-center pl-2.5'}>
+        <span className={severityRail(a.case.severity) + ' inline-flex items-center'}>
           <span className="mono-id text-xs font-medium">{aplRef(a.ref)}</span>
         </span>
       )
@@ -365,6 +366,7 @@ function AppealReview({
           <div className="flex flex-wrap items-center gap-2">
             <span className="mono-id text-xs font-medium text-muted">{caseRefLabel(appeal.case.ref)}</span>
             <Badge tone={statusTone(appeal.case.type)}>{appeal.case.type}</Badge>
+            <TickMeter severity={appeal.case.severity} />
             <Badge tone={severityTone(appeal.case.severity)}>{appeal.case.severity}</Badge>
           </div>
           <p className="mt-2 text-sm text-muted">{appeal.case.reason}</p>

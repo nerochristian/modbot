@@ -4,79 +4,91 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /* ------------------------------------------------------------------ */
-/* Aegis — Trust & Safety console.                                     */
-/* Dark-first, control-room aesthetic. Light values live on :root,     */
-/* dark values on .dark. --accent is overridden inline from the user's */
-/* saved config. The "mint" signal channel marks protected/active      */
-/* states and is unique to this product.                               */
+/* Docket — the moderation records desk.                               */
+/*                                                                     */
+/* Light-first "Ink on Porcelain": a calm, high-legibility surface     */
+/* built for operators who read case histories for hours. Cobalt is    */
+/* the single decisive signal (active / primary / "on the docket").    */
+/* Vermilion is reserved for critical severity and destructive acts.   */
+/* Dark mode ships too, but light is the identity.                     */
 /* ------------------------------------------------------------------ */
 :root {
-  --bg: #f4f5f7;
+  --paper: #e8eaee;        /* cool porcelain — never cream */
   --surface: #ffffff;
-  --surface-2: #eef0f3;
+  --surface-2: #f0f2f5;
   --card: #ffffff;
-  --overlay: rgba(10, 12, 16, 0.5);
-  --border: #e2e5ea;
-  --border-strong: #cbd0d9;
-  --foreground: #10131a;
-  --muted: #5a6472;
-  --muted-2: #8a93a2;
-  --accent: #6e56f8;
-  --accent-foreground: #ffffff;
-  --accent-soft: color-mix(in srgb, var(--accent) 12%, transparent);
-  --mint: #12b981;
-  --mint-soft: color-mix(in srgb, #12b981 14%, transparent);
-  --success: #12a06b;
-  --success-soft: color-mix(in srgb, #12a06b 14%, transparent);
-  --warning: #c77700;
-  --warning-soft: color-mix(in srgb, #c77700 16%, transparent);
-  --danger: #dc2f55;
-  --danger-soft: color-mix(in srgb, #dc2f55 12%, transparent);
-  --info: #0a8bd6;
-  --info-soft: color-mix(in srgb, #0a8bd6 12%, transparent);
+  --overlay: rgba(18, 22, 31, 0.42);
+  --border: #d9dce2;
+  --border-strong: #c2c7d0;
+  --foreground: #14161c;   /* cool near-black ink */
+  --muted: #565d6b;
+  --muted-2: #878e9c;
 
-  /* Severity spine — the signature motif. */
-  --sev-none: #8a93a2;
-  --sev-low: #0a8bd6;
-  --sev-medium: #c77700;
-  --sev-high: #e0602a;
-  --sev-critical: #dc2f55;
+  /* Cobalt — the only hue. Active state, primary action, current docket. */
+  --accent: #2743e6;
+  --accent-foreground: #ffffff;
+  --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 30%, transparent);
+
+  --success: #0f8a52;
+  --success-soft: color-mix(in srgb, #0f8a52 12%, transparent);
+  /* Legacy alias: "mint" (protected/active signal) now folds into success. */
+  --mint: var(--success);
+  --mint-soft: var(--success-soft);
+  --warning: #b56a00;
+  --warning-soft: color-mix(in srgb, #b56a00 14%, transparent);
+  --danger: #e8442a;       /* vermilion */
+  --danger-soft: color-mix(in srgb, #e8442a 11%, transparent);
+  --info: #0a6fd6;
+  --info-soft: color-mix(in srgb, #0a6fd6 11%, transparent);
+
+  /* Severity ramp — drives the tick-meter signature (slate → vermilion). */
+  --sev-none: #878e9c;
+  --sev-low: #4b6bb0;
+  --sev-medium: #b56a00;
+  --sev-high: #d1512a;
+  --sev-critical: #e8442a;
 }
 
 .dark {
-  --bg: #0a0c10;
-  --surface: #12151c;
-  --surface-2: #1a1e27;
-  --card: #12151c;
-  --overlay: rgba(2, 4, 8, 0.66);
-  --border: #232833;
-  --border-strong: #333a48;
-  --foreground: #e8eaf0;
-  --muted: #9aa3b2;
-  --muted-2: #626c7d;
-  --accent-foreground: #ffffff;
-  --accent-soft: color-mix(in srgb, var(--accent) 22%, transparent);
-  --mint: #3ddc97;
-  --mint-soft: color-mix(in srgb, #3ddc97 18%, transparent);
-  --success: #3ddc97;
-  --success-soft: color-mix(in srgb, #3ddc97 18%, transparent);
-  --warning: #f5a524;
-  --warning-soft: color-mix(in srgb, #f5a524 18%, transparent);
-  --danger: #f0476b;
-  --danger-soft: color-mix(in srgb, #f0476b 16%, transparent);
-  --info: #38bdf8;
-  --info-soft: color-mix(in srgb, #38bdf8 18%, transparent);
+  --paper: #0c0e13;
+  --surface: #14171e;
+  --surface-2: #1b1f28;
+  --card: #14171e;
+  --overlay: rgba(4, 6, 10, 0.66);
+  --border: #262b35;
+  --border-strong: #363c48;
+  --foreground: #e9ebf1;
+  --muted: #9aa1b0;
+  --muted-2: #666e7d;
 
-  --sev-none: #626c7d;
-  --sev-low: #38bdf8;
-  --sev-medium: #f5a524;
-  --sev-high: #fb923c;
-  --sev-critical: #f0476b;
+  --accent: #5a74ff;
+  --accent-foreground: #0c0e13;
+  --accent-soft: color-mix(in srgb, var(--accent) 20%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 38%, transparent);
+
+  --success: #35c281;
+  --success-soft: color-mix(in srgb, #35c281 16%, transparent);
+  --mint: var(--success);
+  --mint-soft: var(--success-soft);
+  --warning: #e0942e;
+  --warning-soft: color-mix(in srgb, #e0942e 16%, transparent);
+  --danger: #ff5c40;
+  --danger-soft: color-mix(in srgb, #ff5c40 16%, transparent);
+  --info: #3aa0f5;
+  --info-soft: color-mix(in srgb, #3aa0f5 16%, transparent);
+
+  --sev-none: #666e7d;
+  --sev-low: #6d8ad8;
+  --sev-medium: #e0942e;
+  --sev-high: #f0703f;
+  --sev-critical: #ff5c40;
 }
 
 /* Map tokens to Tailwind color/utility names (bg-surface, text-muted, …). */
 @theme inline {
-  --color-bg: var(--bg);
+  --color-paper: var(--paper);
+  --color-bg: var(--paper);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
   --color-card: var(--card);
@@ -88,8 +100,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent-soft: var(--accent-soft);
-  --color-mint: var(--mint);
-  --color-mint-soft: var(--mint-soft);
+  --color-accent-line: var(--accent-line);
   --color-success: var(--success);
   --color-success-soft: var(--success-soft);
   --color-warning: var(--warning);
@@ -98,17 +109,25 @@
   --color-danger-soft: var(--danger-soft);
   --color-info: var(--info);
   --color-info-soft: var(--info-soft);
+  --color-mint: var(--mint);
+  --color-mint-soft: var(--mint-soft);
   --color-sev-none: var(--sev-none);
   --color-sev-low: var(--sev-low);
   --color-sev-medium: var(--sev-medium);
   --color-sev-high: var(--sev-high);
   --color-sev-critical: var(--sev-critical);
 
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+  --font-display: var(--font-display), "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-sans-custom), "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-custom), "IBM Plex Mono", ui-monospace, monospace;
 
-  --radius-xl: 0.875rem;
-  --radius-2xl: 1.125rem;
+  /* Records desk squares off the corners — quiet, institutional, not pill-soft. */
+  --radius-sm: 0.1875rem;
+  --radius: 0.25rem;
+  --radius-md: 0.3125rem;
+  --radius-lg: 0.375rem;
+  --radius-xl: 0.5rem;
+  --radius-2xl: 0.625rem;
 }
 
 * {
@@ -123,10 +142,17 @@ html.dark {
 }
 
 body {
-  background: var(--bg);
+  background: var(--paper);
   color: var(--foreground);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* Display face for headings — the instrument-panel personality. */
+.font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.02em;
 }
 
 /* Compact density tightens control heights and table rows. */
@@ -139,43 +165,40 @@ body {
   --control-h: 2.375rem;
 }
 
-/* ------------------------------------------------------------------ */
-/* Severity spine — the signature UI element. A colored left rail that */
-/* repeats on rows, case panels, automod rules, and appeals.          */
-/* ------------------------------------------------------------------ */
-.spine {
-  position: relative;
+/* ================================================================== */
+/* SIGNATURE 1 — the stamp.                                            */
+/* Every record wears a monospace records stamp: an ID and a UTC       */
+/* timestamp set like an official ledger mark. Repeated on cases,      */
+/* appeals, members, and log rows — the product's fingerprint.         */
+/* ================================================================== */
+.stamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 0.125rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  white-space: nowrap;
 }
-.spine::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
+.stamp-accent {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+.stamp .stamp-dot {
   width: 3px;
-  background: var(--spine-color, transparent);
-  border-radius: 0 2px 2px 0;
-}
-.spine-none {
-  --spine-color: var(--sev-none);
-}
-.spine-low {
-  --spine-color: var(--sev-low);
-}
-.spine-medium {
-  --spine-color: var(--sev-medium);
-}
-.spine-high {
-  --spine-color: var(--sev-high);
-}
-.spine-critical {
-  --spine-color: var(--sev-critical);
-}
-.spine-accent {
-  --spine-color: var(--accent);
-}
-.spine-mint {
-  --spine-color: var(--mint);
+  height: 3px;
+  border-radius: 9999px;
+  background: currentColor;
+  opacity: 0.55;
 }
 
 /* Monospace identifier chip — case IDs, Discord IDs, rule tokens. */
@@ -184,6 +207,55 @@ body {
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.01em;
 }
+
+/* ================================================================== */
+/* SIGNATURE 2 — the tick-meter.                                       */
+/* Severity as a measured 5-tick gauge, filled to level and colored    */
+/* only toward the vermilion end. Severity IS a scale, so the mark     */
+/* encodes something true rather than decorating the row.              */
+/* ================================================================== */
+.tickmeter {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  vertical-align: middle;
+}
+.tickmeter .tick {
+  width: 3px;
+  height: 12px;
+  border-radius: 1px;
+  background: var(--border-strong);
+  transition: background-color 0.15s ease;
+}
+.tickmeter .tick.on {
+  background: var(--tick-color, var(--sev-none));
+}
+
+/* ================================================================== */
+/* Docket rail — a thin left gutter on content blocks that carries     */
+/* the current/severity marker. Replaces the old severity spine, kept  */
+/* deliberately quiet so the stamp and tick-meter carry the identity.  */
+/* ================================================================== */
+.rail {
+  position: relative;
+  padding-left: 0.875rem;
+}
+.rail::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.125rem;
+  bottom: 0.125rem;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--rail-color, var(--border-strong));
+}
+.rail-accent { --rail-color: var(--accent); }
+.rail-none { --rail-color: var(--sev-none); }
+.rail-low { --rail-color: var(--sev-low); }
+.rail-medium { --rail-color: var(--sev-medium); }
+.rail-high { --rail-color: var(--sev-high); }
+.rail-critical { --rail-color: var(--sev-critical); }
 
 /* Thin, theme-aware scrollbars. */
 * {
@@ -213,10 +285,10 @@ body {
   from { opacity: 0; transform: translateY(8px) scale(0.98); }
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
-@keyframes pulse-ring {
-  0% { box-shadow: 0 0 0 0 var(--mint-soft); }
-  70% { box-shadow: 0 0 0 6px transparent; }
-  100% { box-shadow: 0 0 0 0 transparent; }
+@keyframes stamp-in {
+  0% { opacity: 0; transform: rotate(-4deg) scale(1.15); }
+  60% { opacity: 1; }
+  100% { opacity: 1; transform: rotate(0) scale(1); }
 }
 
 .animate-fade-in {
@@ -225,8 +297,8 @@ body {
 .animate-toast-in {
   animation: toast-in 0.2s ease-out both;
 }
-.animate-pulse-ring {
-  animation: pulse-ring 2s ease-out infinite;
+.animate-stamp-in {
+  animation: stamp-in 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
 }
 .skeleton {
   background: linear-gradient(
@@ -237,19 +309,39 @@ body {
   );
   background-size: 200% 100%;
   animation: shimmer 1.4s ease-in-out infinite;
-  border-radius: 0.5rem;
+  border-radius: var(--radius);
 }
 
-/* Subtle grid texture for hero / command surfaces. */
+/* Ledger grid — faint ruled texture for hero / records surfaces. */
 .grid-texture {
   background-image:
-    linear-gradient(to right, color-mix(in srgb, var(--border) 60%, transparent) 1px, transparent 1px),
-    linear-gradient(to bottom, color-mix(in srgb, var(--border) 60%, transparent) 1px, transparent 1px);
-  background-size: 44px 44px;
+    linear-gradient(to right, color-mix(in srgb, var(--border) 55%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--border) 55%, transparent) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+/* Ruled-paper horizontal lines — the records-desk motif for empty space. */
+.ruled {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 31px,
+    color-mix(in srgb, var(--border) 45%, transparent) 31px,
+    color-mix(in srgb, var(--border) 45%, transparent) 32px
+  );
 }
 
 /* Focus ring utility used across interactive elements. */
 .focus-ring:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
 }

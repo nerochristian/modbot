@@ -15,7 +15,7 @@ import { StatCard } from '@/components/dashboard/stat-card'
 import { WidgetCustomizer } from '@/components/dashboard/widget-customizer'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge, statusTone, severityTone, severitySpine } from '@/components/ui/badge'
+import { Badge, statusTone, severityTone, severityRail, TickMeter } from '@/components/ui/badge'
 import { Avatar } from '@/components/ui/avatar'
 import { SegmentedControl } from '@/components/ui/segmented'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -101,6 +101,7 @@ export function OverviewClient() {
   return (
     <>
       <PageHeader
+        eyebrow="The desk"
         title="Overview"
         description="A real-time snapshot of your server's health and moderation load."
         actions={
@@ -271,7 +272,7 @@ function Widget({
           </CardHeader>
           <CardContent className="space-y-2 pt-3">
             {data.topRules.map((r) => (
-              <div key={r.id} className={`${severitySpine(r.severity)} flex items-center gap-3 rounded-lg py-1.5 pl-3 pr-1`}>
+              <div key={r.id} className={`${severityRail(r.severity)} flex items-center gap-3 rounded-md py-1.5 pr-1`}>
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-foreground">{r.name}</p>
                   <p className="text-xs text-muted">{TRIGGER_LABELS[r.trigger] ?? r.trigger} · {r.action}</p>
@@ -327,12 +328,13 @@ function Widget({
             ) : (
               <ul className="space-y-1">
                 {data.watchlist.map((m) => (
-                  <li key={m.id} className={`${severitySpine(m.riskLevel)} flex items-center gap-3 rounded-lg py-1.5 pl-3 pr-1`}>
+                  <li key={m.id} className={`${severityRail(m.riskLevel)} flex items-center gap-3 rounded-md py-1.5 pr-1`}>
                     <Avatar name={m.displayName} color={m.avatarColor} size="sm" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-foreground">{m.displayName}</p>
                       <p className="truncate text-xs text-muted">@{m.username}</p>
                     </div>
+                    <TickMeter severity={m.riskLevel} />
                     <Badge tone={severityTone(m.riskLevel)}>{m.riskLevel}</Badge>
                     <span className="w-14 text-right text-sm font-medium tabular-nums text-foreground">
                       {m.warnings} warns

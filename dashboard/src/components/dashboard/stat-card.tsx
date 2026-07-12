@@ -26,11 +26,11 @@ export function StatCard({
     <Card className="p-5">
       <div className="flex items-start justify-between">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-muted">{label}</p>
-          <p className="mt-1.5 text-2xl font-bold tracking-tight text-foreground">{value}</p>
+          <p className="font-mono text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-muted">{label}</p>
+          <p className="mt-2 font-display text-[1.75rem] font-semibold leading-none tracking-tight text-foreground">{value}</p>
         </div>
         {Icon && (
-          <span className="flex size-9 items-center justify-center rounded-xl bg-accent-soft text-accent">
+          <span className="flex size-9 items-center justify-center rounded-md bg-accent-soft text-accent">
             <Icon className="size-4.5" />
           </span>
         )}

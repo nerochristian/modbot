@@ -79,6 +79,7 @@ export function NotificationsClient() {
   return (
     <>
       <PageHeader
+        eyebrow="Inbox"
         title="Notifications"
         description={data ? `${data.unread} unread` : 'Stay on top of what matters.'}
         actions={

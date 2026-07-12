@@ -15,7 +15,7 @@ export function SettingsCard({
   return (
     <Card>
       <div className="border-b border-border p-5">
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
+        <h2 className="font-display text-base font-semibold text-foreground">{title}</h2>
         {description && <p className="mt-1 text-sm text-muted">{description}</p>}
       </div>
       <div className="p-5">{children}</div>

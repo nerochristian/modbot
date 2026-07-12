@@ -121,7 +121,7 @@ async function seedRolesAndCatalog() {
     'app.maintenanceMode': false,
     'security.enforce2fa': false,
     'security.sessionTtlDays': 7,
-    'branding.primaryColor': '#6e56f8',
+    'branding.primaryColor': '#2743e6',
     'guild.name': 'The Nexus',
     'guild.id': '984157203847561216',
   }

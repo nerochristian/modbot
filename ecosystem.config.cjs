@@ -1,3 +1,5 @@
+require('./dashboard/node_modules/dotenv').config({ path: '.env' })
+
 module.exports = {
   apps: [
     {

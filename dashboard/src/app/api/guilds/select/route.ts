@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     const guilds = await getManageableGuilds(user.id, true)
     const guild = guilds.find((item) => item.id === guildId)
     if (!guild) return Response.json({ error: 'You cannot manage this server' }, { status: 403 })
-    if (!guild.installed) return Response.json({ error: 'Add Aegis to this server first' }, { status: 409 })
+    if (!guild.installed) return Response.json({ error: 'Add Docket to this server first' }, { status: 409 })
 
     const cookieStore = await cookies()
     cookieStore.set(SELECTED_GUILD_COOKIE, guild.id, {

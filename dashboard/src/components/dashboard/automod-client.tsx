@@ -5,7 +5,7 @@ import { Plus, Pencil, Trash2, ShieldAlert } from 'lucide-react'
 import { PageHeader } from '@/components/dashboard/page-header'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge, severityTone, severitySpine } from '@/components/ui/badge'
+import { Badge, severityTone, severityRail, TickMeter } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Select } from '@/components/ui/select'
 import { Field, Input } from '@/components/ui/input'
@@ -137,6 +137,7 @@ export function AutomodClient() {
   return (
     <>
       <PageHeader
+        eyebrow="Rulebook"
         title="Automod"
         description={
           data
@@ -182,11 +183,11 @@ export function AutomodClient() {
           {data.data.map((rule) => (
             <Card
               key={rule.id}
-              className={cn(severitySpine(rule.severity), 'relative overflow-hidden', !rule.enabled && 'opacity-60')}
+              className={cn(severityRail(rule.severity), 'relative overflow-hidden', !rule.enabled && 'opacity-60')}
             >
               <div className="space-y-3 p-4 pl-5">
                 <div className="flex items-start justify-between gap-3">
-                  <h3 className="min-w-0 truncate font-semibold text-foreground">{rule.name}</h3>
+                  <h3 className="min-w-0 truncate font-display font-semibold text-foreground">{rule.name}</h3>
                   <Switch
                     checked={rule.enabled}
                     disabled={!canWrite || toggling === rule.id}
@@ -197,6 +198,7 @@ export function AutomodClient() {
 
                 <div className="flex flex-wrap items-center gap-1.5">
                   <Badge tone="neutral">{TRIGGER_LABELS[rule.trigger] ?? rule.trigger}</Badge>
+                  <TickMeter severity={rule.severity} />
                   <Badge tone={severityTone(rule.severity)}>{rule.severity}</Badge>
                 </div>
 

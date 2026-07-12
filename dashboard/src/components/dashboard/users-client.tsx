@@ -79,6 +79,7 @@ export function UsersClient() {
   return (
     <>
       <PageHeader
+        eyebrow="Team roster"
         title="Users"
         description="Manage your team members, roles, and access."
         actions={

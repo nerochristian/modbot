@@ -109,7 +109,7 @@ export function BillingClient() {
 
   return (
     <>
-      <PageHeader title="Server Premium" description="Manage your server's premium plan, payment method, and invoices." />
+      <PageHeader eyebrow="Account" title="Server Premium" description="Manage your server's premium plan, payment method, and invoices." />
 
       {!sub ? (
         <Card>

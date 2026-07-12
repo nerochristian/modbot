@@ -8,7 +8,7 @@ import { SavedViews } from '@/components/dashboard/saved-views'
 import { Card } from '@/components/ui/card'
 import { Table, THead, TBody, TR, TH, TD } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
-import { Badge, statusTone, severityTone, severitySpine } from '@/components/ui/badge'
+import { Badge, statusTone, severityTone, severityRail, TickMeter } from '@/components/ui/badge'
 import { Avatar } from '@/components/ui/avatar'
 import { Select } from '@/components/ui/select'
 import { Field, Input } from '@/components/ui/input'
@@ -181,6 +181,7 @@ export function CasesClient() {
   return (
     <>
       <PageHeader
+        eyebrow="Caseload"
         title="Cases"
         description={
           data
@@ -363,8 +364,8 @@ function renderCell(c: Case, key: string) {
   switch (key) {
     case 'ref':
       return (
-        <span className={severitySpine(c.severity) + ' inline-flex items-center pl-2.5'}>
-          <span className="mono-id text-xs font-medium">#CASE-{String(c.ref).padStart(4, '0')}</span>
+        <span className={severityRail(c.severity) + ' inline-flex items-center'}>
+          <span className="mono-id text-xs font-medium">CASE-{String(c.ref).padStart(4, '0')}</span>
         </span>
       )
     case 'member':
@@ -380,7 +381,12 @@ function renderCell(c: Case, key: string) {
     case 'type':
       return <Badge tone={TYPE_TONE[c.type] ?? 'neutral'}>{cap(c.type)}</Badge>
     case 'severity':
-      return <Badge tone={severityTone(c.severity)}>{c.severity}</Badge>
+      return (
+        <span className="inline-flex items-center gap-2">
+          <TickMeter severity={c.severity} />
+          <Badge tone={severityTone(c.severity)}>{c.severity}</Badge>
+        </span>
+      )
     case 'status':
       return (
         <Badge tone={statusTone(c.status)} dot>

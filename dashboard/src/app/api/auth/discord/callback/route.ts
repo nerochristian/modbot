@@ -7,6 +7,7 @@ import { startSession } from '@/lib/auth-server'
 import { DEFAULT_DASHBOARD_CONFIG } from '@/lib/dashboard-config'
 import {
   discordRedirectUri,
+  dashboardBaseUrl,
   exchangeDiscordCode,
   fetchDiscordUser,
   sealDiscordToken,
@@ -20,7 +21,7 @@ function sameState(actual: string | null, expected: string | undefined): boolean
 }
 
 function authError(request: NextRequest, message: string) {
-  const url = new URL('/login', request.url)
+  const url = new URL('/login', dashboardBaseUrl(request.url))
   url.searchParams.set('error', message)
   return NextResponse.redirect(url)
 }
@@ -91,7 +92,7 @@ export async function GET(request: NextRequest) {
     cookieStore.delete('discord_oauth_state')
     cookieStore.delete('discord_oauth_next')
     cookieStore.delete('aegis_guild')
-    return NextResponse.redirect(new URL(next, request.url))
+    return NextResponse.redirect(new URL(next, dashboardBaseUrl(request.url)))
   } catch (error) {
     console.error('[auth.discord.callback]', error instanceof Error ? error.message : error)
     return authError(request, 'Discord sign-in failed. Please try again.')

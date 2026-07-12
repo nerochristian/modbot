@@ -83,6 +83,7 @@ export function ReportsClient() {
   return (
     <>
       <PageHeader
+        eyebrow="Filings"
         title="Reports"
         description="Generate, schedule, and export detailed reports."
         actions={

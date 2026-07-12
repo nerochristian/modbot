@@ -89,7 +89,7 @@ export async function POST(request: Request) {
     await notify({
       userId: user.id,
       type: 'system',
-      title: 'Welcome to Aegis',
+      title: 'Welcome to Docket',
       body: 'Your account has been created. Explore your dashboard to get started.',
       href: '/dashboard',
     })

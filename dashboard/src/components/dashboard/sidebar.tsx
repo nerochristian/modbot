@@ -35,19 +35,19 @@ export function Sidebar({ permissions }: { permissions: Permission[] }) {
       )}
     >
       <div className={cn('flex h-16 items-center border-b border-border px-4', collapsed && 'justify-center px-0')}>
-        <Link href="/dashboard" className="focus-ring rounded-lg">
+        <Link href="/dashboard" className="focus-ring rounded-md">
           <Logo showWordmark={!collapsed} />
         </Link>
       </div>
 
-      <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
+      <nav className="flex-1 space-y-5 overflow-y-auto px-3 py-5">
         {sections.map((section) => {
           const items = visible.filter((i) => i.section === section)
           if (items.length === 0) return null
           return (
             <div key={section}>
               {!collapsed && (
-                <p className="mb-1.5 px-2 text-xs font-medium uppercase tracking-wide text-muted-2">
+                <p className="mb-2 px-2 font-mono text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-2">
                   {SECTION_LABELS[section]}
                 </p>
               )}
@@ -60,13 +60,19 @@ export function Sidebar({ permissions }: { permissions: Permission[] }) {
                         href={item.href}
                         title={collapsed ? item.label : undefined}
                         className={cn(
-                          'focus-ring group flex items-center gap-3 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
+                          'focus-ring group relative flex items-center gap-3 rounded-md px-2.5 py-2 text-sm font-medium transition-colors',
                           collapsed && 'justify-center px-0',
                           active
                             ? 'bg-accent-soft text-accent'
                             : 'text-muted hover:bg-surface-2 hover:text-foreground',
                         )}
                       >
+                        {active && !collapsed && (
+                          <span
+                            className="absolute inset-y-1.5 left-0 w-0.5 rounded-full bg-accent"
+                            aria-hidden
+                          />
+                        )}
                         <item.icon className="size-4.5 shrink-0" />
                         {!collapsed && <span className="truncate">{item.label}</span>}
                       </Link>
@@ -82,7 +88,7 @@ export function Sidebar({ permissions }: { permissions: Permission[] }) {
       <button
         onClick={toggle}
         className={cn(
-          'focus-ring m-3 flex items-center gap-2 rounded-lg px-2.5 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-foreground',
+          'focus-ring m-3 flex items-center gap-2 rounded-md px-2.5 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface-2 hover:text-foreground',
           collapsed && 'justify-center px-0',
         )}
         aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}

@@ -62,6 +62,7 @@ export function AnalyticsClient() {
   return (
     <>
       <PageHeader
+        eyebrow="Signals"
         title="Analytics"
         description="Deep-dive into moderation load, membership, and automod performance."
         actions={

@@ -32,7 +32,7 @@ export function ActivityClient() {
 
   return (
     <>
-      <PageHeader title="Activity" description="A chronological log of everything happening across your workspace." />
+      <PageHeader eyebrow="Ledger" title="Activity" description="A chronological log of everything happening across your workspace." />
 
       <Card>
         <div className="border-b border-border p-4">

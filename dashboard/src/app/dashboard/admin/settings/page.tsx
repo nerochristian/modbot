@@ -38,7 +38,7 @@ export default function GlobalSettingsAdminPage() {
   async function saveText() {
     setSavingText(true)
     await Promise.all([
-      save('app.name', settings?.['app.name'] ?? 'Aegis'),
+      save('app.name', settings?.['app.name'] ?? 'Docket'),
       save('app.supportEmail', settings?.['app.supportEmail'] ?? ''),
     ])
     setSavingText(false)
@@ -70,7 +70,7 @@ export default function GlobalSettingsAdminPage() {
           <SettingRow label="Application name" description="Shown in the UI and emails.">
             <Input
               className="w-56"
-              value={get('app.name', 'Aegis')}
+              value={get('app.name', 'Docket')}
               onChange={(e) => setSettings({ ...settings, 'app.name': e.target.value })}
             />
           </SettingRow>

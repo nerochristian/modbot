@@ -43,7 +43,7 @@ export function SiteHeader() {
             <a
               key={item.href}
               href={item.href}
-              className="focus-ring rounded-lg px-3 py-2 text-sm font-medium text-muted transition-colors hover:text-foreground"
+              className="focus-ring rounded-md px-3 py-2 text-sm font-medium text-muted transition-colors hover:text-foreground"
             >
               {item.label}
             </a>
@@ -56,11 +56,11 @@ export function SiteHeader() {
             Sign in
           </Link>
           <Link href="/register" className={buttonVariants({ variant: 'primary', size: 'sm' })}>
-            Get started
+            Open console
           </Link>
           <button
             onClick={() => setOpen((v) => !v)}
-            className="focus-ring inline-flex size-9 items-center justify-center rounded-lg border border-border text-foreground md:hidden"
+            className="focus-ring inline-flex size-9 items-center justify-center rounded-md border border-border text-foreground md:hidden"
             aria-label="Toggle menu"
             aria-expanded={open}
           >
