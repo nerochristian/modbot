@@ -23,7 +23,7 @@ model User {
   email            String    @unique
   name             String
   passwordHash     String
-  role             String    @default("viewer") // admin | manager | viewer
+  role             String    @default("viewer") // system-wide role; guild authority lives in GuildMembership
   status           String    @default("active") // active | invited | suspended
   avatarColor      String    @default("#6366f1")
   title            String?
@@ -55,6 +55,36 @@ model User {
   dashboardConfig DashboardConfig?
   subscription    Subscription?
   invoices        Invoice[]
+  guildMemberships GuildMembership[]
+}
+
+model Guild {
+  id          String   @id // Discord guild snowflake
+  name        String
+  icon        String?
+  installed   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  memberships GuildMembership[]
+}
+
+model GuildMembership {
+  id         String   @id @default(cuid())
+  guildId    String
+  guild      Guild    @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       String   @default("viewer") // admin | manager | viewer
+  status     String   @default("active") // invited | active | revoked
+  source     String   @default("discord") // discord | invite | system
+  verifiedAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([guildId, userId])
+  @@index([userId, status])
+  @@index([guildId, role, status])
 }
 
 model Session {
@@ -75,11 +105,13 @@ model Session {
 // data-driven rather than hard-coded.
 model RolePermission {
   id         String  @id @default(cuid())
+  guildId    String  @default("")
   role       String // admin | manager | viewer
   permission String // e.g. "users.write", "billing.read"
   allowed    Boolean @default(true)
 
-  @@unique([role, permission])
+  @@unique([guildId, role, permission])
+  @@index([guildId, role])
 }
 
 // ---------------------------------------------------------------------------
@@ -184,6 +216,7 @@ model Appeal {
 
 model Subscription {
   id                String   @id @default(cuid())
+  guildId           String   @default("")
   userId            String   @unique
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan              String   @default("pro")
@@ -194,10 +227,14 @@ model Subscription {
   currentPeriodEnd  DateTime
   cancelAtPeriodEnd Boolean  @default(false)
   createdAt         DateTime @default(now())
+
+  @@unique([guildId, userId])
+  @@index([guildId])
 }
 
 model Invoice {
   id          String   @id @default(cuid())
+  guildId     String   @default("")
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   number      String   @unique
@@ -207,7 +244,7 @@ model Invoice {
   periodStart DateTime
   periodEnd   DateTime
 
-  @@index([userId])
+  @@index([guildId, userId])
 }
 
 model MetricPoint {
@@ -222,6 +259,7 @@ model MetricPoint {
 
 model ActivityLog {
   id        String   @id @default(cuid())
+  guildId   String   @default("")
   userId    String?
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   actorName String
@@ -230,11 +268,12 @@ model ActivityLog {
   metadata  String?
   createdAt DateTime @default(now())
 
-  @@index([createdAt])
+  @@index([guildId, createdAt])
 }
 
 model AuditLog {
   id        String   @id @default(cuid())
+  guildId   String   @default("")
   userId    String?
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   actorName String
@@ -246,12 +285,13 @@ model AuditLog {
   metadata  String?
   createdAt DateTime @default(now())
 
-  @@index([createdAt])
-  @@index([entity])
+  @@index([guildId, createdAt])
+  @@index([guildId, entity])
 }
 
 model Notification {
   id        String   @id @default(cuid())
+  guildId   String   @default("")
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   type      String   @default("system")
@@ -262,12 +302,13 @@ model Notification {
   href      String?
   createdAt DateTime @default(now())
 
-  @@index([userId])
-  @@index([read])
+  @@index([guildId, userId])
+  @@index([guildId, userId, read])
 }
 
 model Report {
   id          String   @id @default(cuid())
+  guildId     String   @default("")
   name        String
   type        String   @default("revenue")
   status      String   @default("ready")
@@ -277,7 +318,7 @@ model Report {
   createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
   createdAt   DateTime @default(now())
 
-  @@index([createdAt])
+  @@index([guildId, createdAt])
 }
 
 model DashboardConfig {
@@ -290,6 +331,7 @@ model DashboardConfig {
 
 model SavedView {
   id        String   @id @default(cuid())
+  guildId   String   @default("")
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String
@@ -297,7 +339,7 @@ model SavedView {
   state     String
   createdAt DateTime @default(now())
 
-  @@index([userId])
+  @@index([guildId, userId])
 }
 
 model Widget {
