@@ -34,10 +34,15 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html
       lang="en"
       data-density="compact"
-      className={`${displayFont.variable} ${sansFont.variable} ${monoFont.variable} h-full antialiased`}
+      className={`${sansFont.variable} ${monoFont.variable} h-full antialiased`}
       suppressHydrationWarning
     >
       <head>
+        {/* Clash Display — premium geometric display face (Fontshare). */}
+        <link
+          href="https://api.fontshare.com/v2/css?f[]=clash-display@500,600,700&display=swap"
+          rel="stylesheet"
+        />
         <ThemeScript />
       </head>
       <body className="min-h-full">
