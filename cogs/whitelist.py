@@ -319,7 +319,7 @@ class KickAllView(discord.ui.View):
             try:
                 await member.kick(reason="[Whitelist Scan] User not whitelisted")
                 self.kicked_count += 1
-            except:
+            except Exception:
                 failed += 1
                 
         embed = ModEmbed.success(

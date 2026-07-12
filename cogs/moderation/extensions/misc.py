@@ -209,7 +209,7 @@ class MiscCommands:
         
         try:
              gif = await _fetch_addemoji_tutorial_gif_file()
-        except:
+        except Exception:
              gif = None
 
         if gif:

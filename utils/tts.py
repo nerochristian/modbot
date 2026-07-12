@@ -23,7 +23,7 @@ from pathlib import Path
 try:
     from config import Config
     ELEVENLABS_API_KEY = Config.ELEVENLABS_API_KEY
-except:
+except Exception:
     ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
 # ElevenLabs - THE most realistic AI voices

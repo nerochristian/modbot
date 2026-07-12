@@ -554,7 +554,7 @@ class Court(commands.Cog):
                 dm_embed.add_field(name="Reason", value=reason, inline=False)
                 dm_embed.add_field(name="Court Channel", value=court_channel.mention, inline=False)
                 await defendant.send(embed=dm_embed)
-            except:
+            except Exception:
                 pass
             
             await interaction.followup.send(

@@ -140,7 +140,7 @@ class CaseCommands:
             try:
                 # Try standard replace first
                 return datetime.fromisoformat(str(x['timestamp']).replace(' ', 'T'))
-            except:
+            except Exception:
                 return datetime.min
 
         all_logs.sort(key=parse_ts, reverse=True)

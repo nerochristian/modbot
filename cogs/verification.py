@@ -101,10 +101,10 @@ def _generate_captcha_image(code: str) -> Optional[bytes]:
         # Try to use a font, fallback to default
         try:
             font = ImageFont.truetype("arial.ttf", 40)
-        except:
+        except Exception:
             try:
                 font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 40)
-            except:
+            except Exception:
                 font = ImageFont.load_default()
         
         # Draw each character with slight rotation/offset

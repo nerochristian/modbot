@@ -249,7 +249,7 @@ class Roles(commands.Cog):
             try:
                 color = color.strip().replace("#", "")
                 role_color = discord.Color(int(color, 16))
-            except:
+            except Exception:
                 pass # Default
 
         try:
@@ -265,7 +265,7 @@ class Roles(commands.Cog):
             if position is not None and position > 0:
                 try:
                     await role.edit(position=position)
-                except:
+                except Exception:
                     pass # Often fails due to hierarchy
 
             embed = ModEmbed.success("Role Created", f"Successfully created {role.mention}")
@@ -371,7 +371,7 @@ class Roles(commands.Cog):
                 await member.add_roles(role, reason=reason)
                 count += 1
                 await asyncio.sleep(1) # Rate limit protection
-            except:
+            except Exception:
                 pass
                 
         await interaction.followup.send(embed=ModEmbed.success("Complete", f"Added {role.mention} to {count} members."))

@@ -53,7 +53,7 @@ class Utility(commands.Cog):
             # Let's reply to be helpful since they asked for it.
             try:
                 await ctx.reply("❌ This command is restricted to Admins.", delete_after=5)
-            except:
+            except Exception:
                 pass
             return
 
@@ -142,7 +142,7 @@ class Utility(commands.Cog):
                     f"👋 Welcome back {message.author.mention}! You were AFK for **{time_str.strip()}**",
                     delete_after=10
                 )
-            except:
+            except Exception:
                 pass
         
         # Check if any mentioned users are AFK
@@ -156,7 +156,7 @@ class Utility(commands.Cog):
                         f"💤 {user.mention} is currently AFK: **{afk_data['reason']}** (since <t:{since_ts}:R>)",
                         delete_after=15
                     )
-                except:
+                except Exception:
                     pass
     
     # ==================== INFO COMMAND GROUP ====================

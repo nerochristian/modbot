@@ -253,7 +253,7 @@ class HelpView(discord.ui.View):
         if self.message:
             try:
                 await self.message.edit(view=self)
-            except:
+            except Exception:
                 pass
 
     def _build_category_options(self) -> list[discord.SelectOption]:

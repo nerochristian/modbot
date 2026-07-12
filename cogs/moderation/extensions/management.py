@@ -174,7 +174,7 @@ class ManagementCommands:
         
         try:
             user = await self.bot.fetch_user(user_id)
-        except:
+        except Exception:
              return await self._respond(source, embed=ModEmbed.error("Invalid User", "User not found."), ephemeral=True)
 
         try:

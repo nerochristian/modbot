@@ -828,7 +828,7 @@ class Voice(commands.Cog):
             try:
                 await member.move_to(to_channel, reason=f"Mass move by {author}")
                 count += 1
-            except:
+            except Exception:
                 pass
         
         embed = ModEmbed.success("Users Moved", 
@@ -924,7 +924,7 @@ class Voice(commands.Cog):
         if user.voice:
             try:
                 await user.move_to(None, reason=f"Voice banned by {author}: {reason}")
-            except:
+            except Exception:
                 pass
 
         # Apply voice ban to all voice channels in the server
@@ -938,7 +938,7 @@ class Voice(commands.Cog):
                     reason=f"Voice banned by {author}: {reason}"
                 )
                 success += 1
-            except:
+            except Exception:
                 failed += 1
 
         # Also apply to stage channels
@@ -950,7 +950,7 @@ class Voice(commands.Cog):
                     reason=f"Voice banned by {author}: {reason}"
                 )
                 success += 1
-            except:
+            except Exception:
                 failed += 1
 
         # Log to moderation cases if available
@@ -962,7 +962,7 @@ class Voice(commands.Cog):
                 "vcban",
                 reason
             )
-        except:
+        except Exception:
             pass
 
         if failed > 0:
@@ -1048,7 +1048,7 @@ class Voice(commands.Cog):
                 "vcunban",
                 "Voice ban removed"
             )
-        except:
+        except Exception:
             pass
 
         user_mention = target_user.mention if target_user else f"User ID: {target_id}"

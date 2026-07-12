@@ -775,7 +775,7 @@ class PrefixCommands(commands.Cog):
             user = await self.bot.fetch_user(user_id)
             await user.send(message)
             await ctx.send(embed=ModEmbed.success("📧 Sent", f"DMed {user}."))
-        except:
+        except Exception:
             await ctx.send(embed=ModEmbed.error("Failed", "Could not DM user."))
 
     # ═══════════════════════════════════════════════════════════════
@@ -790,7 +790,7 @@ class PrefixCommands(commands.Cog):
             unit = time[-1].lower()
             amount = int(time[:-1])
             seconds = amount * units.get(unit, 60)
-        except:
+        except Exception:
             return await ctx.send(embed=ModEmbed.error("Invalid Time", "Use format like `10m`, `2h`, `1d`"))
         
         await ctx.send(embed=ModEmbed.success("⏰ Reminder Set", f"I'll remind you in {time}"))
@@ -798,7 +798,7 @@ class PrefixCommands(commands.Cog):
         
         try:
             await ctx.author.send(f"⏰ **Reminder:** {reminder}")
-        except:
+        except Exception:
             await ctx.send(f"{ctx.author.mention} ⏰ **Reminder:** {reminder}")
 
     @commands.command(name="emojis", aliases=["emojilist", "allemojis"])
@@ -879,7 +879,7 @@ class PrefixCommands(commands.Cog):
                 embed.add_field(name="Content", value=message.content[:1024] or "*No content*")
                 embed.set_footer(text=message.created_at.strftime("%Y-%m-%d %H:%M:%S"))
                 await ctx.send(embed=embed)
-        except:
+        except Exception:
             await ctx.send(embed=ModEmbed.error("Error", "Could not fetch first message."))
 
     @commands.command(name="roleall", aliases=["giveroleall"])
@@ -897,7 +897,7 @@ class PrefixCommands(commands.Cog):
             try:
                 await member.add_roles(role)
                 success += 1
-            except:
+            except Exception:
                 failed += 1
         
         await msg.edit(embed=ModEmbed.success(
@@ -916,7 +916,7 @@ class PrefixCommands(commands.Cog):
             try:
                 await member.remove_roles(role)
                 success += 1
-            except:
+            except Exception:
                 pass
         
         await msg.edit(embed=ModEmbed.success("✅ Complete", f"Removed {role.mention} from **{success}** members."))
@@ -930,7 +930,7 @@ class PrefixCommands(commands.Cog):
                 color = "#" + color
             await role.edit(color=discord.Color(int(color[1:], 16)))
             await ctx.send(embed=ModEmbed.success("🎨 Color Changed", f"{role.mention} color set to `{color}`"))
-        except:
+        except Exception:
             await ctx.send(embed=ModEmbed.error("Invalid Color", "Use hex format like `#FF0000`"))
 
     @commands.command(name="hideall", aliases=["hidechannels"])
@@ -942,7 +942,7 @@ class PrefixCommands(commands.Cog):
             try:
                 await channel.set_permissions(ctx.guild.default_role, view_channel=False)
                 count += 1
-            except:
+            except Exception:
                 pass
         
         await ctx.send(embed=ModEmbed.success("👻 Channels Hidden", f"Hid **{count}** channels from @everyone"))
@@ -956,7 +956,7 @@ class PrefixCommands(commands.Cog):
             try:
                 await channel.set_permissions(ctx.guild.default_role, view_channel=True)
                 count += 1
-            except:
+            except Exception:
                 pass
         
         await ctx.send(embed=ModEmbed.success("👁️ Channels Visible", f"Unhid **{count}** channels for @everyone"))
@@ -1019,7 +1019,7 @@ class PrefixCommands(commands.Cog):
             embed = discord.Embed(title=color, color=color_int)
             embed.set_thumbnail(url=f"https://singlecolorimage.com/get/{color[1:]}/100x100")
             await ctx.send(embed=embed)
-        except:
+        except Exception:
             await ctx.send(embed=ModEmbed.error("Invalid Color", "Use hex format like `#FF0000`"))
 
 
