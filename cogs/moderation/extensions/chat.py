@@ -260,15 +260,55 @@ class ChatCommands:
         channel = channel or (source.channel if isinstance(source, discord.Interaction) else source.channel)
         user = source.user if isinstance(source, discord.Interaction) else source.author
 
+        if not isinstance(channel, discord.TextChannel):
+            return await self._respond(
+                source,
+                embed=ModEmbed.error("Failed", "Only standard text channels can be nuked."),
+                ephemeral=True,
+            )
+        if not (
+            is_bot_owner_id(user.id)
+            or user.id == channel.guild.owner_id
+            or user.guild_permissions.manage_channels
+        ):
+            return await self._respond(
+                source,
+                embed=ModEmbed.error("Permission Denied", "You need Manage Channels to nuke a channel."),
+                ephemeral=True,
+            )
+
+        bot_member = channel.guild.me
+        permissions = channel.permissions_for(bot_member) if bot_member is not None else None
+        if permissions is None or not permissions.manage_channels:
+            return await self._respond(
+                source,
+                embed=ModEmbed.error("Failed", "I need Manage Channels in this channel."),
+                ephemeral=True,
+            )
+
         audit_reason = f"Nuked by {user}: {reason}"
+        new_channel: Optional[discord.TextChannel] = None
 
         try:
             position = channel.position
             new_channel = await channel.clone(reason=audit_reason)
-            await new_channel.edit(position=position)
             await channel.delete(reason=audit_reason)
-        except discord.Forbidden:
-             return await self._respond(source, embed=ModEmbed.error("Failed", "I don't have permission to clone/delete channels."), ephemeral=True)
+        except (discord.Forbidden, discord.HTTPException) as exc:
+            if new_channel is not None:
+                try:
+                    await new_channel.delete(reason="Cleaning up failed channel nuke")
+                except discord.HTTPException:
+                    pass
+            return await self._respond(
+                source,
+                embed=ModEmbed.error("Failed", f"I could not clone and delete the channel: {exc}"),
+                ephemeral=True,
+            )
+
+        try:
+            await new_channel.edit(position=position, reason=audit_reason)
+        except discord.HTTPException:
+            pass
         
         embed = discord.Embed(
             title="💥 Channel Nuked",
@@ -621,6 +661,7 @@ class ChatCommands:
         await self._unlockdown_logic(interaction, reason)
 
     @commands.command(name="nuke")
+    @commands.has_permissions(manage_channels=True)
     @is_admin()
     async def nuke(self, ctx: commands.Context, channel: Optional[discord.TextChannel] = None, *, reason: str = "No reason provided"):
         await self._nuke_logic(ctx, channel, reason)
