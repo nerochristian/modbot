@@ -58,6 +58,7 @@ DATABASE_API = {
     'get_banned_profile',
     'get_blacklist',
     'get_case',
+    'get_cases_by_moderator',
     'get_connection',
     'get_court_evidence',
     'get_court_session',
