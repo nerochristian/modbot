@@ -121,7 +121,7 @@ export default function LandingPage() {
       {/* ============================================================ */}
       {/* ACT II — the pipeline. A real 3-step sequence, numbered.     */}
       {/* ============================================================ */}
-      <section id="pipeline" className="mx-auto max-w-6xl scroll-mt-20 px-6 py-24">
+      <section id="pipeline" className="mx-auto max-w-6xl scroll-mt-20 px-6 py-20">
         <div className="max-w-2xl">
           <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">
             Threat to record, in one pass
@@ -146,7 +146,7 @@ export default function LandingPage() {
       {/* ACT III — the record. ONE case file, in full.               */}
       {/* ============================================================ */}
       <section className="border-y border-border bg-surface">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-24 lg:grid-cols-2">
+        <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 lg:grid-cols-2">
           <div>
             <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">
               What’s left behind
@@ -209,7 +209,7 @@ export default function LandingPage() {
       </section>
 
       {/* Proof — filed quotes with the docket rail. */}
-      <section id="testimonials" className="mx-auto max-w-6xl px-6 py-24">
+      <section id="testimonials" className="mx-auto max-w-6xl px-6 py-20">
         <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-muted-2">
           On the record
         </p>
