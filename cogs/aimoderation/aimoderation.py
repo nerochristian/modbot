@@ -325,6 +325,20 @@ class AIModeration(commands.Cog):
         r")",
         re.IGNORECASE,
     )
+    _HISTORY_LOOKUP_RE: ClassVar[re.Pattern] = re.compile(
+        r"(?:"
+        # "show/pull/get ... actions/history/record/modlogs/rap sheet ..."
+        r"\b(?:what(?:'s|\s+is|\s+are)|show|list|check|view|get|pull|fetch|display|give\s+me|see|look\s+up|lookup)\b"
+        r".{0,60}\b(?:actions?|history|records?|modlogs?|mod\s+logs?|rap\s+sheet|dossier|track\s+record|priors?|"
+        r"case\s+history|prior\s+actions?|past\s+actions?|infractions?|offen[cs]es?)\b|"
+        # "actions/history/record ... for/on/of @user"
+        r"\b(?:actions?|history|records?|modlogs?|mod\s+logs?|rap\s+sheet|dossier|track\s+record|priors?|"
+        r"case\s+history|infractions?|offen[cs]es?)\b.{0,40}\b(?:for|on|of|against)\b|"
+        # bare "modlogs @user" / "history @user"
+        r"^(?:modlogs?|mod\s+logs?|history|rap\s+sheet)\b"
+        r")",
+        re.IGNORECASE,
+    )
     _WARNING_ACTION_RE: ClassVar[re.Pattern] = re.compile(
         r"^(?:"
         r"warn\b|"
@@ -606,6 +620,13 @@ class AIModeration(commands.Cog):
         if self._looks_like_warning_action(low):
             return False
         return bool(self._WARNING_LOOKUP_RE.search(low))
+
+    def _looks_like_history_lookup(self, content: str) -> bool:
+        """Detect 'show actions/history/record/modlogs for @user' style requests."""
+        low = self._normalize_chat_text(self._strip_action_prefix(content))
+        if self._looks_like_warning_action(low):
+            return False
+        return bool(self._HISTORY_LOOKUP_RE.search(low))
 
     def _looks_like_advanced_action_request(self, content: str) -> bool:
         low = self._normalize_chat_text(self._strip_action_prefix(content))
