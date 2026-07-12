@@ -248,6 +248,9 @@ _POSTGRES_SERIAL_ID_TABLES = {
     "voice_roles",
     "quarantines",
     "dashboard_audit",
+    "dashboard_moderation_commands",
+    "dashboard_appeals",
+    "dashboard_reports",
 }
 
 
@@ -978,6 +981,14 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
             ("giveaways", "reward", "TEXT"),
             # quarantines
             ("quarantines", "started_at", "TIMESTAMP"),
+            # dashboard moderation case metadata
+            ("cases", "severity", "TEXT DEFAULT 'low'"),
+            ("cases", "status", "TEXT DEFAULT 'open'"),
+            ("cases", "channel", "TEXT"),
+            ("cases", "expires_at", "TIMESTAMP"),
+            ("cases", "execution_status", "TEXT DEFAULT 'succeeded'"),
+            ("cases", "dashboard_command_id", "INTEGER"),
+            ("cases", "updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
         ]
         
         for table, column, col_type in migrations:
@@ -1026,7 +1037,14 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
                         reason TEXT,
                         duration TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        active BOOLEAN DEFAULT 1
+                        active BOOLEAN DEFAULT 1,
+                        severity TEXT DEFAULT 'low',
+                        status TEXT DEFAULT 'open',
+                        channel TEXT,
+                        expires_at TIMESTAMP,
+                        execution_status TEXT DEFAULT 'succeeded',
+                        dashboard_command_id INTEGER,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
                 
@@ -1338,6 +1356,63 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
                         action TEXT NOT NULL,
                         target TEXT NOT NULL,
                         changes TEXT DEFAULT '{}',
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS dashboard_moderation_commands (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        idempotency_key TEXT NOT NULL,
+                        guild_id INTEGER NOT NULL,
+                        requested_by_id TEXT NOT NULL,
+                        requested_by_discord_id INTEGER,
+                        requested_by_name TEXT NOT NULL,
+                        target_user_id INTEGER NOT NULL,
+                        action TEXT NOT NULL,
+                        reason TEXT NOT NULL,
+                        duration_seconds INTEGER,
+                        status TEXT NOT NULL DEFAULT 'pending',
+                        case_id INTEGER,
+                        reversal_of_case_id INTEGER,
+                        error_code TEXT,
+                        error_message TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        completed_at TIMESTAMP,
+                        UNIQUE (guild_id, idempotency_key)
+                    )
+                """)
+
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS dashboard_appeals (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        guild_id INTEGER NOT NULL,
+                        appeal_number INTEGER NOT NULL,
+                        case_id INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        message TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'pending',
+                        decision TEXT,
+                        reviewed_by_id TEXT,
+                        reviewed_by_name TEXT,
+                        submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        reviewed_at TIMESTAMP,
+                        UNIQUE (guild_id, appeal_number)
+                    )
+                """)
+
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS dashboard_reports (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        guild_id INTEGER NOT NULL,
+                        requested_by_id TEXT NOT NULL,
+                        requested_by_name TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        type TEXT NOT NULL,
+                        format TEXT NOT NULL,
+                        params TEXT NOT NULL DEFAULT '{}',
+                        status TEXT NOT NULL DEFAULT 'ready',
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
                 """)

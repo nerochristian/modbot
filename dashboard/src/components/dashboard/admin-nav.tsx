@@ -2,15 +2,12 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutGrid, ShieldCheck, ToggleRight, Blocks, SlidersHorizontal, ScrollText, Megaphone, Users2 } from 'lucide-react'
+import { LayoutGrid, ShieldCheck, ScrollText, Megaphone, Users2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const ITEMS = [
   { label: 'Overview', href: '/dashboard/admin', icon: LayoutGrid, exact: true },
   { label: 'Roles & permissions', href: '/dashboard/admin/roles', icon: ShieldCheck },
-  { label: 'Feature flags', href: '/dashboard/admin/features', icon: ToggleRight },
-  { label: 'Widgets', href: '/dashboard/admin/widgets', icon: Blocks },
-  { label: 'Global settings', href: '/dashboard/admin/settings', icon: SlidersHorizontal },
   { label: 'Audit log', href: '/dashboard/admin/audit', icon: ScrollText },
   { label: 'Broadcast', href: '/dashboard/admin/broadcast', icon: Megaphone },
   { label: 'Users', href: '/dashboard/users', icon: Users2 },

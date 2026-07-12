@@ -38,14 +38,9 @@ export const PERMISSIONS = [
   'activity.read',
   'audit.read',
   'settings.read',
-  'settings.write',
   'config.write',
   'admin.access',
-  'admin.users.manage',
   'admin.roles.manage',
-  'admin.features.manage',
-  'admin.settings.manage',
-  'admin.widgets.manage',
 ] as const
 export type Permission = (typeof PERMISSIONS)[number]
 
@@ -59,16 +54,12 @@ export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] =
   { label: 'Reports', permissions: ['reports.read', 'reports.write'] },
   { label: 'Premium', permissions: ['billing.read', 'billing.write'] },
   { label: 'Activity & Audit', permissions: ['notifications.read', 'activity.read', 'audit.read'] },
-  { label: 'Settings', permissions: ['settings.read', 'settings.write'] },
+  { label: 'Settings', permissions: ['settings.read'] },
   {
     label: 'Administration',
     permissions: [
       'admin.access',
-      'admin.users.manage',
       'admin.roles.manage',
-      'admin.features.manage',
-      'admin.settings.manage',
-      'admin.widgets.manage',
     ],
   },
 ]
@@ -111,7 +102,6 @@ export const DEFAULT_ROLE_MATRIX: Record<Role, Permission[]> = {
     'activity.read',
     'audit.read',
     'settings.read',
-    'settings.write',
     'config.write',
   ],
   viewer: READ_ONLY,
@@ -124,7 +114,7 @@ export const ROLE_LABELS: Record<Role, string> = {
 }
 
 export const ROLE_DESCRIPTIONS: Record<Role, string> = {
-  admin: 'Full access, including team management, roles, automod config, and global settings.',
+  admin: 'Full access to this server workspace, including team roles and moderation configuration.',
   manager: 'Take moderation actions, manage cases, automod, appeals, and members. No admin controls.',
   viewer: 'Read-only access to the queue, cases, members, and analytics.',
 }

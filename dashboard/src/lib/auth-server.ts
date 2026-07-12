@@ -35,10 +35,7 @@ export async function startSession(user: {
 
   const token = await signSession({
     sub: user.id,
-    role: user.role,
     jti,
-    name: user.name,
-    email: user.email,
   })
 
   const cookieStore = await cookies()

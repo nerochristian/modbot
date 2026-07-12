@@ -21,10 +21,22 @@ export function secureCookies(): boolean {
 
 export type SessionPayload = {
   sub: string // user id
-  role: string
   jti: string
-  name: string
-  email: string
+}
+
+const RETURN_PATH_BASE = 'https://dashboard.invalid'
+
+/** Accept only an application-local path. Never pass user input directly to new URL(). */
+export function safeReturnPath(value: string | null | undefined, fallback = '/servers'): string {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return fallback
+  if (value.includes('\\') || /[\u0000-\u001f\u007f]/.test(value)) return fallback
+  try {
+    const parsed = new URL(value, RETURN_PATH_BASE)
+    if (parsed.origin !== RETURN_PATH_BASE || !parsed.pathname.startsWith('/')) return fallback
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`
+  } catch {
+    return fallback
+  }
 }
 
 function secret(): Uint8Array {
@@ -52,18 +64,14 @@ export async function signSession(payload: SessionPayload): Promise<string> {
 
 export async function verifySession(token: string): Promise<SessionPayload | null> {
   try {
-    const { payload } = await jwtVerify(token, secret())
+    const { payload } = await jwtVerify(token, secret(), { algorithms: ['HS256'] })
     if (
       typeof payload.sub === 'string' &&
-      typeof payload.jti === 'string' &&
-      typeof payload.role === 'string'
+      typeof payload.jti === 'string'
     ) {
       return {
         sub: payload.sub,
-        role: payload.role as string,
         jti: payload.jti as string,
-        name: (payload.name as string) ?? '',
-        email: (payload.email as string) ?? '',
       }
     }
     return null
