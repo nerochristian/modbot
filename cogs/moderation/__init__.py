@@ -53,11 +53,23 @@ class Moderation(
         cmd("unlockdown", "Unlock all channels", self.unlockdown_slash)
         cmd("nuke", "Clone and delete channel", self.nuke_slash)
         cmd("purge", "Bulk delete messages", self.purge_slash)
-        cmd("purgebots", "Delete bot messages", self.purgebots_slash)
-        cmd("purgecontains", "Delete messages containing text", self.purgecontains_slash)
-        cmd("purgeembeds", "Delete messages with embeds", self.purgeembeds_slash)
-        cmd("purgeimages", "Delete messages with images", self.purgeimages_slash)
-        cmd("purgelinks", "Delete messages with links", self.purgelinks_slash)
+
+        cleanup_group = app_commands.Group(
+            name="cleanup",
+            description="Specialized message cleanup commands",
+        )
+        for name, description, callback in (
+            ("bots", "Delete bot messages", self.purgebots_slash),
+            ("contains", "Delete messages containing text", self.purgecontains_slash),
+            ("embeds", "Delete messages with embeds", self.purgeembeds_slash),
+            ("images", "Delete messages with images", self.purgeimages_slash),
+            ("links", "Delete messages with links", self.purgelinks_slash),
+        ):
+            cleanup_group.add_command(
+                app_commands.Command(name=name, description=description, callback=callback)
+            )
+        self._slash_commands.append(cleanup_group)
+        self.bot.tree.add_command(cleanup_group)
 
         # Whitelist slash commands are owned by the dedicated cogs.whitelist cog
         # (see cogs/whitelist.py). Registering a second "whitelist" group here
