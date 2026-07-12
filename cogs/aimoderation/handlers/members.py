@@ -165,6 +165,136 @@ async def handle_get_warnings(ctx: ToolContext) -> ToolResult:
 
 
 @ToolRegistry.register(
+    ToolType.GET_HISTORY,
+    display_name="Get History",
+    color=discord.Color.blue(),
+    emoji="History",
+    required_permission="moderate_members",
+    category="members",
+)
+async def handle_get_history(ctx: ToolContext) -> ToolResult:
+    """
+    Full moderation record for a member — the @mention analogue of !modlogs.
+    Merges cases, warnings, and notes into one newest-first timeline so a mod
+    can `@bot show actions for @user` and see everything on record at once.
+    """
+    from datetime import datetime, timezone
+
+    from utils.embeds import Colors
+
+    target = await ctx.resolve_target()
+    if not target:
+        return ToolResult.fail("Could not resolve target member.")
+
+    db = getattr(ctx.cog.bot, "db", None)
+    if not db:
+        return ToolResult.fail("Database not available.")
+
+    try:
+        cases = await db.get_user_cases(ctx.guild.id, target.id)
+        warnings = await db.get_warnings(ctx.guild.id, target.id)
+        notes = await db.get_notes(ctx.guild.id, target.id)
+    except Exception:
+        logger.exception("Failed to fetch moderation history")
+        return ToolResult.fail("Database error while fetching history.")
+
+    entries: list[dict] = []
+    for case in cases or []:
+        entries.append({
+            "type": "case",
+            "action": str(case.get("action") or "Action"),
+            "reason": case.get("reason"),
+            "mod_id": case.get("moderator_id"),
+            "timestamp": str(case.get("created_at") or ""),
+            "id": case.get("case_number"),
+        })
+    for warning in warnings or []:
+        entries.append({
+            "type": "warn",
+            "action": "Warning",
+            "reason": warning.get("reason"),
+            "mod_id": warning.get("moderator_id"),
+            "timestamp": str(warning.get("created_at") or ""),
+            "id": warning.get("id"),
+        })
+    for note in notes or []:
+        entries.append({
+            "type": "note",
+            "action": "Note",
+            "reason": note.get("note"),
+            "mod_id": note.get("moderator_id"),
+            "timestamp": str(note.get("created_at") or ""),
+            "id": note.get("id"),
+        })
+
+    if not entries:
+        embed = discord.Embed(
+            title=f"History for {target.display_name}",
+            description=f"{target.mention} has a clean record — no actions on file.",
+            color=discord.Color.green(),
+        )
+        embed.set_thumbnail(url=target.display_avatar.url)
+        return ToolResult.ok(
+            f"{target.display_name} has no moderation history.", embed=embed, use_v2=False
+        )
+
+    def parse_ts(entry: dict) -> datetime:
+        try:
+            return datetime.fromisoformat(str(entry["timestamp"]).replace(" ", "T"))
+        except Exception:
+            return datetime.min
+
+    entries.sort(key=parse_ts, reverse=True)
+
+    def emoji_for(entry: dict) -> str:
+        if entry["type"] == "warn":
+            return "⚠️"
+        if entry["type"] == "note":
+            return "📝"
+        action = entry["action"].lower()
+        if "ban" in action:
+            return "🔨"
+        if "kick" in action:
+            return "👢"
+        if "mute" in action or "timeout" in action:
+            return "🔇"
+        return "🛡️"
+
+    lines: list[str] = []
+    for entry in entries[:15]:
+        ts = parse_ts(entry)
+        when = f"<t:{int(ts.timestamp())}:R>" if ts != datetime.min else "unknown time"
+        mod = ctx.guild.get_member(entry["mod_id"]) if entry["mod_id"] else None
+        mod_name = mod.display_name if mod else (f"ID:{entry['mod_id']}" if entry["mod_id"] else "automod")
+        reason = str(entry["reason"] or "No reason").strip()
+        if len(reason) > 60:
+            reason = reason[:57] + "..."
+        label = entry["action"].title()
+        ref = f" (#{entry['id']})" if entry["type"] == "case" and entry["id"] else ""
+        lines.append(f"{emoji_for(entry)} **{label}**{ref} • {when} • *{reason}* • by **{mod_name}**")
+
+    embed = discord.Embed(
+        title=f"Moderation record for {target.display_name}",
+        description="\n".join(lines),
+        color=Colors.MOD,
+        timestamp=datetime.now(timezone.utc),
+    )
+    embed.set_thumbnail(url=target.display_avatar.url)
+    summary = (
+        f"{len(cases or [])} case(s) · {len(warnings or [])} warning(s) · {len(notes or [])} note(s)"
+    )
+    if len(entries) > 15:
+        embed.set_footer(text=f"Showing recent 15 of {len(entries)} entries · {summary}")
+    else:
+        embed.set_footer(text=summary)
+    return ToolResult.ok(
+        f"Found {len(entries)} record entr{'y' if len(entries) == 1 else 'ies'} for {target.display_name}.",
+        embed=embed,
+        use_v2=False,
+    )
+
+
+@ToolRegistry.register(
     ToolType.TIMEOUT,
     display_name="Timeout Member",
     color=discord.Color.orange(),
