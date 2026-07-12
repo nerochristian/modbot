@@ -446,6 +446,13 @@ body {
   0% { background-color: var(--threat-soft); }
   100% { background-color: transparent; }
 }
+/* Floating glass status widgets drift gently. */
+@keyframes wire-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+.wire-float { animation: wire-float 5s ease-in-out infinite; }
+.wire-float-slow { animation: wire-float 6.5s ease-in-out infinite; }
 /* The counter's live blip. */
 @keyframes wire-blip {
   0%, 100% { opacity: 1; }
