@@ -710,28 +710,5 @@ class Moderation(
                     )
 
 
-# Helper Class for whitelist group if not in management.py
-class WhitelistGroup(app_commands.Group):
-    def __init__(self, cog: Moderation):
-        super().__init__(name="whitelist", description="Manage server whitelist")
-        self.cog = cog
-
-    @app_commands.command(name="enable", description="Enable whitelist mode (lock server)")
-    async def enable(self, interaction: discord.Interaction):
-        await self.cog._toggle_whitelist_mode(interaction, True)
-
-    @app_commands.command(name="disable", description="Disable whitelist mode")
-    async def disable(self, interaction: discord.Interaction):
-        await self.cog._toggle_whitelist_mode(interaction, False)
-
-    @app_commands.command(name="add", description="Add user to whitelist")
-    async def add(self, interaction: discord.Interaction, user: discord.Member):
-        await self.cog._whitelist_logic(interaction, user)
-
-    @app_commands.command(name="remove", description="Remove user from whitelist")
-    async def remove(self, interaction: discord.Interaction, user: discord.Member):
-        await self.cog._unwhitelist_logic(interaction, user)
-
-
 async def setup(bot: commands.Bot):
     await bot.add_cog(Moderation(bot))
