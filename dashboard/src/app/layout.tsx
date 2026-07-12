@@ -1,27 +1,22 @@
 import type { Metadata } from 'next'
-import { Space_Grotesk, IBM_Plex_Sans, IBM_Plex_Mono } from 'next/font/google'
+import { Inter, JetBrains_Mono } from 'next/font/google'
 import './globals.css'
 import { ThemeScript } from '@/components/theme-script'
 import { ToastProvider } from '@/components/ui/toast'
 
-// Display: Space Grotesk — instrument-panel titles and figures.
-const displayFont = Space_Grotesk({
-  variable: '--font-display',
-  subsets: ['latin'],
-  weight: ['500', '600', '700'],
-})
-// Body / UI: IBM Plex Sans — institutional voice that holds up in dense tables.
-const sansFont = IBM_Plex_Sans({
+// Body / UI: Inter — clean, legible, holds up in dense tables.
+const sansFont = Inter({
   variable: '--font-sans-custom',
   subsets: ['latin'],
-  weight: ['400', '500', '600'],
+  weight: ['400', '500', '600', '700'],
 })
-// Data: IBM Plex Mono — case IDs, Discord IDs, timestamps; carries the stamp signature.
-const monoFont = IBM_Plex_Mono({
+// Data: JetBrains Mono — case IDs, Discord IDs, timestamps, command surfaces.
+const monoFont = JetBrains_Mono({
   variable: '--font-mono-custom',
   subsets: ['latin'],
   weight: ['400', '500', '600'],
 })
+// Display: Clash Display — loaded via Fontshare <link> below (not on next/font).
 
 const appName = process.env.NEXT_PUBLIC_APP_NAME ?? 'Docket'
 
