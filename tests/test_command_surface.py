@@ -9,6 +9,7 @@ from discord.ext import commands
 
 from cogs.moderation import Moderation
 from cogs.roles import Roles
+from cogs.utility import Utility
 
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -86,3 +87,10 @@ def test_nuke_deletes_original_before_best_effort_reposition() -> None:
     source = (COGS / "moderation" / "extensions" / "chat.py").read_text(encoding="utf-8-sig")
     function = source[source.index("    async def _nuke_logic"):source.index("    async def _glock_logic")]
     assert function.index("await channel.delete") < function.index("await new_channel.edit")
+
+
+def test_dashboard_is_a_top_level_slash_command() -> None:
+    command = Utility.dashboard
+    assert isinstance(command, app_commands.Command)
+    assert command.name == "dashboard"
+    assert command.parameters == []

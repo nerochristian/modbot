@@ -9,7 +9,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional, Literal
 import random
 import re
+import os
 from collections import defaultdict
+from urllib.parse import urlparse
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_mod, is_admin
@@ -23,6 +25,42 @@ class Utility(commands.Cog):
 
     # ==================== UTILITY GROUP ====================
     utility_group = app_commands.Group(name="utility", description="🛠️ Utility commands")
+
+    @app_commands.command(name="dashboard", description="Open the ModBot dashboard")
+    async def dashboard(self, interaction: discord.Interaction) -> None:
+        raw_url = (
+            os.getenv("FRONTEND_PUBLIC_URL")
+            or os.getenv("DASHBOARD_PUBLIC_URL")
+            or ""
+        ).strip().rstrip("/")
+        parsed = urlparse(raw_url)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            await interaction.response.send_message(
+                embed=ModEmbed.error(
+                    "Dashboard Unavailable",
+                    "The dashboard public URL has not been configured yet.",
+                ),
+                ephemeral=True,
+            )
+            return
+
+        view = discord.ui.View(timeout=None)
+        view.add_item(
+            discord.ui.Button(
+                label="Open Dashboard",
+                style=discord.ButtonStyle.link,
+                url=raw_url,
+                emoji="🌐",
+            )
+        )
+        await interaction.response.send_message(
+            embed=ModEmbed.info(
+                "ModBot Dashboard",
+                "Open the dashboard to configure this server and manage ModBot.",
+            ),
+            view=view,
+            ephemeral=True,
+        )
 
     # ==================== FUN / MIMIC ====================
 
