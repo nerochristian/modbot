@@ -15,7 +15,6 @@ from utils.logging import send_log_embed
 import asyncio
 import io
 import json
-import aiosqlite
 import logging
 
 logger = logging.getLogger("ModBot.Court")
