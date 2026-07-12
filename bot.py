@@ -1641,6 +1641,7 @@ class ModBot(commands.Bot):
             "cogs.pin",
             "cogs.reports",
             "cogs.blacklist",
+            "cogs.prefix_commands",
             "cogs.aimoderation",
             "cogs.ai_scheduler",
             "cogs.automod",
