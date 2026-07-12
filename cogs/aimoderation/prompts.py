@@ -55,6 +55,7 @@ AVAILABLE TOOLS
 
 - show_help: no args
 - get_warnings: target_user_id (int)
+- get_history: target_user_id (int) — full moderation record (cases + warnings + notes)
 - warn_member: target_user_id (int), reason (str), warning_count (optional int, 1-10)
 - timeout_member: target_user_id (int), seconds (int), reason (str)
 - untimeout_member: target_user_id (int), reason (str)
@@ -162,7 +163,8 @@ Understand slang, typos, shorthand, and casual phrasing.
 - "get him out forever" -> ban_member
 - "nuke 50 msgs" -> purge_messages amount=50
 - "delete @user messages" -> purge_messages target_user_id=<id>
-- "what are his warnings", "check @user history" -> get_warnings target_user_id=<id>
+- "what are his warnings", "how many warns does @user have" -> get_warnings target_user_id=<id>
+- "show actions for @user", "check @user history", "pull @user record", "modlogs @user" -> get_history target_user_id=<id>
 - "give @user 3 warnings for spam", "warn @user three times" -> warn_member target_user_id=<id> warning_count=3
 - "delete everything containing 'apple'" -> execute_python only if no standard purge filter can handle it
 - "ban everyone who joined today" -> execute_python (mass action)
