@@ -117,9 +117,9 @@
   --color-sev-high: var(--sev-high);
   --color-sev-critical: var(--sev-critical);
 
-  --font-display: var(--font-display), "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
-  --font-sans: var(--font-sans-custom), "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-mono-custom), "IBM Plex Mono", ui-monospace, monospace;
+  --font-display: "Clash Display", var(--font-sans-custom), "Space Grotesk", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-sans-custom), "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-custom), "JetBrains Mono", ui-monospace, monospace;
 
   /* Records desk squares off the corners — quiet, institutional, not pill-soft. */
   --radius-sm: 0.1875rem;
