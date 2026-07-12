@@ -61,11 +61,6 @@ def _get_modbot_token() -> Optional[str]:
     return os.getenv("MODBOT_DISCORD_TOKEN") or os.getenv("DISCORD_TOKEN")
 
 
-def _get_lifesim_token() -> Optional[str]:
-    """Resolve LifeSimBot token with explicit override support."""
-    return os.getenv("LIFESIM_DISCORD_TOKEN")
-
-
 def _get_groupbot_token() -> Optional[str]:
     """Resolve the extracted group bot token without reusing ModBot's token."""
     return os.getenv("GROUPBOT_DISCORD_TOKEN") or os.getenv("GC_DISCORD_TOKEN")
