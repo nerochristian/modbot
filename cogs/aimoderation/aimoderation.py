@@ -606,6 +606,7 @@ class AIModeration(commands.Cog):
         return bool(
             self._looks_like_warning_action(low)
             or self._looks_like_warning_lookup(low)
+            or self._looks_like_history_lookup(low)
             or
             self._MOD_REQUEST_RE.match(low)
             or self._CONDITIONAL_ACTION_RE.match(low)
@@ -631,6 +632,8 @@ class AIModeration(commands.Cog):
     def _looks_like_advanced_action_request(self, content: str) -> bool:
         low = self._normalize_chat_text(self._strip_action_prefix(content))
         if self._looks_like_warning_lookup(low):
+            return True
+        if self._looks_like_history_lookup(low):
             return True
         if self._HELP_RE.search(low):
             return True
