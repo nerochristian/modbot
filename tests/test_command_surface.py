@@ -72,7 +72,7 @@ def test_role_actions_expose_only_their_relevant_parameters() -> None:
     commands_by_name = {command.name: command for command in Roles.__cog_app_commands__}
     assert {
         "info", "create", "delete", "add", "remove", "addall", "removeall",
-        "auto", "allowlist-add", "allowlist-remove", "allowlist-list",
+        "auto",
     } == commands_by_name.keys()
     assert [parameter.name for parameter in commands_by_name["auto"].parameters] == ["role"]
     assert [parameter.name for parameter in commands_by_name["add"].parameters] == ["user", "role", "reason"]

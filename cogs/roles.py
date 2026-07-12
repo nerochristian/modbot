@@ -24,9 +24,6 @@ RoleAction = Literal[
     "addall",
     "removeall",
     "auto",
-    "allowlist-add",
-    "allowlist-remove",
-    "allowlist-list",
 ]
 
 
@@ -197,7 +194,6 @@ class Roles(
 
         admin_actions = {
             "create", "delete", "addall", "removeall", "auto",
-            "allowlist-add", "allowlist-remove", "allowlist-list",
         }
         if action in admin_actions and not self._is_admin(actor):
             return await self._send(
@@ -241,43 +237,9 @@ class Roles(
                 return await self._send(interaction, ModEmbed.error("Role Creation Failed", str(exc)), ephemeral=True)
             return await self._send(interaction, ModEmbed.success("Role Created", created.mention))
 
-        if action == "allowlist-list":
-            settings = await self.bot.db.get_settings(guild.id)
-            role_ids = settings.get("owner_role_allowlist", [])
-            roles = [guild.get_role(int(role_id)) for role_id in role_ids if str(role_id).isdigit()]
-            mentions = [item.mention for item in roles if item is not None]
-            return await self._send(
-                interaction,
-                ModEmbed.info("Allowlisted Roles", ", ".join(mentions) or "No roles are allowlisted."),
-                ephemeral=True,
-            )
-
         target_role = await self._require_role(interaction, role)
         if target_role is None:
             return
-
-        if action in {"allowlist-add", "allowlist-remove"}:
-            if target_role.permissions.administrator and action == "allowlist-add":
-                return await self._send(
-                    interaction,
-                    ModEmbed.error("Not Allowed", "Administrator roles cannot be allowlisted."),
-                    ephemeral=True,
-                )
-            settings = await self.bot.db.get_settings(guild.id)
-            allowlist = settings.get("owner_role_allowlist", [])
-            allowlist = list(allowlist) if isinstance(allowlist, list) else []
-            if action == "allowlist-add" and target_role.id not in allowlist:
-                allowlist.append(target_role.id)
-            if action == "allowlist-remove" and target_role.id in allowlist:
-                allowlist.remove(target_role.id)
-            settings["owner_role_allowlist"] = allowlist
-            await self.bot.db.update_settings(guild.id, settings)
-            verb = "added to" if action == "allowlist-add" else "removed from"
-            return await self._send(
-                interaction,
-                ModEmbed.success("Allowlist Updated", f"{target_role.mention} was {verb} the allowlist."),
-                ephemeral=True,
-            )
 
         if action == "auto":
             allowed, error = self._can_manage_role(actor, target_role)
@@ -417,18 +379,6 @@ class Roles(
     @app_commands.command(name="auto", description="Set the role automatically given to new members")
     async def role_auto(self, interaction: discord.Interaction, role: discord.Role) -> None:
         await self._execute_role_action(interaction, "auto", role=role)
-
-    @app_commands.command(name="allowlist-add", description="Allow bot owners to assign a role")
-    async def role_allowlist_add(self, interaction: discord.Interaction, role: discord.Role) -> None:
-        await self._execute_role_action(interaction, "allowlist-add", role=role)
-
-    @app_commands.command(name="allowlist-remove", description="Remove a role from the owner allowlist")
-    async def role_allowlist_remove(self, interaction: discord.Interaction, role: discord.Role) -> None:
-        await self._execute_role_action(interaction, "allowlist-remove", role=role)
-
-    @app_commands.command(name="allowlist-list", description="List roles bot owners may assign")
-    async def role_allowlist_list(self, interaction: discord.Interaction) -> None:
-        await self._execute_role_action(interaction, "allowlist-list")
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
