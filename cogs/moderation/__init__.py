@@ -7,6 +7,7 @@ import json
 import re
 from config import Config
 from utils.checks import is_bot_owner_id
+from utils.server_setup import module_enabled
 
 # Mixins
 from .extensions.helpers import HelperCommands
@@ -676,10 +677,13 @@ class Moderation(
                         logger.warning(f"Failed to assign whitelist role to {member.id}: {e}")
         
         # Welcome Message
-        if not settings.get("welcome_enabled", False):
-            return
-
         channel_id = settings.get("welcome_channel") or getattr(Config, "WELCOME_CHANNEL_ID", 0)
+        # Welcome has no dedicated toggle command yet, so treat "an admin
+        # configured a welcome channel" as the enable signal (matching how
+        # utils.server_setup registers welcome as channel-configured). An
+        # explicit welcome_enabled / module toggle still overrides this.
+        if not module_enabled(settings, "welcome", bool(channel_id)):
+            return
         if channel_id:
             try:
                 channel = await self._resolve_message_channel(
