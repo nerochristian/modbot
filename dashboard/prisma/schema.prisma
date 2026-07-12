@@ -53,7 +53,7 @@ model User {
   reports         Report[]
   savedViews      SavedView[]
   dashboardConfig DashboardConfig?
-  subscription    Subscription?
+  subscriptions   Subscription[]
   invoices        Invoice[]
   guildMemberships GuildMembership[]
 }
@@ -217,7 +217,7 @@ model Appeal {
 model Subscription {
   id                String   @id @default(cuid())
   guildId           String   @default("")
-  userId            String   @unique
+  userId            String
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   plan              String   @default("pro")
   status            String   @default("active")
