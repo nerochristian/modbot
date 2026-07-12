@@ -233,7 +233,7 @@ class Court(commands.Cog):
     async def _load_open_sessions(self) -> None:
         """Restore open sessions from DB so court commands survive bot restarts."""
         loaded = 0
-        async with aiosqlite.connect(self.bot.db.db_path) as db:
+        async with self.bot.db.get_connection() as db:
             cursor = await db.execute(
                 """
                 SELECT id, channel_id, guild_id, case_type, plaintiff_id, defendant_id,
@@ -373,7 +373,7 @@ class Court(commands.Cog):
     
     async def cog_load(self):
         """Initialize database tables"""
-        async with aiosqlite.connect(self.bot.db.db_path) as db:
+        async with self.bot.db.get_connection() as db:
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS court_sessions (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
