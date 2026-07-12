@@ -1,0 +1,539 @@
+Build a complete, production-quality Discord moderation bot landing page and full dashboard web app. Do not make a simple mockup, template, or frontend-only demo. Build it like a real SaaS product for managing a Discord moderation bot across multiple servers.
+
+The app must be fully functional, configurable, scalable, and usable as a real product. If a feature needs backend support, create the backend for it. If it needs database models, create them. If it needs API routes, create them. If it needs mock Discord data because real Discord API credentials are not available, create realistic seeded data and structure the code so it can connect to real Discord OAuth, bot tokens, guild data, slash commands, logs, and moderation actions later.
+
+Project goal:
+Create a Discord moderation bot dashboard where server owners/admins can log in, connect/select Discord servers, configure automod rules, manage moderation settings, view logs, review reports, manage punishments, configure bot behavior, and monitor server safety analytics.
+
+Use a production-ready full-stack structure. Prefer Next.js full-stack with TypeScript, Tailwind, Prisma, database models, API routes/server actions, auth, role permissions, seed data, validation, and clean reusable components.
+
+1. Polished landing page
+
+Create a professional landing page for a Discord moderation bot SaaS.
+
+Include:
+- Hero section
+- Feature sections
+- Moderation features section
+- Automod showcase
+- Dashboard preview section
+- Pricing section
+- FAQ
+- Testimonials
+- CTA sections
+- Footer
+- Login/register buttons
+- Discord bot invite button
+- Smooth navigation
+- Fully responsive layout for desktop, tablet, and mobile
+
+Landing page content should focus on:
+- Auto-moderation
+- Anti-spam
+- Anti-raid protection
+- Bad word filtering
+- Link filtering
+- Invite blocking
+- Mention spam detection
+- Caps spam detection
+- Alt account detection mockup
+- Warning/mute/kick/ban system
+- Mod logs
+- Reports
+- Appeals
+- Custom punishments
+- Role-based permissions
+- Multi-server management
+- Analytics for server safety
+
+2. Full Discord bot dashboard system
+
+Create a complete dashboard with multiple pages, not just one screen.
+
+Include these dashboard pages:
+- Overview
+- Server selection / guilds
+- Moderation analytics
+- Automod rules
+- Punishment settings
+- Warning system
+- Cases / moderation history
+- Reports
+- Appeals
+- Mod logs
+- Audit logs
+- Members
+- Roles and permissions
+- Commands
+- Bot configuration
+- Notifications
+- Billing / subscription
+- Integrations
+- Settings
+- Admin panel
+- Profile / account
+
+3. Discord-specific dashboard features
+
+The dashboard must include:
+- Discord OAuth-style login flow, or mock auth that is structured to support Discord OAuth later
+- Server/guild selector
+- Bot invite/setup flow
+- Guild overview cards
+- Member count
+- Online member count mock data
+- Server risk score
+- Recent moderation actions
+- Active automod rules
+- Bot status indicator
+- Permission checker
+- Missing permissions warning
+- Slash command status
+- Moderation queue
+- Report queue
+- Appeals queue
+- Case management
+- Punishment history
+- Member lookup
+- Role permission mapping
+- Channel-specific rule configuration
+- Mod log channel configuration
+- Welcome/verification channel configuration mock support
+- Notification center
+- Audit logs
+- Recent activity feed
+- Server health indicators
+
+4. Advanced automod rule builder
+
+Build a serious automod configuration system.
+
+Admins should be able to create, edit, enable, disable, delete, duplicate, and reorder automod rules.
+
+Rule types must include:
+- Spam detection
+- Mention spam
+- Caps spam
+- Emoji spam
+- Repeated messages
+- Bad word filter
+- Regex filter
+- Link filter
+- Discord invite blocking
+- Attachment filtering
+- New account age filter
+- Raid detection
+- Mass join detection
+- Suspicious username detection
+- Excessive line breaks
+- Zalgo / weird character detection
+- Spoiler spam
+- Channel-specific restrictions
+
+Each rule should support:
+- Rule name
+- Description
+- Enabled/disabled state
+- Trigger conditions
+- Thresholds
+- Time windows
+- Ignored roles
+- Ignored users
+- Ignored channels
+- Applied channels
+- Punishment action
+- Escalation behavior
+- Custom response message
+- DM user toggle
+- Delete message toggle
+- Log to mod channel toggle
+- Cooldown
+- Severity level
+- Test/simulate rule button
+
+Punishment actions must include:
+- None
+- Delete message
+- Warn
+- Timeout/mute
+- Kick
+- Ban
+- Softban
+- Add role
+- Remove role
+- Custom escalation
+
+5. Moderation case system
+
+Create a complete moderation case system with:
+- Case ID
+- User
+- Moderator
+- Server/guild
+- Action type
+- Reason
+- Evidence
+- Timestamp
+- Duration
+- Expiration
+- Status
+- Notes
+- Appeal status
+- Filters
+- Search
+- Sorting
+- Pagination
+- Case detail modal/page
+- Edit reason
+- Void case
+- Export cases
+
+Actions should include:
+- Warning
+- Timeout
+- Kick
+- Ban
+- Unban
+- Softban
+- Message delete
+- Role add/remove
+- Automod action
+- Manual moderation action
+
+6. Reports and appeals
+
+Create a usable report and appeal system.
+
+Reports page:
+- User reports
+- Reported user
+- Reporter
+- Reason
+- Evidence
+- Channel
+- Message link placeholder
+- Status
+- Assigned moderator
+- Priority
+- Filters
+- Search
+- Resolve button
+- Dismiss button
+- Escalate button
+
+Appeals page:
+- Appeal list
+- Punished user
+- Original case
+- Appeal message
+- Status
+- Assigned reviewer
+- Approve appeal
+- Deny appeal
+- Request more info
+- Add internal notes
+- Full appeal detail view
+
+7. Dashboard UI functionality
+
+The dashboard must include:
+- Sidebar navigation
+- Top navigation bar
+- Server/guild switcher
+- Global search
+- Filters
+- Sorting
+- Pagination
+- Data tables
+- Charts and graphs
+- Cards/widgets
+- Recent activity feed
+- Command palette if possible
+- User/member management
+- Role/permission system
+- Theme switching
+- Layout customization
+- Widget customization
+- Saved dashboard views
+- Export options
+- Import options
+- Notification center
+- Audit logs
+- System status indicators
+- Empty states
+- Loading states
+- Error states
+- Confirmation modals
+- Toast notifications
+
+8. Extreme configuration system
+
+Make the dashboard highly customizable.
+
+Users/admins should be able to configure:
+- Dashboard widgets
+- Widget order
+- Visible/hidden widgets
+- Chart types
+- Date ranges
+- Table columns
+- Filters
+- Theme
+- Accent color
+- Sidebar collapsed/expanded state
+- Dashboard density
+- Notification preferences
+- Mod log channel
+- Alert channel
+- Appeal channel
+- Staff roles
+- Ignored roles
+- Ignored channels
+- Default punishment durations
+- Automod thresholds
+- Raid mode settings
+- Anti-spam settings
+- Link filter settings
+- Bad word list
+- Regex rules
+- Command permissions
+- Default dashboard page
+- Data refresh interval
+- Export format
+- Feature toggles
+- User access levels
+- Guild-specific settings
+
+9. Backend support
+
+Do not skip backend work.
+
+Create backend support for:
+- API routes/server actions
+- Database schema/models
+- Authentication
+- Authorization and permissions
+- Guild/server models
+- Member models
+- Role models
+- Channel models
+- Automod rule models
+- Moderation case models
+- Report models
+- Appeal models
+- Audit log models
+- Notification models
+- Billing/subscription models
+- User preferences storage
+- Dashboard configuration storage
+- Guild configuration storage
+- Feature toggle storage
+- Mock Discord seed data
+- Validation
+- Error handling
+- Server-side filtering
+- Server-side sorting
+- Server-side pagination
+- Backend endpoints for every interactive dashboard feature
+
+If real Discord API access is not available, create an adapter layer with mock data now and clear integration points for:
+- Discord OAuth
+- Discord bot token
+- Guild list fetch
+- Member fetch
+- Role fetch
+- Channel fetch
+- Bot permission checks
+- Slash command sync
+- Moderation actions
+- Mod log events
+
+10. Real usability
+
+Do not use fake buttons that do nothing.
+
+Every important button, toggle, form, filter, setting, and action should work.
+
+Required working interactions:
+- Login
+- Register
+- Logout
+- Protected routes
+- Select a server
+- Create automod rule
+- Edit automod rule
+- Delete automod rule
+- Enable/disable automod rule
+- Change punishment settings
+- Search cases
+- Filter cases
+- Sort tables
+- Paginate tables
+- Resolve reports
+- Review appeals
+- Save dashboard preferences
+- Save guild settings
+- Change theme
+- Change layout density
+- Update notification settings
+- Export reports/cases
+- Admin feature toggles
+- Role permission edits
+
+If live data is not available, use realistic seeded data and make sure the code can later connect to a real Discord bot backend.
+
+11. Authentication and roles
+
+Include a working auth flow:
+- Login
+- Register
+- Logout
+- Protected dashboard routes
+- Mock Discord OAuth structure or real Discord OAuth if possible
+- Admin role
+- Server owner role
+- Server admin role
+- Moderator role
+- Viewer role
+- Permission-based UI visibility
+- Backend permission checks
+
+Permission examples:
+- View dashboard
+- Manage automod
+- Manage punishments
+- View cases
+- Edit cases
+- Resolve reports
+- Review appeals
+- Manage server settings
+- Manage billing
+- Manage team members
+- Manage global admin settings
+
+12. Admin panel
+
+Include an admin configuration area where platform admins can:
+- Manage users
+- Manage connected guilds
+- Change user roles
+- Enable/disable dashboard features
+- Configure global settings
+- View platform audit logs
+- Manage system notifications
+- Edit app-level settings
+- Control available widgets
+- View subscription status
+- View mock system health
+- Manage feature flags
+
+13. Settings system
+
+Build a serious settings system with:
+- Account settings
+- Security settings
+- Notification settings
+- Dashboard preferences
+- Theme settings
+- Guild/server settings
+- Bot settings
+- Automod settings
+- Moderation settings
+- Command settings
+- Billing settings
+- API/integration settings
+- Admin-only settings
+
+14. Data and analytics
+
+Include realistic Discord moderation analytics:
+- Total members
+- New joins
+- Messages scanned
+- Messages deleted
+- Warnings issued
+- Timeouts issued
+- Kicks
+- Bans
+- Reports opened
+- Reports resolved
+- Appeals submitted
+- Appeals approved/denied
+- Automod trigger counts
+- Raid alerts
+- Spam blocked
+- Links blocked
+- Bad words blocked
+- Moderator activity
+- Case volume over time
+- Top triggered rules
+- Risk score
+- Server safety score
+- Custom date ranges
+- Chart switching
+- Exportable reports
+
+15. Billing/subscription
+
+Create billing pages and subscription logic with mock data.
+
+Include:
+- Free plan
+- Pro plan
+- Enterprise plan
+- Usage limits
+- Server limits
+- Automod rule limits
+- Log retention limits
+- Premium feature flags
+- Upgrade/downgrade buttons
+- Billing history
+- Subscription status
+
+Buttons can use mock backend actions, but they must still work and update the local/database state.
+
+16. Code quality
+
+Build this cleanly with:
+- Organized file structure
+- Reusable components
+- Clean naming
+- Type-safe code
+- Proper state management
+- Form validation
+- API abstraction layer
+- Error boundaries where needed
+- Responsive UI
+- Accessible components
+- Comments only where useful
+- No messy code
+- No throwaway code
+- No unfinished placeholder components
+- No broken imports
+- No fake-only dashboard pages
+
+17. Final delivery
+
+Return the full project code with all necessary files.
+
+Include:
+- Setup instructions
+- Environment variables
+- Database setup
+- Seed script
+- How to run locally
+- Default demo accounts
+- Explanation of mock Discord data
+- Explanation of where to connect real Discord OAuth/API/bot logic later
+
+Before saying the project is complete:
+1. Run TypeScript check.
+2. Run lint.
+3. Run build.
+4. Fix every error.
+5. Check for broken imports.
+6. Check that all important buttons and forms work.
+7. Print a final completion checklist showing every major feature and the files where it was implemented.
+
+Important:
+Do not tell me a feature is unsupported. If the app needs backend functionality, create the backend. If it needs a database model, create it. If it needs API routes, create them. If it needs mock data, seed it. Build this like a real Discord moderation bot SaaS dashboard that can be expanded into a live product.

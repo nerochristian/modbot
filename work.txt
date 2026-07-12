@@ -1,0 +1,770 @@
+## Full Plan: AI Moderation That Can “Do Everything”
+
+The goal is to make your Discord moderation bot feel like a real AI staff member that can understand commands, moderate automatically, run server actions safely, and handle almost any admin request.
+
+---
+
+# 1. Main Idea
+
+Build an **AI-powered moderation assistant** that can:
+
+* Read messages and detect rule breaks
+* Warn, mute, kick, ban, timeout, delete, slowmode, lock channels
+* Understand natural language commands
+* Create and manage s
+* Watch raids, spam, scams, toxicity, NSFW, slurs, mass mentions
+* Explain why it took an action
+* Keep logs
+* Let admins approve dangerous actions
+* Run advanced Discord tasks through safe tools
+* Use a restricted “owner-only power mode” for complex actions
+
+The bot should not just be a command bot. It should be a **server operating system**.
+
+---
+
+# 2. Core Modules
+
+## 1. AI Command Brain
+
+Admins can type things like:
+
+```txt
+@ass moderation mute everyone spamming in general for 10 minutes
+@ass moderation delete the last 50 scam messages
+@ass moderation make a rule that links are only allowed in media
+@ass moderation check if this user is suspicious
+@ass moderation clean this channel
+@ass moderation create a  panel for support
+@ass moderation find inactive members for the last 30 days
+@ass moderation lock all channels during this raid
+```
+
+The AI understands the request, chooses the right tool, checks permissions, and does the action.
+
+---
+
+## 2. Moderation Tools
+
+Create safe structured tools the AI can use.
+
+Examples:
+
+```txt
+warn_user
+timeout_user
+untimeout_user
+kick_user
+ban_user
+unban_user
+delete_messages
+purge_channel
+lock_channel
+unlock_channel
+slowmode_channel
+create_role
+give_role
+remove_role
+create_channel
+delete_channel
+create_
+close_
+scan_user
+scan_channel
+scan_message
+```
+
+Each tool should have strict permission checks.
+
+Example:
+
+```py
+async def timeout_user(user_id, duration, reason, moderator_id):
+    # Check if moderator has permission
+    # Check role hierarchy
+    # Check duration limit
+    # Apply timeout
+    # Log action
+```
+
+The AI should never directly touch Discord. It should only call your tools.
+
+---
+
+# 3. Automatic Moderation
+
+The bot should monitor messages in real time.
+
+It should detect:
+
+* Spam
+* Mass mentions
+* NSFW text
+* Slurs
+* Harassment
+* Threats
+* Scam links
+* Phishing links
+* Invite links
+* Toxicity
+* Self-promo
+* Doxxing attempts
+* Ban evasion patterns
+* Raid behavior
+* Copypasta spam
+* Repeated emoji spam
+* Caps spam
+* Suspicious new accounts
+* Alt accounts
+* Impersonation
+* Staff disrespect, depending on your rules
+* Rule bypassing using weird characters
+
+For each message, the bot can decide:
+
+```txt
+ignore
+delete
+warn
+timeout
+alert staff
+escalate to human review
+```
+
+---
+
+# 4. Punishment System
+
+Use a strike system.
+
+Example:
+
+```txt
+1 strike = warning
+2 strikes = 10 minute timeout
+3 strikes = 1 hour timeout
+4 strikes = 1 day timeout
+5 strikes = kick
+6 strikes = ban review
+```
+
+But make it configurable per server.
+
+Store:
+
+```txt
+user_id
+guild_id
+moderation_history
+warnings
+timeouts
+kicks
+bans
+notes
+appeals
+staff_member
+reason
+timestamp
+evidence_message
+```
+
+---
+
+# 5. Permission Safety
+
+This is the most important part.
+
+The AI should have levels.
+
+## Level 1: Normal Moderator AI
+
+Can:
+
+* Delete messages
+* Warn users
+* Timeout users
+* Lock channels
+* Slowmode channels
+* Create reports
+
+Cannot:
+
+* Ban users
+* Delete channels
+* Delete roles
+* Give admin
+* Change server owner-level settings
+
+---
+
+## Level 2: Admin AI
+
+Can:
+
+* Ban users
+* Edit channels
+* Manage roles
+* Create  systems
+* Create automod rules
+* Manage server structure
+
+Requires admin permission.
+
+---
+
+## Level 3: Owner-Only Power Mode
+
+Can do advanced actions like:
+
+```txt
+kick everyone inactive for 30 days
+delete all channels except these ones
+rebuild the whole server layout
+mass DM all members
+mass role cleanup
+execute custom scripts
+```
+
+This should require:
+
+```txt
+Owner ID check
+Confirmation button
+Preview of affected users/channels
+Undo plan if possible
+```
+
+Never let normal admins use this.
+
+---
+
+# 6. Confirmation System
+
+Dangerous commands should not instantly run.
+
+Example:
+
+User says:
+
+```txt
+@ass moderation ban everyone who joined today
+```
+
+Bot replies:
+
+```txt
+Action Preview:
+- 23 members matched
+- Action: ban
+- Reason: raid cleanup
+
+Confirm?
+[Confirm] [Cancel]
+```
+
+For risky actions, require confirmation.
+
+Risky actions include:
+
+* Mass bans
+* Mass kicks
+* Mass deletes
+* Deleting channels
+* Deleting roles
+* Changing permissions
+* Running scripts
+* Giving roles with permissions
+* Webhook changes
+* Server-wide lockdowns
+
+---
+
+# 7. AI Memory
+
+The AI should remember server rules and past decisions.
+
+Store:
+
+```txt
+server rules
+moderation settings
+punishment ladder
+trusted roles
+ignored channels
+allowed links
+staff roles
+ categories
+appeal channel
+log channel
+automod thresholds
+```
+
+Example:
+
+```txt
+@ass moderation remember that links are only allowed in media and promo
+@ass moderation make punishments stricter for scam links
+@ass moderation ignore spam detection in counting channel
+```
+
+---
+
+# 8. Logging System
+
+Every action should be logged.
+
+Log example:
+
+```txt
+User: @Someone
+Action: Timeout
+Duration: 10 minutes
+Reason: Spam detected
+Moderator: AI Moderation
+Evidence: 5 repeated messages in 8 seconds
+Channel: #general
+Time: June 29, 2026, 4:32 PM
+```
+
+Logs should go to:
+
+```txt
+#mod-logs
+#ai-actions
+#raid-alerts
+#appeals
+```
+
+---
+
+# 9. Appeal System
+
+Users should be able to appeal punishments.
+
+Flow:
+
+```txt
+User gets muted
+Bot DMs them
+They click Appeal
+ opens
+Staff reviews evidence
+AI summarizes case
+Staff accepts or denies
+```
+
+AI can provide:
+
+```txt
+Summary of punishment
+Evidence
+Past warnings
+Suggested decision
+```
+
+But final appeal decisions should be staff-controlled unless you trust full automation.
+
+---
+
+# 11. Raid Protection
+
+The bot should detect raids automatically.
+
+Triggers:
+
+```txt
+10 users join in 30 seconds
+many new accounts join
+many users spam same message
+mass mentions
+scam links flood chat
+new users all have similar names
+```
+
+Actions:
+
+```txt
+lock server
+enable slowmode
+disable invites
+timeout suspicious users
+alert staff
+create raid report
+```
+
+Command examples:
+
+```txt
+@ass moderation enable raid mode
+@ass moderation lockdown the server
+@ass moderation unlock after 10 minutes
+@ass moderation show suspicious joins
+```
+
+---
+
+# 12. Natural Language Examples
+
+The bot should support prompts like:
+
+```txt
+@ass moderation clean this channel
+@ass moderation delete all messages with invite links from the last hour
+@ass moderation mute anyone spamming for 5 minutes
+@ass moderation make a new rule against self promo
+@ass moderation find users who keep breaking rule 3
+@ass moderation summarize today’s mod actions
+@ass moderation tell me who should be watched
+@ass moderation check if @user is an alt
+@ass moderation make a staff report for this week
+@ass moderation create a welcome system
+@ass moderation create a verification system
+@ass moderation remove inactive members but show me first
+@ass moderation make this server safer
+@ass moderation scan the last 500 messages
+```
+
+---
+
+# 13. Database Tables
+
+Use our database
+
+Tables:
+
+```txt
+guild_settings
+guild_rules
+mod_cases
+user_strikes
+ai_memory
+_messages
+raid_events
+automod_rules
+staff_actions
+appeals
+scheduled_tasks
+user_risk_scores
+server_backups
+```
+
+Example `mod_cases`:
+
+```sql
+id
+guild_id
+user_id
+moderator_id
+action
+reason
+evidence
+created_at
+expires_at
+status
+```
+
+---
+
+# 14. Risk Score System
+
+Every user can have a risk score.
+
+Factors:
+
+```txt
+New account
+Joined recently
+Spam history
+Warnings
+Scam links
+Mass mentions
+Similar name to banned users
+Toxic messages
+Deleted messages
+Alt suspicion
+```
+
+Example:
+
+```txt
+0-25 = safe
+26-50 = watch
+51-75 = suspicious
+76-100 = high risk
+```
+
+Command:
+
+```txt
+@ass moderation scan @user
+```
+
+Bot replies:
+
+```txt
+Risk Score: 72/100
+Reasons:
+- Account created 2 days ago
+- Sent 12 repeated messages
+- Mentioned 8 users
+- Has 2 warnings
+Suggested action: 1 hour timeout
+```
+
+---
+
+# 15. Owner-Only Execute Python Mode
+
+For “do everything” power, add a locked custom tool.
+
+Only your Discord ID can use it.
+
+Example:
+
+```txt
+@ass moderation  remove every role called muted and replace it with timeout system
+```
+
+AI first creates a plan:
+
+```txt
+Plan:
+1. Find all roles named Muted
+2. Check channels using that role
+3. Remove permission overwrites
+4. Delete role
+5. Save backup
+6. Confirm before running
+```
+
+Then asks for confirmation.
+
+This gives you power without letting random admins destroy the server.
+
+---
+
+# 16. Server Backup System
+
+Before dangerous actions, make a backup.
+
+Backup:
+
+```txt
+roles
+channels
+categories
+permissions
+automod settings
+ panels
+rules
+settings
+```
+
+Command:
+
+```txt
+@ass moderation backup server
+@ass moderation restore last backup
+@ass moderation show backup from yesterday
+```
+
+Very useful before server-wide changes.
+
+---
+
+# 17. Scheduled Tasks
+
+The AI should schedule actions.
+
+Examples:
+
+```txt
+@ass moderation unlock the server in 10 minutes
+@ass moderation remind staff about meeting tomorrow at 6pm
+@ass moderation post rules every Friday
+@ass moderation clear temp channels every night
+@ass moderation check inactive users every week
+@ass moderation send mod report every Sunday
+```
+
+Use APScheduler or a database-backed task queue.
+
+Pages:
+
+```txt
+Overview
+Moderation Cases
+AI Actions
+User Risk Scores
+s
+Appeals
+Server Rules
+Automod Settings
+Raid Logs
+Punishment Ladder
+AI Memory
+Backups
+Staff Performance
+```
+
+Dashboard features:
+
+* Approve AI actions
+* Edit rules
+* View punishment history
+* Review flagged messages
+* Create automod rules
+* Manage s
+* See risky users
+* Restore backups
+
+AI text command:
+
+```txt
+@ass moderation [anything]
+```
+
+Example:
+
+```txt
+@ass moderation delete the scam links and timeout the users for 1 hour
+```
+
+---
+
+# 20. Recommended Tech Stack
+
+Use:
+
+```txt
+Python
+discord.py
+PostgreSQL
+Redis
+deepseek web [in web, put it as (servername) -> moderation]
+APScheduler
+SQLAlchemy
+Pydantic
+Docker
+```
+
+
+# 21. Build Order
+
+## Phase 1: Base Bot
+
+* Set up discord.py
+* Add database
+* Add config system
+* Add mod logs
+* Add basic moderation commands
+
+## Phase 2: AI Tool System
+
+* Add AI command parser
+* Add safe tools
+* Add permission checks
+* Add confirmation system
+
+## Phase 3: Automod
+
+* Spam detection
+* Link filtering
+* Toxicity detection
+* Mention spam
+* Raid detection
+
+## Phase 4: s and Appeals
+
+*  panels
+* Appeal system
+* Transcripts
+* AI summaries
+
+## Phase 5: Advanced AI
+
+* Natural language actions
+* Server memory
+* Risk scoring
+* Scheduled tasks
+* Weekly reports
+
+## Phase 6: Owner Power Mode
+
+* Owner-only advanced actions
+* Server backups
+* Preview system
+* Confirmation buttons
+
+## Phase 7: Dashboard
+
+* Web dashboard
+* Moderation history
+* AI settings
+*  management
+* Automod controls
+
+---
+
+# 22. Master Prompt for the Coding AI
+
+Use this prompt for Claude/Opus/Cursor/etc:
+
+```txt
+You are an elite senior Python engineer building a production-grade Discord AI moderation bot.
+
+The goal is to create an AI-powered Discord moderation assistant that can understand natural language admin requests and safely perform moderation, server management, ing, raid protection, logging, appeals, scheduled tasks, and advanced owner-only operations.
+
+Core requirements:
+
+1. Use discord.py.
+2. Use a database for all settings, moderation cases, s, rules, AI memory, scheduled tasks, and logs.
+3. The AI must never directly execute Discord actions. It must call structured tools only.
+4. Every tool must have permission checks, role hierarchy checks, guild ownership checks where needed, and logging.
+5. Dangerous actions must require confirmation buttons before execution.
+6. Mass actions must show a preview before running.
+7. Add owner-only power mode for advanced tasks.
+8. Add server backup before dangerous server-wide changes.
+9. Add automod detection for spam, scam links, invite links, mass mentions, toxicity, slurs, NSFW text, raids, and suspicious new accounts.
+10. Add a strike and punishment ladder system.
+11. Add  system with panels, categories, transcripts, claim buttons, close buttons, and AI summaries.
+12. Add appeal system for punishments.
+13. Add risk scoring for users.
+14. Add scheduled tasks such as unlock later, post reminders, weekly reports, and inactivity checks.
+15. Add detailed moderation logs.
+16. Add AI memory for server rules and settings.
+17. Add slash commands and `@ass moderation` natural language command support.
+18. Add clean modular architecture using cogs, services, database models, and AI tools.
+19. Add tests for permissions, moderation actions, AI tool calls, confirmation flows, and automod detection.
+20. Make the code production-ready, readable, secure, and easy to expand.
+
+Implementation rules:
+
+- Do not make fake placeholder systems.
+- Every major feature must be wired into the bot.
+- Every moderation action must create a mod case.
+- Every AI action must be logged.
+- Every risky AI action must require confirmation.
+- The AI must explain what it is about to do before doing risky actions.
+- The bot must refuse unsafe or impossible actions.
+- Owner-only tools must only work for the configured OWNER_IDS.
+- Use Pydantic schemas for AI tool arguments.
+- Use SQLAlchemy models for persistence.
+- Use environment variables for tokens and API keys.
+- Add clear setup instructions.
+- Add a complete README.
+
+Start by implementing the foundation, then build each module step by step. After each module, run syntax checks and tests. Do not stop at a plan. Produce the actual code.
+```
+
+---
+
+# 23. Best Final Version
+
+The best version is:
+
+```txt
+A Discord AI moderation assistant with safe tool-based actions, automatic moderation, raid protection, s, appeals, risk scoring, AI memory, scheduled tasks, server backups, staff dashboard, and owner-only power mode.
+```
+
+That gives you the “AI can do everything” feeling without making it unsafe or easy to abuse.
