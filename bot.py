@@ -2423,13 +2423,6 @@ async def main() -> int:
         logger.critical("=" * 60)
         return 1
 
-    if not _get_lifesim_token():
-        logger.critical("=" * 60)
-        logger.critical("[FATAL] LifeSimBot token not found.")
-        logger.critical("  Set LIFESIM_DISCORD_TOKEN.")
-        logger.critical("=" * 60)
-        return 1
-
     if not _get_groupbot_token():
         logger.critical("=" * 60)
         logger.critical("[FATAL] GroupBot token not found.")
@@ -2442,7 +2435,6 @@ async def main() -> int:
     modbot = ModBot()
     tasks = {
         asyncio.create_task(_run_modbot(modbot, modbot_token), name="modbot"),
-        asyncio.create_task(_run_lifesimbot(), name="lifesimbot"),
         asyncio.create_task(_run_groupbot(), name="groupbot"),
     }
 
