@@ -149,6 +149,33 @@ export default function LandingPage() {
       </section>
 
       {/* ============================================================ */}
+      {/* ACT II.5 — speak plainly. The typing command demo.          */}
+      {/* ============================================================ */}
+      <section id="commands" className="border-t border-border bg-surface">
+        <div className="mx-auto grid max-w-6xl scroll-mt-20 items-center gap-12 px-6 py-20 lg:grid-cols-2">
+          <div>
+            <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">
+              Plain language, precise action
+            </p>
+            <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.02em] text-foreground">
+              Tell it what happened.<br />It files the rest.
+            </h2>
+            <p className="mt-5 max-w-md text-base leading-relaxed text-muted">
+              No cheat-sheet of arguments to memorize. Mention Docket in plain English or use a
+              structured slash command — either way it resolves the target, picks the right action,
+              and opens a case with evidence and confidence attached.
+            </p>
+            <ul className="mt-6 space-y-2.5 text-sm text-muted">
+              <li className="flex items-center gap-2.5"><span className="size-1.5 rounded-full bg-accent" /> Natural-language and slash commands</li>
+              <li className="flex items-center gap-2.5"><span className="size-1.5 rounded-full bg-accent" /> Intent + context resolved before acting</li>
+              <li className="flex items-center gap-2.5"><span className="size-1.5 rounded-full bg-accent" /> Every command becomes an auditable case</li>
+            </ul>
+          </div>
+          <CommandDemo />
+        </div>
+      </section>
+
+      {/* ============================================================ */}
       {/* ACT III — the record. ONE case file, in full.               */}
       {/* ============================================================ */}
       <section className="border-y border-border bg-surface">
