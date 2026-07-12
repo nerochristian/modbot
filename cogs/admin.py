@@ -9,10 +9,13 @@ from datetime import datetime, timezone
 from typing import Optional, Literal, Any
 import math
 import asyncio
+import logging
 from utils.embeds import ModEmbed
 from utils. checks import is_admin, is_mod
 from utils.time_parser import parse_time
 from config import Config
+
+logger = logging.getLogger("ModBot.Admin")
 
 
 def _parse_dt_utc(value: Any) -> Optional[datetime]:
