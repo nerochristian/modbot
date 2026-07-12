@@ -152,7 +152,8 @@ body {
 /* Display face for headings — the instrument-panel personality. */
 .font-display {
   font-family: var(--font-display);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
+  font-weight: 600;
 }
 
 /* Compact density tightens control heights and table rows. */
