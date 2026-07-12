@@ -85,14 +85,23 @@ export function CommandDemo() {
     const t = timers.current
 
     if (prefersReduced) {
-      setTyped(ex.command)
-      setShowReply(true)
+      t.push(
+        setTimeout(() => {
+          setTyped(ex.command)
+          setShowReply(true)
+        }, 0),
+      )
       t.push(setTimeout(() => setIdx((i) => (i + 1) % EXAMPLES.length), 5000))
       return () => t.forEach(clearTimeout)
     }
 
-    setTyped('')
-    setShowReply(false)
+    // Reset then type out on the next tick (avoids sync setState in effect).
+    t.push(
+      setTimeout(() => {
+        setTyped('')
+        setShowReply(false)
+      }, 0),
+    )
 
     // Type the command out character by character.
     for (let c = 1; c <= ex.command.length; c++) {
