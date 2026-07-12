@@ -150,26 +150,26 @@ export default function LandingPage() {
       </section>
 
       {/* ============================================================ */}
-      {/* ACT II.5 — speak plainly. The typing command demo.          */}
+      {/* ACT II.5 — pull any member's record. Interactive demo.       */}
       {/* ============================================================ */}
       <section id="commands" className="border-t border-border bg-surface">
         <div className="mx-auto grid max-w-6xl scroll-mt-20 items-center gap-12 px-6 py-20 lg:grid-cols-2">
           <div>
             <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">
-              Plain language, precise action
+              The whole history, one ping away
             </p>
             <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.02em] text-foreground">
-              Tell it what happened.<br />It files the rest.
+              Ping a member.<br />See everything on record.
             </h2>
             <p className="mt-5 max-w-md text-base leading-relaxed text-muted">
-              No cheat-sheet of arguments to memorize. Mention Docket in plain English or use a
-              structured slash command — either way it resolves the target, picks the right action,
-              and opens a case with evidence and confidence attached.
+              No digging through channels or old DMs. Mention anyone and Docket returns their standing,
+              risk level, and a full timeline of every warn, mute, ban, note, and appeal — who did it,
+              when, and why. Try it: pick a member on the right.
             </p>
             <ul className="mt-6 space-y-2.5 text-sm text-muted">
-              <li className="flex items-center gap-2.5"><span className="size-1.5 rounded-full bg-accent" /> Natural-language and slash commands</li>
-              <li className="flex items-center gap-2.5"><span className="size-1.5 rounded-full bg-accent" /> Intent + context resolved before acting</li>
-              <li className="flex items-center gap-2.5"><span className="size-1.5 rounded-full bg-accent" /> Every command becomes an auditable case</li>
+              <li className="flex items-center gap-2.5"><span className="size-1.5 rounded-full bg-accent" /> Standing and risk at a glance</li>
+              <li className="flex items-center gap-2.5"><span className="size-1.5 rounded-full bg-accent" /> Complete, attributable action history</li>
+              <li className="flex items-center gap-2.5"><span className="size-1.5 rounded-full bg-accent" /> Nothing lost between shifts or channels</li>
             </ul>
           </div>
           <CommandDemo />
