@@ -2,14 +2,19 @@
 
 A complete, production-quality SaaS product: a polished marketing landing page plus a
 full, multi-page, **fully configurable** dashboard with authentication, role-based
-access control, a real backend (API routes + database), and realistic seed data.
+access control, and a real backend (API routes + database).
 
 Built with **Next.js 16 (App Router)**, **TypeScript**, **Tailwind CSS v4**,
 **Prisma 7** (SQLite via the libSQL driver adapter), **jose** (JWT auth), and
 **Recharts**.
 
-> This is a self-contained demo product. All data is mock/seed data, structured so it
-> can be swapped for a real database or external API without rewrites.
+> **Data sources (hybrid).** The dashboard reads live moderation data — guild
+> settings, cases, warnings, members, automod events, risk scores — directly from
+> the Discord bot's PostgreSQL database via `src/lib/bot-db.ts` (`BOT_DATABASE_URL`,
+> auto-derived from the bot's `DATABASE_URL` in `next.config.ts`). Its own data —
+> accounts, sessions, billing, saved views, notifications — lives in the Prisma
+> store. `GET /api/health` reports the status of both. The Prisma seed provides
+> sample account/billing data only; bot data is always live.
 
 ---
 
