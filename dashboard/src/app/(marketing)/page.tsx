@@ -52,7 +52,7 @@ const TESTIMONIALS = [
 
 export default function LandingPage() {
   return (
-    <div className="situation">
+    <>
       {/* ============================================================ */}
       {/* ACT I — the incident. The hero IS the product, mid-raid.     */}
       {/* ============================================================ */}
