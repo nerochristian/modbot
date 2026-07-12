@@ -324,7 +324,7 @@ class PrefixCommands(commands.Cog):
     @has_permissions_or_owner(manage_messages=True)
     async def notes_cmd(self, ctx, member: discord.Member):
         """View notes for a user"""
-        cases = await self.bot.db.get_cases(ctx.guild.id, member.id)
+        cases = await self.bot.db.get_user_cases(ctx.guild.id, member.id)
         notes = [c for c in cases if c.get("action") == "Note"]
         if not notes:
             return await ctx.send(embed=ModEmbed.info("📝 Notes", f"No notes for {member.mention}."))
@@ -672,7 +672,7 @@ class PrefixCommands(commands.Cog):
     @has_permissions_or_owner(manage_messages=True)
     async def warnings_cmd(self, ctx, member: discord.Member):
         """View warnings for a user"""
-        cases = await self.bot.db.get_cases(ctx.guild.id, member.id)
+        cases = await self.bot.db.get_user_cases(ctx.guild.id, member.id)
         warns = [c for c in cases if c.get("action") == "Warn"] if cases else []
         if not warns:
             return await ctx.send(embed=ModEmbed.info("⚠️ Warnings", f"No warnings for {member.mention}"))
