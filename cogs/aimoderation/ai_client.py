@@ -74,7 +74,7 @@ _INJECTION_PREAMBLE_RE = re.compile(
     r"|system\s*(?:prompt|message)?\s*:"
     r"|assistant\s*:"
     r"|\[/?(?:system|assistant|user|inst)\]"
-    r")\b.*$"
+    r").*$"
 )
 
 
