@@ -272,6 +272,22 @@ export default function LandingPage() {
       <Pricing />
       <Faq />
 
+      {/* Brand banner — the real Docket promo mark. */}
+      <section className="border-t border-border">
+        <div className="mx-auto max-w-6xl px-6 py-16">
+          <div className="relative overflow-hidden rounded-xl border border-border ring-brand">
+            <Image
+              src="/brand/docket-wordmark.png"
+              alt="Docket — advanced Discord moderation"
+              width={2172}
+              height={724}
+              className="h-auto w-full"
+              sizes="(max-width: 1152px) 100vw, 1152px"
+            />
+          </div>
+        </div>
+      </section>
+
       {/* Final CTA */}
       <section className="border-t border-border">
         <div className="mx-auto max-w-4xl px-6 pb-24 pt-20 text-center">
