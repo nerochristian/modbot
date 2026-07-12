@@ -59,10 +59,14 @@ export default function LandingPage() {
       {/* ACT I — the incident. The hero IS the product, mid-raid.     */}
       {/* ============================================================ */}
       <section className="relative overflow-hidden border-b border-border">
-        <div className="pointer-events-none absolute inset-0 scanfield opacity-60" />
+        <CircuitField className="pointer-events-none absolute inset-0 h-full w-full opacity-70" />
+        <div className="pointer-events-none absolute inset-0 scanfield opacity-40" />
+        {/* Brand glow beams bleeding from the edges. */}
+        <div className="pointer-events-none absolute -left-32 top-0 h-[420px] w-[420px] rounded-full opacity-25 blur-[120px]" style={{ background: 'radial-gradient(circle, var(--brand-from), transparent 70%)' }} />
+        <div className="pointer-events-none absolute -right-24 bottom-0 h-[380px] w-[380px] rounded-full opacity-20 blur-[120px]" style={{ background: 'radial-gradient(circle, var(--brand-cyan), transparent 70%)' }} />
         {/* A faint vertical rule anchors the asymmetric split. */}
         <div className="pointer-events-none absolute left-1/2 top-0 hidden h-full w-px bg-border lg:block" />
-        <div className="mx-auto grid max-w-6xl items-center gap-x-12 gap-y-10 px-6 py-16 lg:grid-cols-[0.85fr_1.15fr] lg:py-20">
+        <div className="relative mx-auto grid max-w-6xl items-center gap-x-12 gap-y-10 px-6 py-16 lg:grid-cols-[0.85fr_1.15fr] lg:py-20">
           {/* Left — the claim */}
           <div>
             <p className="inline-flex items-center gap-2 rounded-sm border border-border bg-surface px-3 py-1 font-mono text-[0.6875rem] font-medium uppercase tracking-[0.16em] text-accent">
