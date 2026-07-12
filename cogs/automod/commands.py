@@ -491,7 +491,7 @@ class AutoMod(commands.Cog):
         await self._update(interaction.guild.id, changes)
         await interaction.response.send_message(f"Updated `{module}` thresholds.", ephemeral=True)
 
-    @whitelist.command(name="add", description="Whitelist one role, user, or channel")
+    @bypass.command(name="add", description="Add one role, user, or channel to AutoMod bypass")
     async def whitelist_add_command(
         self,
         interaction: discord.Interaction,
