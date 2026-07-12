@@ -62,6 +62,45 @@ def _deepseek_web_primary_timeout() -> float:
     return min(90.0, max(0.1, timeout))
 
 
+# Phrases an attacker embeds in a Discord message to try to hijack the router
+# ("ignore previous instructions", "you are now...", fake system turns, etc.).
+_INJECTION_PREAMBLE_RE = re.compile(
+    r"(?im)^\s*(?:"
+    r"ignore\s+(?:all\s+)?(?:previous|prior|above)\s+(?:instructions?|prompts?|messages?)"
+    r"|disregard\s+(?:all\s+)?(?:previous|prior|above)"
+    r"|forget\s+(?:everything|all|previous|prior)"
+    r"|you\s+are\s+now\b"
+    r"|new\s+(?:instructions?|system\s+prompt|rules?)\s*:"
+    r"|system\s*(?:prompt|message)?\s*:"
+    r"|assistant\s*:"
+    r"|\[/?(?:system|assistant|user|inst)\]"
+    r")\b.*$"
+)
+
+
+def _sanitize_untrusted_text(text: str, *, limit: int = 2000) -> str:
+    """Neutralize prompt-injection vectors in Discord content before it enters a prompt.
+
+    User content is untrusted DATA, never instructions. We (1) collapse the
+    triple-quote / triple-backtick sequences used to break out of delimiters,
+    and (2) defang lines that look like injected system/assistant turns or
+    "ignore previous instructions" preambles. Content is preserved (so the
+    model can still moderate it) but stripped of its instruction-hijacking power.
+    """
+    if not text:
+        return ""
+    cleaned = str(text)
+    # Break delimiter escapes: """ / ``` used to close the data block.
+    cleaned = cleaned.replace('"""', '"​""').replace("```", "`​``")
+    # Defang injected control lines without deleting the words (so the router
+    # can still recognize e.g. an attempt as suspicious content).
+    cleaned = _INJECTION_PREAMBLE_RE.sub(lambda m: "(defanged) " + m.group(0).lstrip(), cleaned)
+    if len(cleaned) > limit:
+        cleaned = cleaned[:limit] + "…"
+    return cleaned
+
+
+
 def _looks_like_image_question_text(content: str) -> bool:
     low = re.sub(r"\s+", " ", (content or "").strip().lower())
     
@@ -685,6 +724,7 @@ class AIClient:
             else:
                 label = "user"
             content = self._message_preview(m, limit=200)
+            content = _sanitize_untrusted_text(content, limit=200)
             reply_tag = self._get_reply_context(m, bot_id, recent_messages) if bot_id else None
             reply_suffix = f" {reply_tag}" if reply_tag else ""
             return f"[{label}] {m.author} ({m.author.id}): {content}{reply_suffix}"
