@@ -375,6 +375,50 @@ class AIActionRoutingTests(unittest.TestCase):
                 self.assertIsNotNone(decision)
                 self.assertEqual(decision.tool, ToolType.GET_WARNINGS)
 
+    def test_history_lookup_is_a_moderation_query(self) -> None:
+        for content in (
+            "show actions for <@20>",
+            "pull up <@20> record",
+            "modlogs <@20>",
+            "check his history",
+        ):
+            with self.subTest(content=content):
+                self.assertTrue(self.cog._looks_like_mod_request(content))
+                self.assertTrue(
+                    self.cog._looks_like_advanced_action_request(content)
+                )
+
+    def test_history_lookup_routes_to_get_history(self) -> None:
+        bot_user = SimpleNamespace(id=10, bot=True)
+        target = SimpleNamespace(id=20, bot=False)
+        self.cog.bot = SimpleNamespace(user=bot_user)
+        message = SimpleNamespace(mentions=[bot_user, target])
+
+        for content in (
+            "show actions for <@20>",
+            "pull up <@20> record",
+            "modlogs <@20>",
+            "whats <@20> rap sheet",
+        ):
+            with self.subTest(content=content):
+                decision = self.cog._quick_route(message, content)
+
+                self.assertIsNotNone(decision)
+                self.assertEqual(decision.tool, ToolType.GET_HISTORY)
+                self.assertEqual(decision.arguments["target_user_id"], 20)
+
+    def test_warn_history_still_routes_to_get_warnings(self) -> None:
+        # "warning history" is specifically about warnings, not the full record.
+        bot_user = SimpleNamespace(id=10, bot=True)
+        target = SimpleNamespace(id=20, bot=False)
+        self.cog.bot = SimpleNamespace(user=bot_user)
+        message = SimpleNamespace(mentions=[bot_user, target])
+
+        decision = self.cog._quick_route(message, "show <@20> warning history")
+
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision.tool, ToolType.GET_WARNINGS)
+
     def test_staff_with_manage_messages_can_use_ai_tools(self) -> None:
         perms = SimpleNamespace(
             administrator=False,
