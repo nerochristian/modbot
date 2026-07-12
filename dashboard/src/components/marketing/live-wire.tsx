@@ -158,22 +158,23 @@ export function LiveWire() {
         </ul>
       </div>
 
-      {/* The payoff bar */}
-      <div className="flex items-center justify-between border-t border-border px-4 py-3">
-        <div className="flex items-baseline gap-2">
-          <span className="font-mono text-2xl font-semibold tabular-nums text-threat">
-            {count}
-          </span>
-          <span className="text-xs text-muted">accounts stopped</span>
-        </div>
-        <div
-          className={
-            'flex items-center gap-2 font-mono text-[0.6875rem] uppercase tracking-[0.12em] transition-opacity duration-500 ' +
-            (settled ? 'text-accent opacity-100' : 'opacity-0')
-          }
-        >
-          <span className="inline-flex size-1.5 rounded-full bg-accent" />
-          Contained · 180ms
+        {/* The payoff bar */}
+        <div className="flex items-center justify-between border-t border-border px-4 py-3">
+          <div className="flex items-baseline gap-2">
+            <span className="font-mono text-2xl font-semibold tabular-nums text-threat">
+              {count}
+            </span>
+            <span className="text-xs text-muted">accounts stopped</span>
+          </div>
+          <div
+            className={
+              'flex items-center gap-2 font-mono text-[0.6875rem] uppercase tracking-[0.12em] transition-opacity duration-500 ' +
+              (settled ? 'text-accent opacity-100' : 'opacity-0')
+            }
+          >
+            <span className="inline-flex size-1.5 rounded-full bg-accent" />
+            Contained · 180ms
+          </div>
         </div>
       </div>
     </div>
