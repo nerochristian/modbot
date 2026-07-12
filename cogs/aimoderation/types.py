@@ -22,6 +22,7 @@ if TYPE_CHECKING:
 
 class ToolType(str, Enum):
     GET_WARNINGS = "get_warnings"
+    GET_HISTORY = "get_history"
     WARN = "warn_member"
     TIMEOUT = "timeout_member"
     UNTIMEOUT = "untimeout_member"
@@ -82,7 +83,7 @@ TARGETED_TOOLS: Final[Set[ToolType]] = {
     ToolType.KICK, ToolType.BAN, ToolType.UNBAN,
     ToolType.ADD_ROLE, ToolType.REMOVE_ROLE,
     ToolType.SET_NICKNAME, ToolType.MOVE_MEMBER, ToolType.DISCONNECT_MEMBER,
-    ToolType.DM_USER, ToolType.GET_WARNINGS, ToolType.PURGE,
+    ToolType.DM_USER, ToolType.GET_WARNINGS, ToolType.GET_HISTORY, ToolType.PURGE,
 }
 
 REASONED_MODERATION_TOOLS: Final[Set[ToolType]] = {
