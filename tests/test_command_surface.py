@@ -4,6 +4,7 @@ import collections
 from pathlib import Path
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 from cogs.moderation import Moderation
@@ -50,7 +51,10 @@ def test_moderation_registers_required_slash_commands() -> None:
             "images",
             "links",
         }
-        assert all(callable(command.callback) for command in cog._slash_commands)
+        assert all(
+            isinstance(command, app_commands.Group) or callable(command.callback)
+            for command in cog._slash_commands
+        )
     finally:
         asyncio.run(bot.close())
 
