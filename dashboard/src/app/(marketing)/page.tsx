@@ -58,9 +58,6 @@ export default function LandingPage() {
       {/* ============================================================ */}
       <section className="relative overflow-hidden border-b border-border">
         <div className="pointer-events-none absolute inset-0 scanfield opacity-60" />
-        <div className="mx-auto max-w-6xl px-6 pb-16 pt-16 lg:pt-20">
-      <section className="relative overflow-hidden border-b border-border">
-        <div className="pointer-events-none absolute inset-0 scanfield opacity-60" />
         {/* A faint vertical rule anchors the asymmetric split. */}
         <div className="pointer-events-none absolute left-1/2 top-0 hidden h-full w-px bg-border lg:block" />
         <div className="mx-auto grid max-w-6xl items-center gap-x-12 gap-y-10 px-6 py-16 lg:grid-cols-[0.85fr_1.15fr] lg:py-20">
