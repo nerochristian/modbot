@@ -1453,6 +1453,22 @@ class AIModeration(commands.Cog):
                 arguments=args,
             )
 
+        if self._looks_like_history_lookup(low):
+            args: Dict[str, Any] = {}
+            non_bot_mentions = [
+                member
+                for member in message.mentions
+                if not member.bot and (not self.bot.user or member.id != self.bot.user.id)
+            ]
+            if non_bot_mentions:
+                args["target_user_id"] = non_bot_mentions[0].id
+            return Decision(
+                type=DecisionType.TOOL_CALL,
+                reason="rule: get_history",
+                tool=ToolType.GET_HISTORY,
+                arguments=args,
+            )
+
         if re.match(r"^(add|give)\s+role\b", low):
             role = self._extract_role_name(content)
             return Decision(
@@ -1566,6 +1582,9 @@ class AIModeration(commands.Cog):
 
         if self._looks_like_warning_lookup(low):
             return decision(ToolType.GET_WARNINGS, "get_warnings")
+
+        if self._looks_like_history_lookup(low):
+            return decision(ToolType.GET_HISTORY, "get_history")
 
         if re.match(r"^\s*(?:purge|clear|clean)\b", content, re.IGNORECASE):
             return decision(ToolType.PURGE, "purge_messages", self._extract_purge_args(content))
