@@ -92,14 +92,33 @@ export function LiveWire() {
   }, [])
 
   return (
-    <div className="wire-sweep relative overflow-hidden rounded-lg border border-border bg-card">
-      {/* Board header — channel + live status */}
-      <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
-        <div className="flex items-center gap-2">
-          <span className="wire-blip inline-flex size-2 rounded-full bg-threat" />
-          <span className="font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-muted">
-            The Nexus / #general
-          </span>
+    <div className="relative">
+      {/* Floating glass status widgets — adapted from the reference hero. */}
+      <div className="absolute -left-5 -top-5 z-20 hidden items-center gap-2.5 rounded-lg border border-border bg-surface/90 px-3.5 py-2.5 shadow-xl backdrop-blur wire-float sm:flex">
+        <span className="inline-flex size-2.5 rounded-full bg-success wire-blip" />
+        <div className="text-left">
+          <span className="block font-mono text-[0.5625rem] font-semibold uppercase tracking-[0.14em] text-muted-2">Shield status</span>
+          <span className="text-xs font-semibold text-foreground">Raid protection · active</span>
+        </div>
+      </div>
+      <div className="absolute -bottom-6 -right-4 z-20 hidden items-center gap-3 rounded-lg border border-border bg-surface/90 px-3.5 py-2.5 shadow-xl backdrop-blur wire-float-slow sm:flex">
+        <span className="bg-brand-gradient grid size-8 place-items-center rounded-md text-white">
+          <Zap className="size-4" />
+        </span>
+        <div className="text-left">
+          <span className="block font-mono text-[0.5625rem] font-semibold uppercase tracking-[0.14em] text-muted-2">Decision engine</span>
+          <span className="text-xs font-semibold text-foreground">142,429 cases resolved</span>
+        </div>
+      </div>
+
+      <div className="wire-sweep ring-brand relative overflow-hidden rounded-lg border border-border bg-card">
+        {/* Board header — channel + live status */}
+        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+          <div className="flex items-center gap-2">
+            <span className="wire-blip inline-flex size-2 rounded-full bg-threat" />
+            <span className="font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-muted">
+              The Nexus / #general
+            </span>
         </div>
         <span className="font-mono text-[0.625rem] uppercase tracking-[0.16em] text-accent">
           Automod · live
