@@ -1,6 +1,0 @@
-{
-  "name": "Docket",
-  "description": "An advanced, premium Discord moderation bot featuring context-aware punishment, configurable automation, live dashboards, and robust server security.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
