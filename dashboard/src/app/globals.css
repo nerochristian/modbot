@@ -489,5 +489,7 @@ body {
   .animate-wire-stamp,
   .animate-wire-flash { animation: none !important; opacity: 1 !important; transform: none !important; }
   .wire-blip,
+  .wire-float,
+  .wire-float-slow,
   .wire-sweep::after { animation: none !important; }
 }
