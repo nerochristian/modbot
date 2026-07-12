@@ -209,9 +209,8 @@ export default function LandingPage() {
       </section>
 
       {/* Proof — filed quotes with the docket rail. */}
-      <section id="testimonials" className="mx-auto max-w-6xl px-6 py-20">
-        <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-muted-2">
-          On the record
+      <section id="testimonials" className="border-t border-border">
+        <div className="mx-auto max-w-6xl px-6 py-20">
         </p>
         <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-3">
           {TESTIMONIALS.map((t) => (
