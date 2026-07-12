@@ -11,6 +11,7 @@ import bcrypt from 'bcryptjs'
  */
 
 export const SESSION_COOKIE = 'aegis_session'
+export const SELECTED_GUILD_COOKIE = 'aegis_guild'
 
 export function isSystemOwner(discordId: string | null | undefined): boolean {
   if (!discordId) return false

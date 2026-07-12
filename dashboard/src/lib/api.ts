@@ -28,10 +28,35 @@ export async function requireUser(
 ): Promise<CurrentUser | NextResponse> {
   const user = await getCurrentUser()
   if (!user) return apiError('Unauthorized', 401)
+  if (permission && !user.selectedGuildId) {
+    return apiError('Choose an authorized server workspace first', 409)
+  }
   if (permission && !user.permissions.includes(permission)) {
     return apiError('Forbidden', 403)
   }
   return user
+}
+
+/** Require a same-origin browser mutation before applying the normal auth/RBAC guard. */
+export async function requireMutation(
+  request: Request,
+  permission?: Permission,
+): Promise<CurrentUser | NextResponse> {
+  const method = request.method.toUpperCase()
+  if (!['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    const origin = request.headers.get('origin')
+    let sameOrigin = false
+    try {
+      sameOrigin = Boolean(origin) && new URL(origin as string).origin === new URL(request.url).origin
+    } catch {
+      sameOrigin = false
+    }
+    const fetchSite = request.headers.get('sec-fetch-site')
+    if (!sameOrigin || (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'none')) {
+      return apiError('Cross-origin mutation rejected', 403)
+    }
+  }
+  return requireUser(permission)
 }
 
 /** Translate common thrown errors into clean JSON responses. */

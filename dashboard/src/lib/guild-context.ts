@@ -1,10 +1,11 @@
 import 'server-only'
 
 import { cookies } from 'next/headers'
+import { SELECTED_GUILD_COOKIE } from '@/lib/auth'
 import { getCurrentUser } from '@/lib/session'
 import { getManageableGuilds, type ManagedGuild } from '@/lib/discord'
 
-export const SELECTED_GUILD_COOKIE = 'aegis_guild'
+export { SELECTED_GUILD_COOKIE } from '@/lib/auth'
 
 export async function getSelectedGuild(): Promise<ManagedGuild | null> {
   const user = await getCurrentUser()

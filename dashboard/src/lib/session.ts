@@ -1,7 +1,7 @@
 import { cookies } from 'next/headers'
 import { cache } from 'react'
 import { prisma } from '@/lib/prisma'
-import { isSystemOwner, SESSION_COOKIE, verifySession } from '@/lib/auth'
+import { isSystemOwner, SELECTED_GUILD_COOKIE, SESSION_COOKIE, verifySession } from '@/lib/auth'
 import {
   DEFAULT_ROLE_MATRIX,
   PERMISSIONS,
@@ -10,7 +10,6 @@ import {
   type Permission,
   type Role,
 } from '@/lib/rbac'
-import { SELECTED_GUILD_COOKIE } from '@/lib/guild-context'
 
 export type CurrentUser = {
   id: string
