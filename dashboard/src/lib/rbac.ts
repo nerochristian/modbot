@@ -44,6 +44,10 @@ export const PERMISSIONS = [
 ] as const
 export type Permission = (typeof PERMISSIONS)[number]
 
+export function isPermission(value: string): value is Permission {
+  return (PERMISSIONS as readonly string[]).includes(value)
+}
+
 export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] = [
   { label: 'Dashboard', permissions: ['dashboard.view', 'analytics.view', 'config.write'] },
   { label: 'Members', permissions: ['members.read', 'members.write'] },

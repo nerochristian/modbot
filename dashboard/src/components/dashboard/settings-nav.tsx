@@ -2,8 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { User, ShieldCheck, Palette, Bell, LayoutDashboard, Plug, CreditCard } from 'lucide-react'
-import { useConfigStore } from '@/lib/store'
+import { User, ShieldCheck, Palette, Bell, LayoutDashboard } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const ITEMS = [
@@ -12,19 +11,14 @@ const ITEMS = [
   { label: 'Appearance', href: '/dashboard/settings/appearance', icon: Palette },
   { label: 'Notifications', href: '/dashboard/settings/notifications', icon: Bell },
   { label: 'Dashboard', href: '/dashboard/settings/dashboard', icon: LayoutDashboard },
-  { label: 'Integrations', href: '/dashboard/settings/integrations', icon: Plug },
 ]
 
 export function SettingsNav() {
   const pathname = usePathname()
-  const canBilling = useConfigStore((s) => s.can('billing.read'))
-  const items = canBilling
-    ? [...ITEMS, { label: 'Billing', href: '/dashboard/billing', icon: CreditCard }]
-    : ITEMS
 
   return (
     <nav className="flex gap-1 overflow-x-auto lg:flex-col lg:overflow-visible">
-      {items.map((item) => {
+      {ITEMS.map((item) => {
         const active = pathname === item.href
         return (
           <Link

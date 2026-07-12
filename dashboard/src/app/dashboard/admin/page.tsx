@@ -1,34 +1,33 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Users2, ShieldCheck, ToggleRight, ScrollText, Blocks, Megaphone } from 'lucide-react'
+import { Users2, ShieldCheck, ScrollText, Megaphone, Server } from 'lucide-react'
+import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
+import { getSelectedGuild } from '@/lib/guild-context'
 import { Card, CardContent } from '@/components/ui/card'
 
 export const metadata: Metadata = { title: 'Admin' }
 
 export default async function AdminOverviewPage() {
-  const [users, members, features, enabledFeatures, rules, auditCount] = await Promise.all([
-    prisma.user.count(),
-    prisma.member.count(),
-    prisma.featureToggle.count(),
-    prisma.featureToggle.count({ where: { enabled: true } }),
-    prisma.automodRule.count(),
-    prisma.auditLog.count(),
+  const guild = await getSelectedGuild()
+  if (!guild) redirect('/servers')
+
+  const [teamMembers, auditCount] = await Promise.all([
+    prisma.guildMembership.count({ where: { guildId: guild.id, status: 'active' } }),
+    prisma.auditLog.count({ where: { guildId: guild.id } }),
   ])
 
   const stats = [
-    { label: 'Team members', value: users, href: '/dashboard/users', icon: Users2 },
-    { label: 'Server members', value: members, href: '/dashboard/members', icon: Users2 },
-    { label: 'Features enabled', value: `${enabledFeatures}/${features}`, href: '/dashboard/admin/features', icon: ToggleRight },
-    { label: 'Automod rules', value: rules, href: '/dashboard/automod', icon: Blocks },
+    { label: 'Team members', value: teamMembers, href: '/dashboard/users', icon: Users2 },
+    { label: 'Server members', value: guild.memberCount ?? 'Live', href: '/dashboard/members', icon: Server },
     { label: 'Audit events', value: auditCount, href: '/dashboard/admin/audit', icon: ScrollText },
   ]
 
   const shortcuts = [
     { label: 'Roles & permissions', description: 'Edit what each mod role can access.', href: '/dashboard/admin/roles', icon: ShieldCheck },
-    { label: 'Feature flags', description: 'Toggle features across the server.', href: '/dashboard/admin/features', icon: ToggleRight },
-    { label: 'Global settings', description: 'Bot name, sign-ups, security policy.', href: '/dashboard/admin/settings', icon: Blocks },
+    { label: 'Audit log', description: 'Review dashboard changes for this server.', href: '/dashboard/admin/audit', icon: ScrollText },
     { label: 'Send broadcast', description: 'Notify the whole mod team of an announcement.', href: '/dashboard/admin/broadcast', icon: Megaphone },
+    { label: 'Team access', description: 'Invite moderators and assign dashboard roles.', href: '/dashboard/users', icon: Users2 },
   ]
 
   return (

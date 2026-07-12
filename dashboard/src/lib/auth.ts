@@ -12,6 +12,13 @@ import bcrypt from 'bcryptjs'
 
 export const SESSION_COOKIE = 'aegis_session'
 
+export function isSystemOwner(discordId: string | null | undefined): boolean {
+  if (!discordId) return false
+  return (process.env.OWNER_IDS ?? '')
+    .split(',')
+    .some((value) => value.trim() === discordId)
+}
+
 export function secureCookies(): boolean {
   const configured = process.env.SESSION_COOKIE_SECURE?.trim().toLowerCase()
   if (configured === 'true') return true

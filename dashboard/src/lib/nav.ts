@@ -10,7 +10,6 @@ import {
   FileBarChart,
   Activity,
   Bell,
-  Sparkles,
   Settings,
   ShieldCheck,
 } from 'lucide-react'
@@ -35,7 +34,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Activity', href: '/dashboard/activity', icon: Activity, permission: 'activity.read', section: 'main' },
   { label: 'Team', href: '/dashboard/users', icon: UserCog, permission: 'users.read', section: 'account' },
   { label: 'Notifications', href: '/dashboard/notifications', icon: Bell, permission: 'notifications.read', section: 'account' },
-  { label: 'Premium', href: '/dashboard/billing', icon: Sparkles, permission: 'billing.read', section: 'account' },
   { label: 'Settings', href: '/dashboard/settings', icon: Settings, permission: 'settings.read', section: 'account' },
   { label: 'Admin', href: '/dashboard/admin', icon: ShieldCheck, permission: 'admin.access', section: 'admin' },
 ]

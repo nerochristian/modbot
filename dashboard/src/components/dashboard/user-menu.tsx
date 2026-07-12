@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { LogOut, User, Settings, CreditCard, ShieldCheck } from 'lucide-react'
+import { LogOut, User, Settings, ShieldCheck } from 'lucide-react'
 import {
   Dropdown,
   DropdownTrigger,
@@ -53,11 +53,6 @@ export function UserMenu() {
         <Link href="/dashboard/settings">
           <DropdownItem icon={Settings}>Settings</DropdownItem>
         </Link>
-        {can('billing.read') && (
-          <Link href="/dashboard/billing">
-            <DropdownItem icon={CreditCard}>Billing</DropdownItem>
-          </Link>
-        )}
         {can('admin.access') && (
           <Link href="/dashboard/admin">
             <DropdownItem icon={ShieldCheck}>Admin panel</DropdownItem>
