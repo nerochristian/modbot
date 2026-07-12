@@ -240,12 +240,76 @@ class AIClient:
         selected_model = (model or self.config.model or "").strip()
         if selected_model.lower() in {"", "deepseek-web", "digitalocean"}:
             selected_model = os.getenv("DO_PROFILE_MODEL", "deepseek-4-flash").strip()
+
+        return await self._post_chat_completion(
+            messages,
+            base_url=_DO_BASE_URL,
+            api_key=_DO_API_KEY,
+            model=selected_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            json_mode=json_mode,
+            allow_multimodal=allow_multimodal,
+            provider_label="DigitalOcean inference",
+        )
+
+    async def _call_deepseek_api(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        temperature: float,
+        max_tokens: int,
+        model: Optional[str] = None,
+        json_mode: bool = False,
+        allow_multimodal: bool = False,
+    ) -> Optional[str]:
+        """Call the real DeepSeek HTTP API (OpenAI-compatible)."""
+        if not _DEEPSEEK_API_KEY:
+            raise RuntimeError("DeepSeek API is missing DEEPSEEK_API_KEY.")
+
+        # DeepSeek's API has its own model namespace (deepseek-chat / deepseek-reasoner);
+        # ignore DigitalOcean-style model hints that don't apply here.
+        selected_model = (model or "").strip()
+        if selected_model.lower() in {"", "deepseek-web", "digitalocean"} or selected_model.startswith("deepseek-4"):
+            selected_model = _DEEPSEEK_API_MODEL
+
+        return await self._post_chat_completion(
+            messages,
+            base_url=_DEEPSEEK_BASE_URL,
+            api_key=_DEEPSEEK_API_KEY,
+            model=selected_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            json_mode=json_mode,
+            allow_multimodal=allow_multimodal,
+            provider_label="DeepSeek API",
+        )
+
+    async def _post_chat_completion(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        base_url: str,
+        api_key: str,
+        model: str,
+        temperature: float,
+        max_tokens: int,
+        json_mode: bool = False,
+        allow_multimodal: bool = False,
+        provider_label: str,
+        max_retries: int = 2,
+    ) -> Optional[str]:
+        """Shared OpenAI-compatible chat-completions POST with bounded retries.
+
+        Used by both the DigitalOcean and DeepSeek HTTP providers. Retries only
+        transient failures (network errors, 5xx, 429); auth/4xx fail fast.
+        """
         request_messages = messages if allow_multimodal else self._normalize_text_messages(messages)
         if not request_messages:
-            raise RuntimeError("DigitalOcean request has no message content.")
+            raise RuntimeError(f"{provider_label} request has no message content.")
 
         payload: Dict[str, Any] = {
-            "model": selected_model,
+            "model": model,
             "messages": request_messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
@@ -253,34 +317,48 @@ class AIClient:
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
 
-        session, owned_session = self._get_http_session(timeout=60)
-        try:
-            async with session.post(
-                f"{_DO_BASE_URL}/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {_DO_API_KEY}",
-                    "Content-Type": "application/json",
-                },
-                json=payload,
-            ) as resp:
-                data = await resp.json(content_type=None)
-                if resp.status >= 400:
-                    detail = data.get("error", data) if isinstance(data, dict) else data
-                    if resp.status in {401, 403}:
-                        self._set_block(
-                            seconds=900,
-                            reason="DigitalOcean inference authentication or access failed.",
-                        )
-                    elif resp.status == 429:
-                        self._set_block(
-                            seconds=60,
-                            reason="DigitalOcean inference rate limit or quota reached.",
-                        )
-                    raise RuntimeError(f"DigitalOcean HTTP {resp.status}: {str(detail)[:500]}")
-        finally:
-            if owned_session:
-                await session.close()
+        last_error: Optional[Exception] = None
+        for attempt in range(max_retries + 1):
+            session, owned_session = self._get_http_session(timeout=60)
+            try:
+                async with session.post(
+                    f"{base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                ) as resp:
+                    data = await resp.json(content_type=None)
+                    if resp.status >= 400:
+                        detail = data.get("error", data) if isinstance(data, dict) else data
+                        if resp.status in {401, 403}:
+                            self._set_block(seconds=900, reason=f"{provider_label} authentication or access failed.")
+                            raise RuntimeError(f"{provider_label} HTTP {resp.status}: {str(detail)[:500]}")
+                        if resp.status == 429:
+                            self._set_block(seconds=60, reason=f"{provider_label} rate limit or quota reached.")
+                        # 429 and 5xx are transient — fall through to retry.
+                        if resp.status < 500 and resp.status != 429:
+                            raise RuntimeError(f"{provider_label} HTTP {resp.status}: {str(detail)[:500]}")
+                        last_error = RuntimeError(f"{provider_label} HTTP {resp.status}: {str(detail)[:500]}")
+                    else:
+                        return self._extract_completion_content(data)
+            except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+                last_error = exc
+                logger.warning("%s network error (attempt %d/%d): %s", provider_label, attempt + 1, max_retries + 1, exc)
+            finally:
+                if owned_session:
+                    await session.close()
 
+            if attempt < max_retries:
+                await asyncio.sleep(0.5 * (2 ** attempt))
+
+        if last_error:
+            raise last_error
+        return None
+
+    @staticmethod
+    def _extract_completion_content(data: Any) -> Optional[str]:
         if not isinstance(data, dict):
             return None
         choices = data.get("choices") or []
@@ -291,7 +369,7 @@ class AIClient:
         if isinstance(content, str):
             return content
         if isinstance(content, list):
-            return self._stringify_web_content(content)
+            return AIClient._stringify_web_content(content)
         return None
 
     async def _call_digitalocean_conversation(
