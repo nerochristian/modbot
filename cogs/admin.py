@@ -879,9 +879,19 @@ class Admin(commands.Cog):
             else:
                 embed = ModEmbed.info("Cancelled", "Settings reset has been cancelled.")
                 await msg. edit(embed=embed)
-        except: 
-            embed = ModEmbed. error("Timeout", "Reset cancelled due to timeout.")
-            await msg.edit(embed=embed)
+        except asyncio.TimeoutError:
+            embed = ModEmbed.error("Timeout", "Reset cancelled due to timeout.")
+            try:
+                await msg.edit(embed=embed)
+            except discord.HTTPException:
+                pass
+        except Exception as e:
+            logger.error(f"Settings reset failed for guild {interaction.guild_id}: {e}", exc_info=True)
+            embed = ModEmbed.error("Reset Failed", "Something went wrong while resetting settings. Please try again.")
+            try:
+                await msg.edit(embed=embed)
+            except discord.HTTPException:
+                pass
 
     giveaway_group = app_commands.Group(name="giveaway", description="Giveaway commands")
 
