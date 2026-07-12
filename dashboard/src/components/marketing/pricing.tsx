@@ -84,32 +84,30 @@ export function Pricing() {
         </div>
       </div>
 
-      <div className="mt-14 grid gap-6 lg:grid-cols-3">
+      <div className="mt-14 grid gap-px overflow-hidden rounded-lg border border-border bg-border lg:grid-cols-3">
         {PLANS.map((plan) => {
           const price = cycle === 'annual' ? Math.round(plan.monthly * 0.8) : plan.monthly
           return (
             <div
               key={plan.name}
               className={cn(
-                'relative flex flex-col rounded-lg border p-6',
-                plan.highlighted
-                  ? 'border-accent bg-card ring-1 ring-accent'
-                  : 'border-border bg-card',
+                'relative flex flex-col p-7',
+                plan.highlighted ? 'bg-surface-2' : 'bg-surface',
               )}
             >
               {plan.highlighted && (
-                <span className="absolute -top-2.5 left-6 rounded-sm bg-accent px-2.5 py-0.5 font-mono text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-accent-foreground">
+                <span className="absolute right-0 top-0 rounded-bl-sm bg-accent px-2.5 py-0.5 font-mono text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-accent-foreground">
                   Most popular
                 </span>
               )}
-              <h3 className="font-display text-lg font-semibold text-foreground">{plan.name}</h3>
-              <p className="mt-1 text-sm text-muted">{plan.tagline}</p>
+              <h3 className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.16em] text-accent">{plan.name}</h3>
+              <p className="mt-2 text-sm text-muted">{plan.tagline}</p>
               <div className="mt-5 flex items-baseline gap-1">
                 <span className="font-display text-4xl font-semibold tracking-tight text-foreground">${price}</span>
                 <span className="text-sm text-muted">/mo</span>
               </div>
               {cycle === 'annual' && (
-                <p className="mt-1 text-xs text-muted-2">billed annually (${price * 12}/yr)</p>
+                <p className="mt-1 font-mono text-xs text-muted-2">billed annually (${price * 12}/yr)</p>
               )}
               <Link
                 href="/register"
