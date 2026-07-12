@@ -1533,7 +1533,7 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
                         (guild_id,),
                     )
                     row = await cursor.fetchone()
-                    existing_settings = json.loads(row[0]) if row and row[0] else {}
+                    existing_settings = json.loads(_row_get(row, "settings")) if row and _row_get(row, "settings") else {}
                     settings_to_store = _deep_merge_settings(existing_settings, incoming_settings)
                 else:
                     # An empty dict is the admin reset path. Keep it destructive.
