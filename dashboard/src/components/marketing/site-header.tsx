@@ -8,9 +8,9 @@ import { buttonVariants } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 
 const NAV = [
-  { label: 'Features', href: '#features' },
+  { label: 'How it works', href: '#pipeline' },
+  { label: 'Commands', href: '#commands' },
   { label: 'Pricing', href: '#pricing' },
-  { label: 'Testimonials', href: '#testimonials' },
   { label: 'FAQ', href: '#faq' },
 ]
 
