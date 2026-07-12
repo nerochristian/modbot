@@ -345,3 +345,127 @@ body {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ================================================================== */
+/* SITUATION ROOM — the Live Wire marketing front door.               */
+/*                                                                    */
+/* Scoped palette: a deep ink-blue operations surface with exactly    */
+/* two functional signal colors — RED = threat, TEAL = contained.     */
+/* Deliberately NOT the "black + neon glow" cliché: color reads like  */
+/* an air-traffic / SOC instrument, restrained; the drama comes from  */
+/* motion and density, not luminance. Applied to a marketing wrapper  */
+/* only, so the dashboard's calm light identity is untouched.         */
+/* ================================================================== */
+.situation {
+  --paper: #0a0e17;          /* deep ink-blue, not neutral black */
+  --surface: #10151f;
+  --surface-2: #161c28;
+  --card: #10151f;
+  --overlay: rgba(3, 5, 9, 0.72);
+  --border: #202838;
+  --border-strong: #303a4e;
+  --foreground: #eef1f6;
+  --muted: #93a0b4;
+  --muted-2: #5d6a7f;
+
+  --accent: #2fd4b8;         /* contained / safe — brand teal signal */
+  --accent-foreground: #04120f;
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 34%, transparent);
+
+  --threat: #ff4d4d;         /* the only other hue — threat/blocked */
+  --threat-soft: color-mix(in srgb, #ff4d4d 15%, transparent);
+
+  --success: #2fd4b8;
+  --success-soft: color-mix(in srgb, #2fd4b8 16%, transparent);
+  --mint: var(--success);
+  --mint-soft: var(--success-soft);
+  --warning: #e0942e;
+  --warning-soft: color-mix(in srgb, #e0942e 16%, transparent);
+  --danger: #ff4d4d;
+  --danger-soft: color-mix(in srgb, #ff4d4d 15%, transparent);
+  --info: #4a9eff;
+  --info-soft: color-mix(in srgb, #4a9eff 15%, transparent);
+
+  --sev-none: #5d6a7f;
+  --sev-low: #4a9eff;
+  --sev-medium: #e0942e;
+  --sev-high: #ff7a45;
+  --sev-critical: #ff4d4d;
+
+  color-scheme: dark;
+  background: var(--paper);
+  color: var(--foreground);
+}
+.text-threat { color: var(--threat); }
+.bg-threat { background-color: var(--threat); }
+.bg-threat-soft { background-color: var(--threat-soft); }
+.border-threat { border-color: var(--threat); }
+
+/* Scanline / radar sweep field for the situation surface — very low
+   contrast, reads as an instrument backdrop, not decoration. */
+.scanfield {
+  background-image:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 2px,
+      color-mix(in srgb, var(--foreground) 3%, transparent) 2px,
+      color-mix(in srgb, var(--foreground) 3%, transparent) 3px
+    );
+}
+
+/* Incident feed — messages stream up and settle. */
+@keyframes wire-in {
+  0% { opacity: 0; transform: translateY(10px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+/* Blocked stamp snaps in over an incoming message. */
+@keyframes wire-stamp {
+  0% { opacity: 0; transform: scale(1.4) rotate(-8deg); }
+  55% { opacity: 1; }
+  100% { opacity: 1; transform: scale(1) rotate(-3deg); }
+}
+/* A soft threat pulse behind a row as it's caught. */
+@keyframes wire-flash {
+  0% { background-color: var(--threat-soft); }
+  100% { background-color: transparent; }
+}
+/* The counter's live blip. */
+@keyframes wire-blip {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+/* Radar sweep line across the board. */
+@keyframes wire-sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.animate-wire-in { animation: wire-in 0.4s ease-out both; }
+.animate-wire-stamp { animation: wire-stamp 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.3) both; }
+.animate-wire-flash { animation: wire-flash 1.1s ease-out both; }
+.wire-blip { animation: wire-blip 1.4s ease-in-out infinite; }
+.wire-sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: 30%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 8%, transparent),
+    transparent
+  );
+  animation: wire-sweep 4s linear infinite;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Live Wire renders its settled end-state instantly. */
+  .animate-wire-in,
+  .animate-wire-stamp,
+  .animate-wire-flash { animation: none !important; opacity: 1 !important; transform: none !important; }
+  .wire-blip,
+  .wire-sweep::after { animation: none !important; }
+}
