@@ -331,10 +331,14 @@ class ManagementCommands:
     async def _unmute_logic(self, source, user: discord.Member, reason: str):
         guild = source.guild
         moderator = source.user if isinstance(source, discord.Interaction) else source.author
-        
+
         if not user.is_timed_out():
             return await self._respond(source, embed=ModEmbed.error("Not Muted", "User is not muted."), ephemeral=True)
-            
+
+        can_mod, error = await self.can_moderate(guild.id, moderator, user)
+        if not can_mod:
+            return await self._respond(source, embed=ModEmbed.error("Cannot Unmute", error), ephemeral=True)
+
         bot_member = guild.me
         if not bot_member.guild_permissions.moderate_members:
             return await self._respond(source, embed=ModEmbed.error("Bot Missing Permissions", "I need **Timeout Members** permission."), ephemeral=True)
@@ -862,10 +866,14 @@ class ManagementCommands:
 
     async def _unquarantine_logic(self, source, user: discord.Member, reason: str = "Quarantine lifted"):
         author = source.user if isinstance(source, discord.Interaction) else source.author
-        
+
         active = await self._get_active_quarantine(source.guild.id, user.id)
         if not active:
              return await self._respond(source, embed=ModEmbed.error("Not Quarantined", "This user is not quarantined."), ephemeral=True)
+
+        can_mod, error = await self.can_moderate(source.guild.id, author, user)
+        if not can_mod:
+            return await self._respond(source, embed=ModEmbed.error("Cannot Unquarantine", error), ephemeral=True)
 
         try:
             role_ids = json.loads(active['roles_backup'])
