@@ -4,10 +4,25 @@ import { Pool, type QueryResultRow } from 'pg'
 
 const globalForBotDb = globalThis as unknown as { aegisBotPool?: Pool }
 
+function botConnectionString(): string | undefined {
+  // Prefer an explicit BOT_DATABASE_URL; otherwise fall back to the bot's own
+  // DATABASE_URL when it points at Postgres. next.config.ts wires this in dev
+  // from the root .env, but in production (env vars set directly, no .env file)
+  // that indirection may not run — so re-derive it here too.
+  const explicit = process.env.BOT_DATABASE_URL?.trim()
+  if (explicit) return explicit
+  const botDbUrl = process.env.DATABASE_URL?.trim()
+  if (botDbUrl?.startsWith('postgres')) return botDbUrl
+  return undefined
+}
+
 function createPool(): Pool {
-  const connectionString = process.env.BOT_DATABASE_URL?.trim()
+  const connectionString = botConnectionString()
   if (!connectionString?.startsWith('postgres')) {
-    throw new Error('BOT_DATABASE_URL is not configured with the bot PostgreSQL database')
+    throw new Error(
+      'Bot database is not configured: set BOT_DATABASE_URL (or a Postgres DATABASE_URL) ' +
+        'to the bot PostgreSQL database.',
+    )
   }
   return new Pool({
     connectionString,
