@@ -191,6 +191,24 @@ class AIClient:
         session_name: Optional[str] = None,
         long_answer: bool = False,
     ) -> Optional[str]:
+        # Preferred path: the real DeepSeek HTTP API (stable, structured-output
+        # capable). Falls back to the browser scraper only if explicitly enabled,
+        # then to DigitalOcean inference.
+        if _deepseek_api_enabled():
+            try:
+                result = await self._call_deepseek_api(
+                    messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    model=model,
+                    json_mode=json_mode,
+                    allow_multimodal=allow_multimodal,
+                )
+                if result is not None:
+                    return result
+            except Exception:
+                logger.warning("DeepSeek API call failed; trying next provider.", exc_info=True)
+
         if self._deepseek_web.enabled:
             prompt_parts: List[str] = []
             for message in messages:
