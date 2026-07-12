@@ -73,12 +73,12 @@ export default function LandingPage() {
               <span className="inline-flex size-1.5 rounded-full bg-threat wire-blip" />
               Raid in progress
             </p>
-            <h1 className="mt-6 font-display text-[2.75rem] font-semibold leading-[0.95] tracking-[-0.03em] text-foreground sm:text-6xl">
+            <h1 className="mt-6 font-display text-[2.75rem] font-semibold leading-[0.95] tracking-[-0.02em] text-foreground sm:text-6xl">
               300 accounts
               <br />
               hit your server.
               <br />
-              <span className="text-accent">Nobody saw&nbsp;it.</span>
+              <span className="text-brand-gradient">Nobody saw&nbsp;it.</span>
             </h1>
             <p className="mt-6 max-w-md text-lg leading-relaxed text-muted">
               Docket reads every message the instant it posts and stops raids, spam, and scams
