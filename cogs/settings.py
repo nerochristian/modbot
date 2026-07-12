@@ -482,7 +482,7 @@ class LoggingSettingsView(BaseSettingsView):
             name="Routing Rules",
             value=(
                 "`audit-logs`: server audit and configuration changes\n"
-                "`mod-logs`: moderation, reports, tickets, modmail, forum alerts\n"
+                "`mod-logs`: moderation, reports, tickets, and forum alerts\n"
                 "`message-logs`: message edits/deletes and purge transcripts\n"
                 "`automod-logs`: automod and AI moderation events\n"
                 "`voice-logs`: voice state and voice moderation events\n"

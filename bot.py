@@ -435,7 +435,6 @@ class ModBot(commands.Bot):
         "logging": ("logging_enabled", True),
         "tickets": ("tickets_enabled", False),
         "verification": ("verification_enabled", True),
-        "modmail": ("modmail_enabled", True),
         "whitelist": ("whitelist_enabled", False),
         "forum_moderation": ("forum_moderation_enabled", True),
     }

@@ -862,7 +862,7 @@ class EscalationModal(discord.ui.Modal, title="AutoMod Offense Escalation"):
         await self.session.refresh(interaction, "escalation")
 
 
-class AppealModal(discord.ui.Modal, title="Appeal / Modmail Instructions"):
+class AppealModal(discord.ui.Modal, title="Appeal Instructions"):
     text = discord.ui.TextInput(label="Optional DM appeal instructions", style=discord.TextStyle.paragraph, required=False, max_length=800)
 
     def __init__(self, session: AutoModWizardSession) -> None:

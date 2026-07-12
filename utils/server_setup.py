@@ -38,7 +38,7 @@ DEFAULT_STAFF_GUIDE: Dict[str, Any] = {
             ],
         },
         {
-            "title": "Tickets and Modmail",
+            "title": "Tickets",
             "content": [
                 "Respond clearly and promptly.",
                 "Keep conversations on-topic.",
@@ -241,7 +241,6 @@ FEATURE_DEFAULTS: Dict[str, bool] = {
     "antiraid_enabled": False,
     "verification_enabled": False,
     "tickets_enabled": False,
-    "modmail_enabled": False,
     "aimod_enabled": False,
     "whitelist_enabled": False,
 }
@@ -369,7 +368,6 @@ def apply_compact_log_routing(settings: Dict[str, Any]) -> None:
             "log_channel_report",
             "ticket_log_channel",
             "log_channel_ticket",
-            "modmail_log_channel",
             "court_log_channel",
             "emoji_log_channel",
             "forum_alerts_channel",
@@ -595,7 +593,7 @@ def build_setup_summary(
                 module_channel_item("AutoMod Log Channel", "logging", "automodChannel", "automod_log_channel"),
                 module_channel_item("Voice Log Channel", "logging", "voiceChannel", "voice_log_channel"),
                 category_item("Ticket Category", "ticket_category"),
-                module_channel_item("Ticket/Modmail Log Channel", "tickets", "logChannel", "ticket_log_channel"),
+                module_channel_item("Ticket Log Channel", "tickets", "logChannel", "ticket_log_channel"),
             ],
         },
         {
@@ -607,7 +605,6 @@ def build_setup_summary(
                 {"key": "antiraid_enabled", "label": "Anti-Raid", "configured": True, "value": "Enabled" if module_enabled(settings, "antiraid", False) else "Disabled"},
                 {"key": "verification_enabled", "label": "Verification", "configured": True, "value": "Enabled" if module_enabled(settings, "verification", False) else "Disabled"},
                 {"key": "tickets_enabled", "label": "Tickets", "configured": True, "value": "Enabled" if module_enabled(settings, "tickets", False) else "Disabled"},
-                {"key": "modmail_enabled", "label": "Modmail", "configured": True, "value": "Enabled" if module_enabled(settings, "modmail", False) else "Disabled"},
                 {"key": "aimod_enabled", "label": "AI Moderation", "configured": True, "value": "Enabled" if module_enabled(settings, "aimod", False) else "Disabled"},
             ],
         },

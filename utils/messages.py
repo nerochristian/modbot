@@ -67,11 +67,9 @@ class Messages:
     LOG_CHANNEL_DISABLED = "✅ {log_type} logging has been disabled."
     LOG_SEND_FAILED = "⚠️ Failed to send log to {channel} (check permissions)."
     
-    # Tickets & Modmail
+    # Tickets
     TICKET_CREATED = "🎫 Ticket created: {channel}"
     TICKET_CLOSED = "🔒 Ticket closed successfully."
-    MODMAIL_BLOCKED = "🚫 You are blocked from using modmail."
-    MODMAIL_SENT = "✅ Your message has been sent to the staff team."
     
     # Court System
     COURT_SESSION_STARTED = "⚖️ Court session started in {channel}."
