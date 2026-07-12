@@ -2308,41 +2308,6 @@ async def _run_modbot(bot: ModBot, token: str) -> int:
 
 
 async def _run_lifesimbot() -> int:
-    try:
-        from LifeSimBot.bot import TOKEN as lifesim_token
-        from LifeSimBot.bot import bot as lifesim_bot
-        from LifeSimBot.bot import logger as lifesim_logger
-    except Exception as exc:
-        logger.critical(f"[FATAL] Failed to import LifeSimBot: {exc}", exc_info=True)
-        return 1
-
-    if not lifesim_token:
-        logger.critical("[FATAL] Missing required LifeSimBot token: set LIFESIM_DISCORD_TOKEN.")
-        return 1
-
-    try:
-        async with lifesim_bot:
-            lifesim_logger.info("Connecting LifeSimBot to Discord...")
-            await lifesim_bot.start(lifesim_token)
-    except KeyboardInterrupt:
-        lifesim_logger.info("Received keyboard interrupt")
-    except discord.LoginFailure:
-        logger.critical("=" * 60)
-        logger.critical("[FATAL] Invalid LifeSimBot token!")
-        logger.critical("=" * 60)
-        return 1
-    except discord.PrivilegedIntentsRequired:
-        logger.critical("=" * 60)
-        logger.critical("[FATAL] Missing Privileged Intents for LifeSimBot!")
-        logger.critical("=" * 60)
-        return 1
-    except Exception as exc:
-        logger.critical(f"[FATAL] Fatal error during LifeSimBot execution: {exc}", exc_info=True)
-        return 1
-    finally:
-        if not lifesim_bot.is_closed():
-            await lifesim_bot.close()
-
     return 0
 
 
