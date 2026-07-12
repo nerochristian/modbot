@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { Menu, X } from 'lucide-react'
 import { Logo } from '@/components/logo'
 import { buttonVariants } from '@/components/ui/button'
-import { PublicThemeToggle } from './theme-toggle'
 import { cn } from '@/lib/utils'
 
 const NAV = [
@@ -51,7 +50,6 @@ export function SiteHeader() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <PublicThemeToggle className="hidden sm:inline-flex" />
           <Link href="/login" className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'hidden sm:inline-flex')}>
             Sign in
           </Link>
