@@ -59,46 +59,53 @@ export default function LandingPage() {
       <section className="relative overflow-hidden border-b border-border">
         <div className="pointer-events-none absolute inset-0 scanfield opacity-60" />
         <div className="mx-auto max-w-6xl px-6 pb-16 pt-16 lg:pt-20">
-          <div className="mx-auto max-w-3xl text-center">
+      <section className="relative overflow-hidden border-b border-border">
+        <div className="pointer-events-none absolute inset-0 scanfield opacity-60" />
+        {/* A faint vertical rule anchors the asymmetric split. */}
+        <div className="pointer-events-none absolute left-1/2 top-0 hidden h-full w-px bg-border lg:block" />
+        <div className="mx-auto grid max-w-6xl items-center gap-x-12 gap-y-10 px-6 py-16 lg:grid-cols-[0.85fr_1.15fr] lg:py-20">
+          {/* Left — the claim */}
+          <div>
             <p className="inline-flex items-center gap-2 rounded-sm border border-border bg-surface px-3 py-1 font-mono text-[0.6875rem] font-medium uppercase tracking-[0.16em] text-accent">
               <span className="inline-flex size-1.5 rounded-full bg-threat wire-blip" />
-              Raid in progress — watch it stop
+              Raid in progress
             </p>
-            <h1 className="mt-7 font-display text-[2.75rem] font-semibold leading-[0.98] tracking-[-0.03em] text-foreground sm:text-6xl">
-              300 accounts hit your server.
+            <h1 className="mt-6 font-display text-[2.75rem] font-semibold leading-[0.95] tracking-[-0.03em] text-foreground sm:text-6xl">
+              300 accounts
               <br />
-              <span className="text-accent">Nobody saw a thing.</span>
+              hit your server.
+              <br />
+              <span className="text-accent">Nobody saw&nbsp;it.</span>
             </h1>
-            <p className="mx-auto mt-6 max-w-xl text-lg leading-relaxed text-muted">
-              Docket reads every message the moment it posts and stops raids, spam, and scams before
-              your community ever notices. Each action becomes a case you can read back.
+            <p className="mt-6 max-w-md text-lg leading-relaxed text-muted">
+              Docket reads every message the instant it posts and stops raids, spam, and scams
+              before your community notices. Each action becomes a case you can read back.
+            </p>
+            <div className="mt-8 flex flex-wrap items-center gap-3">
+              <Link
+                href="/api/auth/discord/authorize"
+                className={buttonVariants({ variant: 'primary', size: 'lg', className: 'gap-2.5 px-7' })}
+              >
+                <LogIn className="size-4" />
+                Deploy Docket
+              </Link>
+              <Link
+                href="#pipeline"
+                className={buttonVariants({ variant: 'outline', size: 'lg', className: 'gap-2' })}
+              >
+                How it works
+                <ArrowRight className="size-4" />
+              </Link>
+            </div>
+            <p className="mt-5 font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-muted-2">
+              Free under 5k members · No card required
             </p>
           </div>
 
-          {/* The Live Wire board — centerpiece, wide and cinematic. */}
-          <div className="mx-auto mt-12 max-w-3xl">
+          {/* Right — the Live Wire board, the anchor of the composition */}
+          <div className="lg:-mr-4">
             <LiveWire />
           </div>
-
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-3">
-            <Link
-              href="/api/auth/discord/authorize"
-              className={buttonVariants({ variant: 'primary', size: 'lg', className: 'gap-2.5 px-7' })}
-            >
-              <LogIn className="size-4" />
-              Deploy Docket
-            </Link>
-            <Link
-              href="#pipeline"
-              className={buttonVariants({ variant: 'outline', size: 'lg', className: 'gap-2' })}
-            >
-              How it works
-              <ArrowRight className="size-4" />
-            </Link>
-          </div>
-          <p className="mt-5 text-center font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-muted-2">
-            Free under 5k members · No card required
-          </p>
         </div>
       </section>
 
