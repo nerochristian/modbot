@@ -328,7 +328,7 @@ class AIModeration(commands.Cog):
     _HISTORY_LOOKUP_RE: ClassVar[re.Pattern] = re.compile(
         r"(?:"
         # "show/pull/get ... actions/history/record/modlogs/rap sheet ..."
-        r"\b(?:what(?:'s|\s+is|\s+are)|show|list|check|view|get|pull|fetch|display|give\s+me|see|look\s+up|lookup)\b"
+        r"\b(?:what(?:'?s|\s+is|\s+are)?|show|list|check|view|get|pull|fetch|display|give\s+me|see|look\s+up|lookup)\b"
         r".{0,60}\b(?:actions?|history|records?|modlogs?|mod\s+logs?|rap\s+sheet|dossier|track\s+record|priors?|"
         r"case\s+history|prior\s+actions?|past\s+actions?|infractions?|offen[cs]es?)\b|"
         # "actions/history/record ... for/on/of @user"
