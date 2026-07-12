@@ -59,10 +59,10 @@ class Moderation(
         cmd("purgeimages", "Delete messages with images", self.purgeimages_slash)
         cmd("purgelinks", "Delete messages with links", self.purgelinks_slash)
 
-        # Whitelist
-        whitelist_group = WhitelistGroup(self)
-        self._slash_commands.append(whitelist_group)
-        self.bot.tree.add_command(whitelist_group)
+        # Whitelist slash commands are owned by the dedicated cogs.whitelist cog
+        # (see cogs/whitelist.py). Registering a second "whitelist" group here
+        # collided with it and blocked that cog from loading.
+
 
         # Member Management
         cmd("kick", "Kick a user", self.kick_slash)
