@@ -339,6 +339,31 @@ def _convert_sqlite_insert_sql(query: str) -> tuple[str, bool]:
     return converted, False
 
 
+
+
+def _row_get(row: Any, column: str) -> Any:
+    """Get a column value from a database row (dict or tuple).
+
+    SQLite (aiosqlite) returns tuples, PostgreSQL (asyncpg via PostgresCompatCursor)
+    returns dicts. This helper bridges both so call sites work either way.
+    """
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return row.get(column)
+    if isinstance(row, (tuple, list)):
+        if len(row) == 1:
+            return row[0]
+        return row[0]
+    try:
+        return row[column]
+    except (KeyError, IndexError, TypeError):
+        try:
+            return row[0]
+        except (KeyError, IndexError, TypeError):
+            return None
+
+
 def _parse_status_rowcount(status: str) -> int:
     if not status:
         return 0
