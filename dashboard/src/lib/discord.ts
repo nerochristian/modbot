@@ -62,7 +62,8 @@ export type DiscordGuildRoleResource = {
 export type DiscordGuildChannelResource = {
   id: string
   name: string
-  type: 0 | 5
+  /** Discord channel type. Resources expose text, announcement, voice, stage, and category channels. */
+  type: 0 | 2 | 4 | 5 | 13
   parentId: string | null
   position: number
 }
@@ -274,8 +275,12 @@ export async function getBotGuildResources(guildId: string): Promise<{
       .map(({ id, name, position, color }) => ({ id, name, position, color }))
       .sort((a, b) => b.position - a.position || a.name.localeCompare(b.name)),
     channels: channelPayload
-      .filter((channel): channel is DiscordGuildChannelPayload & { type: 0 | 5 } => (
-        channel.type === 0 || channel.type === 5
+      .filter((channel): channel is DiscordGuildChannelPayload & { type: 0 | 2 | 4 | 5 | 13 } => (
+        channel.type === 0
+        || channel.type === 2
+        || channel.type === 4
+        || channel.type === 5
+        || channel.type === 13
       ))
       .map((channel) => ({
         id: channel.id,
