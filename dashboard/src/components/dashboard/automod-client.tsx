@@ -461,7 +461,7 @@ function AutomodRolePicker({
           value={nextRole}
           disabled={disabled || loading || available.length === 0}
           options={available.map((role) => ({ label: `@${role.name}`, value: role.id }))}
-          placeholder={loading ? 'Loading rolesâ€¦' : available.length > 0 ? 'Select role' : 'No more roles'}
+          placeholder={loading ? 'Loading roles…' : available.length > 0 ? 'Select role' : 'No more roles'}
           onChange={(event) => {
             const roleId = event.target.value
             setNextRole('')

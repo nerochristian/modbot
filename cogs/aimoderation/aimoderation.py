@@ -1904,7 +1904,7 @@ class AIModeration(commands.Cog):
             flags=re.IGNORECASE,
         ).strip()
         if len(cleaned) > MAX_MODERATION_REASON_LENGTH:
-            cleaned = cleaned[: MAX_MODERATION_REASON_LENGTH - 1].rstrip(" ,;:-") + "â€¦"
+            cleaned = cleaned[: MAX_MODERATION_REASON_LENGTH - 1].rstrip(" ,;:-") + "…"
         return cleaned
 
     async def _polish_decision_reason(
