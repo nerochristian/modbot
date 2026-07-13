@@ -50,39 +50,45 @@
   --sev-critical: #e8442a;
 }
 
+/* ------------------------------------------------------------------ */
+/* Dark — "Nova after dark": a near-black control room. Deep ink        */
+/* surfaces (#08080f paper, #0f0f19 panels), lavender-white text, a     */
+/* muted slate for secondary copy, and a single electric-blue accent    */
+/* where the reference bot uses purple. Green is the live/online signal.*/
+/* ------------------------------------------------------------------ */
 .dark {
-  --paper: #0c0e13;
-  --surface: #14171e;
-  --surface-2: #1b1f28;
-  --card: #14171e;
-  --overlay: rgba(4, 6, 10, 0.66);
-  --border: #262b35;
-  --border-strong: #363c48;
-  --foreground: #e9ebf1;
-  --muted: #9aa1b0;
-  --muted-2: #666e7d;
+  --paper: #08080f;
+  --surface: #0f0f19;
+  --surface-2: #15161f;
+  --card: #0f0f19;
+  --overlay: rgba(3, 3, 7, 0.72);
+  --border: #23242f;
+  --border-strong: #2e303f;
+  --foreground: #e2e2ff;
+  --muted: #8890a1;
+  --muted-2: #5b6270;
 
-  --accent: #5a74ff;
-  --accent-foreground: #0c0e13;
+  --accent: #2f6bff;         /* electric blue — the single decisive signal */
+  --accent-foreground: #ffffff;
   --accent-soft: color-mix(in srgb, var(--accent) 20%, transparent);
-  --accent-line: color-mix(in srgb, var(--accent) 38%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 40%, transparent);
 
-  --success: #35c281;
-  --success-soft: color-mix(in srgb, #35c281 16%, transparent);
+  --success: #05ba53;        /* Nova online green */
+  --success-soft: color-mix(in srgb, #05ba53 18%, transparent);
   --mint: var(--success);
   --mint-soft: var(--success-soft);
   --warning: #e0942e;
   --warning-soft: color-mix(in srgb, #e0942e 16%, transparent);
-  --danger: #ff5c40;
-  --danger-soft: color-mix(in srgb, #ff5c40 16%, transparent);
-  --info: #3aa0f5;
-  --info-soft: color-mix(in srgb, #3aa0f5 16%, transparent);
+  --danger: #f0424b;
+  --danger-soft: color-mix(in srgb, #f0424b 16%, transparent);
+  --info: #008ffb;
+  --info-soft: color-mix(in srgb, #008ffb 16%, transparent);
 
-  --sev-none: #666e7d;
-  --sev-low: #6d8ad8;
+  --sev-none: #5b6270;
+  --sev-low: #3f7bff;
   --sev-medium: #e0942e;
   --sev-high: #f0703f;
-  --sev-critical: #ff5c40;
+  --sev-critical: #f0424b;
 }
 
 /* Map tokens to Tailwind color/utility names (bg-surface, text-muted, …). */
