@@ -2,6 +2,7 @@ import 'server-only'
 
 import { botQuery } from '@/lib/bot-db'
 import { getBotGuildSettings, patchBotGuildSettings } from '@/lib/bot-settings'
+import { getBotGuildResources } from '@/lib/discord'
 import {
   AUTOMOD_DEFINITIONS,
   automodDefinition,
@@ -117,6 +118,11 @@ export async function updateAutomodRule(guildId: string, idOrAlias: string, inpu
   if (input.exemptRoles !== undefined) {
     const ids = [...new Set(input.exemptRoles)]
     if (ids.some((id) => !/^\d{15,22}$/.test(id))) throw new Error('Exempt roles must be Discord role IDs')
+    const resources = await getBotGuildResources(guildId)
+    const guildRoleIds = new Set(resources.roles.map((role) => role.id))
+    if (ids.some((id) => !guildRoleIds.has(id))) {
+      throw new Error('Exempt roles must belong to this server')
+    }
     changes.automod_bypass_roles = ids
   }
   if (Object.keys(changes).length > 0) await patchBotGuildSettings(guildId, changes)
