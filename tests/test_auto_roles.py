@@ -1,3 +1,4 @@
+import asyncio
 from types import SimpleNamespace
 
 import pytest
@@ -71,33 +72,31 @@ async def _run_join(settings: dict) -> _Member:
     return member
 
 
-@pytest.mark.asyncio
-async def test_explicit_false_blocks_legacy_auto_role_assignment():
-    member = await _run_join({"auto_role": 456, "autoroles_enabled": False})
+def test_explicit_false_blocks_legacy_auto_role_assignment():
+    member = asyncio.run(_run_join({"auto_role": 456, "autoroles_enabled": False}))
     assert member.added_roles == []
 
 
-@pytest.mark.asyncio
-async def test_missing_flag_preserves_legacy_configured_role_assignment():
-    member = await _run_join({"auto_role": 456})
+def test_missing_flag_preserves_legacy_configured_role_assignment():
+    member = asyncio.run(_run_join({"auto_role": 456}))
     assert [(role.id, reason) for role, reason in member.added_roles] == [
         (456, "Automatic join role"),
     ]
 
 
-@pytest.mark.asyncio
-async def test_explicit_true_assigns_the_configured_role():
-    member = await _run_join({"auto_role": 456, "autoroles_enabled": True})
+def test_explicit_true_assigns_the_configured_role():
+    member = asyncio.run(_run_join({"auto_role": 456, "autoroles_enabled": True}))
     assert [role.id for role, _reason in member.added_roles] == [456]
 
 
-@pytest.mark.asyncio
-async def test_verification_keeps_precedence_over_enabled_auto_roles():
-    member = await _run_join(
-        {
-            "auto_role": 456,
-            "autoroles_enabled": True,
-            "verification_enabled": True,
-        }
+def test_verification_keeps_precedence_over_enabled_auto_roles():
+    member = asyncio.run(
+        _run_join(
+            {
+                "auto_role": 456,
+                "autoroles_enabled": True,
+                "verification_enabled": True,
+            }
+        )
     )
     assert member.added_roles == []

@@ -118,7 +118,8 @@ function NavigationLink({ item }: { item: NavigationItem }) {
   );
 }
 
-export default function DashboardSidebar() {
+export function Sidebar({ permissions }: { permissions?: readonly string[] }) {
+  void permissions
   return (
     <aside className="flex h-screen w-[250px] shrink-0 flex-col border-r border-white/[0.06] bg-[#111019]">
       {/* Logo */}
@@ -172,3 +173,5 @@ export default function DashboardSidebar() {
     </aside>
   );
 }
+
+export default Sidebar
