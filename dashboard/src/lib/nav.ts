@@ -22,6 +22,7 @@ export type NavItem = {
   icon: LucideIcon
   permission: Permission
   section: 'main' | 'account' | 'admin'
+  badge?: 'NEW' | 'UPDATE' | 'PLUS'
 }
 
 export const NAV_ITEMS: NavItem[] = [
@@ -29,8 +30,8 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Analytics', href: '/dashboard/analytics', icon: LineChart, permission: 'analytics.view', section: 'main' },
   { label: 'Members', href: '/dashboard/members', icon: Users2, permission: 'members.read', section: 'main' },
   { label: 'Cases', href: '/dashboard/cases', icon: Gavel, permission: 'cases.read', section: 'main' },
-  { label: 'Automod', href: '/dashboard/automod', icon: ShieldAlert, permission: 'automod.read', section: 'main' },
-  { label: 'Modules', href: '/dashboard/modules', icon: Blocks, permission: 'settings.read', section: 'main' },
+  { label: 'Automod', href: '/dashboard/automod', icon: ShieldAlert, permission: 'automod.read', section: 'main', badge: 'UPDATE' },
+  { label: 'Modules', href: '/dashboard/modules', icon: Blocks, permission: 'settings.read', section: 'main', badge: 'NEW' },
   { label: 'Appeals', href: '/dashboard/appeals', icon: Scale, permission: 'appeals.read', section: 'main' },
   { label: 'Reports', href: '/dashboard/reports', icon: FileBarChart, permission: 'reports.read', section: 'main' },
   { label: 'Activity', href: '/dashboard/activity', icon: Activity, permission: 'activity.read', section: 'main' },
