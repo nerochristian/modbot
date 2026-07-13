@@ -27,6 +27,24 @@ RoleAction = Literal[
 ]
 
 
+def _configured_auto_role_id(settings: dict) -> Optional[int]:
+    """Return the configured legacy auto-role ID when it is usable."""
+    raw_role_id = settings.get("auto_role")
+    if isinstance(raw_role_id, bool):
+        return None
+    try:
+        role_id = int(raw_role_id or 0)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return role_id if role_id > 0 else None
+
+
+def autoroles_enabled(settings: dict) -> bool:
+    """Resolve the explicit toggle with a legacy configured-role fallback."""
+    legacy_default = _configured_auto_role_id(settings) is not None
+    return module_enabled(settings, "autoroles", legacy_default)
+
+
 class Roles(
     commands.GroupCog,
     group_name="role",
@@ -248,12 +266,21 @@ class Roles(
             settings = await self.bot.db.get_settings(guild.id)
             settings["auto_role"] = target_role.id
             await self.bot.db.update_settings(guild.id, settings)
-            note = ""
-            if module_enabled(settings, "verification", False):
-                note = " Verification is enabled, so new members receive the unverified role first."
+            if not autoroles_enabled(settings):
+                description = (
+                    f"Join role set to {target_role.mention}. Auto Roles is disabled, "
+                    "so it will not be assigned until the module is enabled."
+                )
+            elif module_enabled(settings, "verification", False):
+                description = (
+                    f"Join role set to {target_role.mention}. Verification currently takes "
+                    "precedence, so it will not be assigned on join."
+                )
+            else:
+                description = f"New members will receive {target_role.mention}."
             return await self._send(
                 interaction,
-                ModEmbed.success("Auto Role Updated", f"New members will receive {target_role.mention}.{note}"),
+                ModEmbed.success("Auto Role Updated", description),
                 ephemeral=True,
             )
 
@@ -388,7 +415,10 @@ class Roles(
             settings = await self.bot.db.get_settings(member.guild.id)
             if module_enabled(settings, "verification", False):
                 return
-            role = member.guild.get_role(int(settings.get("auto_role", 0) or 0))
+            if not autoroles_enabled(settings):
+                return
+            role_id = _configured_auto_role_id(settings)
+            role = member.guild.get_role(role_id) if role_id is not None else None
             bot_member = member.guild.me
             if role and bot_member and bot_member.guild_permissions.manage_roles and role < bot_member.top_role:
                 await member.add_roles(role, reason="Automatic join role")

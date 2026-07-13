@@ -437,6 +437,7 @@ class ModBot(commands.Bot):
         "tickets": ("tickets_enabled", False),
         "verification": ("verification_enabled", True),
         "whitelist": ("whitelist_enabled", False),
+        "autoroles": ("autoroles_enabled", False),
         "forum_moderation": ("forum_moderation_enabled", True),
     }
 
