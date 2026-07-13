@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { HelpCircle, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { HelpCircle, ChevronDown, Sparkles } from "lucide-react";
 import { FAQItem } from "../types";
 
 const FAQ_ITEMS: FAQItem[] = [
@@ -49,26 +49,28 @@ export default function FAQ() {
   };
 
   return (
-    <section id="faq" className="relative py-24 bg-[#05060B] overflow-hidden border-t border-slate-800/80">
-      <div className="absolute top-1/2 left-1/4 -translate-y-1/2 w-[300px] h-[300px] bg-cyan-500/5 rounded-full blur-[100px] pointer-events-none" />
+    <section id="faq" className="relative py-28 bg-[#05070E] overflow-hidden border-t border-white/10">
+      
+      {/* Background Lighting */}
+      <div className="absolute top-1/2 left-1/4 -translate-y-1/2 w-[350px] h-[350px] bg-cyan-500/10 rounded-full blur-[140px] pointer-events-none" />
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-left">
         
-        {/* Header Block */}
+        {/* Header */}
         <div className="text-center max-w-3xl mx-auto mb-16">
-          <div className="inline-flex items-center space-x-2 bg-purple-950/40 border border-purple-500/20 text-purple-400 py-1 px-3 rounded-full text-xs font-mono mb-4">
-            <HelpCircle className="w-3.5 h-3.5" />
+          <div className="inline-flex items-center space-x-2 bg-purple-500/10 border border-purple-500/30 text-purple-300 py-1.5 px-4 rounded-full text-xs font-mono mb-4">
+            <HelpCircle className="w-4 h-4 text-purple-400" />
             <span>KNOWLEDGE HUB</span>
           </div>
-          <h2 className="font-display font-bold text-3xl sm:text-4xl text-white tracking-tight mb-4">
-            Frequently Asked Questions
+          <h2 className="font-heading font-extrabold text-3xl sm:text-5xl text-white tracking-tight mb-4">
+            Frequently Asked <span className="bg-gradient-to-r from-purple-400 via-indigo-300 to-cyan-400 bg-clip-text text-transparent">Questions</span>
           </h2>
-          <p className="font-sans text-slate-400 text-base sm:text-lg">
+          <p className="font-sans text-slate-300 text-base sm:text-lg leading-relaxed">
             Have questions about permissions, artificial intelligence decisions, or security setups? Find answers below.
           </p>
         </div>
 
-        {/* Accordion Container */}
+        {/* Accordion List */}
         <div className="space-y-4">
           {FAQ_ITEMS.map((item) => {
             const isOpen = expandedId === item.id;
@@ -76,28 +78,30 @@ export default function FAQ() {
             return (
               <div
                 key={item.id}
-                className="bg-[#0E111A] border border-slate-800 rounded-2xl overflow-hidden transition-all hover:border-purple-500/30"
+                className={`rounded-2xl transition-all overflow-hidden ${
+                  isOpen
+                    ? "bg-[#090D1A] border border-purple-500/50 shadow-[0_0_20px_rgba(124,58,237,0.2)]"
+                    : "glass-panel-hover border border-white/10"
+                }`}
               >
-                {/* Accordion Header */}
                 <button
                   onClick={() => toggleExpand(item.id)}
-                  className="w-full flex justify-between items-center p-5 text-left font-display font-semibold text-white hover:text-purple-300 transition-colors cursor-pointer"
+                  className="w-full flex justify-between items-center p-6 text-left font-heading font-bold text-white hover:text-purple-200 transition-colors cursor-pointer text-base sm:text-lg"
                 >
                   <span>{item.question}</span>
-                  <span className={`p-1.5 rounded-lg bg-[#05060B]/60 border border-slate-800 text-slate-500 transition-transform ${
-                    isOpen ? "rotate-180 text-purple-400 border-purple-500/20" : ""
+                  <span className={`p-2 rounded-xl bg-white/5 border border-white/10 text-slate-400 transition-all ${
+                    isOpen ? "rotate-180 text-cyan-300 border-purple-500/40 bg-purple-600/20" : ""
                   }`}>
                     <ChevronDown className="w-4 h-4" />
                   </span>
                 </button>
 
-                {/* Accordion Content */}
                 <div
                   className={`transition-all duration-300 ease-in-out ${
-                    isOpen ? "max-h-60 border-t border-slate-800/60 py-4 px-5 opacity-100" : "max-h-0 opacity-0 overflow-hidden"
+                    isOpen ? "max-h-60 border-t border-white/10 py-5 px-6 opacity-100" : "max-h-0 opacity-0 overflow-hidden"
                   }`}
                 >
-                  <p className="font-sans text-xs sm:text-sm text-slate-400 leading-relaxed">
+                  <p className="font-sans text-xs sm:text-sm text-slate-300 leading-relaxed">
                     {item.answer}
                   </p>
                 </div>
@@ -110,3 +114,4 @@ export default function FAQ() {
     </section>
   );
 }
+

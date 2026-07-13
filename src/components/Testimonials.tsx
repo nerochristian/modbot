@@ -31,21 +31,23 @@ const TESTIMONIALS: TestimonialItem[] = [
 
 export default function Testimonials() {
   return (
-    <section id="testimonials" className="relative py-24 bg-[#05060B] overflow-hidden border-t border-slate-800/80">
-      <div className="absolute top-1/2 right-1/4 -translate-y-1/2 w-[250px] h-[250px] bg-purple-500/5 rounded-full blur-[100px] pointer-events-none" />
+    <section id="testimonials" className="relative py-28 bg-[#05070E] overflow-hidden border-t border-white/10">
+      
+      {/* Glow Orbs */}
+      <div className="absolute top-1/2 right-1/4 -translate-y-1/2 w-[350px] h-[350px] bg-purple-600/10 rounded-full blur-[140px] pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-left">
         
-        {/* Header Block */}
+        {/* Header */}
         <div className="text-center max-w-3xl mx-auto mb-16">
-          <div className="inline-flex items-center space-x-2 bg-purple-950/40 border border-purple-500/20 text-purple-400 py-1 px-3 rounded-full text-xs font-mono mb-4">
-            <Quote className="w-3.5 h-3.5" />
+          <div className="inline-flex items-center space-x-2 bg-purple-500/10 border border-purple-500/30 text-purple-300 py-1.5 px-4 rounded-full text-xs font-mono mb-4">
+            <Quote className="w-4 h-4 text-purple-400" />
             <span>COMMUNITY ENDORSEMENTS</span>
           </div>
-          <h2 className="font-display font-bold text-3xl sm:text-4xl text-white tracking-tight mb-4">
-            Trusted by the web's most active hubs.
+          <h2 className="font-heading font-extrabold text-3xl sm:text-5xl text-white tracking-tight mb-4">
+            Trusted by the web's <span className="bg-gradient-to-r from-purple-400 via-indigo-300 to-cyan-400 bg-clip-text text-transparent">most active hubs</span>.
           </h2>
-          <p className="font-sans text-slate-400 text-base sm:text-lg">
+          <p className="font-sans text-slate-300 text-base sm:text-lg leading-relaxed">
             See how major Discord servers and moderation teams are utilizing Docket to shield their channels and optimize staff workloads.
           </p>
         </div>
@@ -55,20 +57,16 @@ export default function Testimonials() {
           {TESTIMONIALS.map((t) => (
             <div
               key={t.id}
-              className="bg-[#0E111A] border border-slate-800 hover:border-purple-500/40 p-6 sm:p-8 rounded-2xl transition-all flex flex-col justify-between relative group overflow-hidden"
+              className="glass-panel-hover p-8 rounded-2xl flex flex-col justify-between relative group overflow-hidden"
             >
-              {/* Subtle visual accent */}
-              <div className="absolute top-0 right-0 w-16 h-16 bg-purple-500/5 rounded-full blur-xl pointer-events-none" />
-
               <div className="space-y-4">
-                {/* Stars and Quote Icon */}
                 <div className="flex justify-between items-center">
                   <div className="flex space-x-1">
                     {[...Array(5)].map((_, i) => (
-                      <Star key={i} className="w-4 h-4 fill-purple-400 text-purple-400" />
+                      <Star key={i} className="w-4 h-4 fill-amber-400 text-amber-400 drop-shadow-[0_0_8px_rgba(251,191,36,0.6)]" />
                     ))}
                   </div>
-                  <Quote className="w-8 h-8 text-purple-500/10" />
+                  <Quote className="w-8 h-8 text-purple-400/20 group-hover:text-purple-400/40 transition-colors" />
                 </div>
 
                 <p className="font-sans text-xs sm:text-sm text-slate-300 leading-relaxed italic">
@@ -76,24 +74,23 @@ export default function Testimonials() {
                 </p>
               </div>
 
-              <div className="pt-6 mt-6 border-t border-slate-800/60 flex items-center space-x-3">
-                {/* Simulated Server Avatar */}
-                <div className="w-10 h-10 rounded-full bg-[#05060B] border border-slate-800 flex items-center justify-center font-display font-bold text-xs text-purple-400 group-hover:bg-purple-950/40 transition-colors">
+              <div className="pt-6 mt-6 border-t border-white/10 flex items-center space-x-3.5">
+                <div className="w-10 h-10 rounded-xl bg-[#090D1A] border border-white/10 flex items-center justify-center font-heading font-bold text-xs text-purple-300 shadow-md">
                   {t.serverName.slice(0, 2).toUpperCase()}
                 </div>
                 <div>
-                  <span className="font-sans font-bold text-sm text-white block">
+                  <span className="font-heading font-bold text-sm text-white block">
                     {t.author}
                   </span>
-                  <span className="text-[11px] text-slate-500 block leading-none mt-1">
+                  <span className="text-[11px] font-sans text-slate-400 block leading-none mt-1">
                     {t.role}
                   </span>
-                  <div className="flex items-center space-x-1.5 mt-2">
-                    <span className="text-[10px] font-mono text-cyan-400 bg-cyan-950/40 px-1.5 py-0.5 rounded">
+                  <div className="flex items-center space-x-2 mt-2">
+                    <span className="text-[10px] font-mono text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded-md border border-cyan-500/20 font-semibold">
                       {t.serverName}
                     </span>
-                    <span className="text-[9px] font-mono text-slate-600 flex items-center space-x-0.5">
-                      <Users className="w-3 h-3 text-slate-600" />
+                    <span className="text-[10px] font-mono text-slate-400 flex items-center space-x-1">
+                      <Users className="w-3 h-3 text-slate-400" />
                       <span>{t.memberCount}</span>
                     </span>
                   </div>
@@ -107,3 +104,4 @@ export default function Testimonials() {
     </section>
   );
 }
+
