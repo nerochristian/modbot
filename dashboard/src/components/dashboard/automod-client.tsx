@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Pencil, ShieldOff, ShieldAlert } from 'lucide-react'
+import { Pencil, ShieldOff, ShieldAlert, X } from 'lucide-react'
 import { PageHeader } from '@/components/dashboard/page-header'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -35,6 +35,8 @@ type Rule = {
   updatedAt: string
 }
 type Payload = { data: Rule[]; totalHits: number; activeCount: number }
+type GuildRole = { id: string; name: string; position: number; color: number }
+type GuildResourcesPayload = { roles: GuildRole[] }
 
 const TRIGGER_LABELS: Record<string, string> = {
   badwords: 'Blocked words',
@@ -271,6 +273,8 @@ function RuleBuilder({
   onSaved: () => void
 }) {
   const toast = useToast()
+  const { data: resources, loading: resourcesLoading, error: resourcesError, refetch: refetchResources } =
+    useApi<GuildResourcesPayload>('/api/guilds/resources')
   const [busy, setBusy] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [form, setForm] = useState({
@@ -279,7 +283,7 @@ function RuleBuilder({
     action: rule.action,
     durationSeconds: rule.durationSeconds ? String(rule.durationSeconds) : '',
     deleteMessage: rule.deleteMessage,
-    exemptRoles: rule.exemptRoles.join(', '),
+    exemptRoles: rule.exemptRoles,
     enabled: rule.enabled,
   })
 
@@ -289,17 +293,13 @@ function RuleBuilder({
     setBusy(true)
     setErrors({})
     try {
-      const exemptRoles = form.exemptRoles
-        .split(',')
-        .map((r) => r.trim())
-        .filter(Boolean)
       const payload = {
         trigger: form.trigger,
         pattern: form.pattern || null,
         action: form.action,
         durationSeconds: form.durationSeconds ? Number(form.durationSeconds) : null,
         deleteMessage: form.deleteMessage,
-        exemptRoles,
+        exemptRoles: form.exemptRoles,
         enabled: form.enabled,
       }
       const res = await fetch(`/api/automod/${rule.id}`, {
@@ -370,7 +370,7 @@ function RuleBuilder({
           </p>
         )}
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className={form.action === 'timeout' ? 'grid grid-cols-2 gap-4' : undefined}>
           <Field label="Action" error={errors.action}>
             <Select
               options={ACTION_OPTIONS}
@@ -387,26 +387,18 @@ function RuleBuilder({
                 placeholder="3600"
               />
             </Field>
-          ) : (
-            <Field label="Exempt role IDs" error={errors.exemptRoles} hint="Comma-separated Discord role IDs">
-            <Input
-              value={form.exemptRoles}
-              onChange={(e) => setForm({ ...form, exemptRoles: e.target.value })}
-              placeholder="123456789012345678, 234567890123456789"
-            />
-            </Field>
-          )}
+          ) : null}
         </div>
 
-        {form.action === 'timeout' && (
-          <Field label="Exempt role IDs" error={errors.exemptRoles} hint="Comma-separated Discord role IDs">
-            <Input
-              value={form.exemptRoles}
-              onChange={(e) => setForm({ ...form, exemptRoles: e.target.value })}
-              placeholder="123456789012345678, 234567890123456789"
-            />
-          </Field>
-        )}
+        <AutomodRolePicker
+          roles={resources?.roles ?? []}
+          selected={form.exemptRoles}
+          loading={resourcesLoading}
+          error={resourcesError || errors.exemptRoles}
+          disabled={busy}
+          onRetry={() => void refetchResources()}
+          onChange={(exemptRoles) => setForm({ ...form, exemptRoles })}
+        />
 
         <div className="flex items-center justify-between rounded-lg border border-border bg-surface-2/50 px-3 py-2.5">
           <div>
@@ -433,5 +425,76 @@ function RuleBuilder({
         </div>
       </div>
     </Modal>
+  )
+}
+
+function AutomodRolePicker({
+  roles,
+  selected,
+  loading,
+  error,
+  disabled,
+  onRetry,
+  onChange,
+}: {
+  roles: GuildRole[]
+  selected: string[]
+  loading: boolean
+  error?: string
+  disabled: boolean
+  onRetry: () => void
+  onChange: (roles: string[]) => void
+}) {
+  const [nextRole, setNextRole] = useState('')
+  const available = roles.filter((role) => !selected.includes(role.id))
+
+  return (
+    <Field
+      label="AutoMod bypass roles"
+      htmlFor="automod-bypass-role"
+      hint="Global setting: members in these roles bypass every AutoMod rule, not only the rule currently open."
+      error={error}
+    >
+      <div className="flex gap-2">
+        <Select
+          id="automod-bypass-role"
+          value={nextRole}
+          disabled={disabled || loading || available.length === 0}
+          options={available.map((role) => ({ label: `@${role.name}`, value: role.id }))}
+          placeholder={loading ? 'Loading rolesâ€¦' : available.length > 0 ? 'Select role' : 'No more roles'}
+          onChange={(event) => {
+            const roleId = event.target.value
+            setNextRole('')
+            if (roleId && !selected.includes(roleId)) onChange([...selected, roleId])
+          }}
+        />
+        {error && (
+          <Button type="button" variant="ghost" size="sm" onClick={onRetry}>
+            Retry
+          </Button>
+        )}
+      </div>
+      {selected.length > 0 && (
+        <ul className="flex flex-wrap gap-1.5">
+          {selected.map((roleId) => {
+            const role = roles.find((candidate) => candidate.id === roleId)
+            return (
+              <li key={roleId} className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-border bg-surface px-2 py-1 text-xs text-foreground">
+                <span className="truncate">{role ? `@${role.name}` : `Unknown role · ${roleId}`}</span>
+                <button
+                  type="button"
+                  className="focus-ring rounded-sm text-muted-2 hover:text-danger"
+                  disabled={disabled}
+                  aria-label={`Remove ${role?.name ?? roleId}`}
+                  onClick={() => onChange(selected.filter((candidate) => candidate !== roleId))}
+                >
+                  <X className="size-3.5" />
+                </button>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </Field>
   )
 }

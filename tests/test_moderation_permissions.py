@@ -14,8 +14,12 @@ open to everyone. This test fails if that ever regresses.
 
 import ast
 import pathlib
+import unittest
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from cogs.moderation.extensions.management import ManagementCommands
+from cogs.moderation.extensions.misc import MiscCommands
 from cogs.moderation.extensions.warnings import WarningCommands
 
 MANAGEMENT = (
@@ -88,3 +92,52 @@ def test_dynamic_slash_registration_attaches_permission_checks():
     source = moderation_init.read_text(encoding="utf-8")
     assert "command.add_check(checks[access])" in source
     assert "cleanup_command.add_check(moderator_predicate)" in source
+
+
+class WelcomeCommandPermissionTests(unittest.IsolatedAsyncioTestCase):
+    @staticmethod
+    def _ordinary_member_interaction():
+        return SimpleNamespace(
+            guild=SimpleNamespace(id=123456789012345678),
+            user=SimpleNamespace(
+                id=234567890123456789,
+                guild_permissions=SimpleNamespace(manage_guild=False),
+            ),
+            channel=SimpleNamespace(),
+            response=SimpleNamespace(send_message=AsyncMock()),
+        )
+
+    def _commands(self):
+        commands = object.__new__(MiscCommands)
+        commands._send_welcome_message = AsyncMock()
+        commands.bot = SimpleNamespace(
+            db=SimpleNamespace(get_settings=AsyncMock()),
+        )
+        return commands
+
+    def assert_manage_server_rejection(self, interaction):
+        interaction.response.send_message.assert_awaited_once()
+        kwargs = interaction.response.send_message.await_args.kwargs
+        self.assertTrue(kwargs["ephemeral"])
+        self.assertIn("Missing Permissions", kwargs["embed"].description)
+        self.assertIn("Manage Server", kwargs["embed"].description)
+
+    async def test_ordinary_member_cannot_preview_welcome_card(self):
+        commands = self._commands()
+        interaction = self._ordinary_member_interaction()
+
+        await commands.testwelcome(interaction)
+
+        self.assert_manage_server_rejection(interaction)
+        commands._send_welcome_message.assert_not_awaited()
+        commands.bot.db.get_settings.assert_not_awaited()
+
+    async def test_ordinary_member_cannot_welcome_all_members(self):
+        commands = self._commands()
+        interaction = self._ordinary_member_interaction()
+
+        await commands.welcomeall(interaction, confirm=True)
+
+        self.assert_manage_server_rejection(interaction)
+        commands._send_welcome_message.assert_not_awaited()
+        commands.bot.db.get_settings.assert_not_awaited()

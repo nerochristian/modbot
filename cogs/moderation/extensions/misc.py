@@ -591,6 +591,12 @@ class MiscCommands:
                 ephemeral=True,
             )
 
+        if not interaction.user.guild_permissions.manage_guild:  # type: ignore
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Missing Permissions", "You need Manage Server permissions to preview the welcome card."),
+                ephemeral=True,
+            )
+
         target = member or interaction.user
         if not isinstance(target, discord.Member):
             target = interaction.guild.get_member(interaction.user.id)  # type: ignore[assignment]
@@ -638,6 +644,12 @@ class MiscCommands:
         if not interaction.guild:
             return await interaction.response.send_message(
                 embed=ModEmbed.error("Not Available", "This command can only be used in a server."),
+                ephemeral=True,
+            )
+
+        if not interaction.user.guild_permissions.manage_guild:  # type: ignore
+            return await interaction.response.send_message(
+                embed=ModEmbed.error("Missing Permissions", "You need Manage Server permissions to welcome all members."),
                 ephemeral=True,
             )
 
