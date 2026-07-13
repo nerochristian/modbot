@@ -354,31 +354,49 @@ export async function setModuleEnabled(
   if (!def) throw new Error('Module not found')
   if (!def.enableKey) throw new Error(`${def.name} cannot be toggled`)
   const settings = await getBotGuildSettings(guildId)
+  const resourceBackedModules = new Set(['verification', 'tickets', 'welcome', 'autoroles', 'antiraid'])
+  const resources = enabled && resourceBackedModules.has(def.id)
+    ? await getBotGuildResources(guildId)
+    : null
+  const roleIds = new Set(resources?.roles.map((role) => role.id) ?? [])
+  const channelTypes = new Map(resources?.channels.map((channel) => [channel.id, channel.type]) ?? [])
+  const hasRole = (value: unknown) => typeof value === 'string' && roleIds.has(value)
+  const hasChannel = (value: unknown, allowedTypes: number[]) => (
+    typeof value === 'string'
+    && channelTypes.has(value)
+    && allowedTypes.includes(channelTypes.get(value)!)
+  )
   if (enabled && def.id === 'verification' && (
-    !isDiscordSnowflake(settingValue(settings, 'verified_role'))
-    || !isDiscordSnowflake(settings.unverified_role)
-    || !isDiscordSnowflake(settingValue(settings, 'verify_channel'))
+    !hasRole(settingValue(settings, 'verified_role'))
+    || !hasRole(settings.unverified_role)
+    || settingValue(settings, 'verified_role') === settings.unverified_role
+    || !hasChannel(settingValue(settings, 'verify_channel'), [0, 5])
   )) {
-    throw new ModuleValidationError('Set the verification channel plus verified and unverified roles before enabling verification')
+    throw new ModuleValidationError('Set a verification channel plus two different server roles before enabling verification')
   }
-  if (enabled && def.id === 'tickets' && !isDiscordSnowflake(settings.ticket_category)) {
+  if (enabled && def.id === 'verification' && settings.voice_verification_enabled && (
+    !hasChannel(settings.waiting_verify_voice_channel, [2, 13])
+  )) {
+    throw new ModuleValidationError('Set a voice waiting room before enabling voice verification')
+  }
+  if (enabled && def.id === 'tickets' && !hasChannel(settings.ticket_category, [4])) {
     throw new ModuleValidationError('Set a ticket category before enabling tickets')
   }
-  if (enabled && def.id === 'welcome' && !isDiscordSnowflake(settings.welcome_channel)) {
+  if (enabled && def.id === 'welcome' && !hasChannel(settings.welcome_channel, [0, 5])) {
     throw new ModuleValidationError('Set a welcome channel before enabling the welcome card')
   }
-  if (enabled && def.id === 'autoroles' && !isDiscordSnowflake(settings.auto_role)) {
+  if (enabled && def.id === 'autoroles' && !hasRole(settings.auto_role)) {
     throw new ModuleValidationError('Set a join role before enabling auto roles')
   }
   if (enabled && def.id === 'antiraid') {
     const quarantineSelected = ['antiraid_action', 'antiraid_raidmode_action']
       .some((key) => settings[key] === 'quarantine')
-    if (quarantineSelected && !isDiscordSnowflake(settings.antiraid_quarantine_role)) {
+    if (quarantineSelected && !hasRole(settings.antiraid_quarantine_role)) {
       throw new ModuleValidationError('Set a quarantine role before enabling Anti-Raid')
     }
     if (settings.antiraid_action === 'lockdown') {
       const channels = settings.lockdown_channels
-      if (!Array.isArray(channels) || channels.length === 0) {
+      if (!Array.isArray(channels) || channels.length === 0 || channels.some((id) => !hasChannel(id, [0, 5]))) {
         throw new ModuleValidationError('Set at least one lockdown channel before enabling Anti-Raid')
       }
     }

@@ -14,7 +14,7 @@ export async function PATCH(request: Request, ctx: RouteContext<'/api/automod/[i
     return ok(updated)
   } catch (error) {
     if (error instanceof Error && /not found/i.test(error.message)) return apiError(error.message, 404)
-    if (error instanceof Error && /threshold|entries|role IDs/i.test(error.message)) return apiError(error.message, 400)
+    if (error instanceof Error && /threshold|entries|role IDs|exempt roles/i.test(error.message)) return apiError(error.message, 400)
     return handleError(error)
   }
 }
