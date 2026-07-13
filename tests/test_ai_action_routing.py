@@ -21,6 +21,7 @@ from cogs.aimoderation.aimoderation import (
     ToolResult,
     ToolType,
 )
+from cogs.aimoderation.registry import ToolRegistry
 from utils.deepseek_web import DeepSeekWebError
 
 
@@ -434,6 +435,85 @@ class AIActionRoutingTests(unittest.TestCase):
 
         self.assertTrue(AIModeration._can_use_ai_tools(member))
 
+    def test_canonical_mod_role_can_route_moderation_tools(self) -> None:
+        perms = SimpleNamespace(
+            administrator=False,
+            manage_guild=False,
+            manage_messages=False,
+            moderate_members=False,
+            kick_members=False,
+            ban_members=False,
+            manage_channels=False,
+            manage_roles=False,
+        )
+        member = SimpleNamespace(
+            id=123,
+            guild_permissions=perms,
+            roles=[SimpleNamespace(id=987654321)],
+        )
+        settings = GuildSettings.from_dict({"mod_roles": ["987654321"]})
+
+        self.assertTrue(AIModeration._can_use_ai_tools(member, settings))
+        self.assertEqual(settings.mod_roles, {987654321})
+        self.assertEqual(settings.to_dict()["mod_roles"], [987654321])
+
+    def test_mod_role_only_satisfies_bounded_moderator_permission_gates(self) -> None:
+        actor_permissions = SimpleNamespace(
+            administrator=False,
+            ban_members=False,
+            manage_channels=False,
+        )
+        bot_permissions = SimpleNamespace(
+            ban_members=True,
+            manage_channels=True,
+        )
+        actor = SimpleNamespace(id=123, guild_permissions=actor_permissions)
+        guild = SimpleNamespace(me=SimpleNamespace(guild_permissions=bot_permissions))
+
+        with patch("cogs.aimoderation.aimoderation.discord.Member", SimpleNamespace), patch(
+            "cogs.aimoderation.aimoderation.is_bot_owner_id",
+            return_value=False,
+        ):
+            self.assertIsNone(
+                self.cog.validate_tool_access(
+                    actor,
+                    guild,
+                    ToolType.BAN,
+                    configured_mod_role=True,
+                )
+            )
+            self.assertIn(
+                "Manage Channels",
+                self.cog.validate_tool_access(
+                    actor,
+                    guild,
+                    ToolType.CREATE_CHANNEL,
+                    configured_mod_role=True,
+                ),
+            )
+
+    def test_mod_role_does_not_bypass_bot_discord_permissions(self) -> None:
+        actor = SimpleNamespace(
+            id=123,
+            guild_permissions=SimpleNamespace(administrator=False, ban_members=False),
+        )
+        guild = SimpleNamespace(
+            me=SimpleNamespace(guild_permissions=SimpleNamespace(ban_members=False)),
+        )
+
+        with patch("cogs.aimoderation.aimoderation.discord.Member", SimpleNamespace), patch(
+            "cogs.aimoderation.aimoderation.is_bot_owner_id",
+            return_value=False,
+        ):
+            error = self.cog.validate_tool_access(
+                actor,
+                guild,
+                ToolType.BAN,
+                configured_mod_role=True,
+            )
+
+        self.assertEqual(error, "I need the `Ban Members` permission.")
+
     def test_deepseek_disabled_diagnostic_names_real_setting(self) -> None:
         client = object.__new__(AIClient)
         client.provider = "deepseek-web"
@@ -495,6 +575,100 @@ class AIActionRoutingTests(unittest.TestCase):
 
 
 class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
+    async def test_disabled_ai_mod_hard_gates_explicit_owner_request(self) -> None:
+        cog = object.__new__(AIModeration)
+        bot_user = SimpleNamespace(id=999)
+        cog.bot = SimpleNamespace(
+            user=bot_user,
+            get_context=AsyncMock(return_value=SimpleNamespace(valid=False)),
+        )
+        cog.get_guild_settings = AsyncMock(
+            return_value=GuildSettings(enabled=False, chat_enabled=False),
+        )
+        cog._message_replies_to_bot = AsyncMock(return_value=False)
+        cog.clean_content = lambda message: "ban <@20> for spam"
+        cog._looks_like_mod_request = lambda content: True
+        cog._looks_like_advanced_action_request = lambda content: False
+        cog.reply = AsyncMock()
+        cog.fetch_recent_messages = AsyncMock()
+        message = SimpleNamespace(
+            author=SimpleNamespace(bot=False, id=10),
+            guild=SimpleNamespace(id=1),
+            mentions=[bot_user],
+            reference=None,
+            content="<@999> ban <@20> for spam",
+            channel=SimpleNamespace(id=30),
+        )
+
+        with patch(
+            "cogs.aimoderation.aimoderation.is_bot_owner_id",
+            return_value=True,
+        ):
+            await cog.on_message(message)
+
+        cog.reply.assert_awaited_once()
+        self.assertIn("AI moderation is disabled", cog.reply.await_args.kwargs["content"])
+        cog.fetch_recent_messages.assert_not_awaited()
+
+    async def test_execute_decision_rechecks_enabled_state_after_confirmation(self) -> None:
+        cog = object.__new__(AIModeration)
+        cog.get_guild_settings = AsyncMock(return_value=GuildSettings(enabled=False))
+        cog.reply_tool_result = AsyncMock()
+        message = SimpleNamespace(guild=SimpleNamespace(id=1))
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="spam",
+            tool=ToolType.BAN,
+            arguments={"target_user_id": 20},
+        )
+
+        with patch.object(ToolRegistry, "execute", new_callable=AsyncMock) as execute:
+            result = await cog._execute_decision(message, decision, send_result=True)
+
+        self.assertFalse(result.success)
+        self.assertIn("AI moderation is disabled", result.message)
+        execute.assert_not_awaited()
+        cog.reply_tool_result.assert_awaited_once_with(message, result)
+
+    async def test_routing_history_is_capped_by_guild_context_setting(self) -> None:
+        cog = object.__new__(AIModeration)
+        bot_user = SimpleNamespace(id=999)
+        cog.bot = SimpleNamespace(
+            user=bot_user,
+            get_context=AsyncMock(return_value=SimpleNamespace(valid=False)),
+        )
+        cog.config = AIConfig(memory_window=50)
+        cog.get_guild_settings = AsyncMock(
+            return_value=GuildSettings(enabled=True, context_messages=3),
+        )
+        cog._message_replies_to_bot = AsyncMock(return_value=False)
+        cog.clean_content = lambda message: "show warnings for <@20>"
+        cog._looks_like_mod_request = lambda content: True
+        cog._looks_like_advanced_action_request = lambda content: False
+        cog.extract_mentions = lambda message: SimpleNamespace()
+        decision = Decision(type=DecisionType.ERROR, reason="stop")
+        cog._quick_route = lambda message, content: decision
+        cog._enrich = AsyncMock(return_value=decision)
+        cog.fetch_recent_messages = AsyncMock(return_value=[])
+        cog.reply = AsyncMock()
+        cog._friendly_error_reply = lambda content, reason: reason
+        message = SimpleNamespace(
+            author=SimpleNamespace(bot=False, id=10),
+            guild=SimpleNamespace(id=1),
+            mentions=[bot_user],
+            reference=None,
+            content="<@999> show warnings for <@20>",
+            channel=SimpleNamespace(id=30),
+        )
+
+        with patch(
+            "cogs.aimoderation.aimoderation.is_bot_owner_id",
+            return_value=False,
+        ):
+            await cog.on_message(message)
+
+        cog.fetch_recent_messages.assert_awaited_once_with(message.channel, limit=3)
+
     async def test_member_prefix_resolution_refuses_ambiguous_targets(self) -> None:
         cog = object.__new__(AIModeration)
         guild = SimpleNamespace(
