@@ -119,91 +119,207 @@ export default function DashboardPreview() {
         {/* Dashboard Mockup Window */}
         <div className="glow-card rounded-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row h-[560px] text-left border border-white/10">
           
-          {/* Left Sidebar */}
-          <div className="w-full md:w-64 bg-[#090D1A] border-r border-white/10 flex flex-col p-4 space-y-1.5">
-            <div className="pb-4 mb-3 border-b border-white/10 flex items-center space-x-3">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-md">
-                <ShieldCheck className="w-5 h-5 text-white" />
+          {/* Left Sidebar - Redesigned to match screenshot */}
+          <div className="w-full md:w-72 bg-[#0B0D17] border-r border-white/10 flex flex-col p-4 space-y-4 shrink-0 justify-between select-none">
+            
+            <div className="space-y-4">
+              {/* Discord Animated Avatar Logo */}
+              <div className="flex items-center px-2 pt-1 pb-2">
+                <div className="relative w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-950 via-slate-900 to-indigo-950 border border-purple-500/30 flex items-center justify-center shadow-lg group">
+                  <div className="absolute inset-0 bg-purple-500/20 rounded-2xl blur-md group-hover:blur-lg transition-all" />
+                  {/* Discord brand glyph icon */}
+                  <svg className="w-6 h-6 text-indigo-300 relative z-10" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
+                  </svg>
+                </div>
               </div>
-              <div>
-                <span className="font-heading font-bold text-sm text-white block">Docket Cloud</span>
-                <span className="text-[10px] text-purple-300/80 font-mono">v4.2 Neural Shard</span>
+
+              {/* Main Navigation Top Items */}
+              <div className="space-y-1 font-sans text-xs">
+                <button
+                  onClick={() => setActiveTab("overview")}
+                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-xl transition-all cursor-pointer font-medium ${
+                    activeTab === "overview" ? "text-white bg-white/10 font-bold" : "text-slate-400 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  <LayoutDashboard className="w-4 h-4 text-slate-400" />
+                  <span>Dashboard</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("cases")}
+                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-xl transition-all cursor-pointer font-medium ${
+                    activeTab === "cases" ? "text-white bg-white/10 font-bold" : "text-slate-400 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  <Server className="w-4 h-4 text-slate-400" />
+                  <span>Servers</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("appeals")}
+                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-xl transition-all cursor-pointer font-medium ${
+                    activeTab === "appeals" ? "text-white bg-white/10 font-bold" : "text-slate-400 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  <HelpCircle className="w-4 h-4 text-slate-400" />
+                  <span>Support</span>
+                </button>
+
+                <button
+                  onClick={() => setActiveTab("analytics")}
+                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-xl transition-all cursor-pointer font-medium ${
+                    activeTab === "analytics" ? "text-white bg-white/10 font-bold" : "text-slate-400 hover:text-white hover:bg-white/5"
+                  }`}
+                >
+                  <Sparkles className="w-4 h-4 text-slate-400" />
+                  <span>Premium</span>
+                </button>
+              </div>
+
+              {/* Divider Line */}
+              <div className="h-[1px] bg-white/10 my-3 w-full" />
+
+              {/* Toggles Module List */}
+              <div className="space-y-1 font-sans text-xs">
+                
+                {/* 1. Bot Settings */}
+                <div className="flex items-center justify-between px-3 py-2 text-slate-300 hover:bg-white/5 rounded-xl cursor-pointer transition-all">
+                  <div className="flex items-center space-x-3">
+                    <Settings className="w-4 h-4 text-slate-400" />
+                    <span>Bot Settings</span>
+                  </div>
+                  <div className="w-7 h-4 bg-purple-600 rounded-full flex items-center p-0.5 shadow-sm">
+                    <div className="w-3 h-3 bg-white rounded-full translate-x-3 transition-transform" />
+                  </div>
+                </div>
+
+                {/* 2. Button Roles (Highlighted Active pill matching screenshot) */}
+                <div
+                  onClick={() => setActiveTab("automod")}
+                  className="flex items-center justify-between px-3 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-2xl cursor-pointer shadow-[0_0_20px_rgba(147,51,234,0.4)] font-bold transition-all"
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className="w-5 h-5 rounded-lg bg-white/20 flex items-center justify-center">
+                      <Sparkles className="w-3.5 h-3.5 text-white" />
+                    </div>
+                    <span>Button Roles</span>
+                  </div>
+                  <div className="w-7 h-4 bg-white/30 rounded-full flex items-center p-0.5">
+                    <div className="w-3 h-3 bg-white rounded-full translate-x-3 transition-transform shadow-sm" />
+                  </div>
+                </div>
+
+                {/* 3. Verification / Greetings */}
+                <div
+                  onClick={() => toggleConfig("verificationCaptcha")}
+                  className="flex items-center justify-between px-3 py-2 text-slate-300 hover:bg-white/5 rounded-xl cursor-pointer transition-all"
+                >
+                  <div className="flex items-center space-x-3">
+                    <ShieldCheck className="w-4 h-4 text-slate-400" />
+                    <span>Verification/Greetings</span>
+                  </div>
+                  <div className={`w-7 h-4 rounded-full flex items-center p-0.5 shadow-sm transition-colors ${
+                    automodConfig.verificationCaptcha ? "bg-purple-600" : "bg-slate-800"
+                  }`}>
+                    <div className={`w-3 h-3 bg-white rounded-full transition-transform ${
+                      automodConfig.verificationCaptcha ? "translate-x-3" : "translate-x-0"
+                    }`} />
+                  </div>
+                </div>
+
+                {/* 4. Custom Commands */}
+                <div className="flex items-center justify-between px-3 py-2 text-slate-400 hover:bg-white/5 rounded-xl cursor-pointer transition-all">
+                  <div className="flex items-center space-x-3">
+                    <ShieldAlert className="w-4 h-4 text-slate-500" />
+                    <span>Custom Commands</span>
+                  </div>
+                  <div className="w-7 h-4 bg-slate-800 rounded-full flex items-center p-0.5">
+                    <div className="w-3 h-3 bg-slate-500 rounded-full translate-x-0" />
+                  </div>
+                </div>
+
+                {/* 5. Timed Messages */}
+                <div
+                  onClick={() => toggleConfig("spamFilter")}
+                  className="flex items-center justify-between px-3 py-2 text-slate-300 hover:bg-white/5 rounded-xl cursor-pointer transition-all"
+                >
+                  <div className="flex items-center space-x-3">
+                    <Activity className="w-4 h-4 text-slate-400" />
+                    <span>Timed Messages</span>
+                  </div>
+                  <div className={`w-7 h-4 rounded-full flex items-center p-0.5 shadow-sm transition-colors ${
+                    automodConfig.spamFilter ? "bg-purple-600" : "bg-slate-800"
+                  }`}>
+                    <div className={`w-3 h-3 bg-white rounded-full transition-transform ${
+                      automodConfig.spamFilter ? "translate-x-3" : "translate-x-0"
+                    }`} />
+                  </div>
+                </div>
+
+                {/* 6. Command Moderation */}
+                <div
+                  onClick={() => toggleConfig("scamDetector")}
+                  className="flex items-center justify-between px-3 py-2 text-slate-300 hover:bg-white/5 rounded-xl cursor-pointer transition-all"
+                >
+                  <div className="flex items-center space-x-3">
+                    <BarChart3 className="w-4 h-4 text-slate-400" />
+                    <span>Command Moderation</span>
+                  </div>
+                  <div className={`w-7 h-4 rounded-full flex items-center p-0.5 shadow-sm transition-colors ${
+                    automodConfig.scamDetector ? "bg-purple-600" : "bg-slate-800"
+                  }`}>
+                    <div className={`w-3 h-3 bg-white rounded-full transition-transform ${
+                      automodConfig.scamDetector ? "translate-x-3" : "translate-x-0"
+                    }`} />
+                  </div>
+                </div>
+
+                {/* 7. Auto Moderation */}
+                <div
+                  onClick={() => toggleConfig("toxicityFilter")}
+                  className="flex items-center justify-between px-3 py-2 text-slate-400 hover:bg-white/5 rounded-xl cursor-pointer transition-all"
+                >
+                  <div className="flex items-center space-x-3">
+                    <ShieldAlert className="w-4 h-4 text-slate-500" />
+                    <span>Auto Moderation</span>
+                  </div>
+                  <div className={`w-7 h-4 rounded-full flex items-center p-0.5 shadow-sm transition-colors ${
+                    automodConfig.toxicityFilter ? "bg-purple-600" : "bg-slate-800"
+                  }`}>
+                    <div className={`w-3 h-3 bg-white rounded-full transition-transform ${
+                      automodConfig.toxicityFilter ? "translate-x-3" : "translate-x-0"
+                    }`} />
+                  </div>
+                </div>
+
+                {/* 8. Audit Logging */}
+                <div className="flex items-center justify-between px-3 py-2 text-slate-300 hover:bg-white/5 rounded-xl cursor-pointer transition-all">
+                  <div className="flex items-center space-x-3">
+                    <ChevronRight className="w-4 h-4 text-slate-400" />
+                    <span>Audit Logging</span>
+                  </div>
+                </div>
+
               </div>
             </div>
 
-            {/* Nav Items */}
-            <button
-              onClick={() => setActiveTab("overview")}
-              className={`w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
-                activeTab === "overview"
-                  ? "bg-purple-600/20 text-purple-200 border-purple-500/40 shadow-[0_0_15px_rgba(124,58,237,0.3)] font-bold"
-                  : "text-slate-400 hover:text-white hover:bg-white/5 border-transparent"
-              }`}
-            >
-              <LayoutDashboard className="w-4 h-4" />
-              <span>Server Overview</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("cases")}
-              className={`w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
-                activeTab === "cases"
-                  ? "bg-purple-600/20 text-purple-200 border-purple-500/40 shadow-[0_0_15px_rgba(124,58,237,0.3)] font-bold"
-                  : "text-slate-400 hover:text-white hover:bg-white/5 border-transparent"
-              }`}
-            >
-              <ShieldAlert className="w-4 h-4" />
-              <span className="flex-1 text-left">Case Logs</span>
-              <span className="bg-purple-500/30 text-[10px] text-purple-200 px-2 py-0.5 rounded-full font-mono font-bold">
-                {cases.length}
-              </span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("automod")}
-              className={`w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
-                activeTab === "automod"
-                  ? "bg-purple-600/20 text-purple-200 border-purple-500/40 shadow-[0_0_15px_rgba(124,58,237,0.3)] font-bold"
-                  : "text-slate-400 hover:text-white hover:bg-white/5 border-transparent"
-              }`}
-            >
-              <Settings className="w-4 h-4" />
-              <span>Automod Config</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("analytics")}
-              className={`w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
-                activeTab === "analytics"
-                  ? "bg-purple-600/20 text-purple-200 border-purple-500/40 shadow-[0_0_15px_rgba(124,58,237,0.3)] font-bold"
-                  : "text-slate-400 hover:text-white hover:bg-white/5 border-transparent"
-              }`}
-            >
-              <BarChart3 className="w-4 h-4" />
-              <span>Analytics</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab("appeals")}
-              className={`w-full flex items-center space-x-3 py-2.5 px-3.5 rounded-xl text-xs font-semibold transition-all cursor-pointer border ${
-                activeTab === "appeals"
-                  ? "bg-purple-600/20 text-purple-200 border-purple-500/40 shadow-[0_0_15px_rgba(124,58,237,0.3)] font-bold"
-                  : "text-slate-400 hover:text-white hover:bg-white/5 border-transparent"
-              }`}
-            >
-              <HelpCircle className="w-4 h-4" />
-              <span className="flex-1 text-left">Appeals Queue</span>
-              {appeals.filter(a => a.status === "pending").length > 0 && (
-                <span className="bg-rose-500 text-[10px] text-white px-2 py-0.5 rounded-full font-mono font-black animate-pulse">
-                  {appeals.filter(a => a.status === "pending").length}
+            {/* Bottom Upgrade Now Neon CTA Banner matching screenshot */}
+            <div className="relative mt-4 bg-gradient-to-r from-teal-400 via-emerald-400 to-cyan-400 rounded-2xl p-3.5 flex items-center justify-between shadow-[0_0_20px_rgba(45,212,191,0.4)] text-slate-950 overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform">
+              {/* Illustration graphic */}
+              <div className="flex items-center space-x-2.5">
+                <div className="w-8 h-8 rounded-xl bg-slate-950/20 backdrop-blur-sm flex items-center justify-center">
+                  <Sparkles className="w-5 h-5 text-slate-950" />
+                </div>
+                <span className="font-heading font-extrabold text-sm text-slate-950 tracking-tight">
+                  Upgrade Now
                 </span>
-              )}
-            </button>
-
-            <div className="mt-auto pt-4 border-t border-white/10 flex items-center space-x-2 text-[11px] font-mono text-slate-400">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
-              <span>Cluster-US East Active</span>
+              </div>
+              <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center shadow-md">
+                <ChevronRight className="w-4 h-4 text-slate-950" />
+              </div>
             </div>
+
           </div>
 
           {/* Right Content */}
