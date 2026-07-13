@@ -119,7 +119,7 @@ export default function DashboardPreview() {
         {/* Dashboard Mockup Window */}
         <div className="glow-card rounded-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row h-[560px] text-left border border-white/10">
           
-          {/* Left Sidebar - Matches exact requested toggle & CTA layout */}
+          {/* Left Sidebar - Clean navigation items matching reference aesthetic without toggles */}
           <div className="w-full md:w-72 bg-[#0B0D17] border-r border-white/10 flex flex-col p-4 space-y-4 shrink-0 justify-between select-none">
             
             <div className="space-y-4">
@@ -137,7 +137,7 @@ export default function DashboardPreview() {
               <div className="space-y-1 font-sans text-xs">
                 <button
                   onClick={() => setActiveTab("overview")}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-xl transition-all cursor-pointer font-medium ${
+                  className={`w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl transition-all cursor-pointer font-medium ${
                     activeTab === "overview" ? "text-white bg-white/10 font-bold" : "text-slate-400 hover:text-white hover:bg-white/5"
                   }`}
                 >
@@ -147,7 +147,7 @@ export default function DashboardPreview() {
 
                 <button
                   onClick={() => setActiveTab("cases")}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-xl transition-all cursor-pointer font-medium ${
+                  className={`w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl transition-all cursor-pointer font-medium ${
                     activeTab === "cases" ? "text-white bg-white/10 font-bold" : "text-slate-400 hover:text-white hover:bg-white/5"
                   }`}
                 >
@@ -157,7 +157,7 @@ export default function DashboardPreview() {
 
                 <button
                   onClick={() => setActiveTab("appeals")}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-xl transition-all cursor-pointer font-medium ${
+                  className={`w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl transition-all cursor-pointer font-medium ${
                     activeTab === "appeals" ? "text-white bg-white/10 font-bold" : "text-slate-400 hover:text-white hover:bg-white/5"
                   }`}
                 >
@@ -167,7 +167,7 @@ export default function DashboardPreview() {
 
                 <button
                   onClick={() => setActiveTab("analytics")}
-                  className={`w-full flex items-center space-x-3 px-3 py-2 rounded-xl transition-all cursor-pointer font-medium ${
+                  className={`w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl transition-all cursor-pointer font-medium ${
                     activeTab === "analytics" ? "text-white bg-white/10 font-bold" : "text-slate-400 hover:text-white hover:bg-white/5"
                   }`}
                 >
@@ -179,126 +179,82 @@ export default function DashboardPreview() {
               {/* Divider Line */}
               <div className="h-[1px] bg-white/10 my-3 w-full" />
 
-              {/* Toggles Module List */}
+              {/* Navigation Module List */}
               <div className="space-y-1 font-sans text-xs">
                 
                 {/* 1. Bot Settings */}
-                <div className="flex items-center justify-between px-3 py-2 text-slate-300 hover:bg-white/5 rounded-xl cursor-pointer transition-all">
-                  <div className="flex items-center space-x-3">
-                    <Settings className="w-4 h-4 text-slate-400" />
-                    <span>Bot Settings</span>
-                  </div>
-                  <div className="w-7 h-4 bg-purple-600 rounded-full flex items-center p-0.5 shadow-sm">
-                    <div className="w-3 h-3 bg-white rounded-full translate-x-3 transition-transform" />
-                  </div>
-                </div>
-
-                {/* 2. Button Roles (Highlighted Active pill matching screenshot) */}
-                <div
+                <button
                   onClick={() => setActiveTab("automod")}
-                  className="flex items-center justify-between px-3.5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-2xl cursor-pointer shadow-[0_0_20px_rgba(147,51,234,0.4)] font-bold transition-all"
+                  className="w-full flex items-center space-x-3 px-3.5 py-2.5 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl cursor-pointer transition-all font-medium"
                 >
-                  <div className="flex items-center space-x-3">
-                    <div className="w-5 h-5 rounded-lg bg-white/20 flex items-center justify-center">
-                      <Sparkles className="w-3.5 h-3.5 text-white" />
-                    </div>
-                    <span>Button Roles</span>
+                  <Settings className="w-4 h-4 text-slate-400" />
+                  <span>Bot Settings</span>
+                </button>
+
+                {/* 2. Button Roles (Highlighted Active pill matching screenshot styling) */}
+                <button
+                  onClick={() => setActiveTab("automod")}
+                  className="w-full flex items-center space-x-3 px-3.5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-2xl cursor-pointer shadow-[0_0_20px_rgba(147,51,234,0.4)] font-bold transition-all"
+                >
+                  <div className="w-5 h-5 rounded-lg bg-white/20 flex items-center justify-center">
+                    <Sparkles className="w-3.5 h-3.5 text-white" />
                   </div>
-                  <div className="w-7 h-4 bg-white/30 rounded-full flex items-center p-0.5">
-                    <div className="w-3 h-3 bg-white rounded-full translate-x-3 transition-transform shadow-sm" />
-                  </div>
-                </div>
+                  <span>Button Roles</span>
+                </button>
 
                 {/* 3. Verification / Greetings */}
-                <div
-                  onClick={() => toggleConfig("verificationCaptcha")}
-                  className="flex items-center justify-between px-3 py-2 text-slate-300 hover:bg-white/5 rounded-xl cursor-pointer transition-all"
+                <button
+                  onClick={() => setActiveTab("automod")}
+                  className="w-full flex items-center space-x-3 px-3.5 py-2.5 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl cursor-pointer transition-all font-medium"
                 >
-                  <div className="flex items-center space-x-3">
-                    <ShieldCheck className="w-4 h-4 text-slate-400" />
-                    <span>Verification/Greetings</span>
-                  </div>
-                  <div className={`w-7 h-4 rounded-full flex items-center p-0.5 shadow-sm transition-colors ${
-                    automodConfig.verificationCaptcha ? "bg-purple-600" : "bg-slate-800"
-                  }`}>
-                    <div className={`w-3 h-3 bg-white rounded-full transition-transform ${
-                      automodConfig.verificationCaptcha ? "translate-x-3" : "translate-x-0"
-                    }`} />
-                  </div>
-                </div>
+                  <ShieldCheck className="w-4 h-4 text-slate-400" />
+                  <span>Verification/Greetings</span>
+                </button>
 
                 {/* 4. Custom Commands */}
-                <div className="flex items-center justify-between px-3 py-2 text-slate-400 hover:bg-white/5 rounded-xl cursor-pointer transition-all">
-                  <div className="flex items-center space-x-3">
-                    <ShieldAlert className="w-4 h-4 text-slate-500" />
-                    <span>Custom Commands</span>
-                  </div>
-                  <div className="w-7 h-4 bg-slate-800 rounded-full flex items-center p-0.5">
-                    <div className="w-3 h-3 bg-slate-500 rounded-full translate-x-0" />
-                  </div>
-                </div>
+                <button
+                  onClick={() => setActiveTab("automod")}
+                  className="w-full flex items-center space-x-3 px-3.5 py-2.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-xl cursor-pointer transition-all font-medium"
+                >
+                  <ShieldAlert className="w-4 h-4 text-slate-500" />
+                  <span>Custom Commands</span>
+                </button>
 
                 {/* 5. Timed Messages */}
-                <div
-                  onClick={() => toggleConfig("spamFilter")}
-                  className="flex items-center justify-between px-3 py-2 text-slate-300 hover:bg-white/5 rounded-xl cursor-pointer transition-all"
+                <button
+                  onClick={() => setActiveTab("automod")}
+                  className="w-full flex items-center space-x-3 px-3.5 py-2.5 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl cursor-pointer transition-all font-medium"
                 >
-                  <div className="flex items-center space-x-3">
-                    <Activity className="w-4 h-4 text-slate-400" />
-                    <span>Timed Messages</span>
-                  </div>
-                  <div className={`w-7 h-4 rounded-full flex items-center p-0.5 shadow-sm transition-colors ${
-                    automodConfig.spamFilter ? "bg-purple-600" : "bg-slate-800"
-                  }`}>
-                    <div className={`w-3 h-3 bg-white rounded-full transition-transform ${
-                      automodConfig.spamFilter ? "translate-x-3" : "translate-x-0"
-                    }`} />
-                  </div>
-                </div>
+                  <Activity className="w-4 h-4 text-slate-400" />
+                  <span>Timed Messages</span>
+                </button>
 
                 {/* 6. Command Moderation */}
-                <div
-                  onClick={() => toggleConfig("scamDetector")}
-                  className="flex items-center justify-between px-3 py-2 text-slate-300 hover:bg-white/5 rounded-xl cursor-pointer transition-all"
+                <button
+                  onClick={() => setActiveTab("automod")}
+                  className="w-full flex items-center space-x-3 px-3.5 py-2.5 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl cursor-pointer transition-all font-medium"
                 >
-                  <div className="flex items-center space-x-3">
-                    <BarChart3 className="w-4 h-4 text-slate-400" />
-                    <span>Command Moderation</span>
-                  </div>
-                  <div className={`w-7 h-4 rounded-full flex items-center p-0.5 shadow-sm transition-colors ${
-                    automodConfig.scamDetector ? "bg-purple-600" : "bg-slate-800"
-                  }`}>
-                    <div className={`w-3 h-3 bg-white rounded-full transition-transform ${
-                      automodConfig.scamDetector ? "translate-x-3" : "translate-x-0"
-                    }`} />
-                  </div>
-                </div>
+                  <BarChart3 className="w-4 h-4 text-slate-400" />
+                  <span>Command Moderation</span>
+                </button>
 
                 {/* 7. Auto Moderation */}
-                <div
-                  onClick={() => toggleConfig("toxicityFilter")}
-                  className="flex items-center justify-between px-3 py-2 text-slate-400 hover:bg-white/5 rounded-xl cursor-pointer transition-all"
+                <button
+                  onClick={() => setActiveTab("automod")}
+                  className="w-full flex items-center space-x-3 px-3.5 py-2.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-xl cursor-pointer transition-all font-medium"
                 >
-                  <div className="flex items-center space-x-3">
-                    <ShieldAlert className="w-4 h-4 text-slate-500" />
-                    <span>Auto Moderation</span>
-                  </div>
-                  <div className={`w-7 h-4 rounded-full flex items-center p-0.5 shadow-sm transition-colors ${
-                    automodConfig.toxicityFilter ? "bg-purple-600" : "bg-slate-800"
-                  }`}>
-                    <div className={`w-3 h-3 bg-white rounded-full transition-transform ${
-                      automodConfig.toxicityFilter ? "translate-x-3" : "translate-x-0"
-                    }`} />
-                  </div>
-                </div>
+                  <ShieldAlert className="w-4 h-4 text-slate-500" />
+                  <span>Auto Moderation</span>
+                </button>
 
                 {/* 8. Audit Logging */}
-                <div className="flex items-center justify-between px-3 py-2 text-slate-300 hover:bg-white/5 rounded-xl cursor-pointer transition-all">
-                  <div className="flex items-center space-x-3">
-                    <ChevronRight className="w-4 h-4 text-slate-400" />
-                    <span>Audit Logging</span>
-                  </div>
-                </div>
+                <button
+                  onClick={() => setActiveTab("cases")}
+                  className="w-full flex items-center space-x-3 px-3.5 py-2.5 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl cursor-pointer transition-all font-medium"
+                >
+                  <ChevronRight className="w-4 h-4 text-slate-400" />
+                  <span>Audit Logging</span>
+                </button>
 
               </div>
             </div>
