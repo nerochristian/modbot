@@ -225,6 +225,12 @@ class AIModeration(commands.Cog):
         "unquar", "unquarantine", "unwarn", "delwarn",
         "ban", "kick", "mute", "timeout", "quarantine", "quar", "warn",
     })
+    _MOD_ROLE_PERMISSION_GATES: ClassVar[frozenset[str]] = frozenset({
+        "manage_messages",
+        "moderate_members",
+        "kick_members",
+        "ban_members",
+    })
     _MOD_REQUEST_RE: ClassVar[re.Pattern] = re.compile(
         r"^(warn|kick|ban|unban|mute|timeout|unmute|untimeout|purge|clear|clean|"
         r"wipe|nuke|delete\b|remove\b|shut\s+up|silence|bench|boot|banish|"
@@ -1051,6 +1057,8 @@ class AIModeration(commands.Cog):
         actor: Union[discord.Member, discord.User],
         guild: Optional[discord.Guild],
         tool: ToolType,
+        *,
+        configured_mod_role: bool = False,
     ) -> Optional[str]:
         metadata = ToolRegistry.get_metadata(tool)
         required = metadata.required_permission
@@ -1074,7 +1082,11 @@ class AIModeration(commands.Cog):
                 )
             return bool(getattr(member.guild_permissions, name, False))
 
-        if not has_perm(actor, required):
+        role_authorized = (
+            configured_mod_role
+            and required in self._MOD_ROLE_PERMISSION_GATES
+        )
+        if not has_perm(actor, required) and not role_authorized:
             return f"You need the `{perm_name}` permission."
         if guild and guild.me and not has_perm(guild.me, required):
             return f"I need the `{perm_name}` permission."
@@ -2186,12 +2198,25 @@ class AIModeration(commands.Cog):
         send_result: bool,
     ) -> ToolResult:
         assert decision.tool is not None
+        settings = await self.get_guild_settings(message.guild.id)
+        if not settings.enabled:
+            result = ToolResult.fail(
+                "AI moderation is disabled right now. Ask a server admin to enable it with `/aimod toggle`."
+            )
+            if send_result:
+                await self.reply_tool_result(message, result)
+            return result
+
         result = await ToolRegistry.execute(
             decision.tool,
             self,
             message,
             decision.arguments,
             decision,
+            configured_mod_role=self._has_configured_mod_role(
+                message.author,
+                settings,
+            ),
         )
         if result.success and (target_id := decision.arguments.get("target_user_id")):
             try:
@@ -2437,25 +2462,11 @@ class AIModeration(commands.Cog):
 
         # --- Mentioned but AI mod disabled: chat-only mode ---
         if (is_mentioned or is_reply_to_bot) and not settings.enabled:
-            # If the user is an admin/owner mentioning the bot with what looks like
-            # an action request, still route to the AI tool router even if AI mod
-            # is "disabled" - the toggle is meant for auto-moderation, not for
-            # blocking staff from using explicit AI tools.
-            if is_mod_request and self._can_use_ai_tools(message.author):
-                pass  # Fall through to the main routing below
-            elif not settings.chat_enabled:
-                if is_mod_request:
-                    await self.reply(
-                        message,
-                        content="AI moderation is disabled right now. Ask a server admin to enable it with `/aimod toggle`.",
-                    )
-                return
-            elif is_mod_request:
+            if is_mod_request:
                 await self.reply(message, content="AI moderation is disabled right now. Ask a server admin to enable it with `/aimod toggle`.")
-                return
-            else:
+            elif settings.chat_enabled:
                 await self._handle_conversation(message, content, settings)
-                return
+            return
 
         if is_reply_to_bot and not is_mentioned and settings.chat_enabled and not is_mod_request:
             await self._handle_conversation(message, content, settings)
@@ -2472,20 +2483,16 @@ class AIModeration(commands.Cog):
             else PermissionFlags()
         )
         mentions = self.extract_mentions(message)
-        routing_context_limit = max(
-            settings.context_messages,
-            int(self.config.memory_window),
-        )
         recent = await self.fetch_recent_messages(
             message.channel,
-            limit=routing_context_limit,
+            limit=settings.context_messages,
         )
 
         decision = self._quick_route(message, content)
         if (
             not decision
             and is_mod_request
-            and self._can_use_ai_tools(message.author)
+            and self._can_use_ai_tools(message.author, settings)
         ):
             decision = self._recover_tool_decision(message, content)
         if not decision:
@@ -2526,7 +2533,15 @@ class AIModeration(commands.Cog):
         # ---- Dispatch ----
 
         if decision.type == DecisionType.TOOL_CALL and decision.tool:
-            access_error = self.validate_tool_access(message.author, message.guild, decision.tool)
+            access_error = self.validate_tool_access(
+                message.author,
+                message.guild,
+                decision.tool,
+                configured_mod_role=self._has_configured_mod_role(
+                    message.author,
+                    settings,
+                ),
+            )
             if access_error:
                 await self.reply(
                     message,
@@ -2878,13 +2893,33 @@ class AIModeration(commands.Cog):
         return False
 
     @staticmethod
-    def _can_use_ai_tools(user: Union[discord.Member, discord.User]) -> bool:
+    def _has_configured_mod_role(
+        user: Union[discord.Member, discord.User],
+        settings: GuildSettings,
+    ) -> bool:
+        configured = settings.mod_roles
+        if not configured:
+            return False
+        return bool(
+            configured.intersection(
+                int(role.id)
+                for role in getattr(user, "roles", ())
+                if getattr(role, "id", None) is not None
+            )
+        )
+
+    @classmethod
+    def _can_use_ai_tools(
+        cls,
+        user: Union[discord.Member, discord.User],
+        settings: Optional[GuildSettings] = None,
+    ) -> bool:
         if is_bot_owner_id(user.id):
             return True
         perms = getattr(user, "guild_permissions", None)
         if perms is None:
             return False
-        return any(
+        has_native_permission = any(
             bool(getattr(perms, name, False))
             for name in (
                 "administrator",
@@ -2897,6 +2932,9 @@ class AIModeration(commands.Cog):
                 "manage_roles",
             )
         )
+        if has_native_permission:
+            return True
+        return bool(settings and cls._has_configured_mod_role(user, settings))
 
     @staticmethod
     def _can_use_owner_tools(user: Union[discord.Member, discord.User]) -> bool:

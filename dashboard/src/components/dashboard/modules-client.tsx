@@ -42,6 +42,7 @@ import {
   type AutopunishAction,
   type AutopunishRule,
   type ModuleField,
+  type ModuleSpecial,
 } from '@/lib/modules-contract'
 
 type ModuleValues = Record<string, string | number | boolean | string[] | AutopunishRule[] | null>
@@ -53,7 +54,7 @@ type Module = {
   badge?: 'new' | 'standard' | 'premium' | 'core'
   enableKey: string | null
   settingsHref?: string
-  special?: 'moderation' | 'whitelist' | 'welcome_card'
+  special?: ModuleSpecial
   toggleable: boolean
   enabled: boolean
   fields: ModuleField[]
@@ -606,7 +607,7 @@ function SettingsSheet({
   const helper = mod.special ? FIELD_HELP[mod.special] : ''
   return (
     <div id={id} className="border-t border-border bg-surface-2 px-4 py-5 sm:px-8">
-      <div className={cn('mx-auto', mod.special === 'moderation' ? 'max-w-6xl' : 'max-w-4xl')}>
+      <div className="mx-auto max-w-6xl">
         <div className="mb-5 flex items-start justify-between gap-4">
           <div>
             <p className="font-mono text-[0.625rem] font-semibold uppercase tracking-[0.15em] text-accent">
@@ -624,7 +625,9 @@ function SettingsSheet({
         {mod.special === 'moderation' ? (
           <ModerationSheet mod={mod} canWrite={canWrite} onClose={onClose} onSaved={onSaved} />
         ) : mod.special === 'whitelist' ? (
-          <WhitelistSheet mod={mod} canWrite={canWrite} />
+          <WhitelistSheet mod={mod} canWrite={canWrite} onClose={onClose} onSaved={onSaved} />
+        ) : mod.special ? (
+          <OperationalModuleSheet mod={mod} canWrite={canWrite} onClose={onClose} onSaved={onSaved} />
         ) : (
           <FieldsSheet mod={mod} canWrite={canWrite} onClose={onClose} onSaved={onSaved} />
         )}
@@ -635,8 +638,14 @@ function SettingsSheet({
 
 const FIELD_HELP: Record<Module['special'] & string, string> = {
   moderation: 'Set the action policy, staff access, public responses, and warning escalation in one place.',
-  whitelist: '',
-  welcome_card: 'This is the join card image posted to your welcome channel.',
+  aimod: 'Control how Docket interprets requests, gathers context, and confirms high-impact actions.',
+  antiraid: 'Define the join signal, automatic response, quarantine path, and incident routing.',
+  verification: 'Build the member verification path, including its roles, panel channel, logs, and voice gate.',
+  whitelist: 'Choose rejection behavior and maintain the exact member allowlist enforced on join.',
+  tickets: 'Route private support channels to the right category, staff role, and transcript log.',
+  logging: 'Send each class of server event to a deliberate destination instead of one noisy catch-all channel.',
+  welcome_card: 'Set the delivery channel and identity of the join card members see when they arrive.',
+  autoroles: 'Choose the role Docket assigns to new human members when verification is not controlling access.',
 }
 
 type GuildResource = {
@@ -956,7 +965,11 @@ function ModerationSection({
 
 function resourceLabel(resource: GuildResource | undefined, id: string, kind: 'role' | 'channel'): string {
   if (!resource) return `Unknown ${kind} · ${id}`
-  return `${kind === 'channel' ? '#' : '@'}${resource.name}`
+  if (kind === 'role') return `@${resource.name}`
+  if (resource.type === 4) return `Category · ${resource.name}`
+  if (resource.type === 2) return `Voice · ${resource.name}`
+  if (resource.type === 13) return `Stage · ${resource.name}`
+  return `#${resource.name}`
 }
 
 function SingleResourcePicker({

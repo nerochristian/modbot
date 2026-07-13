@@ -129,6 +129,8 @@ class ToolRegistry:
         message: discord.Message,
         args: Dict[str, Any],
         decision: "Decision",
+        *,
+        configured_mod_role: bool = False,
     ) -> "ToolResult":
         """Execute a tool handler with proper context and error handling."""
         from .context import ToolContext, ToolResult
@@ -143,7 +145,12 @@ class ToolRegistry:
         if not isinstance(message.author, discord.Member):
             return ToolResult.fail("Could not verify your server membership.")
 
-        access_error = cog.validate_tool_access(message.author, message.guild, tool)
+        access_error = cog.validate_tool_access(
+            message.author,
+            message.guild,
+            tool,
+            configured_mod_role=configured_mod_role,
+        )
         if access_error:
             return ToolResult.fail(access_error)
 

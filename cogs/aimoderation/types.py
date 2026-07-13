@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, ClassVar, Dict, Final, Optional, Set, Tuple
 
+from utils.moderation_settings import moderation_id_set
+
 if TYPE_CHECKING:
     import discord
 
@@ -173,6 +175,7 @@ class GuildSettings:
     )
     proactive_chance: float = 0.02
     location_context: str = ""
+    mod_roles: Set[int] = field(default_factory=set)
 
     _VALID_ACTIONS: ClassVar[Set[str]] = {t.value for t in ToolType}
     _DEFAULT_CONFIRM_ACTIONS: ClassVar[Set[str]] = {
@@ -254,6 +257,7 @@ class GuildSettings:
             ),
             proactive_chance=cls._coerce_float(data.get("aimod_proactive_chance", 0.02), 0.02, minimum=0.0, maximum=1.0),
             location_context=str(data.get("aimod_location_context") or data.get("server_location") or "").strip(),
+            mod_roles=moderation_id_set(data, "mod_roles"),
         )
 
     def to_dict(self) -> Dict[str, Any]:
@@ -267,6 +271,7 @@ class GuildSettings:
             "aimod_confirm_actions": sorted(self.confirm_actions),
             "aimod_proactive_chance": self.proactive_chance,
             "aimod_location_context": self.location_context,
+            "mod_roles": sorted(self.mod_roles),
         }
 
 
