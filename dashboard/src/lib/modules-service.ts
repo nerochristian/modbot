@@ -323,6 +323,13 @@ export async function updateModuleSettings(
       throw new ModuleValidationError('Select a voice waiting room before enabling voice verification')
     }
   }
+  if (
+    def.id === 'verification'
+    && isDiscordSnowflake(settingValue(mergedSettings, 'verified_role'))
+    && settingValue(mergedSettings, 'verified_role') === mergedSettings.unverified_role
+  ) {
+    throw new ModuleValidationError('Verified and unverified roles must be different')
+  }
   if ('moderation_autopunish_rules' in changes) {
     Object.assign(
       changes,
