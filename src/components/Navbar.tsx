@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Menu, X, Shield, ChevronRight, Activity } from "lucide-react";
+import { Menu, X, Shield, Sparkles, ChevronRight, Activity, Zap, Server } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 export default function Navbar() {
@@ -37,120 +37,129 @@ export default function Navbar() {
 
   return (
     <>
-      <nav
+      <header
         id="navbar"
         className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
           isScrolled
-            ? "bg-[#05060B]/80 backdrop-blur-md border-b border-slate-800/80 py-3"
-            : "bg-transparent py-5"
+            ? "py-3 bg-[#05070E]/85 backdrop-blur-xl border-b border-white/10 shadow-[0_10px_30px_rgba(0,0,0,0.8)]"
+            : "py-6 bg-transparent"
         }`}
       >
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between">
-            {/* Logo */}
+            
+            {/* Brand Logo */}
             <div
-              className="flex items-center space-x-2.5 cursor-pointer group"
+              className="flex items-center space-x-3 cursor-pointer group"
               onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
             >
-              <div className="relative flex items-center justify-center w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-cyan-500 transition-transform duration-300 group-hover:scale-105">
-                <span className="font-bold text-sm text-white font-display">D</span>
-                <div className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-500 border border-[#05060B] flex items-center justify-center animate-pulse" />
+              <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-br from-violet-600 via-indigo-600 to-cyan-500 p-0.5 shadow-[0_0_20px_rgba(124,58,237,0.4)] transition-all duration-300 group-hover:scale-105 group-hover:shadow-[0_0_30px_rgba(124,58,237,0.6)]">
+                <div className="w-full h-full bg-[#090D1A] rounded-[10px] flex items-center justify-center relative overflow-hidden">
+                  <Shield className="w-5 h-5 text-purple-400 group-hover:text-cyan-400 transition-colors" />
+                  <div className="absolute inset-0 bg-gradient-to-tr from-purple-500/20 to-cyan-500/0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
+                <div className="absolute -bottom-1 -right-1 w-3 h-3 rounded-full bg-emerald-500 border-2 border-[#05070E] flex items-center justify-center shadow-sm">
+                  <span className="w-1 h-1 rounded-full bg-white animate-ping" />
+                </div>
               </div>
-              <span className="font-display font-bold text-lg tracking-tight text-white uppercase">
-                DOCKET
-              </span>
+
+              <div className="flex flex-col">
+                <span className="font-heading font-extrabold text-xl tracking-tight text-white uppercase flex items-center gap-1.5">
+                  SOUL <span className="bg-gradient-to-r from-purple-400 via-indigo-400 to-cyan-400 bg-clip-text text-transparent">MODBOT</span>
+                </span>
+                <span className="text-[10px] font-mono text-purple-300/70 tracking-wider uppercase -mt-1 font-semibold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>
+                  Systems Normal
+                </span>
+              </div>
             </div>
 
-            {/* Desktop Navigation */}
-            <div className="hidden md:flex items-center space-x-8">
+            {/* Desktop Nav Pills */}
+            <div className="hidden lg:flex items-center space-x-1 px-4 py-1.5 rounded-full bg-white/[0.03] border border-white/10 backdrop-blur-md shadow-inner">
               {navLinks.map((link) => (
                 <button
                   key={link.target}
                   onClick={() => scrollToSection(link.target)}
-                  className="font-sans text-sm font-medium text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  className="font-sans text-xs font-semibold text-slate-300 hover:text-white hover:bg-white/10 transition-all px-4 py-2 rounded-full cursor-pointer"
                 >
                   {link.label}
                 </button>
               ))}
             </div>
 
-            {/* CTA Buttons */}
-            <div className="hidden md:flex items-center space-x-5">
+            {/* Right CTAs */}
+            <div className="hidden md:flex items-center space-x-4">
               <button
                 onClick={() => scrollToSection("dashboard")}
-                className="font-sans text-sm font-medium text-slate-400 hover:text-purple-400 transition-colors py-2 px-1 cursor-pointer"
+                className="text-xs font-semibold text-slate-300 hover:text-white transition-colors px-3 py-2 cursor-pointer flex items-center space-x-1.5 group"
               >
-                Login
+                <Server className="w-3.5 h-3.5 text-purple-400 group-hover:rotate-12 transition-transform" />
+                <span>Console Login</span>
               </button>
+
               <a
                 href="https://discord.com"
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex items-center justify-center space-x-1 px-5 py-2.5 bg-white text-black rounded-full text-sm font-bold hover:bg-slate-200 transition-all shadow-[0_0_20px_rgba(255,255,255,0.15)] cursor-pointer"
+                className="btn-primary inline-flex items-center space-x-2 px-5 py-2.5 rounded-full text-xs font-bold uppercase tracking-wider cursor-pointer group"
               >
+                <Sparkles className="w-4 h-4 text-cyan-300 group-hover:rotate-45 transition-transform duration-300" />
                 <span>Add to Discord</span>
               </a>
             </div>
 
-            {/* Mobile menu button */}
-            <div className="flex md:hidden">
+            {/* Mobile Menu Button */}
+            <div className="flex lg:hidden">
               <button
                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-800 focus:outline-none cursor-pointer"
-                aria-expanded="false"
+                className="p-2 rounded-xl bg-white/5 border border-white/10 text-slate-300 hover:text-white focus:outline-none cursor-pointer"
               >
-                <span className="sr-only">Open main menu</span>
-                {isMobileMenuOpen ? (
-                  <X className="block h-6 w-6" aria-hidden="true" />
-                ) : (
-                  <Menu className="block h-6 w-6" aria-hidden="true" />
-                )}
+                {isMobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
               </button>
             </div>
           </div>
         </div>
 
-        {/* Mobile menu, show/hide based on menu state. */}
+        {/* Mobile Dropdown */}
         <AnimatePresence>
           {isMobileMenuOpen && (
             <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.2 }}
-              className="md:hidden bg-[#05060B] border-b border-slate-800/80"
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="lg:hidden bg-[#090D1A]/95 border-b border-white/10 backdrop-blur-2xl mt-3 px-4 pt-2 pb-6 space-y-3"
             >
-              <div className="px-2 pt-2 pb-4 space-y-1 sm:px-3 border-t border-slate-800/50 mt-2">
-                {navLinks.map((link) => (
-                  <button
-                    key={link.target}
-                    onClick={() => scrollToSection(link.target)}
-                    className="block w-full text-left px-3 py-2.5 rounded-md text-base font-medium text-slate-400 hover:text-white hover:bg-slate-900/40 transition-colors"
-                  >
-                    {link.label}
-                  </button>
-                ))}
-                <div className="pt-4 pb-2 border-t border-slate-800/50 flex flex-col space-y-2 px-3">
-                  <button
-                    onClick={() => scrollToSection("dashboard")}
-                    className="w-full text-center py-2.5 rounded-md text-base font-medium text-slate-400 hover:text-white hover:bg-slate-900/40 transition-colors"
-                  >
-                    Login to Dashboard
-                  </button>
-                  <a
-                    href="https://discord.com"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="w-full text-center py-2.5 rounded-full text-base font-bold bg-white text-black transition-all shadow-[0_0_20px_rgba(255,255,255,0.15)] flex items-center justify-center"
-                  >
-                    <span>Add to Discord</span>
-                  </a>
-                </div>
+              {navLinks.map((link) => (
+                <button
+                  key={link.target}
+                  onClick={() => scrollToSection(link.target)}
+                  className="block w-full text-left px-4 py-3 rounded-xl text-sm font-semibold text-slate-300 hover:bg-purple-500/10 hover:text-purple-300 transition-colors"
+                >
+                  {link.label}
+                </button>
+              ))}
+              <div className="pt-4 border-t border-white/10 flex flex-col space-y-3">
+                <button
+                  onClick={() => scrollToSection("dashboard")}
+                  className="w-full py-3 rounded-xl text-sm font-semibold text-slate-300 hover:bg-white/5 transition-colors"
+                >
+                  Dashboard Console
+                </button>
+                <a
+                  href="https://discord.com"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn-primary w-full py-3 rounded-xl text-sm font-bold uppercase tracking-wider flex items-center justify-center space-x-2"
+                >
+                  <Sparkles className="w-4 h-4 text-cyan-300" />
+                  <span>Add to Discord</span>
+                </a>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
-      </nav>
+      </header>
     </>
   );
 }
+
