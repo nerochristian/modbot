@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { LayoutDashboard, ShieldAlert, Settings, BarChart3, HelpCircle, Activity, ChevronRight, Check, X, ShieldCheck, ToggleLeft, ToggleRight, Trash2, Calendar, Sparkles, Server, FileText, LayoutGrid, TrendingUp, Users, Gavel, Shield, Grid, Scale, UserPlus, Bell } from "lucide-react";
+import { LayoutDashboard, ShieldAlert, Settings, BarChart3, HelpCircle, Activity, ChevronRight, Check, X, ShieldCheck, ToggleLeft, ToggleRight, Trash2, Calendar, Sparkles, Server, FileText, LayoutGrid, TrendingUp, Users, Gavel, Shield, Grid, Scale, UserPlus, Bell, Headphones, UserRoundCog, BadgeCheck, MessageSquareCode, Clock3, Bot, ScrollText } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { CaseLog } from "../types";
 
@@ -120,160 +120,147 @@ export default function DashboardPreview() {
         <div className="glow-card rounded-3xl overflow-hidden shadow-2xl flex flex-col md:flex-row h-[560px] text-left border border-white/10">
           
           {/* Left Sidebar - Clean navigation items matching reference aesthetic without toggles */}
-          <div className="w-full md:w-72 bg-[#0B0D17] border-r border-white/10 flex flex-col p-4 space-y-4 shrink-0 justify-between select-none">
+          <div className="flex h-[560px] w-[250px] shrink-0 flex-col border-r border-white/[0.06] bg-[#111019] select-none">
             
-            <div className="space-y-4">
-              {/* Discord Bot Avatar Header */}
-              <div className="flex items-center px-2 pt-1 pb-2">
-                <div className="relative w-11 h-11 rounded-2xl bg-gradient-to-tr from-purple-950 via-slate-900 to-indigo-950 border border-purple-500/30 flex items-center justify-center shadow-lg group">
-                  <div className="absolute inset-0 bg-purple-500/20 rounded-2xl blur-md group-hover:blur-lg transition-all" />
-                  <svg className="w-6 h-6 text-indigo-300 relative z-10" viewBox="0 0 24 24" fill="currentColor">
-                    <path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994.021-.041.001-.09-.041-.106a13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.061 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z" />
-                  </svg>
+            {/* Logo */}
+            <div className="flex h-24 items-center px-6">
+              <div className="flex items-center gap-3 cursor-pointer" onClick={() => setActiveTab("overview")}>
+                <div className="relative grid size-11 place-items-center rounded-full border border-violet-500/20 bg-[#181622] shadow-lg">
+                  <Bot
+                    size={24}
+                    strokeWidth={1.7}
+                    className="text-cyan-300"
+                  />
+                  <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-violet-500 ring-2 ring-[#111019]" />
                 </div>
               </div>
+            </div>
 
-              {/* Main Navigation Top Items */}
-              <div className="space-y-1 font-sans text-xs">
+            {/* Navigation */}
+            <nav className="flex-1 overflow-y-auto px-3 pb-6">
+              <div className="space-y-1">
                 <button
                   onClick={() => setActiveTab("overview")}
-                  className={`w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl transition-all cursor-pointer font-medium ${
-                    activeTab === "overview" ? "text-white bg-white/10 font-bold" : "text-slate-400 hover:text-white hover:bg-white/5"
+                  className={`w-full group flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200 ${
+                    activeTab === "overview"
+                      ? "bg-violet-600 text-white shadow-[0_8px_25px_rgba(124,58,237,0.28)]"
+                      : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
                   }`}
                 >
-                  <LayoutGrid className="w-4 h-4 text-slate-400" />
-                  <span>Dashboard</span>
+                  <LayoutDashboard size={16} strokeWidth={1.8} className={activeTab === "overview" ? "text-white" : "text-zinc-600 transition-colors group-hover:text-zinc-300"} />
+                  <span className="truncate">Dashboard</span>
                 </button>
 
                 <button
                   onClick={() => setActiveTab("cases")}
-                  className={`w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl transition-all cursor-pointer font-medium ${
-                    activeTab === "cases" ? "text-white bg-white/10 font-bold" : "text-slate-400 hover:text-white hover:bg-white/5"
+                  className={`w-full group flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200 ${
+                    activeTab === "cases"
+                      ? "bg-violet-600 text-white shadow-[0_8px_25px_rgba(124,58,237,0.28)]"
+                      : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
                   }`}
                 >
-                  <Server className="w-4 h-4 text-slate-400" />
-                  <span>Servers</span>
+                  <Server size={16} strokeWidth={1.8} className={activeTab === "cases" ? "text-white" : "text-zinc-600 transition-colors group-hover:text-zinc-300"} />
+                  <span className="truncate">Servers</span>
                 </button>
 
                 <button
                   onClick={() => setActiveTab("appeals")}
-                  className={`w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl transition-all cursor-pointer font-medium ${
-                    activeTab === "appeals" ? "text-white bg-white/10 font-bold" : "text-slate-400 hover:text-white hover:bg-white/5"
+                  className={`w-full group flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200 ${
+                    activeTab === "appeals"
+                      ? "bg-violet-600 text-white shadow-[0_8px_25px_rgba(124,58,237,0.28)]"
+                      : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
                   }`}
                 >
-                  <HelpCircle className="w-4 h-4 text-slate-400" />
-                  <span>Support</span>
+                  <Headphones size={16} strokeWidth={1.8} className={activeTab === "appeals" ? "text-white" : "text-zinc-600 transition-colors group-hover:text-zinc-300"} />
+                  <span className="truncate">Support</span>
                 </button>
 
                 <button
                   onClick={() => setActiveTab("analytics")}
-                  className={`w-full flex items-center space-x-3 px-3.5 py-2.5 rounded-xl transition-all cursor-pointer font-medium ${
-                    activeTab === "analytics" ? "text-white bg-white/10 font-bold" : "text-slate-400 hover:text-white hover:bg-white/5"
+                  className={`w-full group flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200 ${
+                    activeTab === "analytics"
+                      ? "bg-violet-600 text-white shadow-[0_8px_25px_rgba(124,58,237,0.28)]"
+                      : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
                   }`}
                 >
-                  <Sparkles className="w-4 h-4 text-slate-400" />
-                  <span>Premium</span>
+                  <Sparkles size={16} strokeWidth={1.8} className={activeTab === "analytics" ? "text-white" : "text-zinc-600 transition-colors group-hover:text-zinc-300"} />
+                  <span className="truncate">Premium</span>
                 </button>
               </div>
 
-              {/* Divider Line */}
-              <div className="h-[1px] bg-white/10 my-3 w-full" />
+              <div className="-mx-3 my-5 border-t border-white/[0.06]" />
 
-              {/* Navigation Module List */}
-              <div className="space-y-1 font-sans text-xs">
-                
-                {/* 1. Bot Settings */}
-                <button
-                  onClick={() => setActiveTab("automod")}
-                  className="w-full flex items-center space-x-3 px-3.5 py-2.5 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl cursor-pointer transition-all font-medium"
-                >
-                  <Settings className="w-4 h-4 text-slate-400" />
-                  <span>Bot Settings</span>
-                </button>
-
-                {/* 2. Button Roles (Highlighted Active pill matching screenshot styling) */}
-                <button
-                  onClick={() => setActiveTab("automod")}
-                  className="w-full flex items-center space-x-3 px-3.5 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-2xl cursor-pointer shadow-[0_0_20px_rgba(147,51,234,0.4)] font-bold transition-all"
-                >
-                  <div className="w-5 h-5 rounded-lg bg-white/20 flex items-center justify-center">
-                    <Sparkles className="w-3.5 h-3.5 text-white" />
-                  </div>
-                  <span>Button Roles</span>
-                </button>
-
-                {/* 3. Verification / Greetings */}
-                <button
-                  onClick={() => setActiveTab("automod")}
-                  className="w-full flex items-center space-x-3 px-3.5 py-2.5 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl cursor-pointer transition-all font-medium"
-                >
-                  <ShieldCheck className="w-4 h-4 text-slate-400" />
-                  <span>Verification/Greetings</span>
-                </button>
-
-                {/* 4. Custom Commands */}
-                <button
-                  onClick={() => setActiveTab("automod")}
-                  className="w-full flex items-center space-x-3 px-3.5 py-2.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-xl cursor-pointer transition-all font-medium"
-                >
-                  <ShieldAlert className="w-4 h-4 text-slate-500" />
-                  <span>Custom Commands</span>
-                </button>
-
-                {/* 5. Timed Messages */}
-                <button
-                  onClick={() => setActiveTab("automod")}
-                  className="w-full flex items-center space-x-3 px-3.5 py-2.5 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl cursor-pointer transition-all font-medium"
-                >
-                  <Activity className="w-4 h-4 text-slate-400" />
-                  <span>Timed Messages</span>
-                </button>
-
-                {/* 6. Command Moderation */}
-                <button
-                  onClick={() => setActiveTab("automod")}
-                  className="w-full flex items-center space-x-3 px-3.5 py-2.5 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl cursor-pointer transition-all font-medium"
-                >
-                  <BarChart3 className="w-4 h-4 text-slate-400" />
-                  <span>Command Moderation</span>
-                </button>
-
-                {/* 7. Auto Moderation */}
-                <button
-                  onClick={() => setActiveTab("automod")}
-                  className="w-full flex items-center space-x-3 px-3.5 py-2.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-xl cursor-pointer transition-all font-medium"
-                >
-                  <ShieldAlert className="w-4 h-4 text-slate-500" />
-                  <span>Auto Moderation</span>
-                </button>
-
-                {/* 8. Audit Logging */}
-                <button
-                  onClick={() => setActiveTab("cases")}
-                  className="w-full flex items-center space-x-3 px-3.5 py-2.5 text-slate-300 hover:text-white hover:bg-white/5 rounded-xl cursor-pointer transition-all font-medium"
-                >
-                  <ChevronRight className="w-4 h-4 text-slate-400" />
-                  <span>Audit Logging</span>
-                </button>
-
-              </div>
-            </div>
-
-            {/* Bottom Upgrade Now Neon CTA Banner matching screenshot */}
-            <div className="relative mt-4 bg-gradient-to-r from-teal-400 via-emerald-400 to-cyan-400 rounded-2xl p-3.5 flex items-center justify-between shadow-[0_0_20px_rgba(45,212,191,0.4)] text-slate-950 overflow-hidden cursor-pointer hover:scale-[1.02] transition-transform">
-              <div className="flex items-center space-x-2.5">
-                <div className="w-8 h-8 rounded-xl bg-slate-950/20 backdrop-blur-sm flex items-center justify-center">
-                  <Sparkles className="w-5 h-5 text-slate-950" />
+              <div>
+                <div className="mb-2 flex items-center gap-2 px-3">
+                  <Settings size={15} className="text-zinc-600" />
+                  <p className="text-xs font-semibold text-zinc-500">
+                    Bot Settings
+                  </p>
                 </div>
-                <span className="font-heading font-extrabold text-sm text-slate-950 tracking-tight">
-                  Upgrade Now
-                </span>
-              </div>
-              <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center shadow-md">
-                <ChevronRight className="w-4 h-4 text-slate-950" />
-              </div>
-            </div>
 
+                <div className="space-y-1">
+                  <button
+                    onClick={() => setActiveTab("automod")}
+                    className={`w-full group flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200 ${
+                      activeTab === "automod"
+                        ? "bg-violet-600 text-white shadow-[0_8px_25px_rgba(124,58,237,0.28)]"
+                        : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
+                    }`}
+                  >
+                    <UserRoundCog size={16} strokeWidth={1.8} className={activeTab === "automod" ? "text-white" : "text-zinc-600 transition-colors group-hover:text-zinc-300"} />
+                    <span className="truncate">Button Roles</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("automod")}
+                    className="w-full group flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200 text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
+                  >
+                    <BadgeCheck size={16} strokeWidth={1.8} className="text-zinc-600 transition-colors group-hover:text-zinc-300" />
+                    <span className="truncate">Verification / Greetings</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("automod")}
+                    className="w-full group flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200 text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
+                  >
+                    <MessageSquareCode size={16} strokeWidth={1.8} className="text-zinc-600 transition-colors group-hover:text-zinc-300" />
+                    <span className="truncate">Custom Commands</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("automod")}
+                    className="w-full group flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200 text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
+                  >
+                    <Clock3 size={16} strokeWidth={1.8} className="text-zinc-600 transition-colors group-hover:text-zinc-300" />
+                    <span className="truncate">Timed Messages</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("automod")}
+                    className="w-full group flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200 text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
+                  >
+                    <ShieldCheck size={16} strokeWidth={1.8} className="text-zinc-600 transition-colors group-hover:text-zinc-300" />
+                    <span className="truncate">Command Moderation</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("automod")}
+                    className="w-full group flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200 text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
+                  >
+                    <Bot size={16} strokeWidth={1.8} className="text-zinc-600 transition-colors group-hover:text-zinc-300" />
+                    <span className="truncate">Auto Moderation</span>
+                  </button>
+
+                  <button
+                    onClick={() => setActiveTab("automod")}
+                    className="w-full group flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200 text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200"
+                  >
+                    <ScrollText size={16} strokeWidth={1.8} className="text-zinc-600 transition-colors group-hover:text-zinc-300" />
+                    <span className="truncate">Audit Logging</span>
+                  </button>
+                </div>
+              </div>
+            </nav>
           </div>
 
           {/* Right Content */}
