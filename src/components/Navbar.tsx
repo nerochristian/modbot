@@ -65,7 +65,7 @@ export default function Navbar() {
 
               <div className="flex flex-col">
                 <span className="font-heading font-extrabold text-xl tracking-tight text-white uppercase flex items-center gap-1.5">
-                  SOUL <span className="bg-gradient-to-r from-purple-400 via-indigo-400 to-cyan-400 bg-clip-text text-transparent">MODBOT</span>
+                  DOCKET
                 </span>
                 <span className="text-[10px] font-mono text-purple-300/70 tracking-wider uppercase -mt-1 font-semibold flex items-center gap-1">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 inline-block animate-pulse"></span>

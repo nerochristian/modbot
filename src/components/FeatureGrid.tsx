@@ -1,8 +1,7 @@
 import React, { useState } from "react";
-import { ShieldAlert, RefreshCw, AlertOctagon, Laugh, Ticket, UserCheck, Code, UserMinus, FileClock, BarChart, SlidersHorizontal, Sparkles } from "lucide-react";
+import { ShieldAlert, RefreshCw, AlertOctagon, Laugh, Ticket, UserCheck, Code, UserMinus, FileClock, BarChart, SlidersHorizontal, Sparkles, Cpu, Lock } from "lucide-react";
 
 interface FeatureCardProps {
-  key?: any;
   title: string;
   description: string;
   icon: React.ReactNode;
@@ -12,27 +11,31 @@ interface FeatureCardProps {
 
 function FeatureCard({ title, description, icon, category, badge }: FeatureCardProps) {
   return (
-    <div className="relative group bg-[#0E111A] border border-slate-800 hover:border-purple-500/40 p-6 rounded-2xl text-left transition-all hover:-translate-y-1 overflow-hidden">
-      {/* Subtle hover background light glow */}
-      <div className="absolute inset-0 z-0 bg-gradient-to-br from-purple-500/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+    <div className="glass-panel-hover p-6 rounded-2xl text-left relative group overflow-hidden flex flex-col justify-between">
+      <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 via-transparent to-cyan-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
       
-      <div className="relative z-10">
-        <div className="flex justify-between items-start mb-4">
-          <div className="w-10 h-10 rounded-xl bg-[#05060B] border border-slate-800 flex items-center justify-center text-purple-400 group-hover:text-purple-300 group-hover:border-purple-500/30 transition-all">
+      <div>
+        <div className="flex justify-between items-start mb-5">
+          <div className="w-11 h-11 rounded-xl bg-[#090D1A] border border-white/10 flex items-center justify-center text-purple-400 group-hover:text-cyan-300 group-hover:border-purple-500/40 group-hover:scale-110 transition-all duration-300 shadow-md">
             {icon}
           </div>
           {badge && (
-            <span className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-full bg-purple-950/60 border border-purple-500/30 text-purple-300">
+            <span className="text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full bg-purple-500/20 border border-purple-500/40 text-purple-200 uppercase tracking-wider shadow-[0_0_10px_rgba(168,85,247,0.3)]">
               {badge}
             </span>
           )}
         </div>
-        <h4 className="font-display font-bold text-sm sm:text-base text-white mb-2">
+        <h4 className="font-heading font-bold text-base sm:text-lg text-white mb-2 group-hover:text-purple-200 transition-colors">
           {title}
         </h4>
-        <p className="font-sans text-xs sm:text-sm text-slate-400 leading-normal">
+        <p className="font-sans text-xs sm:text-sm text-slate-400 leading-relaxed">
           {description}
         </p>
+      </div>
+
+      <div className="mt-6 pt-4 border-t border-white/5 flex items-center justify-between text-[11px] font-mono text-slate-300">
+        <span className="capitalize text-slate-400">{category} Module</span>
+        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 opacity-60 group-hover:opacity-100 transition-opacity"></span>
       </div>
     </div>
   );
@@ -44,10 +47,10 @@ export default function FeatureGrid() {
   const features = [
     {
       title: "Active Raid Protection",
-      description: "Detect coordinated join floods and lock down server channels automatically in less than 150ms.",
+      description: "Detect coordinated join floods and lock down server channels automatically in under 12ms.",
       icon: <ShieldAlert className="w-5 h-5" />,
       category: "defense" as const,
-      badge: "SHIELD",
+      badge: "CORE SHIELD",
     },
     {
       title: "Anti-Spam Heuristics",
@@ -60,10 +63,10 @@ export default function FeatureGrid() {
       description: "Block deceptive domains, malware, and fraudulent server invitations before users click them.",
       icon: <AlertOctagon className="w-5 h-5" />,
       category: "defense" as const,
-      badge: "AI-DRIVEN",
+      badge: "AI-POWERED",
     },
     {
-      title: "Toxicity & Slur Blocker",
+      title: "Toxicity & Harassment Blocker",
       description: "Natural language scoring classifies and prevents harassment, hate speech, and user hostility.",
       icon: <Laugh className="w-5 h-5" />,
       category: "defense" as const,
@@ -79,7 +82,7 @@ export default function FeatureGrid() {
       description: "Require suspicious new joins to solve brief interactive captchas in-browser before viewing rooms.",
       icon: <UserCheck className="w-5 h-5" />,
       category: "automation" as const,
-      badge: "INTEGRATION",
+      badge: "SECURE GATE",
     },
     {
       title: "Custom Command Builder",
@@ -112,41 +115,42 @@ export default function FeatureGrid() {
     : features.filter(f => f.category === selectedCat);
 
   return (
-    <section id="features" className="relative py-24 bg-[#05060B] overflow-hidden border-t border-slate-800/80">
-      {/* Glow shapes */}
-      <div className="absolute top-1/2 left-0 -translate-y-1/2 w-[300px] h-[300px] bg-purple-500/5 rounded-full blur-[100px] pointer-events-none" />
-      <div className="absolute bottom-0 right-1/4 w-[250px] h-[250px] bg-cyan-500/5 rounded-full blur-[90px] pointer-events-none" />
+    <section id="features" className="relative py-28 bg-[#05070E] overflow-hidden border-t border-white/10">
+      
+      {/* Glow Orbs */}
+      <div className="absolute top-1/3 left-0 w-[400px] h-[400px] bg-purple-600/10 rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute bottom-10 right-10 w-[350px] h-[350px] bg-cyan-500/10 rounded-full blur-[130px] pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         
         {/* Section Headings */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 text-left">
+        <div className="flex flex-col md:flex-row md:items-end justify-between mb-14 text-left">
           <div className="max-w-xl">
-            <div className="inline-flex items-center space-x-2 bg-purple-950/40 border border-purple-500/20 text-purple-400 py-1 px-3 rounded-full text-xs font-mono mb-4">
-              <Sparkles className="w-3.5 h-3.5" />
+            <div className="inline-flex items-center space-x-2 bg-purple-500/10 border border-purple-500/30 text-purple-300 py-1.5 px-4 rounded-full text-xs font-mono mb-4">
+              <Sparkles className="w-4 h-4 text-cyan-300" />
               <span>THE SECURITY MATRIX</span>
             </div>
-            <h2 className="font-display font-bold text-3xl sm:text-4xl text-white tracking-tight mb-4">
-              All tools, unified under one bot shard.
+            <h2 className="font-heading font-extrabold text-3xl sm:text-5xl text-white tracking-tight mb-4">
+              All security tools, unified under <span className="bg-gradient-to-r from-purple-400 to-cyan-400 bg-clip-text text-transparent">one intelligence</span>.
             </h2>
-            <p className="font-sans text-slate-400 text-xs sm:text-sm">
-              Stop chaining five different bots to manage roles, tickets, and rules. Docket handles all moderation, automation, and community growth utilities cleanly.
+            <p className="font-sans text-slate-300 text-sm sm:text-base leading-relaxed">
+              Stop chaining five different bots to manage roles, tickets, and security rules. Docket handles all moderation, automation, and community growth utilities cleanly.
             </p>
           </div>
 
-          {/* Filtering row */}
-          <div className="flex flex-wrap gap-2 mt-6 md:mt-0 bg-[#0E111A] border border-slate-800 p-1.5 rounded-xl">
+          {/* Filtering Pill Bar */}
+          <div className="flex flex-wrap gap-2 mt-6 md:mt-0 bg-[#090D1A] border border-white/10 p-2 rounded-2xl backdrop-blur-xl">
             {(["all", "defense", "utility", "automation"] as const).map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCat(cat)}
-                className={`py-1.5 px-3.5 text-xs font-sans font-medium rounded-lg transition-all capitalize cursor-pointer ${
+                className={`py-2 px-4 text-xs font-semibold rounded-xl transition-all capitalize cursor-pointer ${
                   selectedCat === cat
-                    ? "bg-purple-950/60 border border-purple-500/30 text-purple-300 shadow"
+                    ? "bg-purple-600 text-white shadow-[0_0_15px_rgba(124,58,237,0.5)] font-bold"
                     : "text-slate-400 hover:text-white"
                 }`}
               >
-                {cat === "all" ? "All features" : cat}
+                {cat === "all" ? "All Features" : cat}
               </button>
             ))}
           </div>
@@ -170,3 +174,4 @@ export default function FeatureGrid() {
     </section>
   );
 }
+

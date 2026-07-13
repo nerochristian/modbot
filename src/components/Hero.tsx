@@ -139,7 +139,7 @@ export default function Hero() {
                   <span className="w-3 h-3 rounded-full bg-emerald-500/90 shadow-[0_0_8px_rgba(16,185,129,0.6)]" />
                   <span className="text-xs font-mono text-slate-400 ml-2 flex items-center gap-1.5">
                     <Cpu className="w-3.5 h-3.5 text-purple-400" />
-                    <span>soul-neural-guard.v4</span>
+                    <span>docket-neural-guard.v4</span>
                   </span>
                 </div>
 
@@ -199,11 +199,11 @@ export default function Hero() {
 
                     <div className="flex space-x-3 items-start bg-purple-950/30 border-l-4 border-purple-500 p-3.5 rounded-r-xl shadow-lg border-y border-r border-purple-500/20">
                       <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-500 to-cyan-500 flex items-center justify-center font-sans text-white text-xs font-black shadow-lg animate-pulse">
-                        S
+                        D
                       </div>
                       <div className="flex-1 space-y-1.5">
                         <div className="flex items-center space-x-2">
-                          <span className="text-white font-sans font-extrabold">SOUL MODBOT</span>
+                          <span className="text-white font-sans font-extrabold">DOCKET</span>
                           <span className="bg-purple-600 text-[9px] text-white px-1.5 py-0.5 rounded font-sans uppercase font-bold tracking-wider">AI BOT</span>
                           <span className="text-[10px] text-purple-300">Instant Execution (11ms)</span>
                         </div>
