@@ -76,6 +76,11 @@ function MobileDrawer({
                         >
                           <item.icon className="size-4.5" />
                           {item.label}
+                          {item.badge && (
+                            <span className="ml-auto rounded-full bg-accent-soft px-1.5 py-0.5 font-mono text-[0.5625rem] font-bold uppercase tracking-[0.08em] text-accent">
+                              {item.badge}
+                            </span>
+                          )}
                         </Link>
                       </li>
                     )
