@@ -186,6 +186,7 @@ test('module defaults and configured keyless states match bot runtime behavior',
   assert.equal(moduleEnabled({ welcome_channel: '123456789012345' }, welcome), true)
   assert.equal(moduleEnabled({}, autoroles), false)
   assert.equal(moduleEnabled({ auto_role: '123456789012345' }, autoroles), true)
+  assert.equal(moduleEnabled({ auto_role: '123456789012345', autoroles_enabled: false }, autoroles), false)
   assert.equal(moduleEnabled({ automod_enabled: false }, automod), false)
   assert.equal(moduleEnabled({ modules: { automod: { enabled: false } } }, automod), false)
   assert.equal(moduleDefinition('afk_detection'), null)
@@ -196,6 +197,50 @@ test('module defaults and configured keyless states match bot runtime behavior',
   assert.equal(isDiscordSnowflake(123456789012345678), false)
   assert.equal(isDiscordSnowflake('9223372036854775808'), false)
   assert.equal(isDiscordSnowflake('12345678901234'), false)
+})
+
+test('every configurable module declares a purpose-built operational contract', () => {
+  const expected = {
+    aimod: 'aimod',
+    antiraid: 'antiraid',
+    verification: 'verification',
+    whitelist: 'whitelist',
+    tickets: 'tickets',
+    logging: 'logging',
+    welcome: 'welcome_card',
+    autoroles: 'autoroles',
+  } as const
+  for (const [id, special] of Object.entries(expected)) {
+    const definition = moduleDefinition(id)
+    assert.ok(definition, `${id} must exist`)
+    assert.equal(definition.special, special)
+    assert.ok(definition.fields.length > 0, `${id} must expose runtime-backed settings`)
+  }
+
+  const aimod = moduleDefinition('aimod')!
+  const confirmActions = aimod.fields.find((field) => field.key === 'aimod_confirm_actions')
+  assert.equal(confirmActions?.type, 'multiSelect')
+  assert.ok(confirmActions?.options?.some((option) => option.value === 'ban_member'))
+
+  const antiraid = moduleDefinition('antiraid')!
+  assert.equal(antiraid.fields.find((field) => field.key === 'antiraid_join_threshold')?.min, 3)
+  assert.deepEqual(antiraid.fields.find((field) => field.key === 'lockdown_channels')?.channelTypes, [0, 5])
+
+  const verification = moduleDefinition('verification')!
+  assert.deepEqual(verification.fields.find((field) => field.key === 'waiting_verify_voice_channel')?.channelTypes, [2, 13])
+
+  const tickets = moduleDefinition('tickets')!
+  assert.deepEqual(tickets.fields.find((field) => field.key === 'ticket_category')?.channelTypes, [4])
+
+  const logging = moduleDefinition('logging')!
+  assert.deepEqual(logging.fields.map((field) => field.key), [
+    'audit_log_channel',
+    'message_log_channel',
+    'voice_log_channel',
+    'automod_log_channel',
+    'report_log_channel',
+    'ticket_log_channel',
+  ])
 })
 
 test('read-only workspace roles cannot mutate module configuration', () => {
@@ -267,6 +312,7 @@ test('production SQL and standalone deployment match the bot runtime contracts',
   const discord = readFileSync(path.join(process.cwd(), 'src/lib/discord.ts'), 'utf8')
   const guildResources = readFileSync(path.join(process.cwd(), 'src/app/api/guilds/resources/route.ts'), 'utf8')
   const modulesService = readFileSync(path.join(process.cwd(), 'src/lib/modules-service.ts'), 'utf8')
+  const modulesClient = readFileSync(path.join(process.cwd(), 'src/components/dashboard/modules-client.tsx'), 'utf8')
   const serverGrid = readFileSync(path.join(process.cwd(), 'src/components/servers/server-grid.tsx'), 'utf8')
   const toast = readFileSync(path.join(process.cwd(), 'src/components/ui/toast.tsx'), 'utf8')
   const deploy = readFileSync(path.join(repo, 'scripts/vps_deploy.sh'), 'utf8')
@@ -288,6 +334,9 @@ test('production SQL and standalone deployment match the bot runtime contracts',
   assert.match(discord, /verifiedAt: \{ gte:/)
   assert.match(discord, /\/guilds\/\$\{guildId\}\/roles/)
   assert.match(discord, /\/guilds\/\$\{guildId\}\/channels/)
+  assert.match(discord, /channel\.type === 2/)
+  assert.match(discord, /channel\.type === 4/)
+  assert.match(discord, /channel\.type === 13/)
   assert.match(discord, /\/users\/@me\/channels/)
   assert.match(discord, /preserveBanMessages === false \? 86_400 : 0/)
   assert.match(guildResources, /requireUser\('settings\.read'\)/)
@@ -296,6 +345,13 @@ test('production SQL and standalone deployment match the bot runtime contracts',
   assert.match(modulesService, /legacyThresholdSnapshot/)
   assert.match(modulesService, /LEGACY_MODERATION_ROLE_KEYS/)
   assert.match(modulesService, /changes\.log_channel_mod = changes\.mod_log_channel/)
+  assert.match(modulesService, /getBotGuildResources\(guildId\)/)
+  assert.match(modulesService, /SETTING_ALIASES/)
+  assert.match(modulesService, /case 'multiSelect'/)
+  assert.match(modulesClient, /function OperationalModuleSheet/)
+  assert.match(modulesClient, /Event routing matrix/)
+  assert.match(modulesClient, /Voice gate/)
+  assert.match(modulesClient, /function OperationalField/)
   assert.match(serverGrid, /window\.location\.assign\('\/dashboard\/modules'\)/)
   assert.doesNotMatch(serverGrid, /router\.push\('\/dashboard'\)[\s\S]{0,80}router\.refresh\(\)/)
   assert.match(toast, /createClientId\('toast'\)/)
