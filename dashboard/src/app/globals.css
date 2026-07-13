@@ -24,8 +24,8 @@
   --muted: #565d6b;
   --muted-2: #878e9c;
 
-  /* Cobalt — the only hue. Active state, primary action, current docket. */
-  --accent: #2743e6;
+  /* Blue — the only hue. Active state, primary action, current selection. */
+  --accent: #2f6bff;
   --accent-foreground: #ffffff;
   --accent-soft: color-mix(in srgb, var(--accent) 10%, transparent);
   --accent-line: color-mix(in srgb, var(--accent) 30%, transparent);
