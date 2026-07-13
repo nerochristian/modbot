@@ -47,9 +47,10 @@ export type DashboardConfig = {
 }
 
 export const ACCENT_COLORS: { key: string; label: string; value: string }[] = [
+  { key: 'blue', label: 'Blue', value: '#2f6bff' },
   { key: 'cobalt', label: 'Cobalt', value: '#2743e6' },
+  { key: 'sky', label: 'Sky', value: '#008ffb' },
   { key: 'ink', label: 'Ink', value: '#14161c' },
-  { key: 'blue', label: 'Blue', value: '#3b82f6' },
   { key: 'teal', label: 'Teal', value: '#0d9488' },
   { key: 'iris', label: 'Iris', value: '#6e56f8' },
   { key: 'amber', label: 'Amber', value: '#b56a00' },
