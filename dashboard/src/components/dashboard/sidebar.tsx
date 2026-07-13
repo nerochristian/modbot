@@ -1,177 +1,113 @@
-"use client";
+'use client'
 
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import {
-  LayoutDashboard,
-  Server,
-  Headphones,
-  Sparkles,
-  Settings,
-  UserRoundCog,
-  BadgeCheck,
-  MessageSquareCode,
-  Clock3,
-  ShieldCheck,
-  Bot,
-  ScrollText,
-} from "lucide-react";
+import Link from 'next/link'
+import { usePathname } from 'next/navigation'
+import { Logo } from '@/components/logo'
+import { NAV_ITEMS, type NavItem } from '@/lib/nav'
+import type { Permission } from '@/lib/rbac'
+import { cn } from '@/lib/utils'
 
-const primaryNavigation = [
-  {
-    label: "Dashboard",
-    href: "/dashboard",
-    icon: LayoutDashboard,
-  },
-  {
-    label: "Servers",
-    href: "/dashboard/servers",
-    icon: Server,
-  },
-  {
-    label: "Support",
-    href: "/dashboard/support",
-    icon: Headphones,
-  },
-  {
-    label: "Premium",
-    href: "/dashboard/premium",
-    icon: Sparkles,
-  },
-];
+const SECTION_LABELS: Record<string, string> = {
+  main: 'Moderation',
+  account: 'Workspace',
+  admin: 'Administration',
+}
 
-const botSettingsNavigation = [
-  {
-    label: "Button Roles",
-    href: "/dashboard/button-roles",
-    icon: UserRoundCog,
-  },
-  {
-    label: "Verification / Greetings",
-    href: "/dashboard/verification",
-    icon: BadgeCheck,
-  },
-  {
-    label: "Custom Commands",
-    href: "/dashboard/custom-commands",
-    icon: MessageSquareCode,
-  },
-  {
-    label: "Timed Messages",
-    href: "/dashboard/timed-messages",
-    icon: Clock3,
-  },
-  {
-    label: "Command Moderation",
-    href: "/dashboard/command-moderation",
-    icon: ShieldCheck,
-  },
-  {
-    label: "Auto Moderation",
-    href: "/dashboard/auto-moderation",
-    icon: Bot,
-  },
-  {
-    label: "Audit Logging",
-    href: "/dashboard/audit-logging",
-    icon: ScrollText,
-  },
-];
+const SECTIONS = ['main', 'account', 'admin'] as const
 
-type NavigationItem = {
-  label: string;
-  href: string;
-  icon: React.ElementType;
-};
+const BADGE_STYLES: Record<NonNullable<NavItem['badge']>, string> = {
+  NEW: 'bg-success-soft text-success',
+  UPDATE: 'bg-info-soft text-info',
+  PLUS: 'bg-accent-soft text-accent',
+}
 
-function NavigationLink({ item }: { item: NavigationItem }) {
-  const pathname = usePathname();
-  const Icon = item.icon;
+function NavBadge({ badge }: { badge: NonNullable<NavItem['badge']> }) {
+  return (
+    <span
+      className={cn(
+        'ml-auto rounded-full px-1.5 py-0.5 font-mono text-[0.5625rem] font-bold uppercase tracking-[0.08em]',
+        BADGE_STYLES[badge],
+      )}
+    >
+      {badge}
+    </span>
+  )
+}
 
+function NavigationLink({ item }: { item: NavItem }) {
+  const pathname = usePathname()
+  const Icon = item.icon
   const isActive =
-    pathname === item.href ||
-    (item.href !== "/dashboard" && pathname.startsWith(item.href));
+    item.href === '/dashboard'
+      ? pathname === item.href
+      : pathname.startsWith(item.href)
 
   return (
     <Link
       href={item.href}
-      className={[
-        "group flex h-10 items-center gap-3 rounded-lg px-3",
-        "text-sm font-medium transition-all duration-200",
+      className={cn(
+        'group flex h-9 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200',
         isActive
-          ? "bg-violet-600 text-white shadow-[0_8px_25px_rgba(124,58,237,0.28)]"
-          : "text-zinc-500 hover:bg-white/[0.04] hover:text-zinc-200",
-      ].join(" ")}
+          ? 'bg-accent text-accent-foreground shadow-[0_8px_25px_-8px_var(--accent)]'
+          : 'text-muted hover:bg-surface-2 hover:text-foreground',
+      )}
     >
       <Icon
         size={16}
         strokeWidth={1.8}
-        className={
-          isActive
-            ? "text-white"
-            : "text-zinc-600 transition-colors group-hover:text-zinc-300"
-        }
+        className={cn(
+          'shrink-0 transition-colors',
+          isActive ? 'text-accent-foreground' : 'text-muted-2 group-hover:text-foreground',
+        )}
       />
-
       <span className="truncate">{item.label}</span>
+      {item.badge && !isActive && <NavBadge badge={item.badge} />}
     </Link>
-  );
+  )
 }
 
-export function Sidebar({ permissions }: { permissions?: readonly string[] }) {
-  void permissions;
-  return (
-    <aside className="hidden h-screen w-[250px] shrink-0 flex-col border-r border-white/[0.06] bg-[#111019] lg:flex">
-      {/* Logo */}
-      <div className="flex h-24 items-center px-6">
-        <Link
-          href="/dashboard"
-          aria-label="Dashboard home"
-          className="flex items-center gap-3"
-        >
-          <div className="relative grid size-11 place-items-center rounded-full border border-violet-500/20 bg-[#181622] shadow-lg">
-            <Bot
-              size={24}
-              strokeWidth={1.7}
-              className="text-cyan-300"
-            />
+export function Sidebar({ permissions = [] }: { permissions?: readonly Permission[] }) {
+  const visible = NAV_ITEMS.filter((i) => permissions.includes(i.permission))
 
-            <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-violet-500 ring-2 ring-[#111019]" />
-          </div>
+  return (
+    <aside className="hidden h-screen w-[250px] shrink-0 flex-col border-r border-border bg-surface lg:flex">
+      {/* Logo */}
+      <div className="flex h-16 items-center border-b border-border px-5">
+        <Link href="/dashboard" aria-label="Dashboard home" className="flex items-center">
+          <Logo />
         </Link>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 overflow-y-auto px-3 pb-6">
-        <div className="space-y-1">
-          {primaryNavigation.map((item) => (
-            <NavigationLink key={item.href} item={item} />
-          ))}
-        </div>
-
-        <div className="-mx-3 my-5 border-t border-white/[0.06]" />
-
-        <div>
-          <div className="mb-2 flex items-center gap-2 px-3">
-            <Settings size={15} className="text-zinc-600" />
-
-            <p className="text-xs font-semibold text-zinc-500">
-              Bot Settings
-            </p>
-          </div>
-
-          <div className="space-y-1">
-            {botSettingsNavigation.map((item) => (
-              <NavigationLink key={item.href} item={item} />
-            ))}
-          </div>
-        </div>
+      <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
+        {SECTIONS.map((section) => {
+          const items = visible.filter((i) => i.section === section)
+          if (!items.length) return null
+          return (
+            <div key={section}>
+              <p className="mb-2 px-3 font-mono text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-muted-2">
+                {SECTION_LABELS[section]}
+              </p>
+              <div className="space-y-1">
+                {items.map((item) => (
+                  <NavigationLink key={item.href} item={item} />
+                ))}
+              </div>
+            </div>
+          )
+        })}
       </nav>
 
-      {/* Empty footer area */}
-      <div className="h-12 border-t border-white/[0.06]" />
+      {/* Footer signal — live/online marker echoing Nova's green pip */}
+      <div className="flex h-12 items-center gap-2 border-t border-border px-5">
+        <span className="relative flex size-2">
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-60" />
+          <span className="relative inline-flex size-2 rounded-full bg-success" />
+        </span>
+        <span className="text-xs font-medium text-muted">All systems online</span>
+      </div>
     </aside>
-  );
+  )
 }
 
 export default Sidebar
