@@ -2,6 +2,7 @@ import 'server-only'
 
 import { botQuery } from '@/lib/bot-db'
 import { getBotGuildSettings, patchBotGuildSettings } from '@/lib/bot-settings'
+import { getBotGuildResources } from '@/lib/discord'
 import {
   MODULE_DEFINITIONS,
   isDiscordSnowflake,
@@ -56,6 +57,26 @@ const LEGACY_MODERATION_ROLE_LIST_KEYS = [
   'moderator_roles',
 ] as const
 
+const SETTING_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  verified_role: ['verification_role'],
+  verify_channel: ['verification_channel'],
+  verify_log_channel: ['verification_log_channel'],
+  audit_log_channel: ['log_channel_audit'],
+  message_log_channel: ['log_channel_message'],
+  voice_log_channel: ['log_channel_voice'],
+  automod_log_channel: ['log_channel_automod'],
+  report_log_channel: ['log_channel_report'],
+  ticket_log_channel: ['log_channel_ticket'],
+}
+
+function settingValue(settings: Record<string, unknown>, key: string): unknown {
+  if (settings[key] !== undefined && settings[key] !== null) return settings[key]
+  for (const alias of SETTING_ALIASES[key] ?? []) {
+    if (settings[alias] !== undefined && settings[alias] !== null) return settings[alias]
+  }
+  return undefined
+}
+
 export type ModuleView = {
   id: string
   name: string
@@ -73,7 +94,7 @@ export type ModuleView = {
 
 function readValue(settings: Record<string, unknown>, field: ModuleField): ModuleValues[string] {
   if (field.key === 'moderation_use_timeouts') return true
-  const raw = settings[field.key]
+  const raw = settingValue(settings, field.key)
   switch (field.type) {
     case 'toggle':
       return raw === undefined || raw === null
@@ -86,6 +107,12 @@ function readValue(settings: Record<string, unknown>, field: ModuleField): Modul
     case 'roleIds':
     case 'channelIds':
       return Array.isArray(raw) ? raw.map(String).filter(isDiscordSnowflake) : []
+    case 'multiSelect': {
+      const allowed = new Set(field.options?.map((option) => option.value) ?? [])
+      const fallback = Array.isArray(field.fallback) ? field.fallback.map(String) : []
+      if (!Array.isArray(raw)) return fallback.filter((value) => allowed.has(value))
+      return [...new Set(raw.map(String).filter((value) => allowed.has(value)))]
+    }
     case 'autopunishRules':
       return moderationAutopunishRulesFromSettings(settings)
     default: {
@@ -170,6 +197,18 @@ function coerceField(field: ModuleField, value: unknown): unknown {
       if (ids.some((id) => !isDiscordSnowflake(id))) throw new ModuleValidationError(`${field.label} must be valid Discord IDs`)
       return ids
     }
+    case 'multiSelect': {
+      if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+        throw new ModuleValidationError(`${field.label} must be sent as a list of options`)
+      }
+      const allowed = new Set(field.options?.map((option) => option.value) ?? [])
+      const selections = [...new Set(value.map((item) => item.trim()).filter(Boolean))]
+      if (selections.length > 30) throw new ModuleValidationError(`${field.label} has too many selections`)
+      if (selections.some((item) => !allowed.has(item))) {
+        throw new ModuleValidationError(`${field.label} contains an unsupported option`)
+      }
+      return selections
+    }
     case 'autopunishRules': {
       try {
         return parseModerationAutopunishRules(value)
@@ -238,6 +277,52 @@ export async function updateModuleSettings(
       }
     }
   }
+  const resourceFields = def.fields.filter((field) => (
+    field.key in changes
+    && ['roleId', 'roleIds', 'channelId', 'channelIds'].includes(field.type)
+  ))
+  if (resourceFields.length > 0) {
+    const resources = await getBotGuildResources(guildId)
+    const roleIds = new Set(resources.roles.map((role) => role.id))
+    const channelTypes = new Map(resources.channels.map((channel) => [channel.id, channel.type]))
+    for (const field of resourceFields) {
+      const values = Array.isArray(changes[field.key])
+        ? changes[field.key] as string[]
+        : changes[field.key]
+          ? [String(changes[field.key])]
+          : []
+      if (field.type === 'roleId' || field.type === 'roleIds') {
+        if (values.some((id) => !roleIds.has(id))) {
+          throw new ModuleValidationError(`${field.label} must belong to this server`)
+        }
+      } else {
+        const allowedTypes = new Set(field.channelTypes ?? [0, 5])
+        if (values.some((id) => !channelTypes.has(id) || !allowedTypes.has(channelTypes.get(id)!))) {
+          throw new ModuleValidationError(`${field.label} must be a compatible channel in this server`)
+        }
+      }
+    }
+  }
+  const currentSettings = await getBotGuildSettings(guildId)
+  const mergedSettings = { ...currentSettings, ...changes }
+  if (def.id === 'antiraid') {
+    const quarantineSelected = ['antiraid_action', 'antiraid_raidmode_action']
+      .some((key) => mergedSettings[key] === 'quarantine')
+    if (quarantineSelected && !isDiscordSnowflake(mergedSettings.antiraid_quarantine_role)) {
+      throw new ModuleValidationError('Select a quarantine role before using the quarantine response')
+    }
+    if (mergedSettings.antiraid_action === 'lockdown') {
+      const channels = mergedSettings.lockdown_channels
+      if (!Array.isArray(channels) || channels.length === 0) {
+        throw new ModuleValidationError('Select at least one lockdown channel before using the lockdown response')
+      }
+    }
+  }
+  if (def.id === 'verification' && mergedSettings.voice_verification_enabled) {
+    if (!isDiscordSnowflake(mergedSettings.waiting_verify_voice_channel)) {
+      throw new ModuleValidationError('Select a voice waiting room before enabling voice verification')
+    }
+  }
   if ('moderation_autopunish_rules' in changes) {
     Object.assign(
       changes,
@@ -250,6 +335,10 @@ export async function updateModuleSettings(
   }
   if ('mod_log_channel' in changes) {
     changes.log_channel_mod = changes.mod_log_channel
+  }
+  for (const [key, aliases] of Object.entries(SETTING_ALIASES)) {
+    if (!(key in changes)) continue
+    for (const alias of aliases) changes[alias] = changes[key]
   }
   if (Object.keys(changes).length > 0) await patchBotGuildSettings(guildId, changes)
   const updatedSettings = await getBotGuildSettings(guildId)
@@ -266,15 +355,33 @@ export async function setModuleEnabled(
   if (!def.enableKey) throw new Error(`${def.name} cannot be toggled`)
   const settings = await getBotGuildSettings(guildId)
   if (enabled && def.id === 'verification' && (
-    !isDiscordSnowflake(settings.verified_role) || !isDiscordSnowflake(settings.unverified_role)
+    !isDiscordSnowflake(settingValue(settings, 'verified_role'))
+    || !isDiscordSnowflake(settings.unverified_role)
+    || !isDiscordSnowflake(settingValue(settings, 'verify_channel'))
   )) {
-    throw new ModuleValidationError('Set both verified and unverified roles before enabling verification')
+    throw new ModuleValidationError('Set the verification channel plus verified and unverified roles before enabling verification')
   }
   if (enabled && def.id === 'tickets' && !isDiscordSnowflake(settings.ticket_category)) {
     throw new ModuleValidationError('Set a ticket category before enabling tickets')
   }
   if (enabled && def.id === 'welcome' && !isDiscordSnowflake(settings.welcome_channel)) {
     throw new ModuleValidationError('Set a welcome channel before enabling the welcome card')
+  }
+  if (enabled && def.id === 'autoroles' && !isDiscordSnowflake(settings.auto_role)) {
+    throw new ModuleValidationError('Set a join role before enabling auto roles')
+  }
+  if (enabled && def.id === 'antiraid') {
+    const quarantineSelected = ['antiraid_action', 'antiraid_raidmode_action']
+      .some((key) => settings[key] === 'quarantine')
+    if (quarantineSelected && !isDiscordSnowflake(settings.antiraid_quarantine_role)) {
+      throw new ModuleValidationError('Set a quarantine role before enabling Anti-Raid')
+    }
+    if (settings.antiraid_action === 'lockdown') {
+      const channels = settings.lockdown_channels
+      if (!Array.isArray(channels) || channels.length === 0) {
+        throw new ModuleValidationError('Set at least one lockdown channel before enabling Anti-Raid')
+      }
+    }
   }
   const changes: Record<string, unknown> = { [def.enableKey]: enabled }
   if (enabled && def.enableAlso) Object.assign(changes, def.enableAlso)

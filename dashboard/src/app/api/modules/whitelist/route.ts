@@ -1,6 +1,12 @@
 import { apiError, handleError, ok, requireMutation, requireUser } from '@/lib/api'
 import { recordGuildAudit } from '@/lib/bot-audit'
-import { ModuleValidationError, addWhitelist, listWhitelist, removeWhitelist } from '@/lib/modules-service'
+import {
+  ModuleValidationError,
+  addWhitelist,
+  listWhitelist,
+  removeWhitelist,
+  updateModuleSettings,
+} from '@/lib/modules-service'
 
 export async function GET() {
   try {
@@ -30,6 +36,31 @@ export async function POST(request: Request) {
     if (error instanceof SyntaxError) return apiError('Request body must be valid JSON.', 400)
     if (error instanceof ModuleValidationError) return apiError(error.message, 400)
     if (error instanceof Error && /must be a Discord ID/i.test(error.message)) return apiError(error.message, 400)
+    return handleError(error)
+  }
+}
+
+export async function PATCH(request: Request) {
+  try {
+    const guard = await requireMutation(request, 'config.write')
+    if (guard instanceof Response) return guard
+    const body: unknown = await request.json()
+    if (!body || typeof body !== 'object' || Array.isArray(body)) return apiError('Invalid request body.', 400)
+    const { settings } = body as { settings?: unknown }
+    if (Object.keys(body).some((key) => key !== 'settings')) return apiError('Unsupported request field.', 400)
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+      return apiError('Settings must be an object.', 400)
+    }
+    const data = await updateModuleSettings(
+      guard.selectedGuildId!,
+      'whitelist',
+      settings as Record<string, unknown>,
+    )
+    await recordGuildAudit(guard.selectedGuildId!, guard, 'module.settings.updated', 'whitelist')
+    return ok({ data })
+  } catch (error) {
+    if (error instanceof SyntaxError) return apiError('Request body must be valid JSON.', 400)
+    if (error instanceof ModuleValidationError) return apiError(error.message, 400)
     return handleError(error)
   }
 }

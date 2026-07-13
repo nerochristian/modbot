@@ -316,6 +316,8 @@ export const MODULE_DEFINITIONS: readonly ModuleDefinition[] = [
         ],
       },
       { key: 'antiraid_quarantine_role', label: 'Quarantine role', type: 'roleId', hint: 'Required when either response uses quarantine.' },
+      { key: 'lockdown_channels', label: 'Lockdown channels', type: 'channelIds', channelTypes: [0, 5], hint: 'Only these channels are locked when the configured response is lockdown.' },
+      { key: 'antiraid_log_channel', label: 'Anti-Raid log channel', type: 'channelId', channelTypes: [0, 5], hint: 'Detection details and finalized actions are recorded here. Falls back to the moderation log.' },
       { key: 'antiraid_ai_enabled', label: 'AI raid scoring', type: 'toggle', hint: 'Score coordinated join patterns before enforcement.', fallback: false },
       { key: 'antiraid_ai_min_confidence', label: 'Minimum AI confidence', type: 'number', min: 0, max: 100, fallback: 70, hint: 'Confidence percentage required to treat a pattern as a raid.' },
       { key: 'antiraid_override_ai_action', label: 'Always use configured response', type: 'toggle', fallback: false, hint: 'Ignore the AI action recommendation and use the configured raid response.' },
