@@ -1875,15 +1875,25 @@ type WhitelistEntry = { userId: string; addedBy: string | null; createdAt: strin
 function WhitelistSheet({
   mod,
   canWrite,
+  onClose,
+  onSaved,
 }: {
   mod: Module
   canWrite: boolean
+  onClose: () => void
+  onSaved: () => void
 }) {
   const toast = useToast()
   const { data, loading, error, refetch } = useApi<{ data: WhitelistEntry[] }>('/api/modules/whitelist')
   const [newId, setNewId] = useState('')
   const [busy, setBusy] = useState(false)
+  const initialPolicy = useMemo(() => ({
+    whitelist_immunity: Boolean(mod.values.whitelist_immunity),
+    whitelist_dm_join: Boolean(mod.values.whitelist_dm_join),
+  }), [mod])
+  const [policy, setPolicy] = useState(initialPolicy)
   const entries = data?.data ?? []
+  const policyDirty = JSON.stringify(policy) !== JSON.stringify(initialPolicy)
 
   async function mutate(method: 'POST' | 'DELETE', userId: string) {
     if (!canWrite) return
@@ -1905,8 +1915,59 @@ function WhitelistSheet({
     }
   }
 
+  async function savePolicy() {
+    if (!canWrite) return
+    setBusy(true)
+    try {
+      const response = await fetch('/api/modules/whitelist', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: policy }),
+      })
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body.error || 'Failed to save whitelist behavior')
+      }
+      toast.success('Whitelist behavior saved')
+      onSaved()
+    } catch (error) {
+      toast.error('Save failed', error instanceof Error ? error.message : 'Try again in a moment.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
-    <div>
+    <div className="space-y-5">
+      <ModerationSection
+        register="BEHAVIOR / 01"
+        title="Rejection policy"
+        description="Choose who may bypass the register and whether rejected members receive an explanation."
+      >
+        <div className="grid gap-2.5 md:grid-cols-2">
+          {mod.fields.map((field) => (
+            <div key={field.key} className="flex min-h-20 items-center justify-between gap-4 rounded-md border border-border bg-surface px-3.5 py-3">
+              <div className="min-w-0">
+                <label htmlFor={`whitelist-${field.key}`} className="text-sm font-medium text-foreground">{field.label}</label>
+                {field.hint && <p className="mt-1 text-xs leading-5 text-muted">{field.hint}</p>}
+              </div>
+              <Switch
+                id={`whitelist-${field.key}`}
+                checked={Boolean(policy[field.key as keyof typeof policy])}
+                disabled={!canWrite || busy}
+                label={field.label}
+                onChange={(checked) => setPolicy((current) => ({ ...current, [field.key]: checked }))}
+              />
+            </div>
+          ))}
+        </div>
+      </ModerationSection>
+
+      <ModerationSection
+        register="REGISTER / 02"
+        title="Approved members"
+        description="Pre-approve Discord user IDs before they join, or remove access from the current register."
+      >
       <div
         className={cn(
           'mb-4 border p-3 text-xs leading-relaxed',
@@ -1919,7 +1980,7 @@ function WhitelistSheet({
           <>
             <span className="font-semibold">Strict mode is ON.</span> New non-administrator members
             who are not on this list are <span className="font-semibold">removed when they join</span>.
-            Administrators remain exempt unless immunity is disabled through the bot.
+            Administrators remain exempt while administrator immunity is enabled above.
           </>
         ) : (
           <>
@@ -1984,6 +2045,17 @@ function WhitelistSheet({
           ))}
         </ul>
       )}
+      </ModerationSection>
+
+      <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-end">
+        {!canWrite && <p className="mr-auto text-xs text-muted">Your workspace role has read-only access.</p>}
+        <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={busy}>
+          Cancel
+        </Button>
+        <Button type="button" size="sm" loading={busy && policyDirty} disabled={!canWrite || !policyDirty || busy} onClick={() => void savePolicy()}>
+          Save behavior
+        </Button>
+      </div>
     </div>
   )
 }
