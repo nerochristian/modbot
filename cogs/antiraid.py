@@ -31,7 +31,7 @@ DO_BASE_URL = "https://inference.do-ai.run/v1"
 from utils.embeds import ModEmbed
 from utils.logging import send_log_embed
 from utils.checks import is_admin, is_mod, is_bot_owner_id
-from utils.moderation_settings import moderation_bool
+from utils.moderation_settings import moderation_bool, moderation_id_set
 from config import Config
 
 
@@ -260,6 +260,8 @@ Guidelines:
 # =========================
 
 class AntiRaid(commands.Cog):
+    _LOCKDOWN_RESTORE_KEY = "moderation_lockdown_restore"
+
     def __init__(self, bot):
         self.bot = bot
         self.join_tracker: Dict[int, List[datetime]] = defaultdict(list)
@@ -274,6 +276,128 @@ class AntiRaid(commands.Cog):
     def cog_unload(self):
         self.check_raids.cancel()
         self.cleanup_trackers.cancel()
+
+    @staticmethod
+    def _lockdown_restore_state(settings: dict) -> dict[int, Optional[bool]]:
+        raw = settings.get(AntiRaid._LOCKDOWN_RESTORE_KEY)
+        if not isinstance(raw, list):
+            return {}
+        state: dict[int, Optional[bool]] = {}
+        for entry in raw:
+            if not isinstance(entry, dict):
+                continue
+            try:
+                channel_id = int(entry.get("channel_id"))
+            except (TypeError, ValueError, OverflowError):
+                continue
+            send_messages = entry.get("send_messages")
+            if channel_id > 0 and send_messages in (True, False, None):
+                state[channel_id] = send_messages
+        return state
+
+    @staticmethod
+    def _serialize_lockdown_restore_state(
+        state: dict[int, Optional[bool]],
+    ) -> list[dict[str, object]]:
+        return [
+            {"channel_id": str(channel_id), "send_messages": state[channel_id]}
+            for channel_id in sorted(state)
+        ]
+
+    @staticmethod
+    def _configured_lockdown_channels(
+        guild: discord.Guild,
+        settings: dict,
+    ) -> list[discord.TextChannel]:
+        configured_ids = moderation_id_set(settings, "lockdown_channels")
+        if not configured_ids:
+            return list(guild.text_channels)
+        return [channel for channel in guild.text_channels if channel.id in configured_ids]
+
+    async def _lock_raid_channels(
+        self,
+        guild: discord.Guild,
+        settings: dict,
+        *,
+        reason: str,
+    ) -> int:
+        restore_state = self._lockdown_restore_state(settings)
+        pending: list[discord.TextChannel] = []
+        newly_recorded: set[int] = set()
+        for channel in self._configured_lockdown_channels(guild, settings):
+            overwrite = channel.overwrites_for(guild.default_role)
+            if overwrite.send_messages is False:
+                continue
+            if channel.id not in restore_state:
+                restore_state[channel.id] = overwrite.send_messages
+                newly_recorded.add(channel.id)
+            pending.append(channel)
+
+        if pending:
+            await self.bot.db.set_setting(
+                guild.id,
+                self._LOCKDOWN_RESTORE_KEY,
+                self._serialize_lockdown_restore_state(restore_state),
+            )
+
+        locked = 0
+        changed_state = False
+        for channel in pending:
+            try:
+                overwrite = channel.overwrites_for(guild.default_role)
+                overwrite.send_messages = False
+                await channel.set_permissions(
+                    guild.default_role,
+                    overwrite=overwrite,
+                    reason=reason,
+                )
+                locked += 1
+            except (discord.Forbidden, discord.HTTPException):
+                if channel.id in newly_recorded:
+                    restore_state.pop(channel.id, None)
+                    changed_state = True
+
+        if changed_state:
+            await self.bot.db.set_setting(
+                guild.id,
+                self._LOCKDOWN_RESTORE_KEY,
+                self._serialize_lockdown_restore_state(restore_state),
+            )
+        return locked
+
+    async def _unlock_raid_channels(
+        self,
+        guild: discord.Guild,
+        settings: dict,
+        *,
+        reason: str,
+    ) -> int:
+        restore_state = self._lockdown_restore_state(settings)
+        unlocked = 0
+        for channel_id, previous_send_messages in list(restore_state.items()):
+            channel = guild.get_channel(channel_id)
+            if channel is None or not hasattr(channel, "overwrites_for"):
+                restore_state.pop(channel_id, None)
+                continue
+            try:
+                overwrite = channel.overwrites_for(guild.default_role)
+                overwrite.send_messages = previous_send_messages
+                await channel.set_permissions(
+                    guild.default_role,
+                    overwrite=None if overwrite.is_empty() else overwrite,
+                    reason=reason,
+                )
+                restore_state.pop(channel_id, None)
+                unlocked += 1
+            except (discord.Forbidden, discord.HTTPException):
+                continue
+
+        await self.bot.db.set_setting(
+            guild.id,
+            self._LOCKDOWN_RESTORE_KEY,
+            self._serialize_lockdown_restore_state(restore_state),
+        )
+        return unlocked
 
     # ---------- background tasks ----------
 
@@ -318,7 +442,7 @@ class AntiRaid(commands.Cog):
             return
 
         # check if guild is on cooldown
-        if member.guild.id in self.raid_cooldown:
+        if member.guild.id in self.raid_cooldown or settings.get("raid_mode", False):
             # still in raid mode, handle new joiner
             await self._handle_raid_mode_join(member, settings)
             return
@@ -329,8 +453,14 @@ class AntiRaid(commands.Cog):
         self.member_tracker[member.guild.id].append(member)
 
         # check basic threshold
-        threshold = settings.get("antiraid_join_threshold", 10)
-        seconds = settings.get("antiraid_join_seconds", 10)
+        try:
+            threshold = max(3, min(100, int(settings.get("antiraid_join_threshold", 10))))
+        except (TypeError, ValueError, OverflowError):
+            threshold = 10
+        try:
+            seconds = max(5, min(300, int(settings.get("antiraid_join_seconds", 10))))
+        except (TypeError, ValueError, OverflowError):
+            seconds = 10
 
         # count recent joins
         cutoff = now - timedelta(seconds=seconds)
@@ -452,40 +582,25 @@ class AntiRaid(commands.Cog):
                 inline=False,
             )
 
-        # log the detection
-        log_channel_id = settings.get("mod_log_channel")
-        if log_channel_id:
-            try:
-                channel = guild.get_channel(int(log_channel_id))
-            except (TypeError, ValueError):
-                channel = None
-            if channel:
-                try:
-                    await send_log_embed(channel, embed, bot=self.bot)
-                except Exception:
-                    pass
+        log_channel_id = settings.get("antiraid_log_channel") or settings.get("mod_log_channel")
 
         # execute action
         now = datetime.now(timezone.utc)
-        cutoff = now - timedelta(seconds=30)
+        try:
+            response_window = max(5, min(300, int(settings.get("antiraid_join_seconds", 10))))
+        except (TypeError, ValueError, OverflowError):
+            response_window = 10
+        cutoff = now - timedelta(seconds=response_window)
         action_count = 0
 
         if action == "lockdown":
-            # lock all text channels
-            for channel in guild.text_channels:
-                try:
-                    await channel.set_permissions(
-                        guild.default_role,
-                        send_messages=False,
-                        reason="[ANTI-RAID] Automatic lockdown",
-                    )
-                    action_count += 1
-                except Exception:
-                    pass
+            action_count = await self._lock_raid_channels(
+                guild,
+                settings,
+                reason="[ANTI-RAID] Automatic lockdown",
+            )
 
-            # enable raid mode
-            settings["raid_mode"] = True
-            await self.bot.db.update_settings(guild.id, settings)
+            await self.bot.db.set_setting(guild.id, "raid_mode", True)
 
         elif action in ["kick", "ban"]:
             # get recent joiners from tracker
@@ -544,23 +659,21 @@ class AntiRaid(commands.Cog):
                         except Exception:
                             pass
 
-        # update log with action count
-        if action_count > 0:
-            embed.add_field(
-                name="📊 Actions Taken",
-                value=f"**{action_count}** {action}s executed",
-                inline=False,
-            )
-            if log_channel_id:
+        embed.add_field(
+            name="📊 Actions Taken",
+            value=f"**{action_count}** {action}s executed",
+            inline=False,
+        )
+        if log_channel_id:
+            try:
+                channel = guild.get_channel(int(log_channel_id))
+            except (TypeError, ValueError, OverflowError):
+                channel = None
+            if channel:
                 try:
-                    channel = guild.get_channel(int(log_channel_id))
-                except (TypeError, ValueError):
-                    channel = None
-                if channel:
-                    try:
-                        await send_log_embed(channel, embed, bot=self.bot)
-                    except Exception:
-                        pass
+                    await send_log_embed(channel, embed, bot=self.bot)
+                except Exception:
+                    pass
 
         # clear trackers
         self.join_tracker[guild.id] = []
@@ -568,7 +681,11 @@ class AntiRaid(commands.Cog):
 
         # remove from cooldown after delay
         async def _remove_cooldown():
-            await asyncio.sleep(settings.get("antiraid_cooldown_seconds", 60))
+            try:
+                cooldown = max(10, min(3600, int(settings.get("antiraid_cooldown_seconds", 60))))
+            except (TypeError, ValueError, OverflowError):
+                cooldown = 60
+            await asyncio.sleep(cooldown)
             self.raid_cooldown.discard(guild.id)
 
         asyncio.create_task(_remove_cooldown())
@@ -783,24 +900,15 @@ class AntiRaid(commands.Cog):
         enabled: bool,
     ):
         settings = await self.bot.db.get_settings(interaction.guild_id)
-        settings["raid_mode"] = enabled
-        await self.bot.db.update_settings(interaction.guild_id, settings)
-
         await interaction.response.defer()
 
         if enabled:
-            # lock all text channels
-            locked_count = 0
-            for channel in interaction.guild.text_channels:
-                try:
-                    await channel.set_permissions(
-                        interaction.guild.default_role,
-                        send_messages=False,
-                        reason=f"[RAID MODE] Enabled by {interaction.user}",
-                    )
-                    locked_count += 1
-                except Exception:
-                    pass
+            locked_count = await self._lock_raid_channels(
+                interaction.guild,
+                settings,
+                reason=f"[RAID MODE] Enabled by {interaction.user}",
+            )
+            await self.bot.db.set_setting(interaction.guild_id, "raid_mode", True)
 
             embed = discord.Embed(
                 title="🚨 RAID MODE ENABLED",
@@ -811,18 +919,13 @@ class AntiRaid(commands.Cog):
                 color=Config.COLOR_ERROR,
             )
         else:
-            # unlock all text channels
-            unlocked_count = 0
-            for channel in interaction.guild.text_channels:
-                try:
-                    await channel.set_permissions(
-                        interaction.guild.default_role,
-                        send_messages=None,
-                        reason=f"[RAID MODE] Disabled by {interaction.user}",
-                    )
-                    unlocked_count += 1
-                except Exception:
-                    pass
+            unlocked_count = await self._unlock_raid_channels(
+                interaction.guild,
+                settings,
+                reason=f"[RAID MODE] Disabled by {interaction.user}",
+            )
+            await self.bot.db.set_setting(interaction.guild_id, "raid_mode", False)
+            self.raid_cooldown.discard(interaction.guild_id)
 
             embed = discord.Embed(
                 title="✅ Raid Mode Disabled",
