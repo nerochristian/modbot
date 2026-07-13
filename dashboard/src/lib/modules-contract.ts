@@ -22,6 +22,7 @@ export type ModuleFieldType =
   | 'channelIds'
   | 'roleId'
   | 'roleIds'
+  | 'multiSelect'
   | 'autopunishRules'
 
 export type AutopunishAction = 'timeout' | 'kick' | 'ban'
@@ -40,16 +41,27 @@ export type ModuleField = {
   hint?: string
   placeholder?: string
   options?: { label: string; value: string }[]
+  /** Allowed Discord channel types for channel pickers. Defaults to text and announcement channels. */
+  channelTypes?: number[]
   min?: number
   max?: number
   maxLength?: number
   /** Default shown when the key is absent. */
-  fallback?: string | number | boolean | AutopunishRule[]
+  fallback?: string | number | boolean | string[] | AutopunishRule[]
 }
 
 export type ModuleBadge = 'new' | 'standard' | 'premium' | 'core'
 
-export type ModuleSpecial = 'moderation' | 'whitelist' | 'welcome_card'
+export type ModuleSpecial =
+  | 'moderation'
+  | 'aimod'
+  | 'antiraid'
+  | 'verification'
+  | 'whitelist'
+  | 'tickets'
+  | 'logging'
+  | 'welcome_card'
+  | 'autoroles'
 
 export type ModuleDefinition = {
   id: string
