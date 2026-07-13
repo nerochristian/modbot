@@ -121,7 +121,7 @@ function NavigationLink({ item }: { item: NavigationItem }) {
 export function Sidebar({ permissions }: { permissions?: readonly string[] }) {
   void permissions;
   return (
-    <aside className="flex h-screen w-[250px] shrink-0 flex-col border-r border-white/[0.06] bg-[#111019]">
+    <aside className="hidden h-screen w-[250px] shrink-0 flex-col border-r border-white/[0.06] bg-[#111019] lg:flex">
       {/* Logo */}
       <div className="flex h-24 items-center px-6">
         <Link
