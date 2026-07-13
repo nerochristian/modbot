@@ -1233,6 +1233,416 @@ function AutopunishBuilder({
   )
 }
 
+type OperationalSpecial = Exclude<ModuleSpecial, 'moderation' | 'whitelist'>
+type OperationalValue = string | boolean | string[]
+type OperationalForm = Record<string, OperationalValue>
+
+type OperationalSectionDefinition = {
+  register: string
+  title: string
+  description: string
+  keys: string[]
+}
+
+const OPERATIONAL_SECTIONS: Record<OperationalSpecial, OperationalSectionDefinition[]> = {
+  aimod: [
+    {
+      register: 'SAFETY / 01',
+      title: 'Decision guard',
+      description: 'Control which high-impact requests pause for approval and how long that approval remains valid.',
+      keys: ['aimod_confirm_enabled', 'aimod_confirm_timeout_seconds', 'aimod_confirm_actions'],
+    },
+    {
+      register: 'CONTEXT / 02',
+      title: 'Conversation context',
+      description: 'Set how Docket talks and how much recent server context it may use for a decision.',
+      keys: ['aimod_chat_enabled', 'aimod_context_messages', 'aimod_location_context'],
+    },
+    {
+      register: 'PROVIDER / 03',
+      title: 'Model routing',
+      description: 'Keep the provider default for automatic upgrades, or pin an approved model identifier.',
+      keys: ['aimod_model'],
+    },
+  ],
+  antiraid: [
+    {
+      register: 'SIGNAL / 01',
+      title: 'Raid signal',
+      description: 'Define the join burst that Docket treats as coordinated activity and the response cooldown.',
+      keys: ['antiraid_join_threshold', 'antiraid_join_seconds', 'antiraid_cooldown_seconds'],
+    },
+    {
+      register: 'RESPONSE / 02',
+      title: 'Containment path',
+      description: 'Choose the immediate response, the policy for later joins, and the exact containment resources.',
+      keys: ['antiraid_action', 'antiraid_raidmode_action', 'antiraid_quarantine_role', 'lockdown_channels'],
+    },
+    {
+      register: 'INTEL / 03',
+      title: 'Scoring & record',
+      description: 'Tune optional AI scoring and route the finalized incident record to staff.',
+      keys: ['antiraid_ai_enabled', 'antiraid_ai_min_confidence', 'antiraid_override_ai_action', 'antiraid_log_channel'],
+    },
+  ],
+  verification: [
+    {
+      register: 'MEMBER / 01',
+      title: 'Member path',
+      description: 'Connect the waiting role, completion role, verification panel, and staff record.',
+      keys: ['unverified_role', 'verified_role', 'verify_channel', 'verify_log_channel'],
+    },
+    {
+      register: 'VOICE / 02',
+      title: 'Voice gate',
+      description: 'Optionally hold members in a voice waiting room with bypass roles and an expiry window.',
+      keys: ['voice_verification_enabled', 'waiting_verify_voice_channel', 'vc_verify_bypass_roles', 'vc_verify_session_ttl'],
+    },
+  ],
+  tickets: [
+    {
+      register: 'ROUTING / 01',
+      title: 'Support routing',
+      description: 'Choose where private tickets open, which team can respond, and where closure records land.',
+      keys: ['ticket_category', 'ticket_support_role', 'ticket_log_channel'],
+    },
+  ],
+  logging: [
+    {
+      register: 'ROUTES / 01',
+      title: 'Event routing matrix',
+      description: 'Give each high-volume event family its own destination. Leave a route blank to disable that stream.',
+      keys: ['audit_log_channel', 'message_log_channel', 'voice_log_channel', 'automod_log_channel', 'report_log_channel', 'ticket_log_channel'],
+    },
+  ],
+  welcome_card: [
+    {
+      register: 'DELIVERY / 01',
+      title: 'Card delivery',
+      description: 'Select the public channel that receives each new member card.',
+      keys: ['welcome_channel'],
+    },
+    {
+      register: 'IDENTITY / 02',
+      title: 'Card identity',
+      description: 'Set the server label, subtitle, and optional HTTPS background used by the renderer.',
+      keys: ['welcome_server_name', 'welcome_system_name', 'welcome_bg_url'],
+    },
+  ],
+  autoroles: [
+    {
+      register: 'ASSIGNMENT / 01',
+      title: 'Join assignment',
+      description: 'Choose the role granted to new human members when the verification module is not handling access.',
+      keys: ['auto_role'],
+    },
+  ],
+}
+
+const OPERATIONAL_FLOW: Record<OperationalSpecial, [string, string, string]> = {
+  aimod: ['Request', 'Safety check', 'Response or action'],
+  antiraid: ['Join burst', 'Score & contain', 'Incident record'],
+  verification: ['Member joins', 'Waiting gate', 'Verified access'],
+  tickets: ['Member opens', 'Private support', 'Transcript logged'],
+  logging: ['Server event', 'Classify stream', 'Route to channel'],
+  welcome_card: ['Member joins', 'Render card', 'Post welcome'],
+  autoroles: ['Human joins', 'Check verification', 'Assign role'],
+}
+
+function operationalInitialForm(mod: Module): OperationalForm {
+  const initial: OperationalForm = {}
+  for (const field of mod.fields) {
+    const value = mod.values[field.key]
+    if (field.type === 'toggle') {
+      initial[field.key] = Boolean(value)
+    } else if (field.type === 'roleIds' || field.type === 'channelIds' || field.type === 'multiSelect') {
+      initial[field.key] = Array.isArray(value)
+        ? value.filter((item): item is string => typeof item === 'string')
+        : []
+    } else {
+      initial[field.key] = value === null || value === undefined ? '' : String(value)
+    }
+  }
+  return initial
+}
+
+function OperationalModuleSheet({
+  mod,
+  canWrite,
+  onClose,
+  onSaved,
+}: {
+  mod: Module
+  canWrite: boolean
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const toast = useToast()
+  const { data: resources, loading: resourcesLoading, error: resourcesError, refetch: refetchResources } =
+    useApi<GuildResourcesPayload>('/api/guilds/resources')
+  const initialForm = useMemo(() => operationalInitialForm(mod), [mod])
+  const [form, setForm] = useState<OperationalForm>(initialForm)
+  const [saving, setSaving] = useState(false)
+  const [errors, setErrors] = useState<Record<string, string>>({})
+  const special = mod.special as OperationalSpecial
+  const sections = OPERATIONAL_SECTIONS[special]
+  const dirty = JSON.stringify(form) !== JSON.stringify(initialForm)
+
+  function update(key: string, value: OperationalValue) {
+    setForm((current) => ({ ...current, [key]: value }))
+    setErrors((current) => {
+      if (!current[key]) return current
+      const next = { ...current }
+      delete next[key]
+      return next
+    })
+  }
+
+  async function save() {
+    if (!canWrite) return
+    const validationErrors = validateModuleForm(mod, form)
+    setErrors(validationErrors)
+    if (Object.keys(validationErrors).length > 0) {
+      toast.warning('Check the highlighted settings', 'Every value must be valid before this module can be saved.')
+      return
+    }
+    setSaving(true)
+    try {
+      const response = await fetch(`/api/modules/${mod.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: form }),
+      })
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}))
+        throw new Error(body.error || `Failed to save ${mod.name} settings`)
+      }
+      toast.success(`${mod.name} settings saved`)
+      onSaved()
+    } catch (error) {
+      toast.error('Save failed', error instanceof Error ? error.message : 'Try again in a moment.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <form
+      onSubmit={(event) => {
+        event.preventDefault()
+        void save()
+      }}
+      className="space-y-5"
+    >
+      <OperationalFlow special={special} form={form} fields={mod.fields} />
+
+      {resourcesError && (
+        <div className="flex flex-col gap-2 border border-warning/40 bg-warning-soft px-3 py-2.5 text-xs text-warning sm:flex-row sm:items-center sm:justify-between">
+          <span>Discord channels and roles could not be refreshed. Existing selections are preserved.</span>
+          <Button type="button" variant="ghost" size="sm" onClick={() => void refetchResources()}>
+            Retry
+          </Button>
+        </div>
+      )}
+
+      {sections.map((section) => {
+        const fields = section.keys
+          .map((key) => mod.fields.find((field) => field.key === key))
+          .filter((field): field is ModuleField => Boolean(field))
+        if (fields.length === 0) return null
+        return (
+          <ModerationSection
+            key={section.register}
+            register={section.register}
+            title={section.title}
+            description={section.description}
+          >
+            <div className="grid gap-4 md:grid-cols-2">
+              {fields.map((field) => (
+                <OperationalField
+                  key={field.key}
+                  field={field}
+                  value={form[field.key]}
+                  resources={resources ?? { roles: [], channels: [] }}
+                  resourcesLoading={resourcesLoading}
+                  disabled={!canWrite}
+                  error={errors[field.key]}
+                  onChange={(value) => update(field.key, value)}
+                />
+              ))}
+            </div>
+          </ModerationSection>
+        )
+      })}
+
+      <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:items-center sm:justify-end">
+        {!canWrite && <p className="mr-auto text-xs text-muted">Your workspace role has read-only access.</p>}
+        <Button type="button" variant="ghost" size="sm" onClick={onClose} disabled={saving}>
+          Cancel
+        </Button>
+        <Button type="submit" size="sm" loading={saving} disabled={!canWrite || !dirty}>
+          Save changes
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function OperationalFlow({
+  special,
+  form,
+  fields,
+}: {
+  special: OperationalSpecial
+  form: OperationalForm
+  fields: ModuleField[]
+}) {
+  const steps = OPERATIONAL_FLOW[special]
+  const configured = fields.filter((field) => {
+    const value = form[field.key]
+    return Array.isArray(value) ? value.length > 0 : value !== '' && value !== false
+  }).length
+  const background = special === 'welcome_card' && typeof form.welcome_bg_url === 'string'
+    && form.welcome_bg_url.startsWith('https://')
+    ? form.welcome_bg_url
+    : ''
+  return (
+    <div
+      className="relative overflow-hidden rounded-lg border border-accent-line bg-surface px-4 py-4"
+      style={background ? {
+        backgroundImage: `linear-gradient(90deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--surface) 78%, transparent)), url(${JSON.stringify(background)})`,
+        backgroundPosition: 'center',
+        backgroundSize: 'cover',
+      } : undefined}
+    >
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <p className="font-mono text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-accent">Live workflow</p>
+          <p className="mt-1 text-sm font-medium text-foreground">
+            {configured} of {fields.length} controls configured
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted">Changes take effect from the bot settings store after this sheet is saved.</p>
+        </div>
+        <ol className="grid min-w-0 flex-1 grid-cols-3 border border-border bg-surface-2 lg:max-w-2xl">
+          {steps.map((step, index) => (
+            <li key={step} className="relative border-r border-border px-3 py-3 last:border-r-0">
+              <span className="font-mono text-[0.625rem] text-muted-2">0{index + 1}</span>
+              <p className="mt-1 text-xs font-medium leading-4 text-foreground">{step}</p>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </div>
+  )
+}
+
+function OperationalField({
+  field,
+  value,
+  resources,
+  resourcesLoading,
+  disabled,
+  error,
+  onChange,
+}: {
+  field: ModuleField
+  value: OperationalValue | undefined
+  resources: GuildResourcesPayload
+  resourcesLoading: boolean
+  disabled: boolean
+  error?: string
+  onChange: (value: OperationalValue) => void
+}) {
+  const fullWidth = field.type === 'toggle' || field.type === 'multiSelect' || field.type === 'roleIds' || field.type === 'channelIds'
+  const fieldResources = field.type === 'roleId' || field.type === 'roleIds'
+    ? resources.roles
+    : resources.channels.filter((channel) => (field.channelTypes ?? [0, 5]).includes(channel.type ?? 0))
+
+  if (field.type === 'roleId' || field.type === 'channelId') {
+    const kind = field.type === 'roleId' ? 'role' : 'channel'
+    return (
+      <div className={cn(fullWidth && 'md:col-span-2')}>
+        <SingleResourcePicker
+          field={field}
+          resources={fieldResources}
+          value={typeof value === 'string' ? value : ''}
+          loading={resourcesLoading}
+          disabled={disabled}
+          kind={kind}
+          onChange={onChange}
+        />
+        {error && <p className="mt-1 text-xs text-danger">{error}</p>}
+      </div>
+    )
+  }
+
+  if (field.type === 'roleIds' || field.type === 'channelIds') {
+    const kind = field.type === 'roleIds' ? 'role' : 'channel'
+    return (
+      <div className="md:col-span-2">
+        <MultiResourcePicker
+          field={field}
+          resources={fieldResources}
+          selected={Array.isArray(value) ? value : []}
+          loading={resourcesLoading}
+          disabled={disabled}
+          kind={kind}
+          onChange={onChange}
+        />
+        {error && <p className="mt-1 text-xs text-danger">{error}</p>}
+      </div>
+    )
+  }
+
+  if (field.type === 'multiSelect') {
+    const selected = Array.isArray(value) ? value : []
+    return (
+      <fieldset className="md:col-span-2">
+        <legend className="text-sm font-medium text-foreground">{field.label}</legend>
+        {field.hint && <p className="mt-1 text-xs leading-5 text-muted">{field.hint}</p>}
+        <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {(field.options ?? []).map((option) => {
+            const checked = selected.includes(option.value)
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={checked}
+                disabled={disabled}
+                onClick={() => onChange(checked
+                  ? selected.filter((candidate) => candidate !== option.value)
+                  : [...selected, option.value])}
+                className={cn(
+                  'focus-ring flex min-h-10 items-center gap-2 rounded-md border px-3 py-2 text-left text-xs transition-colors disabled:cursor-not-allowed disabled:opacity-60',
+                  checked
+                    ? 'border-accent-line bg-accent-soft text-foreground'
+                    : 'border-border bg-surface text-muted hover:border-border-strong hover:text-foreground',
+                )}
+              >
+                <CheckCircle2 className={cn('size-3.5 shrink-0', checked ? 'text-accent' : 'text-muted-2')} />
+                {option.label}
+              </button>
+            )
+          })}
+        </div>
+        {error && <p className="mt-1 text-xs text-danger">{error}</p>}
+      </fieldset>
+    )
+  }
+
+  return (
+    <div className={cn(fullWidth && 'md:col-span-2')}>
+      <FieldRow
+        field={field}
+        value={typeof value === 'boolean' ? value : String(value ?? '')}
+        disabled={disabled}
+        error={error}
+        onChange={onChange}
+      />
+    </div>
+  )
+}
+
 function FieldsSheet({
   mod,
   canWrite,
@@ -1334,12 +1744,25 @@ function FieldsSheet({
 
 function validateModuleForm(
   mod: Module,
-  form: Record<string, string | boolean>,
+  form: Record<string, string | boolean | string[]>,
 ): Record<string, string> {
   const errors: Record<string, string> = {}
   for (const field of mod.fields) {
     const value = form[field.key]
     if (field.type === 'toggle') continue
+    if (field.type === 'roleIds' || field.type === 'channelIds') {
+      if (!Array.isArray(value) || value.some((id) => !isDiscordSnowflake(id))) {
+        errors[field.key] = `${field.label} must contain valid Discord resources`
+      }
+      continue
+    }
+    if (field.type === 'multiSelect') {
+      const allowed = new Set(field.options?.map((option) => option.value) ?? [])
+      if (!Array.isArray(value) || value.some((candidate) => !allowed.has(candidate))) {
+        errors[field.key] = `${field.label} contains an unsupported option`
+      }
+      continue
+    }
     const raw = String(value ?? '').trim()
     if (field.type === 'number') {
       if (!/^-?\d+$/.test(raw) || !Number.isSafeInteger(Number(raw))) {
@@ -1353,11 +1776,6 @@ function validateModuleForm(
     }
     if ((field.type === 'roleId' || field.type === 'channelId') && raw && !isDiscordSnowflake(raw)) {
       errors[field.key] = `${field.label} must be a valid Discord ID or blank`
-      continue
-    }
-    if (field.type === 'roleIds' && raw) {
-      const ids = raw.split(',').map((item) => item.trim()).filter(Boolean)
-      if (ids.some((id) => !isDiscordSnowflake(id))) errors[field.key] = 'Use comma-separated Discord role IDs'
       continue
     }
     if (field.type === 'url' && raw) {
