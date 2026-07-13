@@ -872,7 +872,7 @@ class Court(commands.Cog):
                         filename=filename
                     )
                     
-                    await send_log_embed(log_channel, log_embed, file=file)
+                    await send_log_embed(log_channel, log_embed, bot=self.bot, file=file)
                     transcript_sent = True
             
             # Send closure message to case channel

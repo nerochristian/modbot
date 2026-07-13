@@ -44,7 +44,10 @@ class Reports(commands.Cog):
         settings = await self.bot.db.get_settings(interaction.guild_id)
         report_channel_id = settings.get('report_log_channel') or settings.get('audit_log_channel') or settings.get('log_channel_audit')
         if report_channel_id:
-            channel = interaction.guild.get_channel(report_channel_id)
+            try:
+                channel = interaction.guild.get_channel(int(report_channel_id))
+            except (TypeError, ValueError):
+                channel = None
             if channel:
                 embed = discord.Embed(
                     title=f"📝 New Report #{report_id}",
@@ -57,7 +60,7 @@ class Reports(commands.Cog):
                 embed.set_thumbnail(url=user.display_avatar.url)
                 embed.set_footer(text=f"Report ID: {report_id} | Use /report resolve {report_id} to resolve")
                 
-                await send_log_embed(channel, embed)
+                await send_log_embed(channel, embed, bot=self.bot)
         
         embed = ModEmbed.success(
             "Report Submitted",
@@ -119,7 +122,10 @@ class Reports(commands.Cog):
             settings = await self.bot.db.get_settings(interaction.guild_id)
             report_channel_id = settings.get('report_log_channel') or settings.get('audit_log_channel') or settings.get('log_channel_audit')
             if report_channel_id:
-                channel = interaction.guild.get_channel(report_channel_id)
+                try:
+                    channel = interaction.guild.get_channel(int(report_channel_id))
+                except (TypeError, ValueError):
+                    channel = None
                 if channel:
                     log_embed = discord.Embed(
                         title=f"✅ Report #{report_id} Resolved",
@@ -127,7 +133,7 @@ class Reports(commands.Cog):
                         color=Config.COLOR_SUCCESS,
                         timestamp=datetime.utcnow()
                     )
-                    await send_log_embed(channel, log_embed)
+                    await send_log_embed(channel, log_embed, bot=self.bot)
         else:
             embed = ModEmbed.error("Not Found", f"Report #{report_id} was not found.")
         

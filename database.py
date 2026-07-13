@@ -250,6 +250,7 @@ _POSTGRES_SERIAL_ID_TABLES = {
     "dashboard_audit",
     "dashboard_moderation_commands",
     "dashboard_appeals",
+    "dashboard_appeal_tokens",
     "dashboard_reports",
 }
 
@@ -377,6 +378,19 @@ def _parse_status_rowcount(status: str) -> int:
     return 0
 
 
+class PostgresCompatRow(dict):
+    """Mapping row that also preserves SQLite-style positional indexing."""
+
+    def __getitem__(self, key: Any) -> Any:
+        if isinstance(key, int):
+            values = tuple(self.values())
+            try:
+                return values[key]
+            except IndexError as exc:
+                raise IndexError(key) from exc
+        return super().__getitem__(key)
+
+
 class PostgresCompatCursor:
     def __init__(
         self,
@@ -385,13 +399,10 @@ class PostgresCompatCursor:
         rowcount: int = 0,
         lastrowid: Optional[int] = None,
     ) -> None:
-        # Convert asyncpg.Record objects to dicts for dict-like column access
-        # asyncpg.Record supports both tuple and dict-like access, but converting
-        # to dict ensures compatibility with code expecting Mapping protocol
         converted_rows = []
         for row in (rows or []):
-            if hasattr(row, 'keys'):  # asyncpg.Record or similar dict-like object
-                converted_rows.append(dict(row))
+            if hasattr(row, 'keys'):
+                converted_rows.append(PostgresCompatRow(row))
             elif isinstance(row, tuple):
                 converted_rows.append(row)
             else:
@@ -1006,6 +1017,32 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
                     logger.debug(f"✅ Added column '{column}' to '{table}'")
             except Exception:
                 pass  # Column already exists
+
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS dashboard_schema_migrations (
+                key TEXT PRIMARY KEY,
+                applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        cursor = await db.execute(
+            "SELECT key FROM dashboard_schema_migrations WHERE key = ?",
+            ("20260712_case_severity_backfill",),
+        )
+        if not await cursor.fetchone():
+            await db.execute("""
+                UPDATE cases
+                SET severity = CASE LOWER(action)
+                    WHEN 'ban' THEN 'critical'
+                    WHEN 'kick' THEN 'high'
+                    WHEN 'mute' THEN 'medium'
+                    WHEN 'timeout' THEN 'medium'
+                    ELSE 'low'
+                END
+            """)
+            await db.execute(
+                "INSERT OR IGNORE INTO dashboard_schema_migrations (key) VALUES (?)",
+                ("20260712_case_severity_backfill",),
+            )
     
     async def init_guild(self, guild_id: int) -> None:
         """Initialize all database tables and ensure guild exists"""
@@ -1399,6 +1436,23 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
                         submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         reviewed_at TIMESTAMP,
                         UNIQUE (guild_id, appeal_number)
+                    )
+                """)
+
+                await db.execute("""
+                    CREATE TABLE IF NOT EXISTS dashboard_appeal_tokens (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        token_hash TEXT NOT NULL UNIQUE,
+                        guild_id INTEGER NOT NULL,
+                        case_id INTEGER NOT NULL,
+                        user_id INTEGER NOT NULL,
+                        expires_at TIMESTAMP NOT NULL,
+                        used_at TIMESTAMP,
+                        appeal_id INTEGER,
+                        delivery_status TEXT NOT NULL DEFAULT 'pending',
+                        delivery_error TEXT,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE (guild_id, case_id)
                     )
                 """)
 

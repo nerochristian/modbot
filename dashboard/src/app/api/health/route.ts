@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic'
 /**
  * Health check for both data sources the dashboard depends on:
  * - `bot`: the live bot PostgreSQL database (settings, cases, members, automod)
- * - `dashboard`: the dashboard's own store (accounts, sessions, billing)
+ * - `dashboard`: the dashboard's own store (accounts, sessions, workspace preferences)
  *
  * Returns 200 only when both are reachable, so uptime checks fail loudly if the
  * bot database connection is misconfigured rather than silently showing gaps.

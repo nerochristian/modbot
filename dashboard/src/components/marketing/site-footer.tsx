@@ -8,7 +8,6 @@ const GROUPS = [
       { label: 'Automod', href: '#features' },
       { label: 'Cases', href: '#features' },
       { label: 'Appeals', href: '#features' },
-      { label: 'Pricing', href: '#pricing' },
     ],
   },
   {
@@ -72,7 +71,7 @@ export function SiteFooter() {
         </div>
         <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-border pt-6 sm:flex-row">
           <p className="font-mono text-xs text-muted-2">© 2026 Docket, Inc. All rights reserved.</p>
-          <p className="font-mono text-xs text-muted-2">Built for demonstration — no real data.</p>
+          <p className="font-mono text-xs text-muted-2">Discord moderation records, scoped to the server you select.</p>
         </div>
       </div>
     </footer>

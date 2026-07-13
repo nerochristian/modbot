@@ -1,5 +1,8 @@
 import { z } from 'zod'
 import { ROLES } from '@/lib/rbac'
+import { AUTOMOD_ACTIONS, AUTOMOD_DEFINITIONS } from '@/lib/automod-contract'
+
+export const discordSnowflakeSchema = z.string().regex(/^\d{15,22}$/, 'Enter a valid Discord ID')
 
 export const registerSchema = z.object({
   name: z.string().min(2, 'Name must be at least 2 characters').max(80),
@@ -35,11 +38,9 @@ export const createUserSchema = z.object({
 })
 
 export const updateUserSchema = z.object({
-  name: z.string().min(2).max(80).optional(),
   role: z.enum(ROLES).optional(),
   status: z.enum(['active', 'invited', 'suspended']).optional(),
-  title: z.string().max(120).nullable().optional(),
-})
+}).strict()
 
 export const memberSchema = z.object({
   username: z.string().min(2).max(80),
@@ -51,16 +52,17 @@ export const memberSchema = z.object({
 })
 
 export const caseSchema = z.object({
-  memberId: z.string().min(1, 'Select a member'),
+  memberId: discordSnowflakeSchema,
   type: z.enum(['note', 'warn', 'mute', 'timeout', 'kick', 'ban', 'unban']),
   severity: z.enum(['low', 'medium', 'high', 'critical']),
   reason: z.string().min(3, 'Give a reason').max(500),
   channel: z.string().max(80).nullable().optional(),
   durationHours: z.number().int().min(0).max(8760).nullable().optional(),
+  idempotencyKey: z.string().min(8).max(128).regex(/^[A-Za-z0-9._:-]+$/).optional(),
 })
 
 export const updateCaseSchema = z.object({
-  status: z.enum(['open', 'resolved', 'expired', 'appealed']).optional(),
+  status: z.enum(['open', 'resolved', 'expired', 'appealed', 'failed']).optional(),
   severity: z.enum(['low', 'medium', 'high', 'critical']).optional(),
   reason: z.string().min(3).max(500).optional(),
 })
@@ -68,20 +70,13 @@ export const updateCaseSchema = z.object({
 export const automodRuleSchema = z.object({
   name: z.string().min(2).max(80),
   description: z.string().max(300).nullable().optional(),
-  trigger: z.enum([
-    'keyword',
-    'regex',
-    'spam',
-    'mention_spam',
-    'invite',
-    'link',
-    'caps',
-    'attachment',
-  ]),
+  trigger: z.enum(AUTOMOD_DEFINITIONS.map((definition) => definition.id) as [string, ...string[]]),
   pattern: z.string().max(500).nullable().optional(),
-  action: z.enum(['delete', 'warn', 'mute', 'timeout', 'kick', 'ban', 'flag']),
+  action: z.enum(AUTOMOD_ACTIONS),
+  durationSeconds: z.number().int().min(60).max(2_419_200).nullable().optional(),
+  deleteMessage: z.boolean().optional(),
   severity: z.enum(['low', 'medium', 'high', 'critical']),
-  exemptRoles: z.array(z.string().max(60)).max(30).optional(),
+  exemptRoles: z.array(discordSnowflakeSchema).max(30).optional(),
   enabled: z.boolean().optional(),
 })
 
@@ -94,7 +89,9 @@ export const reportSchema = z.object({
   name: z.string().min(2).max(120),
   type: z.enum(['actions', 'members', 'activity', 'automod', 'custom']),
   format: z.enum(['csv', 'json', 'pdf', 'xlsx']),
-  params: z.record(z.string(), z.unknown()).optional(),
+  params: z.record(z.string(), z.unknown())
+    .refine((value) => JSON.stringify(value).length <= 10_000, 'Report parameters are too large')
+    .optional(),
 })
 
 export const savedViewSchema = z.object({

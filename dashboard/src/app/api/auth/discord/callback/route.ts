@@ -2,7 +2,7 @@ import { randomBytes, timingSafeEqual } from 'node:crypto'
 import { cookies } from 'next/headers'
 import { NextResponse, type NextRequest } from 'next/server'
 import { prisma } from '@/lib/prisma'
-import { hashPassword } from '@/lib/auth'
+import { hashPassword, safeReturnPath } from '@/lib/auth'
 import { startSession } from '@/lib/auth-server'
 import { DEFAULT_DASHBOARD_CONFIG } from '@/lib/dashboard-config'
 import {
@@ -10,6 +10,7 @@ import {
   dashboardBaseUrl,
   exchangeDiscordCode,
   fetchDiscordUser,
+  getManageableGuilds,
   sealDiscordToken,
 } from '@/lib/discord'
 
@@ -23,33 +24,43 @@ function sameState(actual: string | null, expected: string | undefined): boolean
 function authError(request: NextRequest, message: string) {
   const url = new URL('/login', dashboardBaseUrl(request.url))
   url.searchParams.set('error', message)
-  return NextResponse.redirect(url)
+  const response = NextResponse.redirect(url)
+  response.cookies.delete('discord_oauth_state')
+  response.cookies.delete('discord_oauth_next')
+  response.cookies.delete('discord_oauth_pkce')
+  return response
 }
 
 export async function GET(request: NextRequest) {
   const cookieStore = await cookies()
   const state = request.nextUrl.searchParams.get('state')
   const expectedState = cookieStore.get('discord_oauth_state')?.value
+  const codeVerifier = cookieStore.get('discord_oauth_pkce')?.value
   const oauthError = request.nextUrl.searchParams.get('error')
   const code = request.nextUrl.searchParams.get('code')
 
   if (oauthError) return authError(request, 'Discord sign-in was cancelled.')
   if (!sameState(state, expectedState)) return authError(request, 'Discord sign-in expired. Please try again.')
   if (!code) return authError(request, 'Discord did not return an authorization code.')
+  if (!codeVerifier) return authError(request, 'Discord sign-in expired. Please try again.')
 
   try {
-    const tokens = await exchangeDiscordCode(code, discordRedirectUri(request.url))
+    const tokens = await exchangeDiscordCode(code, discordRedirectUri(request.url), codeVerifier)
     const profile = await fetchDiscordUser(tokens.access_token)
     const email = profile.email?.trim().toLowerCase() || `${profile.id}@discord.invalid`
     const displayName = profile.global_name?.trim() || profile.username
-    const ownerIds = new Set(
-      (process.env.OWNER_IDS || '').split(',').map((value) => value.trim()).filter(Boolean),
-    )
 
     const existingByDiscord = await prisma.user.findUnique({ where: { discordId: profile.id } })
-    const existingByEmail = existingByDiscord
-      ? null
-      : await prisma.user.findUnique({ where: { email } })
+    const emailCandidate = existingByDiscord ? null : await prisma.user.findUnique({ where: { email } })
+    if (emailCandidate) {
+      const eligibleInvite = profile.verified
+        && emailCandidate.status === 'invited'
+        && !emailCandidate.discordId
+      if (!eligibleInvite) {
+        return authError(request, 'This email is not eligible for automatic Discord linking.')
+      }
+    }
+    const existingByEmail = emailCandidate
     const existing = existingByDiscord ?? existingByEmail
     const tokenData = {
       discordId: profile.id,
@@ -62,20 +73,31 @@ export async function GET(request: NextRequest) {
       email,
       emailVerified: Boolean(profile.verified),
       name: displayName,
-      status: 'active',
       lastLoginAt: new Date(),
+    }
+
+    if (existing?.status === 'suspended') {
+      return authError(request, 'This account has been suspended.')
+    }
+    if (existing?.status === 'invited' && !profile.verified) {
+      return authError(request, 'Verify your Discord email before accepting an invitation.')
     }
 
     const user = existing
       ? await prisma.user.update({
           where: { id: existing.id },
-          data: { ...tokenData, role: ownerIds.has(profile.id) ? 'admin' : existing.role },
+          data: {
+            ...tokenData,
+            role: 'viewer',
+            ...(existing.status === 'invited' ? { status: 'active' } : {}),
+          },
         })
       : await prisma.user.create({
           data: {
             ...tokenData,
             passwordHash: await hashPassword(randomBytes(48).toString('base64url')),
-            role: ownerIds.has(profile.id) ? 'admin' : 'manager',
+            role: 'viewer',
+            status: 'active',
             dashboardConfig: { create: { config: JSON.stringify(DEFAULT_DASHBOARD_CONFIG) } },
           },
         })
@@ -85,12 +107,14 @@ export async function GET(request: NextRequest) {
       update: {},
       create: { userId: user.id, config: JSON.stringify(DEFAULT_DASHBOARD_CONFIG) },
     })
+    await getManageableGuilds(user.id, true)
     await startSession({ id: user.id, role: user.role, name: user.name, email: user.email })
 
     const nextCookie = cookieStore.get('discord_oauth_next')?.value
-    const next = nextCookie?.startsWith('/') && !nextCookie.startsWith('//') ? nextCookie : '/servers'
+    const next = safeReturnPath(nextCookie)
     cookieStore.delete('discord_oauth_state')
     cookieStore.delete('discord_oauth_next')
+    cookieStore.delete('discord_oauth_pkce')
     cookieStore.delete('aegis_guild')
     return NextResponse.redirect(new URL(next, dashboardBaseUrl(request.url)))
   } catch (error) {

@@ -10,6 +10,7 @@ from cogs.aimoderation.handlers.admin import _raw_api_safety_error
 from cogs.aimoderation.handlers.channels import handle_unlock_channel
 from cogs.aimoderation.handlers.messages import handle_purge
 from cogs.aimoderation.handlers.members import handle_warn
+from cogs.aimoderation.bridge import warn_member
 from cogs.aimoderation.handlers.query_handlers import (
     handle_find_inactive,
     handle_scan_channel,
@@ -103,6 +104,149 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(result.success)
         self.assertIn("between 1 and 10", result.message)
         database.add_warnings.assert_not_awaited()
+
+    async def test_warn_handler_applies_highest_rule_crossed_by_batch(self) -> None:
+        target = SimpleNamespace(
+            id=20,
+            name="target",
+            display_name="Target",
+            mention="<@20>",
+            display_avatar=SimpleNamespace(url="https://example.invalid/avatar.png"),
+        )
+        actor = SimpleNamespace(id=10, mention="<@10>")
+        database = SimpleNamespace(
+            add_warnings=AsyncMock(return_value=([101, 102, 103], 5)),
+            get_settings=AsyncMock(return_value={
+                "moderation_autopunish_rules": [
+                    {"warnings": 3, "action": "timeout", "durationMinutes": 30},
+                    {"warnings": 5, "action": "kick", "durationMinutes": 0},
+                ],
+            }),
+            create_case=AsyncMock(return_value=8),
+        )
+        guild = SimpleNamespace(id=1, kick=AsyncMock())
+        cog = SimpleNamespace(
+            bot=SimpleNamespace(db=database, user=SimpleNamespace(id=99)),
+            can_moderate=lambda moderator, member: True,
+            log_action=AsyncMock(),
+        )
+        values = {"reason": "repeated spam", "warning_count": 3}
+        ctx = SimpleNamespace(
+            resolve_target=AsyncMock(return_value=target),
+            cog=cog,
+            actor=actor,
+            guild=guild,
+            message=SimpleNamespace(),
+            decision=SimpleNamespace(),
+            str_arg=lambda key, default="No reason provided": str(values.get(key, default)),
+            int_arg=lambda key, default=0: int(values.get(key, default)),
+        )
+
+        result = await handle_warn(ctx)
+
+        self.assertTrue(result.success)
+        self.assertIn("Kicked automatically", result.message)
+        guild.kick.assert_awaited_once_with(
+            target,
+            reason="AI warning escalation: 5 warnings reached",
+        )
+        database.create_case.assert_awaited_once_with(
+            1,
+            20,
+            99,
+            "Kick",
+            "AI warning escalation: 5 warnings reached",
+            None,
+        )
+
+    async def test_bridge_fallback_warn_applies_escalation_and_records_case(self) -> None:
+        target = SimpleNamespace(id=20, display_name="Target")
+        actor = SimpleNamespace(id=10)
+        guild = SimpleNamespace(id=1, ban=AsyncMock())
+        source = SimpleNamespace(guild=guild)
+        database = SimpleNamespace(
+            add_warning=AsyncMock(return_value=(101, 3)),
+            get_settings=AsyncMock(return_value={
+                "moderation_preserve_ban_messages": True,
+                "moderation_autopunish_rules": [
+                    {"warnings": 3, "action": "ban", "durationMinutes": 0},
+                ],
+            }),
+            create_case=AsyncMock(return_value=4),
+        )
+        bot = SimpleNamespace(
+            db=database,
+            user=SimpleNamespace(id=99),
+            get_cog=lambda name: None,
+        )
+
+        result = await warn_member(
+            source,
+            target,
+            "repeated spam",
+            actor=actor,
+            bot=bot,
+        )
+
+        self.assertIn("Automatically banned", result)
+        guild.ban.assert_awaited_once_with(
+            target,
+            reason="AI warning escalation: 3 warnings reached",
+            delete_message_days=0,
+        )
+        database.create_case.assert_awaited_once_with(
+            1,
+            20,
+            99,
+            "Ban",
+            "AI warning escalation: 3 warnings reached",
+            None,
+        )
+
+    async def test_warn_handler_keeps_recorded_warning_when_escalation_is_denied(self) -> None:
+        target = SimpleNamespace(
+            id=20,
+            name="target",
+            display_name="Target",
+            mention="<@20>",
+            display_avatar=SimpleNamespace(url="https://example.invalid/avatar.png"),
+        )
+        actor = SimpleNamespace(id=10, mention="<@10>")
+        database = SimpleNamespace(
+            add_warnings=AsyncMock(return_value=([103], 3)),
+            get_settings=AsyncMock(return_value={
+                "moderation_autopunish_rules": [
+                    {"warnings": 3, "action": "kick", "durationMinutes": 0},
+                ],
+            }),
+            create_case=AsyncMock(),
+        )
+        response = MagicMock(status=403, reason="Forbidden")
+        guild = SimpleNamespace(
+            id=1,
+            kick=AsyncMock(side_effect=discord.Forbidden(response, "denied")),
+        )
+        cog = SimpleNamespace(
+            bot=SimpleNamespace(db=database, user=SimpleNamespace(id=99)),
+            can_moderate=lambda moderator, member: True,
+            log_action=AsyncMock(),
+        )
+        ctx = SimpleNamespace(
+            resolve_target=AsyncMock(return_value=target),
+            cog=cog,
+            actor=actor,
+            guild=guild,
+            message=SimpleNamespace(),
+            decision=SimpleNamespace(),
+            str_arg=lambda key, default="No reason provided": "repeated spam",
+            int_arg=lambda key, default=0: 1,
+        )
+
+        result = await handle_warn(ctx)
+
+        self.assertTrue(result.success)
+        self.assertIn("lacks permission", result.message)
+        database.create_case.assert_not_awaited()
 
     async def test_inactive_query_handles_aware_join_dates(self) -> None:
         now = datetime.now(timezone.utc)

@@ -270,7 +270,7 @@ function InviteForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
         } else setErrors({ form: body.error ?? 'Could not invite user' })
         return
       }
-      toast.success('Invitation sent')
+      toast.success('Workspace access prepared', 'They can accept by signing in with the same verified Discord email.')
       onSaved()
     } catch {
       setErrors({ form: 'Network error' })
@@ -284,7 +284,7 @@ function InviteForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
       open
       onClose={onClose}
       title="Invite user"
-      description="Send an invitation and assign a role."
+      description="Prepare server access for a verified Discord account. No email is sent by Docket."
       size="sm"
       footer={
         <>
@@ -292,7 +292,7 @@ function InviteForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
             Cancel
           </Button>
           <Button onClick={submit} loading={busy}>
-            Send invite
+            Prepare access
           </Button>
         </>
       }
@@ -335,7 +335,7 @@ function EditUserForm({
   const toast = useToast()
   const [busy, setBusy] = useState(false)
   const [errorMsg, setErrorMsg] = useState('')
-  const [form, setForm] = useState({ name: user.name, role: user.role, status: user.status })
+  const [form, setForm] = useState({ role: user.role, status: user.status })
 
   async function submit() {
     setBusy(true)
@@ -351,7 +351,7 @@ function EditUserForm({
         setErrorMsg(body.error ?? 'Could not update user')
         return
       }
-      toast.success('User updated')
+      toast.success('Workspace access updated')
       onSaved()
     } catch {
       setErrorMsg('Network error')
@@ -384,9 +384,6 @@ function EditUserForm({
             {errorMsg}
           </div>
         )}
-        <Field label="Name">
-          <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-        </Field>
         <Field label="Role" hint={isSelf ? 'You cannot change your own role.' : undefined}>
           <Select
             options={ROLES.map((r) => ({ label: ROLE_LABELS[r], value: r }))}

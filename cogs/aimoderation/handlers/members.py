@@ -12,6 +12,14 @@ from typing import Optional
 
 import discord
 
+from utils.checks import is_bot_owner_id
+from utils.moderation_settings import (
+    moderation_bool,
+    moderation_id_set,
+    render_moderation_response,
+)
+from utils.warning_escalation import apply_warning_escalation
+
 from ..context import ToolContext, ToolResult, action_embed
 from ..registry import ToolRegistry
 from ..types import ToolType
@@ -29,6 +37,48 @@ def _format_duration(seconds: int) -> str:
     if seconds % 60 == 0:
         return f"{seconds // 60} minute(s)"
     return f"{seconds} second(s)"
+
+
+async def _guild_moderation_settings(ctx: ToolContext) -> dict:
+    db = getattr(ctx.cog.bot, "db", None)
+    get_settings = getattr(db, "get_settings", None)
+    if not callable(get_settings):
+        return {}
+    try:
+        settings = await get_settings(ctx.guild.id)
+    except Exception:
+        logger.exception("Failed to load moderation settings for guild %s", ctx.guild.id)
+        return {}
+    return settings if isinstance(settings, dict) else {}
+
+
+def _has_protected_role(ctx: ToolContext, target: discord.Member, settings: dict) -> bool:
+    if is_bot_owner_id(ctx.actor.id) or ctx.actor.id == ctx.guild.owner_id:
+        return False
+    protected = moderation_id_set(settings, "protected_roles")
+    return bool(protected.intersection(role.id for role in target.roles))
+
+
+async def _dm_moderation_action(
+    target: discord.Member,
+    *,
+    guild_name: str,
+    action: str,
+    reason: str,
+    duration: str = "",
+) -> None:
+    details = [f"**Reason:** {reason}"]
+    if duration:
+        details.append(f"**Duration:** {duration}")
+    embed = discord.Embed(
+        title=f"{action} in {guild_name}",
+        description="\n".join(details),
+        color=discord.Color.orange(),
+    )
+    try:
+        await target.send(embed=embed)
+    except (discord.Forbidden, discord.HTTPException):
+        return
 
 
 @ToolRegistry.register(
@@ -78,16 +128,115 @@ async def handle_warn(ctx: ToolContext) -> ToolResult:
         logger.exception("Failed to record %d warning(s)", warning_count)
         return ToolResult.fail("Database error while recording warnings.")
 
+    previous_count = max(0, total_count - warning_count)
+    escalation_status: Optional[str] = None
+    get_settings = getattr(db, "get_settings", None)
+    if callable(get_settings):
+        try:
+            settings = await get_settings(ctx.guild.id)
+            if not isinstance(settings, dict):
+                settings = {}
+
+            async def create_escalation_case(
+                action: str,
+                action_reason: str,
+                duration_seconds: Optional[int],
+            ) -> None:
+                create_case = getattr(db, "create_case", None)
+                if not callable(create_case):
+                    logger.error(
+                        "Automatic warning escalation for guild %s could not create a case: "
+                        "database create_case is unavailable",
+                        ctx.guild.id,
+                    )
+                    return
+                bot_user = getattr(ctx.cog.bot, "user", None)
+                moderator_id = int(getattr(bot_user, "id", 0) or ctx.actor.id)
+                duration = _format_duration(duration_seconds) if duration_seconds else None
+                try:
+                    await create_case(
+                        ctx.guild.id,
+                        target.id,
+                        moderator_id,
+                        action,
+                        action_reason,
+                        duration,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Automatic warning escalation was applied to user %s in guild %s "
+                        "but its punishment case could not be created",
+                        target.id,
+                        ctx.guild.id,
+                    )
+
+            escalation = await apply_warning_escalation(
+                ctx.guild,
+                target,
+                settings,
+                total_count,
+                previous_count=previous_count,
+                reason_prefix="AI warning escalation",
+                ban_delete_days=1,
+                create_case=create_escalation_case,
+            )
+            if escalation is not None:
+                action_labels = {
+                    "timeout": "Timed out",
+                    "kick": "Kicked",
+                    "ban": "Banned",
+                }
+                duration = (
+                    f" for {_format_duration(escalation.rule.duration_seconds)}"
+                    if escalation.rule.duration_seconds
+                    else ""
+                )
+                escalation_status = (
+                    f"{action_labels[escalation.rule.action]} automatically{duration} "
+                    f"after crossing {escalation.rule.warning_count} warnings."
+                )
+        except discord.Forbidden:
+            logger.warning(
+                "Discord denied automatic warning escalation for user %s in guild %s",
+                target.id,
+                ctx.guild.id,
+            )
+            escalation_status = "Automatic punishment failed because the bot lacks permission."
+        except discord.HTTPException as exc:
+            logger.warning(
+                "Discord API rejected automatic warning escalation for user %s in guild %s: %s",
+                target.id,
+                ctx.guild.id,
+                exc,
+            )
+            escalation_status = "Automatic punishment failed because Discord rejected the action."
+        except Exception:
+            logger.exception(
+                "Could not evaluate automatic warning escalation for user %s in guild %s",
+                target.id,
+                ctx.guild.id,
+            )
+            escalation_status = "Automatic punishment could not be evaluated."
+
+    embed_extra = {
+        "Warnings Issued": str(warning_count),
+        "Total Warnings": str(total_count),
+    }
+    log_extra: dict[str, object] = {
+        "Warnings Issued": warning_count,
+        "Total Warnings": total_count,
+    }
+    if escalation_status:
+        embed_extra["Automatic Punishment"] = escalation_status
+        log_extra["Automatic Punishment"] = escalation_status
+
     embed = action_embed(
         title="Warnings Issued" if warning_count > 1 else "Member Warned",
         color=discord.Color.gold(),
         actor=ctx.actor,
         target=target,
         reason=reason,
-        extra={
-            "Warnings Issued": str(warning_count),
-            "Total Warnings": str(total_count),
-        },
+        extra=embed_extra,
     )
     await ctx.cog.log_action(
         message=ctx.message,
@@ -96,11 +245,14 @@ async def handle_warn(ctx: ToolContext) -> ToolResult:
         target=target,
         reason=reason,
         decision=ctx.decision,
-        extra={"Warnings Issued": warning_count, "Total Warnings": total_count},
+        extra=log_extra,
     )
     label = "warning" if warning_count == 1 else "warnings"
+    result_message = f"{warning_count} {label} issued. Total warnings: {total_count}."
+    if escalation_status:
+        result_message = f"{result_message} {escalation_status}"
     return ToolResult.ok(
-        f"{warning_count} {label} issued. Total warnings: {total_count}.",
+        result_message,
         embed=embed,
     )
 
@@ -312,6 +464,10 @@ async def handle_timeout(ctx: ToolContext) -> ToolResult:
     if not bot_member or not ctx.cog.can_moderate(bot_member, target):
         return ToolResult.fail(f"Cannot moderate {target.display_name}; their role is above mine.")
 
+    settings = await _guild_moderation_settings(ctx)
+    if _has_protected_role(ctx, target, settings):
+        return ToolResult.fail(f"Cannot mute {target.display_name}; they have a protected role.")
+
     raw_seconds = ctx.int_arg("seconds", ctx.cog.config.timeout_default_seconds)
     seconds = max(1, min(raw_seconds, ctx.cog.config.timeout_max_seconds))
     reason = ctx.str_arg("reason")
@@ -319,6 +475,14 @@ async def handle_timeout(ctx: ToolContext) -> ToolResult:
     await target.timeout(timedelta(seconds=seconds), reason=reason)
 
     duration = _format_duration(seconds)
+    if moderation_bool(settings, "moderation_dm_users", True):
+        await _dm_moderation_action(
+            target,
+            guild_name=ctx.guild.name,
+            action="Muted",
+            reason=reason,
+            duration=duration,
+        )
     embed = action_embed(
         title="Muted Member Timed Out", color=discord.Color.orange(),
         actor=ctx.actor, target=target, reason=reason,
@@ -329,7 +493,17 @@ async def handle_timeout(ctx: ToolContext) -> ToolResult:
         actor=ctx.actor, target=target, reason=reason, decision=ctx.decision,
         extra={"Duration": duration},
     )
-    return ToolResult.ok("Timeout applied.", embed=embed)
+    return ToolResult.ok(
+        render_moderation_response(
+            settings,
+            "mute",
+            user=target,
+            reason=reason,
+            moderator=ctx.actor,
+            duration=duration,
+        ),
+        embed=embed,
+    )
 
 
 @ToolRegistry.register(
@@ -350,6 +524,7 @@ async def handle_untimeout(ctx: ToolContext) -> ToolResult:
     if not bot_member or not ctx.cog.can_moderate(bot_member, target):
         return ToolResult.fail(f"Cannot moderate {target.display_name}; their role is above mine.")
 
+    settings = await _guild_moderation_settings(ctx)
     reason = ctx.str_arg("reason", "Timeout removed.")
     await target.timeout(None, reason=reason)
 
@@ -361,7 +536,16 @@ async def handle_untimeout(ctx: ToolContext) -> ToolResult:
         message=ctx.message, action="untimeout_member",
         actor=ctx.actor, target=target, reason=reason, decision=ctx.decision,
     )
-    return ToolResult.ok("Timeout removed.", embed=embed)
+    return ToolResult.ok(
+        render_moderation_response(
+            settings,
+            "unmute",
+            user=target,
+            reason=reason,
+            moderator=ctx.actor,
+        ),
+        embed=embed,
+    )
 
 
 @ToolRegistry.register(
@@ -382,7 +566,17 @@ async def handle_kick(ctx: ToolContext) -> ToolResult:
     if not bot_member or not ctx.cog.can_moderate(bot_member, target):
         return ToolResult.fail(f"Cannot kick {target.display_name}; their role is above mine.")
 
+    settings = await _guild_moderation_settings(ctx)
+    if _has_protected_role(ctx, target, settings):
+        return ToolResult.fail(f"Cannot kick {target.display_name}; they have a protected role.")
     reason = ctx.str_arg("reason")
+    if moderation_bool(settings, "moderation_dm_users", True):
+        await _dm_moderation_action(
+            target,
+            guild_name=ctx.guild.name,
+            action="Kicked",
+            reason=reason,
+        )
     await target.kick(reason=f"AI Mod ({ctx.actor}): {reason}")
 
     embed = action_embed(
@@ -393,7 +587,16 @@ async def handle_kick(ctx: ToolContext) -> ToolResult:
         message=ctx.message, action="kick_member",
         actor=ctx.actor, target=target, reason=reason, decision=ctx.decision,
     )
-    return ToolResult.ok("Member kicked.", embed=embed)
+    return ToolResult.ok(
+        render_moderation_response(
+            settings,
+            "kick",
+            user=target,
+            reason=reason,
+            moderator=ctx.actor,
+        ),
+        embed=embed,
+    )
 
 
 @ToolRegistry.register(
@@ -414,8 +617,23 @@ async def handle_ban(ctx: ToolContext) -> ToolResult:
     if not bot_member or not ctx.cog.can_moderate(bot_member, target):
         return ToolResult.fail(f"Cannot ban {target.display_name}; their role is above mine.")
 
+    settings = await _guild_moderation_settings(ctx)
+    if _has_protected_role(ctx, target, settings):
+        return ToolResult.fail(f"Cannot ban {target.display_name}; they have a protected role.")
     reason = ctx.str_arg("reason")
-    delete_days = max(0, min(ctx.int_arg("delete_message_days", 0), 7))
+    requested_delete_days = max(0, min(ctx.int_arg("delete_message_days", 0), 7))
+    delete_days = 0 if moderation_bool(
+        settings,
+        "moderation_preserve_ban_messages",
+        True,
+    ) else requested_delete_days
+    if moderation_bool(settings, "moderation_dm_users", True):
+        await _dm_moderation_action(
+            target,
+            guild_name=ctx.guild.name,
+            action="Banned",
+            reason=reason,
+        )
     await target.ban(reason=f"AI Mod ({ctx.actor}): {reason}", delete_message_days=delete_days)
 
     embed = action_embed(
@@ -428,7 +646,16 @@ async def handle_ban(ctx: ToolContext) -> ToolResult:
         actor=ctx.actor, target=target, reason=reason, decision=ctx.decision,
         extra={"Delete Messages": f"{delete_days} day(s)"},
     )
-    return ToolResult.ok("Member banned.", embed=embed)
+    return ToolResult.ok(
+        render_moderation_response(
+            settings,
+            "ban",
+            user=target,
+            reason=reason,
+            moderator=ctx.actor,
+        ),
+        embed=embed,
+    )
 
 
 @ToolRegistry.register(
@@ -450,14 +677,17 @@ async def handle_unban(ctx: ToolContext) -> ToolResult:
     except (TypeError, ValueError):
         return ToolResult.fail("Invalid user ID for unban.")
 
+    settings = await _guild_moderation_settings(ctx)
     reason = ctx.str_arg("reason", "Unbanned.")
     await ctx.guild.unban(discord.Object(id=target_id), reason=f"AI Mod ({ctx.actor}): {reason}")
 
     embed = discord.Embed(title="User Unbanned", color=discord.Color.green(), timestamp=datetime.now(timezone.utc))
     rows: list[tuple[str, object]] = [("Moderator", ctx.actor.mention), ("Reason", reason)]
     embed.set_footer(text=f"User ID: {target_id}")
+    response_user: object = f"<@{target_id}>"
     try:
         user = await ctx.cog.bot.fetch_user(target_id)
+        response_user = user
         embed.set_author(name=user.name, icon_url=user.display_avatar.url)
         rows.insert(0, ("User", f"{user.mention} (`{user.name}`)"))
         embed.set_thumbnail(url=user.display_avatar.url)
@@ -470,7 +700,16 @@ async def handle_unban(ctx: ToolContext) -> ToolResult:
         actor=ctx.actor, target=None, reason=reason, decision=ctx.decision,
         extra={"User ID": str(target_id)},
     )
-    return ToolResult.ok("User unbanned.", embed=embed)
+    return ToolResult.ok(
+        render_moderation_response(
+            settings,
+            "unban",
+            user=response_user,
+            reason=reason,
+            moderator=ctx.actor,
+        ),
+        embed=embed,
+    )
 
 
 @ToolRegistry.register(

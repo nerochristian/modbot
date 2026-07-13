@@ -30,7 +30,11 @@ export async function GET(request: Request) {
     const guild = await getSelectedGuild()
     if (!guild) return apiError('Choose a connected server first', 409)
     const query = parseListQuery(new URL(request.url), { defaultSort: 'joinedAt', maxPageSize: 100 })
-    const discordMembers = await getBotGuildMembers(guild.id, query.page, query.pageSize, query.q)
+    if (Object.keys(query.filters).length > 0) {
+      return apiError('Guild-wide member filters are unavailable from Discord; search by name or Discord ID instead.', 400)
+    }
+    const memberPage = await getBotGuildMembers(guild.id, query.page, query.pageSize, query.q)
+    const discordMembers = memberPage.data
     const ids = discordMembers.map((member) => member.user.id)
     const stats = ids.length
       ? await botQuery<MemberStats>(
@@ -53,7 +57,7 @@ export async function GET(request: Request) {
         )
       : []
     const byId = new Map(stats.map((row) => [row.user_id, row]))
-    let rows = discordMembers.map((member) => {
+    const rows = discordMembers.map((member) => {
       const row = byId.get(member.user.id)
       const score = Number(row?.risk_score || 0)
       const timedOut = member.communication_disabled_until
@@ -75,24 +79,8 @@ export async function GET(request: Request) {
         lastActiveAt: row?.last_active ? new Date(row.last_active).toISOString() : member.joined_at,
       }
     })
-    if (query.filters.standing) rows = rows.filter((row) => row.standing === query.filters.standing)
-    if (query.filters.riskLevel) rows = rows.filter((row) => row.riskLevel === query.filters.riskLevel)
-
-    const sort = query.sort as keyof (typeof rows)[number]
-    if (rows[0] && sort in rows[0]) {
-      rows.sort((a, b) => {
-        const av = a[sort]
-        const bv = b[sort]
-        const result = typeof av === 'number' && typeof bv === 'number'
-          ? av - bv
-          : String(av ?? '').localeCompare(String(bv ?? ''))
-        return query.order === 'asc' ? result : -result
-      })
-    }
-    const filtered = Boolean(query.q || query.filters.standing || query.filters.riskLevel)
-    const total = filtered ? rows.length : guild.memberCount ?? rows.length
-    const flagged = rows.filter((row) => row.standing !== 'good').length
-    return ok({ ...paginate(rows, total, query), flagged })
+    const total = memberPage.total ?? guild.memberCount ?? rows.length
+    return ok(paginate(rows, total, query))
   } catch (error) {
     return handleError(error)
   }

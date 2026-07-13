@@ -50,7 +50,7 @@ export default function SecuritySettingsPage() {
         description="Docket uses your Discord account for identity. Passwords and two-step verification are managed by Discord."
         footer={
           <a
-            href="https://discord.com/settings/account"
+            href="https://support.discord.com/hc/en-us/sections/360009072571-Account-Security"
             target="_blank"
             rel="noreferrer"
             className={buttonVariants({ variant: 'outline' })}

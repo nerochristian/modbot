@@ -10,6 +10,7 @@ from utils.checks import is_bot_owner_id, get_owner_ids
 from utils.logging import send_log_embed
 from utils.status_emojis import apply_status_emoji_overrides
 from utils.components_v2 import ensure_layout_view_action_rows, layout_view_from_embeds
+from utils.moderation_settings import moderation_bool, moderation_id_set
 
 logger = logging.getLogger(__name__)
 
@@ -84,11 +85,12 @@ class HelperCommands:
 
     async def _respond(
         self,
-        source: Union[discord.Interaction, commands.Context],
+        source: Union[discord.Interaction, commands.Context, discord.Message],
         *,
         content: Optional[str] = None,
         embed: Optional[discord.Embed] = None,
         ephemeral: bool = False,
+        delete_command_message: bool = False,
         **kwargs,
     ):
         """Send a response or followup depending on whether the interaction/context is already acknowledged."""
@@ -117,14 +119,68 @@ class HelperCommands:
                 return await source.response.send_message(
                     content=content, embed=embed, ephemeral=ephemeral, **kwargs
                 )
-            else:
-                # Context
+            elif isinstance(source, commands.Context):
+                if delete_command_message:
+                    settings = await self.bot.db.get_settings(source.guild.id)
+                    legacy_default = moderation_bool(
+                        settings,
+                        "moderation_delete_command_messages",
+                        True,
+                    )
+                    if moderation_bool(
+                        settings,
+                        "moderation_delete_commands",
+                        legacy_default,
+                    ):
+                        response = await source.send(
+                            content=content,
+                            embed=embed,
+                            **kwargs,
+                        )
+                        try:
+                            await source.message.delete()
+                        except (
+                            discord.NotFound,
+                            discord.Forbidden,
+                            discord.HTTPException,
+                        ):
+                            pass
+                        return response
+
                 return await source.reply(
                     content=content,
                     embed=embed,
                     mention_author=False,
                     **kwargs,
                 )
+            else:
+                response = await source.reply(
+                    content=content,
+                    embed=embed,
+                    mention_author=False,
+                    **kwargs,
+                )
+                if delete_command_message and isinstance(source, discord.Message):
+                    settings = await self.bot.db.get_settings(source.guild.id)
+                    legacy_default = moderation_bool(
+                        settings,
+                        "moderation_delete_command_messages",
+                        True,
+                    )
+                    if moderation_bool(
+                        settings,
+                        "moderation_delete_commands",
+                        legacy_default,
+                    ):
+                        try:
+                            await source.delete()
+                        except (
+                            discord.NotFound,
+                            discord.Forbidden,
+                            discord.HTTPException,
+                        ):
+                            pass
+                return response
         except discord.HTTPException:
             # Fallback when the interaction state changed mid-execution.
             if isinstance(source, discord.Interaction):
@@ -193,7 +249,7 @@ class HelperCommands:
                 # Silent fail/warn if channel missing
                 return
             
-            await send_log_embed(channel, embed, view=view)
+            await send_log_embed(channel, embed, bot=self.bot, view=view)
             
         except Exception as e:
             logger.error(f"Failed to log action in {guild.name}: {e}")
@@ -353,7 +409,9 @@ class HelperCommands:
         self,
         guild_id: int,
         moderator: discord.Member,
-        target: discord.Member
+        target: discord.Member,
+        *,
+        allow_protected_target: bool = False,
     ) -> Tuple[bool, str]:
         """
         Check if moderator can take action on target
@@ -380,6 +438,13 @@ class HelperCommands:
         # Server owner override
         if moderator.id == moderator.guild.owner_id:
             return True, ""
+
+        settings = await self.bot.db.get_settings(guild_id)
+        protected_role_ids = moderation_id_set(settings, "protected_roles")
+        if not allow_protected_target and protected_role_ids and any(
+            role.id in protected_role_ids for role in target.roles
+        ):
+            return False, "This user has a protected role and cannot be moderated."
         
         # Owner check
         if target.id == target.guild.owner_id:

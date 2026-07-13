@@ -1,9 +1,11 @@
 import { cookies } from 'next/headers'
 import { SESSION_COOKIE, verifySession } from '@/lib/auth'
 import { endSession } from '@/lib/auth-server'
-import { ok } from '@/lib/api'
+import { ok, requireMutation } from '@/lib/api'
 
-export async function POST() {
+export async function POST(request: Request) {
+  const guard = await requireMutation(request)
+  if (guard instanceof Response) return guard
   const cookieStore = await cookies()
   const token = cookieStore.get(SESSION_COOKIE)?.value
   if (token) {

@@ -12,6 +12,7 @@ import random
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_bot_owner_id, has_permissions_or_owner
+from utils.moderation_settings import moderation_bool
 from utils.status_emojis import apply_status_emoji_overrides
 
 
@@ -305,12 +306,23 @@ class PrefixCommands(commands.Cog):
     @has_permissions_or_owner(administrator=True)
     async def massban_cmd(self, ctx, *user_ids: int):
         """Ban multiple users by ID"""
+        settings = await self.bot.db.get_settings(ctx.guild.id)
+        preserve_messages = moderation_bool(
+            settings,
+            "moderation_preserve_ban_messages",
+            True,
+        )
         banned = 0
         for uid in user_ids[:20]:
             try:
-                await ctx.guild.ban(discord.Object(id=uid), reason=f"Massban by {ctx.author}")
+                await ctx.guild.ban(
+                    discord.Object(id=uid),
+                    reason=f"Massban by {ctx.author}",
+                    delete_message_days=0 if preserve_messages else 1,
+                )
                 banned += 1
-            except: pass
+            except (discord.Forbidden, discord.HTTPException):
+                continue
         await ctx.send(embed=ModEmbed.success("🔨 Mass Banned", f"Banned {banned} users."))
 
     @commands.command(name="note", aliases=["addnote"])

@@ -24,10 +24,19 @@ export function UserMenu() {
   if (!user) return null
 
   async function logout() {
-    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined)
-    toast.success('Signed out')
-    router.push('/login')
-    router.refresh()
+    try {
+      const response = await fetch('/api/auth/logout', { method: 'POST' })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error ?? 'Could not sign out')
+      toast.success('Signed out')
+      router.push('/login')
+      router.refresh()
+    } catch (reason) {
+      toast.error(
+        'You are still signed in',
+        reason instanceof Error ? reason.message : 'Try again in a moment.',
+      )
+    }
   }
 
   return (

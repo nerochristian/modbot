@@ -8,6 +8,7 @@ import discord
 
 from .models import Action, RuleMatch
 from .utils import bot_can_act_on, compact_duration, timeout_delta
+from utils.warning_escalation import apply_warning_escalation
 
 
 class PunishmentResult:
@@ -59,7 +60,10 @@ class PunishmentManager:
                 case_number = await self._create_case(guild.id, member.id, "Kick", reason_text)
                 return PunishmentResult(action, case_number=case_number)
             if action is Action.BAN:
-                delete_days = max(0, min(7, int(settings.get("automod_ban_delete_days", 1))))
+                delete_days = 0 if settings.get(
+                    "moderation_preserve_ban_messages",
+                    True,
+                ) else max(0, min(7, int(settings.get("automod_ban_delete_days", 1))))
                 await guild.ban(member, reason=reason_text, delete_message_days=delete_days)
                 case_number = await self._create_case(guild.id, member.id, "Ban", reason_text)
                 return PunishmentResult(action, case_number=case_number)
@@ -92,26 +96,27 @@ class PunishmentManager:
         total_warnings: int,
         settings: dict[str, Any],
     ) -> Optional[Action]:
-        if not settings.get("warn_thresholds_enabled", True):
-            return None
-        reason = f"AutoMod escalation: {total_warnings} warnings reached"
+        async def create_escalation_case(action: str, reason: str, duration_seconds: Optional[int]) -> None:
+            duration = compact_duration(duration_seconds) if duration_seconds else None
+            await self._create_case(guild.id, member.id, action, reason, duration)
+
         try:
-            ban_at = int(settings.get("warn_threshold_ban") or 0)
-            kick_at = int(settings.get("warn_threshold_kick") or 0)
-            mute_at = int(settings.get("warn_threshold_mute") or 0)
-            if ban_at and total_warnings >= ban_at:
-                await guild.ban(member, reason=reason, delete_message_days=max(0, min(7, int(settings.get("automod_ban_delete_days", 1)))))
-                await self._create_case(guild.id, member.id, "Ban", reason)
-                return Action.BAN
-            if kick_at and total_warnings >= kick_at:
-                await member.kick(reason=reason)
-                await self._create_case(guild.id, member.id, "Kick", reason)
-                return Action.KICK
-            if mute_at and total_warnings >= mute_at:
-                duration = int(settings.get("warn_mute_duration", 3600))
-                await member.timeout(timeout_delta(duration), reason=reason)
-                await self._create_case(guild.id, member.id, "Mute", reason, compact_duration(duration))
-                return Action.TIMEOUT
+            result = await apply_warning_escalation(
+                guild,
+                member,
+                settings,
+                total_warnings,
+                previous_count=max(0, total_warnings - 1),
+                reason_prefix="AutoMod escalation",
+                ban_delete_days=max(0, min(7, int(settings.get("automod_ban_delete_days", 1)))),
+                create_case=create_escalation_case,
+            )
+            if result is not None:
+                return {
+                    "timeout": Action.TIMEOUT,
+                    "kick": Action.KICK,
+                    "ban": Action.BAN,
+                }[result.rule.action]
         except (discord.Forbidden, discord.HTTPException, TypeError, ValueError):
             return None
         return None

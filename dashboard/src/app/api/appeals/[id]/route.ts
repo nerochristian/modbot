@@ -1,47 +1,29 @@
-import { prisma } from '@/lib/prisma'
-import { requireUser, handleError, ok, apiError } from '@/lib/api'
+import { apiError, handleError, ok, requireMutation } from '@/lib/api'
+import { reviewGuildAppeal } from '@/lib/appeals-service'
 import { appealDecisionSchema } from '@/lib/validation'
-import { logActivity } from '@/lib/log'
 
-export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function PATCH(request: Request, ctx: RouteContext<'/api/appeals/[id]'>) {
   try {
-    const guard = await requireUser('appeals.write')
+    const guard = await requireMutation(request, 'appeals.write')
     if (guard instanceof Response) return guard
-    const user = guard
+    if (!guard.discordId) return apiError('Reconnect your Discord account', 401)
     const { id } = await ctx.params
-
-    const existing = await prisma.appeal.findUnique({ where: { id }, include: { case: true } })
-    if (!existing) return apiError('Appeal not found', 404)
-    if (existing.status !== 'pending') return apiError('Appeal already reviewed', 409)
-
-    const body = await request.json()
-    const data = appealDecisionSchema.parse(body)
-
-    const updated = await prisma.appeal.update({
-      where: { id },
-      data: {
-        status: data.status,
-        decision: data.decision ?? null,
-        reviewedBy: user.name,
-        reviewedAt: new Date(),
-      },
+    if (!/^\d+$/.test(id)) return apiError('Appeal not found', 404)
+    const data = appealDecisionSchema.parse(await request.json())
+    const result = await reviewGuildAppeal({
+      guildId: guard.selectedGuildId!,
+      appealId: id,
+      status: data.status,
+      decision: data.decision,
+      actor: { id: guard.id, discordId: guard.discordId, name: guard.name },
     })
-
-    // Closing the appeal resolves the linked case either way. An approved appeal
-    // additionally restores the member's standing for enforcement-type cases.
-    await prisma.case.update({ where: { id: existing.caseId }, data: { status: 'resolved' } })
-    if (data.status === 'approved' && ['ban', 'mute', 'timeout'].includes(existing.case.type)) {
-      await prisma.member.update({ where: { id: existing.memberId }, data: { standing: 'good' } })
-    }
-
-    await logActivity({
-      userId: user.id,
-      actorName: user.name,
-      action: 'reviewed_appeal',
-      target: `#APL-${String(existing.ref).padStart(4, '0')}`,
-    })
-    return ok(updated)
+    if (result.kind === 'not_found') return apiError('Appeal not found', 404)
+    if (result.kind === 'reviewed') return apiError('Appeal already reviewed', 409)
+    return ok(result.appeal)
   } catch (error) {
+    if (error instanceof Error && /Discord reversal failed/i.test(error.message)) {
+      return apiError('The punishment could not be reversed on Discord. The appeal remains pending.', 502)
+    }
     return handleError(error)
   }
 }

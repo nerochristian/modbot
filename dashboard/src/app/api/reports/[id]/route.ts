@@ -1,22 +1,14 @@
-import { prisma } from '@/lib/prisma'
-import { requireUser, handleError, ok, apiError } from '@/lib/api'
-import { logActivity } from '@/lib/log'
+import { apiError, handleError, ok, requireMutation } from '@/lib/api'
+import { deleteGuildReport } from '@/lib/reports-service'
 
-export async function DELETE(_request: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, ctx: RouteContext<'/api/reports/[id]'>) {
   try {
-    const guard = await requireUser('reports.write')
+    const guard = await requireMutation(request, 'reports.write')
     if (guard instanceof Response) return guard
-    const user = guard
     const { id } = await ctx.params
-
-    const report = await prisma.report.findUnique({ where: { id } })
-    if (!report) return apiError('Report not found', 404)
-    // Object-level authorization: reports are per-user, so a user may only
-    // delete their own report (prevents IDOR by id-guessing).
-    if (report.createdById !== user.id) return apiError('Report not found', 404)
-
-    await prisma.report.delete({ where: { id } })
-    await logActivity({ userId: user.id, actorName: user.name, action: 'deleted_report', target: report.name })
+    if (!/^\d+$/.test(id)) return apiError('Report not found', 404)
+    const deleted = await deleteGuildReport(guard.selectedGuildId!, guard.id, guard.name, id)
+    if (!deleted) return apiError('Report not found', 404)
     return ok({ success: true })
   } catch (error) {
     return handleError(error)

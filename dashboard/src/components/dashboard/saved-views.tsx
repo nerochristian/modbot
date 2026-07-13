@@ -32,14 +32,22 @@ export function SavedViews({
   const [saving, setSaving] = useState(false)
   const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [removing, setRemoving] = useState<string | null>(null)
 
   async function load() {
+    setLoading(true)
     try {
       const res = await fetch(`/api/saved-views?page=${page}`)
-      const data = await res.json()
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Could not load saved views')
       setViews(data.views ?? [])
-    } catch {
-      setViews([])
+      setLoadError(null)
+    } catch (reason) {
+      setLoadError(reason instanceof Error ? reason.message : 'Could not load saved views')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -58,21 +66,38 @@ export function SavedViews({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ name: name.trim(), page, state: currentState }),
       })
-      if (!res.ok) throw new Error()
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error ?? 'Could not save view')
       toast.success('View saved')
       setSaving(false)
       setName('')
-      load()
-    } catch {
-      toast.error('Could not save view')
+      await load()
+    } catch (reason) {
+      toast.error(
+        'View was not saved',
+        reason instanceof Error ? reason.message : 'Try again in a moment.',
+      )
     } finally {
       setBusy(false)
     }
   }
 
   async function remove(id: string) {
-    setViews((prev) => prev.filter((v) => v.id !== id))
-    await fetch(`/api/saved-views/${id}`, { method: 'DELETE' }).catch(() => undefined)
+    setRemoving(id)
+    try {
+      const response = await fetch(`/api/saved-views/${id}`, { method: 'DELETE' })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error ?? 'Could not delete saved view')
+      setViews((prev) => prev.filter((view) => view.id !== id))
+      toast.success('Saved view deleted')
+    } catch (reason) {
+      toast.error(
+        'View was not deleted',
+        reason instanceof Error ? reason.message : 'Try again in a moment.',
+      )
+    } finally {
+      setRemoving(null)
+    }
   }
 
   return (
@@ -86,18 +111,27 @@ export function SavedViews({
         </DropdownTrigger>
         <DropdownMenu>
           <DropdownLabel>Saved views</DropdownLabel>
-          {views.length === 0 ? (
+          {loading ? (
+            <p className="px-2.5 py-2 text-sm text-muted">Loading saved views…</p>
+          ) : loadError ? (
+            <div className="space-y-2 px-2.5 py-2">
+              <p className="text-sm text-danger">{loadError}</p>
+              <button className="text-xs font-medium text-accent hover:underline" onClick={load}>
+                Try again
+              </button>
+            </div>
+          ) : views.length === 0 ? (
             <p className="px-2.5 py-2 text-sm text-muted">No saved views yet.</p>
           ) : (
             views.map((v) => (
               <div key={v.id} className="group flex items-center gap-1">
-                <button
-                  onClick={() => {
-                    try {
-                      onApply(JSON.parse(v.state))
-                    } catch {
-                      /* ignore malformed */
-                    }
+                  <button
+                    onClick={() => {
+                      try {
+                        onApply(JSON.parse(v.state))
+                      } catch {
+                        toast.error('This saved view is invalid')
+                      }
                   }}
                   className="focus-ring flex-1 rounded-lg px-2.5 py-2 text-left text-sm text-foreground hover:bg-surface-2"
                 >
@@ -106,6 +140,7 @@ export function SavedViews({
                 {canWrite && (
                   <button
                     onClick={() => remove(v.id)}
+                    disabled={removing === v.id}
                     className="focus-ring rounded-md p-1.5 text-muted-2 opacity-0 transition-opacity hover:text-danger group-hover:opacity-100"
                     aria-label={`Delete ${v.name}`}
                   >

@@ -1,8 +1,6 @@
-// Nebula SaaS — Prisma schema
-// SQLite by default for zero-config local dev. To scale to Postgres:
-//   1. change `provider` to "postgresql"
-//   2. set DATABASE_URL to your Postgres connection string
-//   3. run `npm run db:push`
+// Docket dashboard identity and workspace schema.
+// The dashboard store intentionally remains separate from the bot's PostgreSQL
+// moderation database. Apply changes through checked-in Prisma migrations.
 // JSON-shaped data is stored as String columns for cross-database portability
 // (see src/lib/json.ts for typed (de)serialization helpers).
 
@@ -37,7 +35,6 @@ model User {
   lastLoginAt      DateTime?
 
   // Discord is the primary identity for production dashboard accounts.
-  // Existing local demo accounts remain valid while deployments migrate.
   discordId             String?   @unique
   discordUsername       String?
   discordGlobalName     String?
@@ -107,7 +104,7 @@ model RolePermission {
   id         String  @id @default(cuid())
   guildId    String  @default("")
   role       String // admin | manager | viewer
-  permission String // e.g. "users.write", "billing.read"
+  permission String // e.g. "users.write", "cases.read"
   allowed    Boolean @default(true)
 
   @@unique([guildId, role, permission])
@@ -367,5 +364,3 @@ model AppSetting {
   value     String
   updatedAt DateTime @updatedAt
 }
-
-// (rest of schema remains unchanged — truncated here for brevity in this response)

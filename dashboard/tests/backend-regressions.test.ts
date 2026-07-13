@@ -1,0 +1,302 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import test from 'node:test'
+
+import { safeReturnPath } from '../src/lib/auth'
+import { parseListQuery } from '../src/lib/list-query'
+import { updateUserSchema } from '../src/lib/validation'
+import {
+  dashboardConfigPatchSchema,
+  DEFAULT_DASHBOARD_CONFIG,
+  DEFAULT_TABLE_COLUMNS,
+  mergeConfig,
+} from '../src/lib/dashboard-config'
+import {
+  automodDefinition,
+  displayAutomodAction,
+  normalizeAutomodRuleId,
+  parseAutomodPattern,
+  parseAutomodPolicy,
+  serializeAutomodPattern,
+} from '../src/lib/automod-contract'
+import {
+  buildReportArtifact,
+  neutralizeSpreadsheetFormula,
+  reportRowsToCsv,
+} from '../src/lib/report-formatters'
+import { isDiscordSnowflake, moduleDefinition, moduleEnabled } from '../src/lib/modules-contract'
+import {
+  legacyThresholdSnapshot,
+  moderationAutopunishRulesFromSettings,
+  parseModerationAutopunishRules,
+} from '../src/lib/moderation-contract'
+import { DEFAULT_ROLE_MATRIX } from '../src/lib/rbac'
+
+test('safeReturnPath preserves local paths and rejects open-redirect forms', () => {
+  assert.equal(safeReturnPath('/dashboard/cases?page=2#open'), '/dashboard/cases?page=2#open')
+  assert.equal(safeReturnPath('https://attacker.example/steal'), '/servers')
+  assert.equal(safeReturnPath('//attacker.example/steal'), '/servers')
+  assert.equal(safeReturnPath('/\\attacker.example/steal'), '/servers')
+  assert.equal(safeReturnPath('/dashboard\nLocation: https://attacker.example'), '/servers')
+  assert.equal(safeReturnPath(null, '/dashboard'), '/dashboard')
+})
+
+test('parseListQuery accepts only finite positive integers and caps page size', () => {
+  const valid = parseListQuery(new URL('https://dashboard.test/api?page=4&pageSize=250'), {
+    maxPageSize: 100,
+  })
+  assert.equal(valid.page, 4)
+  assert.equal(valid.pageSize, 100)
+
+  for (const value of ['0', '-2', '1.5', 'NaN', 'Infinity', '1e309', '']) {
+    const parsed = parseListQuery(
+      new URL(`https://dashboard.test/api?page=${encodeURIComponent(value)}&pageSize=${encodeURIComponent(value)}`),
+    )
+    assert.equal(parsed.page, 1, `page should reject ${JSON.stringify(value)}`)
+    assert.equal(parsed.pageSize, 10, `pageSize should reject ${JSON.stringify(value)}`)
+  }
+})
+
+test('dashboard config input is strict and nested preferences merge onto defaults', () => {
+  assert.throws(() => dashboardConfigPatchSchema.parse({ theme: 'dark', unexpected: true }))
+  assert.throws(() => dashboardConfigPatchSchema.parse({
+    notifications: { security: { push: false, unexpected: true } },
+  }))
+  assert.throws(() => dashboardConfigPatchSchema.parse({
+    defaultLandingPage: '//attacker.example',
+  }))
+
+  const patch = dashboardConfigPatchSchema.parse({
+    theme: 'dark',
+    tableColumns: { reports: ['name', 'status'] },
+    notifications: { security: { push: false } },
+  })
+  const merged = mergeConfig(patch)
+
+  assert.equal(merged.theme, 'dark')
+  assert.deepEqual(merged.tableColumns.reports, ['name', 'status'])
+  assert.deepEqual(merged.tableColumns.members, DEFAULT_TABLE_COLUMNS.members)
+  assert.deepEqual(merged.notifications.security, {
+    ...DEFAULT_DASHBOARD_CONFIG.notifications.security,
+    push: false,
+  })
+  assert.deepEqual(merged.notifications.billing, DEFAULT_DASHBOARD_CONFIG.notifications.billing)
+})
+
+test('AutoMod aliases resolve to canonical rules and policies normalize actions', () => {
+  assert.equal(normalizeAutomodRuleId(' Keywords '), 'badwords')
+  assert.equal(normalizeAutomodRuleId('MENTION_SPAM'), 'mentions')
+  assert.equal(normalizeAutomodRuleId('fast_message'), 'fast_messages')
+  assert.equal(normalizeAutomodRuleId('phishing'), 'scams')
+  assert.equal(normalizeAutomodRuleId('not-a-rule'), null)
+
+  const timeout = parseAutomodPolicy({ action: 'mute', duration: 20, delete: false })
+  assert.deepEqual(timeout, { action: 'timeout', delete: false, duration: 60 })
+  assert.equal(displayAutomodAction(timeout), 'timeout')
+
+  const deletePolicy = parseAutomodPolicy('delete')
+  assert.deepEqual(deletePolicy, { action: 'log', delete: true })
+  assert.equal(displayAutomodAction(deletePolicy), 'delete')
+  assert.deepEqual(parseAutomodPolicy('none'), { action: 'none', delete: false })
+  assert.deepEqual(parseAutomodPolicy('unsupported'), { action: 'warn', delete: true })
+})
+
+test('workspace role updates cannot mutate a shared global identity', () => {
+  assert.deepEqual(updateUserSchema.parse({ role: 'manager', status: 'active' }), {
+    role: 'manager',
+    status: 'active',
+  })
+  assert.throws(() => updateUserSchema.parse({ name: 'Cross-tenant rename' }))
+  assert.throws(() => updateUserSchema.parse({ title: 'Cross-tenant title' }))
+})
+
+test('AutoMod patterns parse canonical list and bounded integer values', () => {
+  const blockedWords = automodDefinition('blocked_words')
+  const spam = automodDefinition('spam')
+  assert.ok(blockedWords)
+  assert.ok(spam)
+
+  const words = parseAutomodPattern(blockedWords, ' scam, phishing, , @everyone ')
+  assert.deepEqual(words, ['scam', 'phishing', '@everyone'])
+  assert.equal(serializeAutomodPattern(blockedWords, words), 'scam, phishing, @everyone')
+
+  assert.equal(parseAutomodPattern(spam, '7'), 7)
+  assert.throws(() => parseAutomodPattern(spam, '1'))
+  assert.throws(() => parseAutomodPattern(spam, '2.5'))
+  assert.throws(() => parseAutomodPattern(spam, '9007199254740992'))
+})
+
+test('CSV output neutralizes spreadsheet formulas without changing ordinary values', () => {
+  const dangerous = ['=2+2', '+SUM(A1:A2)', '-1+2', '@cmd', ' \t=hidden']
+  for (const value of dangerous) {
+    assert.equal(neutralizeSpreadsheetFormula(value), `'${value}`)
+  }
+  assert.equal(neutralizeSpreadsheetFormula('safe value'), 'safe value')
+  assert.equal(neutralizeSpreadsheetFormula(42), 42)
+
+  const csv = reportRowsToCsv([
+    { member: '=2+2', note: 'safe value' },
+    { member: 'ordinary', note: '+SUM(A1:A2)' },
+  ])
+  assert.equal(csv, "member,note\r\n'=2+2,safe value\r\nordinary,'+SUM(A1:A2)\r\n")
+})
+
+test('report artifacts expose the expected signatures, extensions, and content types', async () => {
+  const rows = [{ member: '=2+2', action: 'warn', count: 3 }]
+
+  const csv = await buildReportArtifact('csv', 'Moderation report', rows)
+  assert.equal(csv.extension, 'csv')
+  assert.equal(csv.contentType, 'text/csv; charset=utf-8')
+  assert.match(csv.body.toString('utf8'), /^member,action,count\r\n'=2\+2,warn,3\r\n$/)
+
+  const json = await buildReportArtifact('json', 'Moderation report', rows)
+  assert.equal(json.extension, 'json')
+  assert.equal(json.contentType, 'application/json; charset=utf-8')
+  assert.deepEqual(JSON.parse(json.body.toString('utf8')), rows)
+
+  const pdf = await buildReportArtifact('pdf', 'Moderation report', rows)
+  assert.equal(pdf.extension, 'pdf')
+  assert.equal(pdf.contentType, 'application/pdf')
+  assert.equal(pdf.body.subarray(0, 5).toString('ascii'), '%PDF-')
+
+  const xlsx = await buildReportArtifact('xlsx', 'Moderation report', rows)
+  assert.equal(xlsx.extension, 'xlsx')
+  assert.equal(
+    xlsx.contentType,
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  )
+  assert.deepEqual([...xlsx.body.subarray(0, 4)], [0x50, 0x4b, 0x03, 0x04])
+})
+
+test('module defaults and configured keyless states match bot runtime behavior', () => {
+  const automod = moduleDefinition('automod')
+  const moderation = moduleDefinition('moderation')
+  const verification = moduleDefinition('verification')
+  const logging = moduleDefinition('logging')
+  const welcome = moduleDefinition('welcome')
+  const autoroles = moduleDefinition('autoroles')
+  assert.ok(automod && moderation && verification && logging && welcome && autoroles)
+
+  assert.equal(moduleEnabled({}, automod), true)
+  assert.equal(moduleEnabled({}, moderation), true)
+  assert.equal(moduleEnabled({}, verification), false)
+  assert.equal(moduleEnabled({}, logging), true)
+  assert.equal(moduleEnabled({}, welcome), false)
+  assert.equal(moduleEnabled({ welcome_channel: '123456789012345' }, welcome), true)
+  assert.equal(moduleEnabled({}, autoroles), false)
+  assert.equal(moduleEnabled({ auto_role: '123456789012345' }, autoroles), true)
+  assert.equal(moduleEnabled({ automod_enabled: false }, automod), false)
+  assert.equal(moduleEnabled({ modules: { automod: { enabled: false } } }, automod), false)
+  assert.equal(moduleDefinition('afk_detection'), null)
+  assert.equal(moduleDefinition('warn_thresholds'), null)
+  assert.equal(moderation.special, 'moderation')
+  assert.ok(moderation.fields.some((field) => field.key === 'moderation_autopunish_rules'))
+  assert.equal(isDiscordSnowflake('123456789012345678'), true)
+  assert.equal(isDiscordSnowflake(123456789012345678), false)
+  assert.equal(isDiscordSnowflake('9223372036854775808'), false)
+  assert.equal(isDiscordSnowflake('12345678901234'), false)
+})
+
+test('read-only workspace roles cannot mutate module configuration', () => {
+  assert.equal(DEFAULT_ROLE_MATRIX.viewer.includes('settings.read'), true)
+  assert.equal(DEFAULT_ROLE_MATRIX.viewer.includes('config.write'), false)
+  assert.equal(DEFAULT_ROLE_MATRIX.manager.includes('config.write'), true)
+  assert.equal(DEFAULT_ROLE_MATRIX.admin.includes('config.write'), true)
+})
+
+test('moderation autopunish rules are strict, sorted, and legacy compatible', () => {
+  assert.deepEqual(parseModerationAutopunishRules([
+    { warnings: 7, action: 'ban', durationMinutes: null },
+    { warnings: 3, action: 'mute', durationMinutes: 30 },
+    { warnings: 5, action: 'kick', durationMinutes: null },
+  ]), [
+    { warnings: 3, action: 'timeout', durationMinutes: 30 },
+    { warnings: 5, action: 'kick', durationMinutes: null },
+    { warnings: 7, action: 'ban', durationMinutes: null },
+  ])
+  assert.throws(() => parseModerationAutopunishRules([
+    { warnings: 3, action: 'timeout', durationMinutes: 0 },
+  ]), /duration/)
+  assert.throws(() => parseModerationAutopunishRules([
+    { warnings: 3, action: 'timeout', durationMinutes: 30 },
+    { warnings: 3, action: 'kick', durationMinutes: null },
+  ]), /unique/)
+  assert.throws(() => parseModerationAutopunishRules([
+    { warnings: 3, action: 'ban', durationMinutes: null },
+    { warnings: 5, action: 'kick', durationMinutes: null },
+  ]), /less severe/)
+
+  const legacy = moderationAutopunishRulesFromSettings({
+    warn_threshold_mute: 2,
+    warn_mute_duration: 1800,
+    warn_threshold_kick: 4,
+    warn_threshold_ban: 6,
+  })
+  assert.deepEqual(legacy, [
+    { warnings: 2, action: 'timeout', durationMinutes: 30 },
+    { warnings: 4, action: 'kick', durationMinutes: null },
+    { warnings: 6, action: 'ban', durationMinutes: null },
+  ])
+  assert.deepEqual(legacyThresholdSnapshot(legacy), {
+    warn_thresholds_enabled: true,
+    warn_threshold_mute: 2,
+    warn_mute_duration: 1800,
+    warn_threshold_kick: 4,
+    warn_threshold_ban: 6,
+  })
+  assert.deepEqual(moderationAutopunishRulesFromSettings({ moderation_autopunish_rules: [] }), [])
+  assert.deepEqual(moderationAutopunishRulesFromSettings({
+    warn_thresholds_enabled: false,
+    warn_threshold_mute: 3,
+    warn_threshold_kick: 5,
+    warn_threshold_ban: 7,
+  }), [])
+
+  const logging = moduleDefinition('logging')
+  assert.ok(logging)
+  assert.equal(logging.fields.some((field) => field.key === 'log_channel_mod'), false)
+})
+
+test('production SQL and standalone deployment match the bot runtime contracts', () => {
+  const repo = path.resolve(process.cwd(), '..')
+  const moderation = readFileSync(path.join(process.cwd(), 'src/lib/moderation-service.ts'), 'utf8')
+  const appeals = readFileSync(path.join(process.cwd(), 'src/lib/appeals-service.ts'), 'utf8')
+  const cases = readFileSync(path.join(process.cwd(), 'src/app/api/cases/route.ts'), 'utf8')
+  const botSettings = readFileSync(path.join(process.cwd(), 'src/lib/bot-settings.ts'), 'utf8')
+  const discord = readFileSync(path.join(process.cwd(), 'src/lib/discord.ts'), 'utf8')
+  const guildResources = readFileSync(path.join(process.cwd(), 'src/app/api/guilds/resources/route.ts'), 'utf8')
+  const modulesService = readFileSync(path.join(process.cwd(), 'src/lib/modules-service.ts'), 'utf8')
+  const serverGrid = readFileSync(path.join(process.cwd(), 'src/components/servers/server-grid.tsx'), 'utf8')
+  const toast = readFileSync(path.join(process.cwd(), 'src/components/ui/toast.tsx'), 'utf8')
+  const deploy = readFileSync(path.join(repo, 'scripts/vps_deploy.sh'), 'utf8')
+  const ecosystem = readFileSync(path.join(repo, 'ecosystem.config.cjs'), 'utf8')
+  const dockerfile = readFileSync(path.join(repo, 'Dockerfile'), 'utf8')
+
+  assert.doesNotMatch(moderation, /\b(?:TRUE|FALSE)\b/)
+  assert.doesNotMatch(appeals, /active\s*=\s*(?:TRUE|FALSE)/)
+  assert.doesNotMatch(cases, /active\s*=\s*(?:TRUE|FALSE)/)
+  assert.match(deploy, /cp -a \.next\/static \.next\/standalone\/\.next\//)
+  assert.match(deploy, /cp -a public \.next\/standalone\//)
+  assert.match(deploy, /rm -f \.next\/standalone\/\.env/)
+  assert.doesNotMatch(ecosystem, /dashboard\/node_modules\/dotenv/)
+  assert.match(dockerfile, /npx prisma migrate deploy/)
+  assert.match(botSettings, /jsonb_typeof\(entry\.value\) = 'number'/)
+  assert.match(botSettings, /to_jsonb\(entry\.value #>> '\{\}'\)/)
+  assert.match(discord, /TRANSIENT_AUTHORITY_GRACE_MS = 2 \* 60_000/)
+  assert.match(discord, /error instanceof DiscordTemporaryError/)
+  assert.match(discord, /verifiedAt: \{ gte:/)
+  assert.match(discord, /\/guilds\/\$\{guildId\}\/roles/)
+  assert.match(discord, /\/guilds\/\$\{guildId\}\/channels/)
+  assert.match(discord, /\/users\/@me\/channels/)
+  assert.match(discord, /preserveBanMessages === false \? 86_400 : 0/)
+  assert.match(guildResources, /requireUser\('settings\.read'\)/)
+  assert.match(guildResources, /guard\.selectedGuildId!/)
+  assert.match(modulesService, /parseModerationAutopunishRules/)
+  assert.match(modulesService, /legacyThresholdSnapshot/)
+  assert.match(modulesService, /LEGACY_MODERATION_ROLE_KEYS/)
+  assert.match(modulesService, /changes\.log_channel_mod = changes\.mod_log_channel/)
+  assert.match(serverGrid, /window\.location\.assign\('\/dashboard\/modules'\)/)
+  assert.doesNotMatch(serverGrid, /router\.push\('\/dashboard'\)[\s\S]{0,80}router\.refresh\(\)/)
+  assert.match(toast, /createClientId\('toast'\)/)
+})

@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Avatar } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ErrorState } from '@/components/ui/empty-state'
 import { useToast } from '@/components/ui/toast'
 import { useConfigStore } from '@/lib/store'
 import { ACCENT_COLORS } from '@/lib/dashboard-config'
@@ -27,16 +28,45 @@ type Profile = {
 
 const TIMEZONES = ['UTC', 'America/New_York', 'America/Los_Angeles', 'Europe/London', 'Europe/Berlin', 'Asia/Kolkata', 'Asia/Tokyo', 'Australia/Sydney']
 
+async function requestProfile(): Promise<Profile> {
+  const response = await fetch('/api/account/profile', { cache: 'no-store' })
+  const body = await response.json().catch(() => ({}))
+  if (!response.ok || !body.profile) throw new Error(body.error ?? 'Profile data is unavailable.')
+  return body.profile as Profile
+}
+
 export default function ProfileSettingsPage() {
   const toast = useToast()
   const [profile, setProfile] = useState<Profile | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState('')
   const [busy, setBusy] = useState(false)
 
+  async function loadProfile() {
+    setLoading(true)
+    setLoadError('')
+    try {
+      setProfile(await requestProfile())
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Profile data is unavailable.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
-    fetch('/api/account/profile')
-      .then((r) => r.json())
-      .then((d) => setProfile(d.profile))
-      .catch(() => setProfile(null))
+    let cancelled = false
+    void requestProfile()
+      .then((nextProfile) => {
+        if (!cancelled) setProfile(nextProfile)
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setLoadError(error instanceof Error ? error.message : 'Profile data is unavailable.')
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => { cancelled = true }
   }, [])
 
   async function save() {
@@ -68,7 +98,15 @@ export default function ProfileSettingsPage() {
     }
   }
 
-  if (!profile) {
+  if (loadError && !profile) {
+    return (
+      <SettingsCard title="Profile" description="Update your personal information.">
+        <ErrorState description={loadError} onRetry={loadProfile} />
+      </SettingsCard>
+    )
+  }
+
+  if (loading || !profile) {
     return (
       <SettingsCard title="Profile" description="Update your personal information.">
         <div className="space-y-4">

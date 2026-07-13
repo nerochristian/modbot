@@ -6,7 +6,13 @@ import logging
 import json
 import re
 from config import Config
-from utils.checks import is_bot_owner_id
+from utils.checks import (
+    admin_predicate,
+    is_bot_owner_id,
+    moderator_predicate,
+    senior_mod_predicate,
+)
+from utils.moderation_settings import moderation_bool
 from utils.server_setup import module_enabled
 
 # Mixins
@@ -37,22 +43,30 @@ class Moderation(
 
     async def _register_top_level_commands(self):
         """Register all commands as top-level commands"""
-        def cmd(name: str, desc: str, callback):
+        checks = {
+            "mod": moderator_predicate,
+            "senior": senior_mod_predicate,
+            "admin": admin_predicate,
+        }
+
+        def cmd(name: str, desc: str, callback, access: str | None = None):
             command = app_commands.Command(name=name, description=desc, callback=callback)
+            if access:
+                command.add_check(checks[access])
             self._slash_commands.append(command)
             self.bot.tree.add_command(command)
             return command
 
         # Chat Moderation
-        cmd("lock", "Lock a channel", self.lock_slash)
-        cmd("unlock", "Unlock a channel", self.unlock_slash)
-        cmd("slowmode", "Set channel slowmode", self.slowmode_slash)
-        cmd("glock", "Allow only specific role to talk", self.glock_slash)
-        cmd("gunlock", "Remove glock restriction", self.gunlock_slash)
-        cmd("lockdown", "Lock all channels", self.lockdown_slash)
-        cmd("unlockdown", "Unlock all channels", self.unlockdown_slash)
-        cmd("nuke", "Clone and delete channel", self.nuke_slash)
-        cmd("purge", "Bulk delete messages", self.purge_slash)
+        cmd("lock", "Lock a channel", self.lock_slash, "mod")
+        cmd("unlock", "Unlock a channel", self.unlock_slash, "mod")
+        cmd("slowmode", "Set channel slowmode", self.slowmode_slash, "mod")
+        cmd("glock", "Allow only specific role to talk", self.glock_slash, "mod")
+        cmd("gunlock", "Remove glock restriction", self.gunlock_slash, "mod")
+        cmd("lockdown", "Lock all channels", self.lockdown_slash, "admin")
+        cmd("unlockdown", "Unlock all channels", self.unlockdown_slash, "admin")
+        cmd("nuke", "Clone and delete channel", self.nuke_slash, "admin")
+        cmd("purge", "Bulk delete messages", self.purge_slash, "mod")
 
         cleanup_group = app_commands.Group(
             name="cleanup",
@@ -65,9 +79,9 @@ class Moderation(
             ("images", "Delete messages with images", self.purgeimages_slash),
             ("links", "Delete messages with links", self.purgelinks_slash),
         ):
-            cleanup_group.add_command(
-                app_commands.Command(name=name, description=description, callback=callback)
-            )
+            cleanup_command = app_commands.Command(name=name, description=description, callback=callback)
+            cleanup_command.add_check(moderator_predicate)
+            cleanup_group.add_command(cleanup_command)
         self._slash_commands.append(cleanup_group)
         self.bot.tree.add_command(cleanup_group)
 
@@ -77,41 +91,41 @@ class Moderation(
 
 
         # Member Management
-        cmd("kick", "Kick a user", self.kick_slash)
-        cmd("ban", "Ban a user", self.ban_slash)
-        cmd("unban", "Unban a user", self.unban_slash)
-        cmd("softban", "Softban a user", self.softban_slash)
-        cmd("tempban", "Temporarily ban a user", self.tempban_slash)
-        cmd("mute", "Mute/timeout a user", self.mute_slash)
-        cmd("unmute", "Unmute a user", self.unmute_slash)
-        cmd("timeout", "Timeout a user", self.timeout_slash)
-        cmd("untimeout", "Remove timeout", self.untimeout_slash)
-        cmd("rename", "Change nickname", self.rename_slash)
-        cmd("setnick", "Set nickname", self.setnick_slash)
-        cmd("quarantine", "Quarantine a user", self.quarantine_slash)
-        cmd("unquarantine", "Unquarantine a user", self.unquarantine_slash)
+        cmd("kick", "Kick a user", self.kick_slash, "mod")
+        cmd("ban", "Ban a user", self.ban_slash, "senior")
+        cmd("unban", "Unban a user", self.unban_slash, "senior")
+        cmd("softban", "Softban a user", self.softban_slash, "mod")
+        cmd("tempban", "Temporarily ban a user", self.tempban_slash, "mod")
+        cmd("mute", "Mute/timeout a user", self.mute_slash, "mod")
+        cmd("unmute", "Unmute a user", self.unmute_slash, "mod")
+        cmd("timeout", "Timeout a user", self.timeout_slash, "mod")
+        cmd("untimeout", "Remove timeout", self.untimeout_slash, "mod")
+        cmd("rename", "Change nickname", self.rename_slash, "mod")
+        cmd("setnick", "Set nickname", self.setnick_slash, "mod")
+        cmd("quarantine", "Quarantine a user", self.quarantine_slash, "senior")
+        cmd("unquarantine", "Unquarantine a user", self.unquarantine_slash, "mod")
 
         # Bulk Operations
-        cmd("massban", "Ban multiple users", self.massban_slash)
-        cmd("banlist", "View banned users", self.banlist_slash)
-        cmd("inrole", "List users with role", self.inrole_slash)
-        cmd("nicknameall", "Set nickname for all", self.nicknameall_slash)
-        cmd("resetnicks", "Reset all nicknames", self.resetnicks_slash)
+        cmd("massban", "Ban multiple users", self.massban_slash, "admin")
+        cmd("banlist", "View banned users", self.banlist_slash, "mod")
+        cmd("inrole", "List users with role", self.inrole_slash, "mod")
+        cmd("nicknameall", "Set nickname for all", self.nicknameall_slash, "admin")
+        cmd("resetnicks", "Reset all nicknames", self.resetnicks_slash, "admin")
 
         # Warnings
-        cmd("warn", "Warn a user", self.warn_slash)
-        cmd("warnings", "View warnings", self.warnings_slash)
-        cmd("delwarn", "Delete a warning", self.delwarn_slash)
-        cmd("clearwarnings", "Clear all warnings", self.clearwarnings_slash)
+        cmd("warn", "Warn a user", self.warn_slash, "mod")
+        cmd("warnings", "View warnings", self.warnings_slash, "mod")
+        cmd("delwarn", "Delete a warning", self.delwarn_slash, "mod")
+        cmd("clearwarnings", "Clear all warnings", self.clearwarnings_slash, "mod")
 
         # Cases & History
-        cmd("case", "View a case", self.case_slash)
-        cmd("editcase", "Edit case reason", self.editcase_slash)
-        cmd("history", "View user history", self.history_slash)
-        cmd("modlogs", "View mod logs", self.modlogs_slash)
-        cmd("note", "Add a note", self.note_slash)
-        cmd("notes", "View notes", self.notes_slash)
-        cmd("modstats", "View mod statistics", self.modstats_slash)
+        cmd("case", "View a case", self.case_slash, "mod")
+        cmd("editcase", "Edit case reason", self.editcase_slash, "mod")
+        cmd("history", "View user history", self.history_slash, "mod")
+        cmd("modlogs", "View mod logs", self.modlogs_slash, "mod")
+        cmd("note", "Add a note", self.note_slash, "mod")
+        cmd("notes", "View notes", self.notes_slash, "mod")
+        cmd("modstats", "View mod statistics", self.modstats_slash, "mod")
 
         # Misc
         cmd("setwelcomebg", "Set custom welcome background image", self.setwelcomebg)
@@ -559,7 +573,17 @@ class Moderation(
                 # Can ban even if they left
                 try:
                     user = await self.bot.fetch_user(target_id)
-                    await guild.ban(user, reason=f"[Reply Action] {message.author}: {reason}")
+                    settings = await self.bot.db.get_settings(guild.id)
+                    preserve_messages = moderation_bool(
+                        settings,
+                        "moderation_preserve_ban_messages",
+                        True,
+                    )
+                    await guild.ban(
+                        user,
+                        reason=f"[Reply Action] {message.author}: {reason}",
+                        delete_message_days=0 if preserve_messages else 1,
+                    )
                     await message.reply(
                         embed=discord.Embed(
                             title="🔨 User Banned",

@@ -5,10 +5,8 @@ import { ShieldCheck, Gavel, Clock, Ban, AlertTriangle, Eye, CornerDownLeft } fr
 import { TickMeter } from '@/components/ui/badge'
 
 /**
- * Command demo — interactive. Ping a member and Docket pulls up their real
- * action history: standing, risk, and a timeline of every moderation action on
- * record. Click a member chip (or the composer types one out on first load) to
- * run the lookup. Backed by a local roster so it works with no live backend.
+ * Interactive product preview backed by an explicitly fictional local roster.
+ * Authenticated workspaces use the live guild-scoped members and case APIs.
  */
 
 type ActionKind = 'ban' | 'mute' | 'warn' | 'watch' | 'note' | 'unmute'
@@ -182,7 +180,7 @@ export function CommandDemo() {
       {/* Channel header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
         <span className="font-mono text-[0.6875rem] text-muted-2">#mod-commands</span>
-        <span className="font-mono text-[0.625rem] uppercase tracking-[0.16em] text-accent">Docket · online</span>
+        <span className="font-mono text-[0.625rem] uppercase tracking-[0.16em] text-accent">Preview · online</span>
       </div>
 
       <div className="min-h-[360px] space-y-4 p-4">

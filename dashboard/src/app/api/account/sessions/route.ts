@@ -1,6 +1,6 @@
 import { cookies } from 'next/headers'
 import { prisma } from '@/lib/prisma'
-import { requireUser, handleError, ok } from '@/lib/api'
+import { requireMutation, requireUser, handleError, ok } from '@/lib/api'
 import { SESSION_COOKIE, verifySession } from '@/lib/auth'
 import { revokeAllSessions } from '@/lib/auth-server'
 
@@ -30,9 +30,9 @@ export async function GET() {
 }
 
 // DELETE — sign out of all other devices.
-export async function DELETE() {
+export async function DELETE(request: Request) {
   try {
-    const guard = await requireUser()
+    const guard = await requireMutation(request)
     if (guard instanceof Response) return guard
     const user = guard
 

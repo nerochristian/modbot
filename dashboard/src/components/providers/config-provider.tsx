@@ -3,6 +3,7 @@
 import { useEffect, useRef } from 'react'
 import { useConfigStore, type SessionUser } from '@/lib/store'
 import type { DashboardConfig } from '@/lib/dashboard-config'
+import { useToast } from '@/components/ui/toast'
 
 /**
  * Hydrates the config store from server-provided data and persists subsequent
@@ -18,11 +19,17 @@ export function ConfigProvider({
   user: SessionUser
   children: React.ReactNode
 }) {
+  const toast = useToast()
+  const toastRef = useRef(toast)
   const hydrate = useConfigStore((s) => s.hydrate)
   const savedAt = useConfigStore((s) => s.savedAt)
   const configState = useConfigStore((s) => s.config)
   const firstSave = useRef(true)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    toastRef.current = toast
+  }, [toast])
 
   // Hydrate once on mount.
   useEffect(() => {
@@ -50,12 +57,15 @@ export function ConfigProvider({
       firstSave.current = false
     }
     if (timer.current) clearTimeout(timer.current)
-    timer.current = setTimeout(() => {
-      fetch('/api/config', {
+    timer.current = setTimeout(async () => {
+      const response = await fetch('/api/config', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(configState),
-      }).catch(() => undefined)
+      }).catch(() => null)
+      if (!response?.ok) {
+        toastRef.current.error('Preferences were not saved', 'Check your connection and try the change again.')
+      }
     }, 600)
     return () => {
       if (timer.current) clearTimeout(timer.current)

@@ -9,12 +9,59 @@ from typing import Optional, Union
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_mod, is_admin, is_bot_owner_id
+from utils.moderation_settings import moderation_id_set
 from utils.time_parser import parse_time
 from utils.transcript import EphemeralTranscriptView, generate_html_transcript
 from utils.status_emojis import get_app_emoji
 
 class ChatCommands:
     NUKE_SOURCE_URL = "https://tenor.com/view/explosion-mushroom-cloud-atomic-bomb-bomb-boom-gif-4464831"
+    _LOCKDOWN_RESTORE_KEY = "moderation_lockdown_restore"
+
+    @staticmethod
+    def _lockdown_restore_state(settings: dict) -> dict[int, Optional[bool]]:
+        raw = settings.get(ChatCommands._LOCKDOWN_RESTORE_KEY)
+        if not isinstance(raw, list):
+            return {}
+
+        state: dict[int, Optional[bool]] = {}
+        for entry in raw:
+            if not isinstance(entry, dict):
+                continue
+            try:
+                channel_id = int(entry.get("channel_id"))
+            except (TypeError, ValueError, OverflowError):
+                continue
+            send_messages = entry.get("send_messages")
+            if channel_id > 0 and send_messages in (True, False, None):
+                state[channel_id] = send_messages
+        return state
+
+    @staticmethod
+    def _serialize_lockdown_restore_state(
+        state: dict[int, Optional[bool]],
+    ) -> list[dict[str, object]]:
+        return [
+            {
+                "channel_id": str(channel_id),
+                "send_messages": state[channel_id],
+            }
+            for channel_id in sorted(state)
+        ]
+
+    @staticmethod
+    def _configured_lockdown_channels(
+        guild: discord.Guild,
+        settings: dict,
+    ) -> list[discord.TextChannel]:
+        configured_ids = moderation_id_set(settings, "lockdown_channels")
+        if not configured_ids:
+            return list(guild.text_channels)
+        return [
+            channel
+            for channel in guild.text_channels
+            if channel.id in configured_ids
+        ]
 
     @staticmethod
     def _has_reason(reason: Optional[str]) -> bool:
@@ -183,21 +230,57 @@ class ChatCommands:
         author = source.user if isinstance(source, discord.Interaction) else source.author
         if isinstance(source, discord.Interaction):
             await source.response.defer()
-        
+
+        settings = await self.bot.db.get_settings(source.guild.id)
+        target_channels = self._configured_lockdown_channels(source.guild, settings)
+        restore_state = self._lockdown_restore_state(settings)
         locked = []
         failed = []
-        
-        for channel in source.guild.text_channels:
+        unchanged = []
+        pending: list[discord.TextChannel] = []
+        newly_recorded: set[int] = set()
+
+        for channel in target_channels:
+            overwrite = channel.overwrites_for(source.guild.default_role)
+            if overwrite.send_messages is False:
+                unchanged.append(channel.mention)
+                continue
+            if channel.id not in restore_state:
+                restore_state[channel.id] = overwrite.send_messages
+                newly_recorded.add(channel.id)
+            pending.append(channel)
+
+        # Persist the exact pre-lockdown state before changing Discord. If the
+        # process stops midway, unlockdown can still restore every touched channel.
+        if pending:
+            await self.bot.db.set_setting(
+                source.guild.id,
+                self._LOCKDOWN_RESTORE_KEY,
+                self._serialize_lockdown_restore_state(restore_state),
+            )
+
+        for channel in pending:
             try:
+                overwrite = channel.overwrites_for(source.guild.default_role)
+                overwrite.send_messages = False
                 await channel.set_permissions(
                     source.guild.default_role,
-                    send_messages=False,
-                    reason=f"[LOCKDOWN] {reason}"
+                    overwrite=overwrite,
+                    reason=f"[LOCKDOWN] {author}: {reason}",
                 )
                 locked.append(channel.mention)
             except (discord.Forbidden, discord.HTTPException):
                 failed.append(channel.mention)
-        
+                if channel.id in newly_recorded:
+                    restore_state.pop(channel.id, None)
+
+        if failed and newly_recorded:
+            await self.bot.db.set_setting(
+                source.guild.id,
+                self._LOCKDOWN_RESTORE_KEY,
+                self._serialize_lockdown_restore_state(restore_state),
+            )
+
         embed = discord.Embed(
             title=f"{get_app_emoji('error')} Server Lockdown Initiated",
             description=f"Locked **{len(locked)}** channels.",
@@ -207,7 +290,14 @@ class ChatCommands:
         
         embed.add_field(name="Reason", value=reason, inline=False)
         embed.add_field(name="Moderator", value=author.mention, inline=False)
-        
+
+        if unchanged:
+            embed.add_field(
+                name=f"Already locked ({len(unchanged)})",
+                value=", ".join(unchanged[:10]) + (f" ...and {len(unchanged) - 10} more" if len(unchanged) > 10 else ""),
+                inline=False,
+            )
+
         if failed:
             embed.add_field(
                 name=f"{get_app_emoji('error')} Failed ({len(failed)})",
@@ -215,28 +305,45 @@ class ChatCommands:
                 inline=False
             )
         
-        await self._respond(source, embed=embed)
+        await self._respond(source, embed=embed, delete_command_message=True)
         await self.log_action(source.guild, embed)
 
     async def _unlockdown_logic(self, source, reason: str = "Lockdown lifted"):
         author = source.user if isinstance(source, discord.Interaction) else source.author
         if isinstance(source, discord.Interaction):
             await source.response.defer()
-            
+
+        settings = await self.bot.db.get_settings(source.guild.id)
+        restore_state = self._lockdown_restore_state(settings)
         unlocked = []
         failed = []
-        
-        for channel in source.guild.text_channels:
+        missing = []
+
+        for channel_id, previous_send_messages in list(restore_state.items()):
+            channel = source.guild.get_channel(channel_id)
+            if not isinstance(channel, discord.TextChannel):
+                restore_state.pop(channel_id, None)
+                missing.append(str(channel_id))
+                continue
             try:
+                overwrite = channel.overwrites_for(source.guild.default_role)
+                overwrite.send_messages = previous_send_messages
                 await channel.set_permissions(
                     source.guild.default_role,
-                    send_messages=None,
-                    reason=f"[UNLOCKDOWN] {reason}"
+                    overwrite=None if overwrite.is_empty() else overwrite,
+                    reason=f"[UNLOCKDOWN] {author}: {reason}",
                 )
                 unlocked.append(channel.mention)
+                restore_state.pop(channel_id, None)
             except (discord.Forbidden, discord.HTTPException):
                 failed.append(channel.mention)
-        
+
+        await self.bot.db.set_setting(
+            source.guild.id,
+            self._LOCKDOWN_RESTORE_KEY,
+            self._serialize_lockdown_restore_state(restore_state),
+        )
+
         embed = discord.Embed(
             title=f"{get_app_emoji('success')} Lockdown Lifted",
             description=f"Unlocked **{len(unlocked)}** channels.",
@@ -245,7 +352,14 @@ class ChatCommands:
         )
         
         embed.add_field(name="Moderator", value=author.mention, inline=False)
-        
+
+        if missing:
+            embed.add_field(
+                name=f"Channels no longer available ({len(missing)})",
+                value=", ".join(f"`{channel_id}`" for channel_id in missing[:10]),
+                inline=False,
+            )
+
         if failed:
             embed.add_field(
                 name=f"{get_app_emoji('error')} Failed ({len(failed)})",
@@ -253,7 +367,7 @@ class ChatCommands:
                 inline=False
             )
         
-        await self._respond(source, embed=embed)
+        await self._respond(source, embed=embed, delete_command_message=True)
         await self.log_action(source.guild, embed)
 
     async def _nuke_logic(self, source, channel: discord.TextChannel = None, reason: str = "No reason provided"):

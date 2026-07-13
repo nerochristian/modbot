@@ -10,7 +10,10 @@ export async function GET(request: Request) {
     const guild = await getSelectedGuild()
     if (!guild) return Response.json({ error: 'Choose a connected server first' }, { status: 409 })
 
-    const range = (new URL(request.url).searchParams.get('range') as DateRange) || '30d'
+    const requestedRange = new URL(request.url).searchParams.get('range')
+    const range: DateRange = ['7d', '30d', '90d', '12m'].includes(requestedRange ?? '')
+      ? requestedRange as DateRange
+      : '30d'
     const data = await getRealOverview(guild, rangeDays(range))
     return ok({ range, ...data })
   } catch (error) {

@@ -1,6 +1,6 @@
 import { prisma } from '@/lib/prisma'
-import { requireUser, handleError, ok } from '@/lib/api'
-import { mergeConfig, type DashboardConfig } from '@/lib/dashboard-config'
+import { requireMutation, requireUser, handleError, ok } from '@/lib/api'
+import { dashboardConfigPatchSchema, mergeConfig, type DashboardConfig } from '@/lib/dashboard-config'
 import { parseJson } from '@/lib/json'
 
 export async function GET() {
@@ -15,12 +15,25 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    const guard = await requireUser('config.write')
+    const guard = await requireMutation(request)
     if (guard instanceof Response) return guard
     const user = guard
 
-    const body = (await request.json()) as Partial<DashboardConfig>
-    const merged = mergeConfig(body)
+    const patch = dashboardConfigPatchSchema.parse(await request.json())
+    const existing = await prisma.dashboardConfig.findUnique({ where: { userId: user.id } })
+    const current = existing
+      ? parseJson<Partial<DashboardConfig>>(existing.config, {})
+      : {}
+    const merged = mergeConfig({
+      ...current,
+      ...patch,
+      notifications: {
+        billing: { ...current.notifications?.billing, ...patch.notifications?.billing },
+        security: { ...current.notifications?.security, ...patch.notifications?.security },
+        product: { ...current.notifications?.product, ...patch.notifications?.product },
+        mentions: { ...current.notifications?.mentions, ...patch.notifications?.mentions },
+      } as DashboardConfig['notifications'],
+    })
 
     await prisma.dashboardConfig.upsert({
       where: { userId: user.id },

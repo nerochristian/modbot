@@ -137,18 +137,66 @@ export const DEFAULT_DASHBOARD_CONFIG: DashboardConfig = {
   },
 }
 
+const chartTypeSchema = z.enum(['line', 'area', 'bar'])
+const channelPreferencesSchema = z.object({
+  email: z.boolean().optional(),
+  push: z.boolean().optional(),
+  inApp: z.boolean().optional(),
+}).strict()
+
+/** Runtime contract for persisted dashboard preferences. */
+export const dashboardConfigPatchSchema = z.object({
+  theme: z.enum(['light', 'dark', 'system']).optional(),
+  accent: z.enum(ACCENT_COLORS.map((color) => color.key) as [string, ...string[]]).optional(),
+  density: z.enum(['comfortable', 'compact']).optional(),
+  sidebarCollapsed: z.boolean().optional(),
+  refreshInterval: z.union([z.literal(0), z.literal(15), z.literal(30), z.literal(60), z.literal(300)]).optional(),
+  defaultLandingPage: z.string()
+    .max(100)
+    .regex(/^\/dashboard(?:\/[a-z0-9-]+)*$/i, 'Choose a dashboard page')
+    .optional(),
+  exportFormat: z.enum(['csv', 'json']).optional(),
+  dateRange: z.enum(['7d', '30d', '90d', '12m']).optional(),
+  widgets: z.array(z.object({
+    key: z.string().min(1).max(60),
+    visible: z.boolean(),
+    order: z.number().int().min(0).max(100),
+    chartType: chartTypeSchema.optional(),
+  }).strict()).max(WIDGET_CATALOG.length).optional(),
+  tableColumns: z.record(
+    z.string().min(1).max(40),
+    z.array(z.string().min(1).max(40)).max(30),
+  ).optional(),
+  notifications: z.object({
+    billing: channelPreferencesSchema.optional(),
+    security: channelPreferencesSchema.optional(),
+    product: channelPreferencesSchema.optional(),
+    mentions: channelPreferencesSchema.optional(),
+  }).strict().optional(),
+}).strict()
+export type DashboardConfigPatch = z.infer<typeof dashboardConfigPatchSchema>
+
 /** Merge a stored (possibly partial/legacy) config onto current defaults. */
-export function mergeConfig(partial: Partial<DashboardConfig> | null | undefined): DashboardConfig {
+export function mergeConfig(
+  partial: Partial<DashboardConfig> | DashboardConfigPatch | null | undefined,
+): DashboardConfig {
   if (!partial) return structuredClone(DEFAULT_DASHBOARD_CONFIG)
+  const exportFormat: ExportFormat = partial.exportFormat === 'json' ? 'json' : 'csv'
   return {
     ...DEFAULT_DASHBOARD_CONFIG,
     ...partial,
+    exportFormat,
     widgets:
       partial.widgets && partial.widgets.length > 0
         ? reconcileWidgets(partial.widgets)
         : DEFAULT_DASHBOARD_CONFIG.widgets,
     tableColumns: { ...DEFAULT_TABLE_COLUMNS, ...(partial.tableColumns ?? {}) },
-    notifications: { ...DEFAULT_DASHBOARD_CONFIG.notifications, ...(partial.notifications ?? {}) },
+    notifications: {
+      billing: { ...DEFAULT_DASHBOARD_CONFIG.notifications.billing, ...partial.notifications?.billing },
+      security: { ...DEFAULT_DASHBOARD_CONFIG.notifications.security, ...partial.notifications?.security },
+      product: { ...DEFAULT_DASHBOARD_CONFIG.notifications.product, ...partial.notifications?.product },
+      mentions: { ...DEFAULT_DASHBOARD_CONFIG.notifications.mentions, ...partial.notifications?.mentions },
+    },
   }
 }
 
@@ -162,3 +210,4 @@ function reconcileWidgets(stored: WidgetPref[]): WidgetPref[] {
     )
   }).sort((a, b) => a.order - b.order)
 }
+import { z } from 'zod'

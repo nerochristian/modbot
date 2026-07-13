@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma'
  */
 
 export async function logActivity(params: {
+  guildId?: string
   userId?: string | null
   actorName: string
   action: string
@@ -14,6 +15,7 @@ export async function logActivity(params: {
 }): Promise<void> {
   await prisma.activityLog.create({
     data: {
+      guildId: params.guildId ?? '',
       userId: params.userId ?? null,
       actorName: params.actorName,
       action: params.action,
@@ -24,6 +26,7 @@ export async function logActivity(params: {
 }
 
 export async function logAudit(params: {
+  guildId?: string
   userId?: string | null
   actorName: string
   action: string
@@ -35,6 +38,7 @@ export async function logAudit(params: {
 }): Promise<void> {
   await prisma.auditLog.create({
     data: {
+      guildId: params.guildId ?? '',
       userId: params.userId ?? null,
       actorName: params.actorName,
       action: params.action,
@@ -48,6 +52,7 @@ export async function logAudit(params: {
 }
 
 export async function notify(params: {
+  guildId?: string
   userId: string
   type?: string
   level?: string
@@ -57,6 +62,7 @@ export async function notify(params: {
 }): Promise<void> {
   await prisma.notification.create({
     data: {
+      guildId: params.guildId ?? '',
       userId: params.userId,
       type: params.type ?? 'system',
       level: params.level ?? 'info',

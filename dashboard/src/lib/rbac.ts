@@ -32,8 +32,6 @@ export const PERMISSIONS = [
   'users.delete',
   'reports.read',
   'reports.write',
-  'billing.read',
-  'billing.write',
   'notifications.read',
   'activity.read',
   'audit.read',
@@ -56,7 +54,6 @@ export const PERMISSION_GROUPS: { label: string; permissions: Permission[] }[] =
   { label: 'Appeals', permissions: ['appeals.read', 'appeals.write'] },
   { label: 'Team', permissions: ['users.read', 'users.write', 'users.delete'] },
   { label: 'Reports', permissions: ['reports.read', 'reports.write'] },
-  { label: 'Premium', permissions: ['billing.read', 'billing.write'] },
   { label: 'Activity & Audit', permissions: ['notifications.read', 'activity.read', 'audit.read'] },
   { label: 'Settings', permissions: ['settings.read'] },
   {
@@ -77,11 +74,9 @@ const READ_ONLY: Permission[] = [
   'appeals.read',
   'users.read',
   'reports.read',
-  'billing.read',
   'notifications.read',
   'activity.read',
   'settings.read',
-  'config.write',
 ]
 
 export const DEFAULT_ROLE_MATRIX: Record<Role, Permission[]> = {
@@ -101,7 +96,6 @@ export const DEFAULT_ROLE_MATRIX: Record<Role, Permission[]> = {
     'users.write',
     'reports.read',
     'reports.write',
-    'billing.read',
     'notifications.read',
     'activity.read',
     'audit.read',

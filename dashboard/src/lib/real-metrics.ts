@@ -2,6 +2,8 @@ import 'server-only'
 
 import { botDatabaseHealthy, botQuery } from '@/lib/bot-db'
 import type { ManagedGuild } from '@/lib/discord'
+import { ensureDashboardBackendSchema } from '@/lib/bot-schema'
+import { listAutomodRules } from '@/lib/automod-service'
 
 type Kpi = { value: number; delta: number }
 type Point = { label: string; value: number }
@@ -134,6 +136,7 @@ export async function getRealAnalytics(guild: ManagedGuild, days: number) {
 }
 
 export async function getRealOverview(guild: ManagedGuild, days: number) {
+  await ensureDashboardBackendSchema()
   const analyticsPromise = getRealAnalytics(guild, days)
   const [
     analytics,
@@ -141,14 +144,15 @@ export async function getRealOverview(guild: ManagedGuild, days: number) {
     growthRows,
     infractionRows,
     watchlistRows,
-    ruleRows,
+    automodRules,
     activityRows,
     channelRows,
+    pendingAppealRows,
     databaseOk,
   ] = await Promise.all([
     analyticsPromise,
     botQuery<{ value: string }>(
-      'SELECT COUNT(*) AS value FROM cases WHERE guild_id = $1::bigint AND active = TRUE',
+      'SELECT COUNT(*) AS value FROM cases WHERE guild_id = $1::bigint AND active = 1',
       [guild.id],
     ),
     botQuery<{ label: string; joined: string; left: string }>(
@@ -192,13 +196,7 @@ export async function getRealOverview(guild: ManagedGuild, days: number) {
        ORDER BY risk.score DESC LIMIT 5`,
       [guild.id],
     ),
-    botQuery<{ rule: string; action: string; severity: string; hits: string }>(
-      `SELECT rule, MODE() WITHIN GROUP (ORDER BY action) AS action,
-         MODE() WITHIN GROUP (ORDER BY severity) AS severity, COUNT(*)::int AS hits
-       FROM automod_events WHERE guild_id = $1::bigint
-       GROUP BY rule ORDER BY hits DESC LIMIT 6`,
-      [guild.id],
-    ),
+    listAutomodRules(guild.id),
     botQuery<{ id: string; actor_name: string; action: string; target: string; created_at: Date }>(
       `SELECT 'case-' || id::text AS id, moderator_id::text AS actor_name,
          action, user_id::text AS target, created_at
@@ -210,6 +208,11 @@ export async function getRealOverview(guild: ManagedGuild, days: number) {
       `SELECT channel_id::text, COUNT(*)::int AS value FROM user_messages
        WHERE guild_id = $1::bigint AND timestamp >= NOW() - INTERVAL '30 days'
        GROUP BY channel_id ORDER BY value DESC LIMIT 6`,
+      [guild.id],
+    ),
+    botQuery<{ value: string }>(
+      `SELECT COUNT(*) AS value FROM dashboard_appeals
+       WHERE guild_id = $1::bigint AND status = 'pending'`,
       [guild.id],
     ),
     botDatabaseHealthy(),
@@ -229,7 +232,7 @@ export async function getRealOverview(guild: ManagedGuild, days: number) {
       actions: analytics.kpis.actions,
       openCases: { value: openCases, delta: 0 },
       automod: analytics.kpis.automodBlocks,
-      pendingAppeals: { value: 0, delta: 0 },
+      pendingAppeals: { value: number(pendingAppealRows[0]?.value), delta: 0 },
     },
     actionsSeries: analytics.series.actions,
     automodSeries: analytics.series.automodBlocks,
@@ -253,15 +256,7 @@ export async function getRealOverview(guild: ManagedGuild, days: number) {
         avatarColor: score >= 60 ? '#dc2f55' : '#c77700',
       }
     }),
-    topRules: ruleRows.map((row) => ({
-      id: row.rule,
-      name: row.rule.replace(/_/g, ' ').replace(/^\w/, (letter) => letter.toUpperCase()),
-      trigger: row.rule,
-      action: row.action,
-      severity: row.severity,
-      hits: number(row.hits),
-      enabled: true,
-    })),
+    topRules: [...automodRules.data].sort((a, b) => b.hits - a.hits).slice(0, 6),
     recentActivity: activityRows.map((row) => ({
       id: row.id,
       actorName: `Moderator ${row.actor_name}`,

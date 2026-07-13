@@ -15,6 +15,9 @@ open to everyone. This test fails if that ever regresses.
 import ast
 import pathlib
 
+from cogs.moderation.extensions.management import ManagementCommands
+from cogs.moderation.extensions.warnings import WarningCommands
+
 MANAGEMENT = (
     pathlib.Path(__file__).resolve().parent.parent
     / "cogs" / "moderation" / "extensions" / "management.py"
@@ -65,3 +68,23 @@ def test_all_destructive_logic_methods_authorize_actor():
         "these moderation helpers do not call can_moderate() and are reachable "
         f"from undecorated slash commands (permission hole): {sorted(unguarded)}"
     )
+
+
+def test_prefix_moderation_commands_have_real_command_checks():
+    for command in (
+        WarningCommands.mod_warn,
+        WarningCommands.mod_warnings,
+        WarningCommands.mod_delwarn,
+        WarningCommands.mod_clearwarnings,
+        ManagementCommands.kick_prefix,
+        ManagementCommands.ban_prefix,
+        ManagementCommands.mute_prefix,
+    ):
+        assert command.checks, f"{command.qualified_name} has no prefix authorization check"
+
+
+def test_dynamic_slash_registration_attaches_permission_checks():
+    moderation_init = MANAGEMENT.parent.parent / "__init__.py"
+    source = moderation_init.read_text(encoding="utf-8")
+    assert "command.add_check(checks[access])" in source
+    assert "cleanup_command.add_check(moderator_predicate)" in source

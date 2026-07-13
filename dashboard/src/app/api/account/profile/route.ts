@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma'
-import { requireUser, handleError, ok } from '@/lib/api'
+import { requireMutation, requireUser, handleError, ok } from '@/lib/api'
 import { updateProfileSchema } from '@/lib/validation'
 import { logActivity } from '@/lib/log'
 
@@ -23,12 +23,12 @@ export async function GET() {
     where: { id: guard.id },
     select: PROFILE_SELECT,
   })
-  return ok({ profile })
+  return ok({ profile: profile ? { ...profile, role: guard.role } : null })
 }
 
 export async function PATCH(request: Request) {
   try {
-    const guard = await requireUser()
+    const guard = await requireMutation(request)
     if (guard instanceof Response) return guard
     const user = guard
 
@@ -49,7 +49,12 @@ export async function PATCH(request: Request) {
         avatarColor: true,
       },
     })
-    await logActivity({ userId: user.id, actorName: updated.name, action: 'updated_profile' })
+    await logActivity({
+      guildId: user.selectedGuildId ?? undefined,
+      userId: user.id,
+      actorName: updated.name,
+      action: 'updated_profile',
+    })
     return ok(updated)
   } catch (error) {
     return handleError(error)

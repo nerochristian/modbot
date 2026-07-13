@@ -1,6 +1,6 @@
-import { apiError, handleError, ok, paginate, parseListQuery, requireUser } from '@/lib/api'
+import { handleError, ok, paginate, parseListQuery, requireUser } from '@/lib/api'
 import { botQuery } from '@/lib/bot-db'
-import { getSelectedGuild } from '@/lib/guild-context'
+import { ensureDashboardBackendSchema } from '@/lib/bot-schema'
 
 type ActivityRow = {
   id: string
@@ -14,10 +14,9 @@ export async function GET(request: Request) {
   try {
     const guard = await requireUser('activity.read')
     if (guard instanceof Response) return guard
-    const guild = await getSelectedGuild()
-    if (!guild) return apiError('Choose a connected server first', 409)
+    const guildId = guard.selectedGuildId!
+    await ensureDashboardBackendSchema()
     const query = parseListQuery(new URL(request.url), { defaultSort: 'createdAt', maxPageSize: 50 })
-    const search = `%${query.q}%`
     const base = `WITH activity AS (
       SELECT 'case-' || id::text AS id, 'Moderator ' || moderator_id::text AS actor_name,
         LOWER(action) AS action, user_id::text AS target, created_at
@@ -32,14 +31,33 @@ export async function GET(request: Request) {
       SELECT 'dashboard-' || id::text, COALESCE(NULLIF(user_name, ''), 'Dashboard'), action, target, created_at
       FROM dashboard_audit WHERE guild_id = $1::bigint
     )`
-    const filter = query.q
-      ? 'WHERE actor_name ILIKE $2 OR action ILIKE $2 OR target ILIKE $2'
-      : ''
-    const baseValues: unknown[] = query.q ? [guild.id, search] : [guild.id]
+    const conditions: string[] = []
+    const baseValues: unknown[] = [guildId]
+    if (query.q) {
+      baseValues.push(`%${query.q}%`)
+      conditions.push(`(actor_name ILIKE $${baseValues.length} OR action ILIKE $${baseValues.length} OR target ILIKE $${baseValues.length})`)
+    }
+    if (query.filters.actor) {
+      baseValues.push(query.filters.actor)
+      conditions.push(`actor_name = $${baseValues.length}`)
+    }
+    if (query.filters.action) {
+      baseValues.push(query.filters.action)
+      conditions.push(`action = $${baseValues.length}`)
+    }
+    const filter = conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''
+    const sorts: Record<string, string> = {
+      actorName: 'actor_name',
+      action: 'action',
+      target: 'target',
+      createdAt: 'created_at',
+    }
+    const sort = sorts[query.sort] ?? 'created_at'
+    const direction = query.order === 'asc' ? 'ASC' : 'DESC'
     const rowsValues = [...baseValues, query.pageSize, (query.page - 1) * query.pageSize]
     const [rows, totals] = await Promise.all([
       botQuery<ActivityRow>(
-        `${base} SELECT * FROM activity ${filter} ORDER BY created_at DESC
+        `${base} SELECT * FROM activity ${filter} ORDER BY ${sort} ${direction}
          LIMIT $${rowsValues.length - 1} OFFSET $${rowsValues.length}`,
         rowsValues,
       ),

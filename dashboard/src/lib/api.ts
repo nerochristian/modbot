@@ -1,7 +1,11 @@
 import { NextResponse } from 'next/server'
 import { ZodError } from 'zod'
-import { getCurrentUser, type CurrentUser } from '@/lib/session'
+import { getCurrentUser, refreshSelectedGuildAuthority, type CurrentUser } from '@/lib/session'
+import { DiscordReauthRequiredError, getManageableGuilds } from '@/lib/discord'
 import type { Permission } from '@/lib/rbac'
+
+export { paginate, parseListQuery } from '@/lib/list-query'
+export type { ListQuery, Paginated } from '@/lib/list-query'
 
 export function ok<T>(data: T, init?: ResponseInit) {
   return NextResponse.json(data, init)
@@ -15,6 +19,12 @@ export function apiError(message: string, status = 400, extra?: Record<string, u
   return NextResponse.json({ error: message, ...extra }, { status })
 }
 
+function discordAuthorityError(error: unknown): NextResponse {
+  return error instanceof DiscordReauthRequiredError
+    ? apiError('Discord authorization must be refreshed', 401)
+    : apiError('Discord is temporarily unavailable; try again shortly', 503)
+}
+
 /**
  * Guard for route handlers. Returns the authenticated user, or a Response to
  * return immediately. Optionally enforces a permission.
@@ -26,13 +36,20 @@ export function apiError(message: string, status = 400, extra?: Record<string, u
 export async function requireUser(
   permission?: Permission,
 ): Promise<CurrentUser | NextResponse> {
-  const user = await getCurrentUser()
+  let user = await getCurrentUser()
   if (!user) return apiError('Unauthorized', 401)
-  if (permission && !user.selectedGuildId) {
-    return apiError('Choose an authorized server workspace first', 409)
-  }
-  if (permission && !user.permissions.includes(permission)) {
-    return apiError('Forbidden', 403)
+  if (permission) {
+    if (!user.selectedGuildId) return apiError('Choose an authorized server workspace first', 409)
+    try {
+      // getManageableGuilds uses a short server-side cache and synchronizes
+      // Discord removals, role changes, OAuth revocation, and bot uninstalls.
+      await getManageableGuilds(user.id)
+    } catch (error) {
+      return discordAuthorityError(error)
+    }
+    user = await refreshSelectedGuildAuthority(user)
+    if (!user.selectedGuildId) return apiError('Server workspace access is no longer valid', 403)
+    if (!user.permissions.includes(permission)) return apiError('Forbidden', 403)
   }
   return user
 }
@@ -47,7 +64,21 @@ export async function requireMutation(
     const origin = request.headers.get('origin')
     let sameOrigin = false
     try {
-      sameOrigin = Boolean(origin) && new URL(origin as string).origin === new URL(request.url).origin
+      const allowedOrigins = new Set([new URL(request.url).origin])
+      for (const candidate of [
+        process.env.DASHBOARD_PUBLIC_URL,
+        process.env.FRONTEND_PUBLIC_URL,
+        process.env.NEXT_PUBLIC_APP_URL,
+        process.env.NEXT_PUBLIC_BASE_URL,
+      ]) {
+        if (!candidate) continue
+        try {
+          allowedOrigins.add(new URL(candidate).origin)
+        } catch {
+          // Invalid deployment URLs are ignored rather than weakening the check.
+        }
+      }
+      sameOrigin = Boolean(origin) && allowedOrigins.has(new URL(origin as string).origin)
     } catch {
       sameOrigin = false
     }
@@ -56,7 +87,18 @@ export async function requireMutation(
       return apiError('Cross-origin mutation rejected', 403)
     }
   }
-  return requireUser(permission)
+  const initial = await requireUser()
+  if (initial instanceof NextResponse || !permission) return initial
+  if (!initial.selectedGuildId) return apiError('Choose an authorized server workspace first', 409)
+  try {
+    await getManageableGuilds(initial.id, true)
+  } catch (error) {
+    return discordAuthorityError(error)
+  }
+  const user = await refreshSelectedGuildAuthority(initial)
+  if (!user.selectedGuildId) return apiError('Server workspace access is no longer valid', 403)
+  if (!user.permissions.includes(permission)) return apiError('Forbidden', 403)
+  return user
 }
 
 /** Translate common thrown errors into clean JSON responses. */
@@ -69,58 +111,4 @@ export function handleError(error: unknown) {
   }
   console.error(error)
   return apiError('Internal server error', 500)
-}
-
-export type ListQuery = {
-  page: number
-  pageSize: number
-  sort: string
-  order: 'asc' | 'desc'
-  q: string
-  filters: Record<string, string>
-}
-
-/**
- * Parse standard list query params for server-side pagination/sort/filter.
- * Recognized: page, pageSize, sort, order, q. Any `filter.<field>=value` pair
- * is collected into `filters`.
- */
-export function parseListQuery(
-  url: URL,
-  opts?: { defaultSort?: string; maxPageSize?: number },
-): ListQuery {
-  const sp = url.searchParams
-  const page = Math.max(1, Number(sp.get('page')) || 1)
-  const maxPageSize = opts?.maxPageSize ?? 100
-  const pageSize = Math.min(maxPageSize, Math.max(1, Number(sp.get('pageSize')) || 10))
-  const sort = sp.get('sort') || opts?.defaultSort || 'createdAt'
-  const order = sp.get('order') === 'asc' ? 'asc' : 'desc'
-  const q = (sp.get('q') || '').trim()
-
-  const filters: Record<string, string> = {}
-  for (const [key, value] of sp.entries()) {
-    if (key.startsWith('filter.') && value) {
-      filters[key.slice('filter.'.length)] = value
-    }
-  }
-
-  return { page, pageSize, sort, order, q, filters }
-}
-
-export type Paginated<T> = {
-  data: T[]
-  page: number
-  pageSize: number
-  total: number
-  totalPages: number
-}
-
-export function paginate<T>(data: T[], total: number, query: ListQuery): Paginated<T> {
-  return {
-    data,
-    page: query.page,
-    pageSize: query.pageSize,
-    total,
-    totalPages: Math.max(1, Math.ceil(total / query.pageSize)),
-  }
 }

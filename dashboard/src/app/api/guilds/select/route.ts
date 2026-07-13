@@ -1,13 +1,13 @@
 import { cookies } from 'next/headers'
-import { getCurrentUser } from '@/lib/session'
 import { getManageableGuilds } from '@/lib/discord'
 import { SELECTED_GUILD_COOKIE } from '@/lib/guild-context'
-import { handleError, ok } from '@/lib/api'
+import { handleError, ok, requireMutation } from '@/lib/api'
 import { secureCookies } from '@/lib/auth'
 
 export async function POST(request: Request) {
-  const user = await getCurrentUser()
-  if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 })
+  const guard = await requireMutation(request)
+  if (guard instanceof Response) return guard
+  const user = guard
   try {
     const body = (await request.json()) as { guildId?: unknown }
     const guildId = typeof body.guildId === 'string' ? body.guildId : ''
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     }
     const guilds = await getManageableGuilds(user.id, true)
     const guild = guilds.find((item) => item.id === guildId)
-    if (!guild) return Response.json({ error: 'You cannot manage this server' }, { status: 403 })
+    if (!guild) return Response.json({ error: 'You are not authorized for this server' }, { status: 403 })
     if (!guild.installed) return Response.json({ error: 'Add Docket to this server first' }, { status: 409 })
 
     const cookieStore = await cookies()

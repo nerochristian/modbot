@@ -54,6 +54,26 @@ async function initializeSchema(): Promise<void> {
     ON dashboard_appeals(guild_id, status, submitted_at DESC)
   `)
   await botQuery(`
+    CREATE TABLE IF NOT EXISTS dashboard_appeal_tokens (
+      id BIGSERIAL PRIMARY KEY,
+      token_hash TEXT NOT NULL UNIQUE,
+      guild_id BIGINT NOT NULL,
+      case_id BIGINT NOT NULL,
+      user_id BIGINT NOT NULL,
+      expires_at TIMESTAMP NOT NULL,
+      used_at TIMESTAMP,
+      appeal_id BIGINT,
+      delivery_status TEXT NOT NULL DEFAULT 'pending',
+      delivery_error TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE (guild_id, case_id)
+    )
+  `)
+  await botQuery(`
+    CREATE INDEX IF NOT EXISTS idx_dashboard_appeal_tokens_hash_active
+    ON dashboard_appeal_tokens(token_hash, expires_at, used_at)
+  `)
+  await botQuery(`
     CREATE TABLE IF NOT EXISTS dashboard_reports (
       id BIGSERIAL PRIMARY KEY,
       guild_id BIGINT NOT NULL,
@@ -83,6 +103,30 @@ async function initializeSchema(): Promise<void> {
   ]
   for (const definition of caseColumns) {
     await botQuery(`ALTER TABLE cases ${definition}`)
+  }
+  await botQuery(`
+    CREATE TABLE IF NOT EXISTS dashboard_schema_migrations (
+      key TEXT PRIMARY KEY,
+      applied_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `)
+  const backfill = await botQuery<{ key: string }>(`
+    INSERT INTO dashboard_schema_migrations (key)
+    VALUES ('20260712_case_severity_backfill')
+    ON CONFLICT (key) DO NOTHING
+    RETURNING key
+  `)
+  if (backfill.length > 0) {
+    await botQuery(`
+      UPDATE cases
+      SET severity = CASE LOWER(action)
+        WHEN 'ban' THEN 'critical'
+        WHEN 'kick' THEN 'high'
+        WHEN 'mute' THEN 'medium'
+        WHEN 'timeout' THEN 'medium'
+        ELSE 'low'
+      END
+    `)
   }
 }
 

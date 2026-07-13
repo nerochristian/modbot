@@ -22,6 +22,7 @@ from utils.logging import send_log_embed
 from config import Config
 import io
 from utils.transcript import generate_html_transcript
+from utils.server_setup import module_enabled
 
 
 class TicketPanelView(discord.ui.LayoutView):
@@ -380,7 +381,10 @@ class TicketCloseButton(ui.View):
             # Send transcript to log channel
             settings = await interaction.client.db. get_settings(interaction.guild_id)
             if settings.get('ticket_log_channel'):
-                log_channel = interaction.guild.get_channel(settings['ticket_log_channel'])
+                try:
+                    log_channel = interaction.guild.get_channel(int(settings['ticket_log_channel']))
+                except (TypeError, ValueError):
+                    log_channel = None
                 if log_channel:
                     embed = discord.Embed(
                         title=f"🎫 Ticket #{ticket['ticket_number']} Closed",
@@ -393,7 +397,7 @@ class TicketCloseButton(ui.View):
                     embed.add_field(name="Category", value=ticket['category'], inline=True)
                     
                     file = discord.File(transcript_file, filename=f"ticket-{ticket['ticket_number']}.html")
-                    await send_log_embed(log_channel, embed, file=file)
+                    await send_log_embed(log_channel, embed, bot=interaction.client, file=file)
         
         await interaction.channel.delete(reason=f"Ticket closed by {interaction.user}")
 
@@ -445,6 +449,14 @@ class Tickets(commands.Cog):
     def _ticket_file_name(ticket_number: Any) -> str:
         return f"ticket-{ticket_number}.html"
 
+    @staticmethod
+    def _configured_snowflake(value: Any) -> Optional[int]:
+        try:
+            snowflake = int(value)
+        except (TypeError, ValueError):
+            return None
+        return snowflake if snowflake > 0 else None
+
     async def _is_ticket_staff(self, member: discord.Member, settings: Optional[dict] = None) -> bool:
         if is_bot_owner_id(member.id):
             return True
@@ -466,16 +478,17 @@ class Tickets(commands.Cog):
             "mod_role",
             "trial_mod_role",
         ):
-            raw = settings.get(key)
-            if isinstance(raw, int) and raw > 0:
-                role_ids.add(raw)
+            role_id = self._configured_snowflake(settings.get(key))
+            if role_id:
+                role_ids.add(role_id)
 
         for key in ("admin_roles", "mod_roles"):
             raw = settings.get(key)
             if isinstance(raw, list):
                 for rid in raw:
-                    if isinstance(rid, int) and rid > 0:
-                        role_ids.add(rid)
+                    role_id = self._configured_snowflake(rid)
+                    if role_id:
+                        role_ids.add(role_id)
 
         if not role_ids:
             return False
@@ -503,8 +516,8 @@ class Tickets(commands.Cog):
         reason: Optional[str] = None,
     ) -> None:
         settings = await self.bot.db.get_settings(guild.id)
-        log_channel_id = settings.get("ticket_log_channel")
-        if not isinstance(log_channel_id, int):
+        log_channel_id = self._configured_snowflake(settings.get("ticket_log_channel"))
+        if log_channel_id is None:
             return
 
         log_channel = guild.get_channel(log_channel_id)
@@ -532,7 +545,7 @@ class Tickets(commands.Cog):
             transcript_file,
             filename=self._ticket_file_name(ticket.get("ticket_number", "transcript")),
         )
-        await send_log_embed(log_channel, embed, file=file)
+        await send_log_embed(log_channel, embed, bot=self.bot, file=file)
 
     async def _finalize_ticket_close(
         self,
@@ -570,8 +583,10 @@ class Tickets(commands.Cog):
         details: str,
     ) -> tuple[Optional[discord.TextChannel], Optional[str]]:
         settings = await self.bot.db.get_settings(guild.id)
-        category_id = settings.get("ticket_category")
-        if not isinstance(category_id, int):
+        if not module_enabled(settings, "tickets", False):
+            return None, "Tickets are disabled for this server."
+        category_id = self._configured_snowflake(settings.get("ticket_category"))
+        if category_id is None:
             return None, "Ticket system is not set up. Run `/setup` first."
 
         ticket_category = guild.get_channel(category_id)
@@ -621,15 +636,16 @@ class Tickets(commands.Cog):
             "mod_role",
             "trial_mod_role",
         ):
-            raw = settings.get(key)
-            if isinstance(raw, int) and raw > 0:
-                role_ids.add(raw)
+            role_id = self._configured_snowflake(settings.get(key))
+            if role_id:
+                role_ids.add(role_id)
         for key in ("admin_roles", "mod_roles"):
             raw = settings.get(key)
             if isinstance(raw, list):
                 for rid in raw:
-                    if isinstance(rid, int) and rid > 0:
-                        role_ids.add(rid)
+                    role_id = self._configured_snowflake(rid)
+                    if role_id:
+                        role_ids.add(role_id)
 
         for rid in role_ids:
             role = guild.get_role(rid)

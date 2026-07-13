@@ -5,7 +5,6 @@ import { buttonVariants } from '@/components/ui/button'
 import { LiveWire } from '@/components/marketing/live-wire'
 import { CircuitField } from '@/components/marketing/circuit-field'
 import { CommandDemo } from '@/components/marketing/command-demo'
-import { Pricing } from '@/components/marketing/pricing'
 import { Faq } from '@/components/marketing/faq'
 
 // The three things a shift actually does, in order. Numbered because it IS a
@@ -29,13 +28,13 @@ const PIPELINE = [
 ]
 
 const STATS = [
-  { value: '2.5M+', label: 'Messages scanned daily' },
-  { value: '40k+', label: 'Communities protected' },
-  { value: '180ms', label: 'Median action time' },
-  { value: '99.99%', label: 'Uptime' },
+  { value: 'Live', label: 'Discord and bot data' },
+  { value: 'Guild', label: 'Isolated access and queries' },
+  { value: '4', label: 'CSV, JSON, PDF, XLSX exports' },
+  { value: '1×', label: 'One-time appeal links' },
 ]
 
-// One real case file, shown in full — not six feature cards.
+// A representative case file used to explain the live case schema.
 const CASE = {
   ref: 'CASE-0421',
   filed: '07·12 14:22Z',
@@ -48,9 +47,9 @@ const CASE = {
 }
 
 const TESTIMONIALS = [
-  { quote: 'Docket caught a 300-account raid before a single message landed in general. We woke up to a clean log instead of a cleanup.', name: 'Sarah Chen', title: 'Head Moderator, The Nexus' },
-  { quote: 'The case system replaced a spreadsheet and three bots. Every mod sees the full history the moment they open a member.', name: 'Marcus Reid', title: 'Server Owner, Forge & Anvil' },
-  { quote: 'Appeals finally feel fair. The queue keeps every decision consistent, and members can see we actually reviewed them.', name: 'Priya Nair', title: 'Community Manager, Vela' },
+  { quote: 'Moderation commands are recorded before execution, assigned an idempotency key, and retain any Discord failure for review.', name: 'Durable actions', title: 'Command ledger + guild audit trail' },
+  { quote: 'Cases, reports, roles, saved views, and preferences are authorized and queried within the selected Discord guild.', name: 'Tenant isolation', title: 'Guild-scoped identity and data access' },
+  { quote: 'Appeal links expire, work once, and keep reversals pending when Discord cannot complete the requested action.', name: 'Reviewable appeals', title: 'Tokenized member submission + reversal status' },
 ]
 
 export default function LandingPage() {
@@ -72,7 +71,7 @@ export default function LandingPage() {
           <div>
             <p className="inline-flex items-center gap-2 rounded-sm border border-border bg-surface px-3 py-1 font-mono text-[0.6875rem] font-medium uppercase tracking-[0.16em] text-accent">
               <span className="inline-flex size-1.5 rounded-full bg-threat wire-blip" />
-              Raid in progress
+              Raid response preview
             </p>
             <h1 className="mt-6 font-display text-[2.75rem] font-semibold leading-[0.95] tracking-[-0.02em] text-foreground sm:text-6xl">
               300 accounts
@@ -102,7 +101,7 @@ export default function LandingPage() {
               </Link>
             </div>
             <p className="mt-5 font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-muted-2">
-              Free under 5k members · No card required
+              Discord sign-in required · Server access follows your Discord permissions
             </p>
           </div>
 
@@ -134,7 +133,7 @@ export default function LandingPage() {
             Threat to record, in one pass
           </p>
           <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.02em] text-foreground">
-            Three seconds from arrival to filed.
+            From arrival to a durable record.
           </h2>
         </div>
 
@@ -156,13 +155,13 @@ export default function LandingPage() {
         <div className="mx-auto grid max-w-6xl scroll-mt-20 items-center gap-12 px-6 py-20 lg:grid-cols-2">
           <div>
             <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">
-              The whole history, one ping away
+              Interactive product preview
             </p>
             <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.02em] text-foreground">
               Ping a member.<br />See everything on record.
             </h2>
             <p className="mt-5 max-w-md text-base leading-relaxed text-muted">
-              No digging through channels or old DMs. Mention anyone and Docket returns their standing,
+              The preview uses an example roster. In an authenticated workspace, Docket returns live standing,
               risk level, and a full timeline of every warn, mute, ban, note, and appeal — who did it,
               when, and why. Try it: pick a member on the right.
             </p>
@@ -202,10 +201,10 @@ export default function LandingPage() {
             </Link>
           </div>
 
-          {/* The case file — a single detailed record. */}
+          {/* The case file — a representative record matching the live schema. */}
           <div className="rounded-lg border border-border bg-card">
             <div className="flex items-center justify-between border-b border-border px-5 py-3">
-              <span className="font-mono text-xs font-semibold tracking-wide text-foreground">{CASE.ref}</span>
+              <span className="font-mono text-xs font-semibold tracking-wide text-foreground">Example · {CASE.ref}</span>
               <span className="font-mono text-[0.6875rem] uppercase tracking-[0.12em] text-muted-2">
                 Filed {CASE.filed}
               </span>
@@ -242,11 +241,11 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Proof — filed quotes with the docket rail. */}
+      {/* Supported backend guarantees, shown with the docket rail. */}
       <section id="testimonials" className="border-t border-border">
         <div className="mx-auto max-w-6xl px-6 py-20">
         <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-muted-2">
-          On the record
+          Backend guarantees
         </p>
         <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-3">
           {TESTIMONIALS.map((t) => (
@@ -269,7 +268,6 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <Pricing />
       <Faq />
 
       {/* Brand banner — the real Docket promo mark. */}
@@ -295,14 +293,14 @@ export default function LandingPage() {
             The next raid is already being planned.
           </h2>
           <p className="mx-auto mt-4 max-w-md text-lg text-muted">
-            Deploy Docket in under 60 seconds and be ready before it lands.
+            Sign in with Discord, choose a server where the bot is installed, and manage its live moderation data.
           </p>
           <div className="mt-8 flex justify-center">
             <Link
               href="/api/auth/discord/authorize"
               className={buttonVariants({ variant: 'primary', size: 'lg', className: 'gap-2.5 px-8' })}
             >
-              <LogIn className="size-4.5" /> Deploy Docket
+              <LogIn className="size-4.5" /> Open dashboard
             </Link>
           </div>
         </div>

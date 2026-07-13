@@ -10,8 +10,16 @@ const globalForPrisma = globalThis as unknown as {
 }
 
 function createClient() {
+  const url = process.env.DASHBOARD_DATABASE_URL ?? process.env.DATABASE_URL
+  if (!url) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('DASHBOARD_DATABASE_URL is required in production')
+    }
+  } else if (!url.startsWith('file:') && !url.startsWith('libsql:')) {
+    throw new Error('DASHBOARD_DATABASE_URL must use file: or libsql: with the configured adapter')
+  }
   const adapter = new PrismaLibSql({
-    url: process.env.DATABASE_URL ?? 'file:./dev.db',
+    url: url ?? 'file:./dev.db',
   })
   return new PrismaClient({ adapter })
 }

@@ -18,7 +18,7 @@ export function Topbar({
   currentGuild: ManagedGuild
 }) {
   return (
-    <header className="sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-border bg-bg/80 px-4 backdrop-blur-md sm:px-6">
+    <header className="sticky top-0 z-30 flex h-16 min-w-0 items-center gap-2 border-b border-border bg-bg/80 px-3 backdrop-blur-md sm:gap-3 sm:px-6">
       <button
         onClick={onOpenMobile}
         className="focus-ring inline-flex size-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 lg:hidden"
@@ -28,10 +28,14 @@ export function Topbar({
       </button>
 
       <GuildSwitcher guilds={guilds} current={currentGuild} />
-      <CommandSearch />
+      <div className="hidden min-w-0 md:block">
+        <CommandSearch />
+      </div>
 
-      <div className="flex flex-1 items-center justify-end gap-1">
-        <ThemeMenu />
+      <div className="ml-auto flex shrink-0 items-center justify-end gap-1">
+        <div className="hidden sm:block">
+          <ThemeMenu />
+        </div>
         <NotificationsMenu />
         <div className="mx-1 hidden h-6 w-px bg-border sm:block" />
         <UserMenu />

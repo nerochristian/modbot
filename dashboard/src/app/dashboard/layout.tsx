@@ -1,10 +1,8 @@
-import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
 import { ConfigProvider } from '@/components/providers/config-provider'
 import { DashboardShell } from '@/components/dashboard/shell'
 import { mergeConfig, type DashboardConfig } from '@/lib/dashboard-config'
 import { getManageableGuilds } from '@/lib/discord'
-import { SELECTED_GUILD_COOKIE } from '@/lib/guild-context'
 import { parseJson } from '@/lib/json'
 import { prisma } from '@/lib/prisma'
 import { getCurrentUser } from '@/lib/session'
@@ -15,8 +13,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!user) redirect('/login')
 
   const guilds = await getManageableGuilds(user.id)
-  const selectedId = (await cookies()).get(SELECTED_GUILD_COOKIE)?.value
-  const currentGuild = guilds.find((guild) => guild.id === selectedId && guild.installed)
+  const currentGuild = guilds.find((guild) => guild.id === user.selectedGuildId && guild.installed)
   if (!currentGuild) redirect('/servers')
 
   const configRow = await prisma.dashboardConfig.findUnique({ where: { userId: user.id } })

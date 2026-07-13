@@ -1,6 +1,8 @@
 import { prisma } from '@/lib/prisma'
-import { requireUser, handleError, ok } from '@/lib/api'
+import { requireMutation, handleError, ok } from '@/lib/api'
 import { logActivity, logAudit } from '@/lib/log'
+import { parseJson } from '@/lib/json'
+import type { DashboardConfig } from '@/lib/dashboard-config'
 import { z } from 'zod'
 
 const schema = z.object({
@@ -10,43 +12,46 @@ const schema = z.object({
   audience: z.enum(['all', 'admin', 'manager', 'viewer']).default('all'),
 })
 
-// POST — broadcast a system notification to every targeted user.
 export async function POST(request: Request) {
   try {
-    const guard = await requireUser('admin.settings.manage')
+    const guard = await requireMutation(request, 'admin.access')
     if (guard instanceof Response) return guard
-    const actor = guard
-
-    const body = await request.json()
-    const data = schema.parse(body)
-
-    const users = await prisma.user.findMany({
-      where: data.audience === 'all' ? {} : { role: data.audience },
-      select: { id: true },
+    const guildId = guard.selectedGuildId as string
+    const data = schema.parse(await request.json())
+    const memberships = await prisma.guildMembership.findMany({
+      where: {
+        guildId,
+        status: 'active',
+        ...(data.audience === 'all' ? {} : { role: data.audience }),
+      },
+      select: { userId: true, user: { select: { dashboardConfig: { select: { config: true } } } } },
     })
-
-    if (users.length > 0) {
+    const recipients = memberships.filter((membership) => {
+      const config = parseJson<Partial<DashboardConfig>>(membership.user.dashboardConfig?.config, {})
+      return config.notifications?.product?.inApp !== false
+    })
+    if (recipients.length) {
       await prisma.notification.createMany({
-        data: users.map((u) => ({
-          userId: u.id,
-          type: 'system',
+        data: recipients.map((membership) => ({
+          guildId,
+          userId: membership.userId,
+          type: 'product',
           level: data.level,
           title: data.title,
           body: data.body,
         })),
       })
     }
-
-    await logActivity({ userId: actor.id, actorName: actor.name, action: 'sent_broadcast', target: data.title })
+    await logActivity({ guildId, userId: guard.id, actorName: guard.name, action: 'sent_broadcast', target: data.title })
     await logAudit({
-      userId: actor.id,
-      actorName: actor.name,
+      guildId,
+      userId: guard.id,
+      actorName: guard.name,
       action: 'notification.broadcast',
       entity: 'Notification',
-      metadata: { audience: data.audience, recipients: users.length },
+      metadata: { audience: data.audience, recipients: recipients.length },
     })
-
-    return ok({ success: true, recipients: users.length })
+    return ok({ success: true, recipients: recipients.length })
   } catch (error) {
     return handleError(error)
   }

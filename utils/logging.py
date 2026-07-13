@@ -267,6 +267,7 @@ async def send_log_embed(
     channel: Optional[discord.abc.Messageable],
     embed: discord.Embed,
     *,
+    bot: Any,
     include_banner: bool = False,
     **kwargs: Any,
 ) -> None:
@@ -274,6 +275,18 @@ async def send_log_embed(
     Send a normalized log embed with a compact, consistent style.
     """
     if channel is None:
+        return
+    guild = getattr(channel, "guild", None)
+    db = getattr(bot, "db", None)
+    if guild is None or db is None:
+        return
+    try:
+        from utils.server_setup import module_enabled
+
+        settings = await db.get_settings(guild.id)
+        if not module_enabled(settings, "logging", True):
+            return
+    except Exception:
         return
 
     normalized = await prepare_log_embed(channel, embed, include_banner=include_banner)

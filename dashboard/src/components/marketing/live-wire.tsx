@@ -108,7 +108,7 @@ export function LiveWire() {
         </span>
         <div className="text-left">
           <span className="block font-mono text-[0.5625rem] font-semibold uppercase tracking-[0.14em] text-muted-2">Decision engine</span>
-          <span className="text-xs font-semibold text-foreground">142,429 cases resolved</span>
+          <span className="text-xs font-semibold text-foreground">Policy pipeline ready</span>
         </div>
       </div>
 
@@ -174,7 +174,7 @@ export function LiveWire() {
             }
           >
             <span className="inline-flex size-1.5 rounded-full bg-accent" />
-            Contained · 180ms
+            Contained · example
           </div>
         </div>
       </div>

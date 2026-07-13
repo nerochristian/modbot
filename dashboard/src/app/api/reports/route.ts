@@ -1,52 +1,14 @@
-import { prisma } from '@/lib/prisma'
-import { requireUser, handleError, ok, created, parseListQuery, paginate } from '@/lib/api'
+import { created, handleError, ok, paginate, parseListQuery, requireMutation, requireUser } from '@/lib/api'
+import { createGuildReport, listGuildReports } from '@/lib/reports-service'
 import { reportSchema } from '@/lib/validation'
-import { logActivity } from '@/lib/log'
-import type { Prisma } from '@prisma/client'
-
-const SORTABLE = new Set(['name', 'type', 'status', 'createdAt'])
 
 export async function GET(request: Request) {
   try {
     const guard = await requireUser('reports.read')
     if (guard instanceof Response) return guard
-
-    const url = new URL(request.url)
-    const query = parseListQuery(url, { defaultSort: 'createdAt' })
-
-    const where: Prisma.ReportWhereInput = { createdById: guard.id }
-    if (query.q) where.name = { contains: query.q }
-    if (query.filters.type) where.type = query.filters.type
-    if (query.filters.status) where.status = query.filters.status
-
-    const sort = SORTABLE.has(query.sort) ? query.sort : 'createdAt'
-
-    const [rows, total] = await Promise.all([
-      prisma.report.findMany({
-        where,
-        orderBy: { [sort]: query.order },
-        skip: (query.page - 1) * query.pageSize,
-        take: query.pageSize,
-        include: { createdBy: { select: { name: true } } },
-      }),
-      prisma.report.count({ where }),
-    ])
-
-    return ok(
-      paginate(
-        rows.map((r) => ({
-          id: r.id,
-          name: r.name,
-          type: r.type,
-          status: r.status,
-          format: r.format,
-          createdAt: r.createdAt.toISOString(),
-          createdBy: r.createdBy?.name ?? 'System',
-        })),
-        total,
-        query,
-      ),
-    )
+    const query = parseListQuery(new URL(request.url), { defaultSort: 'createdAt' })
+    const result = await listGuildReports(guard.selectedGuildId!, guard.id, query)
+    return ok(paginate(result.data, result.total, query))
   } catch (error) {
     return handleError(error)
   }
@@ -54,25 +16,19 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const guard = await requireUser('reports.write')
+    const guard = await requireMutation(request, 'reports.write')
     if (guard instanceof Response) return guard
-    const user = guard
-
-    const body = await request.json()
-    const data = reportSchema.parse(body)
-
-    const report = await prisma.report.create({
-      data: {
-        name: data.name,
-        type: data.type,
-        format: data.format,
-        status: 'ready',
-        params: data.params ? JSON.stringify(data.params) : null,
-        createdById: user.id,
-      },
+    const data = reportSchema.parse(await request.json())
+    const report = await createGuildReport({
+      guildId: guard.selectedGuildId!,
+      userId: guard.id,
+      userName: guard.name,
+      name: data.name,
+      type: data.type,
+      format: data.format,
+      params: data.params,
     })
-    await logActivity({ userId: user.id, actorName: user.name, action: 'created_report', target: report.name })
-    return created({ id: report.id, name: report.name })
+    return created(report)
   } catch (error) {
     return handleError(error)
   }

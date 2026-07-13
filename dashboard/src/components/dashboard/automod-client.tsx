@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Plus, Pencil, Trash2, ShieldAlert } from 'lucide-react'
+import { Pencil, ShieldOff, ShieldAlert } from 'lucide-react'
 import { PageHeader } from '@/components/dashboard/page-header'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -24,6 +24,8 @@ type Rule = {
   trigger: string
   pattern: string | null
   action: string
+  durationSeconds: number | null
+  deleteMessage: boolean
   severity: string
   exemptRoles: string[]
   enabled: boolean
@@ -35,58 +37,61 @@ type Rule = {
 type Payload = { data: Rule[]; totalHits: number; activeCount: number }
 
 const TRIGGER_LABELS: Record<string, string> = {
-  keyword: 'Keyword filter',
-  regex: 'Regex match',
+  badwords: 'Blocked words',
   spam: 'Spam',
-  mention_spam: 'Mention spam',
-  invite: 'Invite links',
-  link: 'Links',
+  mentions: 'Mention spam',
+  invites: 'Invite links',
+  links: 'Links',
   caps: 'Excessive caps',
-  attachment: 'Attachments',
+  duplicates: 'Duplicate messages',
+  fast_messages: 'Fast messages',
+  emoji_spam: 'Emoji spam',
+  wall_spam: 'Wall spam',
+  attachments: 'Attachments',
+  unicode_spam: 'Unicode spam',
+  new_accounts: 'New accounts',
+  raid: 'Raid protection',
 }
 
-const TRIGGER_OPTIONS = Object.entries(TRIGGER_LABELS).map(([value, label]) => ({ value, label }))
-
 const ACTION_LABELS: Record<string, string> = {
+  none: 'No action',
+  log: 'Log only',
   delete: 'Delete',
   warn: 'Warn',
-  mute: 'Mute',
   timeout: 'Timeout',
   kick: 'Kick',
   ban: 'Ban',
-  flag: 'Flag',
 }
 
 const ACTION_OPTIONS = Object.entries(ACTION_LABELS).map(([value, label]) => ({ value, label }))
 
-const SEVERITY_OPTIONS = [
-  { label: 'Low', value: 'low' },
-  { label: 'Medium', value: 'medium' },
-  { label: 'High', value: 'high' },
-  { label: 'Critical', value: 'critical' },
-]
-
 type Tone = 'neutral' | 'accent' | 'mint' | 'success' | 'warning' | 'danger' | 'info'
 const ACTION_TONE: Record<string, Tone> = {
+  none: 'neutral',
+  log: 'neutral',
   delete: 'neutral',
   warn: 'info',
-  mute: 'warning',
   timeout: 'warning',
   kick: 'warning',
   ban: 'danger',
-  flag: 'accent',
 }
 
 // Pattern field config per trigger. `null` hides the pattern input entirely.
 const PATTERN_CONFIG: Record<string, { label: string; placeholder: string } | null> = {
-  keyword: { label: 'Comma-separated keywords', placeholder: 'scam, free nitro, @everyone' },
-  regex: { label: 'Regular expression', placeholder: '(?i)free\\s*nitro' },
+  badwords: { label: 'Comma-separated keywords', placeholder: 'scam, free nitro, @everyone' },
   spam: { label: 'Max messages / 10s', placeholder: '5' },
-  mention_spam: { label: 'Max mentions per message', placeholder: '5' },
+  mentions: { label: 'Max mentions per message', placeholder: '5' },
   caps: { label: 'Max % caps', placeholder: '70' },
-  invite: null,
-  link: null,
-  attachment: null,
+  duplicates: { label: 'Duplicate threshold', placeholder: '3' },
+  fast_messages: { label: 'Fast-message threshold', placeholder: '5' },
+  emoji_spam: { label: 'Emoji threshold', placeholder: '12' },
+  wall_spam: { label: 'Maximum lines', placeholder: '12' },
+  unicode_spam: { label: 'Maximum symbol ratio', placeholder: '70' },
+  new_accounts: { label: 'Account age in days', placeholder: '7' },
+  raid: { label: 'Join threshold', placeholder: '10' },
+  invites: null,
+  links: null,
+  attachments: { label: 'Attachment threshold', placeholder: '5' },
 }
 
 export function AutomodClient() {
@@ -94,7 +99,6 @@ export function AutomodClient() {
   const canWrite = useConfigStore((s) => s.can('automod.write'))
   const { data, loading, error, refetch } = useApi<Payload>('/api/automod')
 
-  const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<Rule | null>(null)
   const [deleting, setDeleting] = useState<Rule | null>(null)
   const [delBusy, setDelBusy] = useState(false)
@@ -124,7 +128,7 @@ export function AutomodClient() {
     try {
       const res = await fetch(`/api/automod/${deleting.id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error()
-      toast.success('Rule deleted')
+      toast.success('Rule disabled')
       setDeleting(null)
       refetch()
     } catch {
@@ -144,14 +148,6 @@ export function AutomodClient() {
             ? `${data.data.length} rules · ${data.activeCount} active · ${formatNumber(data.totalHits)} total hits`
             : 'Filter messages automatically before your team has to.'
         }
-        actions={
-          canWrite && data && data.data.length > 0 ? (
-            <Button size="sm" onClick={() => setCreating(true)}>
-              <Plus className="size-4" />
-              New rule
-            </Button>
-          ) : undefined
-        }
       />
 
       {error && !data ? (
@@ -167,15 +163,7 @@ export function AutomodClient() {
           <EmptyState
             icon={ShieldAlert}
             title="No automod rules"
-            description="Create your first rule to start filtering automatically."
-            action={
-              canWrite ? (
-                <Button size="sm" onClick={() => setCreating(true)}>
-                  <Plus className="size-4" />
-                  New rule
-                </Button>
-              ) : undefined
-            }
+            description="The bot runtime did not return any configurable modules."
           />
         </Card>
       ) : data ? (
@@ -235,9 +223,9 @@ export function AutomodClient() {
                       size="icon"
                       className="ml-auto text-muted hover:text-danger"
                       onClick={() => setDeleting(rule)}
-                      aria-label={`Delete ${rule.name}`}
+                      aria-label={`Disable ${rule.name}`}
                     >
-                      <Trash2 className="size-4" />
+                      <ShieldOff className="size-4" />
                     </Button>
                   </div>
                 )}
@@ -247,15 +235,13 @@ export function AutomodClient() {
         </div>
       ) : null}
 
-      {(creating || editing) && (
+      {editing && (
         <RuleBuilder
           rule={editing}
           onClose={() => {
-            setCreating(false)
             setEditing(null)
           }}
           onSaved={() => {
-            setCreating(false)
             setEditing(null)
             refetch()
           }}
@@ -266,10 +252,9 @@ export function AutomodClient() {
         open={!!deleting}
         onClose={() => setDeleting(null)}
         onConfirm={handleDelete}
-        title="Delete rule"
-        description={`Delete "${deleting?.name}"? Messages matching this rule will no longer be filtered. This cannot be undone.`}
-        confirmLabel="Delete"
-        destructive
+        title="Disable rule"
+        description={`Disable "${deleting?.name}"? You can enable it again at any time.`}
+        confirmLabel="Disable"
         loading={delBusy}
       />
     </>
@@ -281,7 +266,7 @@ function RuleBuilder({
   onClose,
   onSaved,
 }: {
-  rule: Rule | null
+  rule: Rule
   onClose: () => void
   onSaved: () => void
 }) {
@@ -289,14 +274,13 @@ function RuleBuilder({
   const [busy, setBusy] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [form, setForm] = useState({
-    name: rule?.name ?? '',
-    description: rule?.description ?? '',
-    trigger: rule?.trigger ?? 'keyword',
-    pattern: rule?.pattern ?? '',
-    action: rule?.action ?? 'delete',
-    severity: rule?.severity ?? 'medium',
-    exemptRoles: rule?.exemptRoles.join(', ') ?? '',
-    enabled: rule?.enabled ?? true,
+    trigger: rule.trigger,
+    pattern: rule.pattern ?? '',
+    action: rule.action,
+    durationSeconds: rule.durationSeconds ? String(rule.durationSeconds) : '',
+    deleteMessage: rule.deleteMessage,
+    exemptRoles: rule.exemptRoles.join(', '),
+    enabled: rule.enabled,
   })
 
   const patternConfig = PATTERN_CONFIG[form.trigger]
@@ -310,17 +294,16 @@ function RuleBuilder({
         .map((r) => r.trim())
         .filter(Boolean)
       const payload = {
-        name: form.name,
-        description: form.description || null,
         trigger: form.trigger,
         pattern: form.pattern || null,
         action: form.action,
-        severity: form.severity,
+        durationSeconds: form.durationSeconds ? Number(form.durationSeconds) : null,
+        deleteMessage: form.deleteMessage,
         exemptRoles,
         enabled: form.enabled,
       }
-      const res = await fetch(rule ? `/api/automod/${rule.id}` : '/api/automod', {
-        method: rule ? 'PATCH' : 'POST',
+      const res = await fetch(`/api/automod/${rule.id}`, {
+        method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       })
@@ -335,7 +318,7 @@ function RuleBuilder({
         }
         return
       }
-      toast.success(rule ? 'Rule updated' : 'Rule created')
+      toast.success('Rule updated')
       onSaved()
     } catch {
       setErrors({ form: 'Network error' })
@@ -348,7 +331,7 @@ function RuleBuilder({
     <Modal
       open
       onClose={onClose}
-      title={rule ? 'Edit rule' : 'New rule'}
+      title={`Edit ${rule.name}`}
       size="lg"
       footer={
         <>
@@ -356,7 +339,7 @@ function RuleBuilder({
             Cancel
           </Button>
           <Button onClick={submit} loading={busy}>
-            {rule ? 'Save changes' : 'Create rule'}
+            Save changes
           </Button>
         </>
       }
@@ -368,37 +351,8 @@ function RuleBuilder({
           </div>
         )}
 
-        <Field label="Name" error={errors.name}>
-          <Input
-            value={form.name}
-            onChange={(e) => setForm({ ...form, name: e.target.value })}
-            placeholder="Block scam links"
-          />
-        </Field>
-
-        <Field label="Description" error={errors.description}>
-          <Input
-            value={form.description}
-            onChange={(e) => setForm({ ...form, description: e.target.value })}
-            placeholder="Optional context for your team"
-          />
-        </Field>
-
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Trigger" error={errors.trigger}>
-            <Select
-              options={TRIGGER_OPTIONS}
-              value={form.trigger}
-              onChange={(e) => setForm({ ...form, trigger: e.target.value })}
-            />
-          </Field>
-          <Field label="Severity" error={errors.severity}>
-            <Select
-              options={SEVERITY_OPTIONS}
-              value={form.severity}
-              onChange={(e) => setForm({ ...form, severity: e.target.value })}
-            />
-          </Field>
+        <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm text-muted">
+          Runtime module: <span className="font-medium text-foreground">{TRIGGER_LABELS[form.trigger] ?? form.trigger}</span>
         </div>
 
         {patternConfig ? (
@@ -424,13 +378,46 @@ function RuleBuilder({
               onChange={(e) => setForm({ ...form, action: e.target.value })}
             />
           </Field>
-          <Field label="Exempt roles" error={errors.exemptRoles} hint="Comma-separated role names">
+          {form.action === 'timeout' ? (
+            <Field label="Timeout duration" error={errors.durationSeconds} hint="Seconds, from 60 to 2,419,200">
+              <Input
+                inputMode="numeric"
+                value={form.durationSeconds}
+                onChange={(e) => setForm({ ...form, durationSeconds: e.target.value })}
+                placeholder="3600"
+              />
+            </Field>
+          ) : (
+            <Field label="Exempt role IDs" error={errors.exemptRoles} hint="Comma-separated Discord role IDs">
             <Input
               value={form.exemptRoles}
               onChange={(e) => setForm({ ...form, exemptRoles: e.target.value })}
-              placeholder="Moderator, Admin"
+              placeholder="123456789012345678, 234567890123456789"
+            />
+            </Field>
+          )}
+        </div>
+
+        {form.action === 'timeout' && (
+          <Field label="Exempt role IDs" error={errors.exemptRoles} hint="Comma-separated Discord role IDs">
+            <Input
+              value={form.exemptRoles}
+              onChange={(e) => setForm({ ...form, exemptRoles: e.target.value })}
+              placeholder="123456789012345678, 234567890123456789"
             />
           </Field>
+        )}
+
+        <div className="flex items-center justify-between rounded-lg border border-border bg-surface-2/50 px-3 py-2.5">
+          <div>
+            <p className="text-sm font-medium text-foreground">Delete matched messages</p>
+            <p className="text-xs text-muted">Remove the violating message when this module triggers.</p>
+          </div>
+          <Switch
+            checked={form.deleteMessage}
+            onChange={(value) => setForm({ ...form, deleteMessage: value })}
+            label="Delete matched messages"
+          />
         </div>
 
         <div className="flex items-center justify-between rounded-lg border border-border bg-surface-2/50 px-3 py-2.5">

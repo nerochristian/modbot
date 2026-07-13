@@ -522,6 +522,7 @@ class AutoModWizardView:
             await interaction.response.send_message(f"Choose an action for **{key}** below.", view=AutoModActionChoiceView(self.session, key), ephemeral=True)
             return
         if action == "threshold_recommended":
+            self.session.state.settings.pop("moderation_autopunish_rules", None)
             self.session.state.settings.update({"warn_thresholds_enabled": True, "warn_threshold_mute": 3, "warn_mute_duration": 3600, "warn_threshold_kick": 5, "warn_threshold_ban": 7})
             await self.session.refresh(interaction, "thresholds")
             return
@@ -824,6 +825,7 @@ class WarningThresholdModal(discord.ui.Modal, title="Warning Thresholds"):
         if mute_at and duration is None:
             await interaction.response.send_message("Timeout duration must look like `30m`, `1h`, or `7d`.", ephemeral=True)
             return
+        self.session.state.settings.pop("moderation_autopunish_rules", None)
         self.session.state.settings.update({"warn_thresholds_enabled": True, "warn_threshold_mute": mute_at, "warn_mute_duration": duration or 3600, "warn_threshold_kick": kick_at, "warn_threshold_ban": ban_at})
         await self.session.refresh(interaction, "thresholds")
 

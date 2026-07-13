@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { Plus, Download, MoreHorizontal, CheckCircle2, RotateCcw, Trash2, Gavel } from 'lucide-react'
+import { useRef, useState } from 'react'
+import { Plus, Download, MoreHorizontal, CheckCircle2, RotateCcw, Archive, Gavel } from 'lucide-react'
 import { PageHeader } from '@/components/dashboard/page-header'
 import { SearchBox, SortableTH, ColumnsMenu } from '@/components/dashboard/table-toolbar'
 import { SavedViews } from '@/components/dashboard/saved-views'
@@ -22,6 +22,7 @@ import { useConfigStore } from '@/lib/store'
 import { useApi } from '@/lib/use-api'
 import { useListParams, type ListParams } from '@/lib/use-list-params'
 import { exportRecords } from '@/lib/export-client'
+import { createClientId } from '@/lib/client-id'
 import { formatNumber } from '@/lib/utils'
 import { useSearchParams } from 'next/navigation'
 import { format } from 'date-fns'
@@ -151,11 +152,11 @@ export function CasesClient() {
     try {
       const res = await fetch(`/api/cases/${deleting.id}`, { method: 'DELETE' })
       if (!res.ok) throw new Error()
-      toast.success('Case deleted')
+      toast.success('Case archived')
       setDeleting(null)
       refetch()
     } catch {
-      toast.error('Failed to delete case')
+      toast.error('Failed to archive case')
     } finally {
       setDelBusy(false)
     }
@@ -310,8 +311,8 @@ export function CasesClient() {
                               </DropdownItem>
                             )}
                             {canDelete && (
-                              <DropdownItem icon={Trash2} destructive onClick={() => setDeleting(c)}>
-                                Delete
+                              <DropdownItem icon={Archive} onClick={() => setDeleting(c)}>
+                                Archive
                               </DropdownItem>
                             )}
                           </DropdownMenu>
@@ -350,10 +351,9 @@ export function CasesClient() {
         open={!!deleting}
         onClose={() => setDeleting(null)}
         onConfirm={handleDelete}
-        title="Delete case"
-        description={`Delete #CASE-${String(deleting?.ref ?? 0).padStart(4, '0')}? This cannot be undone.`}
-        confirmLabel="Delete"
-        destructive
+        title="Archive case"
+        description={`Resolve and archive #CASE-${String(deleting?.ref ?? 0).padStart(4, '0')}? Its actions, appeals, and audit history will be preserved.`}
+        confirmLabel="Archive"
         loading={delBusy}
       />
     </>
@@ -414,10 +414,8 @@ function CaseForm({
   onSaved: () => void
 }) {
   const toast = useToast()
-  const { data: members } = useApi<{ data: { id: string; displayName: string; username: string }[] }>(
-    '/api/members?pageSize=100&sort=joinedAt',
-  )
   const [busy, setBusy] = useState(false)
+  const idempotencyKey = useRef(createClientId('case'))
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [form, setForm] = useState({
     memberId: presetMember,
@@ -427,11 +425,6 @@ function CaseForm({
     channel: '',
     duration: '',
   })
-
-  const memberOptions = [
-    { label: 'Select a member…', value: '' },
-    ...(members?.data.map((m) => ({ label: `${m.displayName} (@${m.username})`, value: m.id })) ?? []),
-  ]
 
   async function submit() {
     setBusy(true)
@@ -447,7 +440,7 @@ function CaseForm({
       }
       const res = await fetch('/api/cases', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey.current },
         body: JSON.stringify(payload),
       })
       const body = await res.json().catch(() => ({}))
@@ -493,11 +486,11 @@ function CaseForm({
             {errors.form}
           </div>
         )}
-        <Field label="Member" error={errors.memberId}>
-          <Select
-            options={memberOptions}
+        <Field label="Discord member ID" error={errors.memberId} hint="Use the banned user's Discord ID when unbanning.">
+          <Input
             value={form.memberId}
-            onChange={(e) => setForm({ ...form, memberId: e.target.value })}
+            onChange={(e) => setForm({ ...form, memberId: e.target.value.trim() })}
+            placeholder="123456789012345678"
           />
         </Field>
         <div className="grid grid-cols-2 gap-4">

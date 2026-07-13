@@ -1,96 +1,105 @@
 import { prisma } from '@/lib/prisma'
-import { requireUser, handleError, ok, apiError } from '@/lib/api'
+import { requireMutation, handleError, ok, apiError } from '@/lib/api'
 import { updateUserSchema } from '@/lib/validation'
+import { invalidateGuildCache } from '@/lib/discord'
 import { logAudit } from '@/lib/log'
 
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
-    const guard = await requireUser('users.write')
+    const guard = await requireMutation(request, 'users.write')
     if (guard instanceof Response) return guard
-    const actor = guard
+    const guildId = guard.selectedGuildId as string
     const { id } = await ctx.params
-
-    const target = await prisma.user.findUnique({ where: { id } })
-    if (!target) return apiError('User not found', 404)
-
-    const body = await request.json()
-    const data = updateUserSchema.parse(body)
-
-    // Privilege-escalation guard: only an admin may grant the admin role, or
-    // modify an existing admin. `users.write` is granted to managers, so
-    // without this a non-admin could promote an account (or itself via a
-    // second account) to admin.
-    if (actor.role !== 'admin') {
-      if (data.role === 'admin') {
-        return apiError('Only an admin can grant the admin role.', 403)
-      }
-      if (target.role === 'admin') {
-        return apiError('Only an admin can modify an admin account.', 403)
-      }
-    }
-
-    // Guard: prevent removing the last admin (by demotion or suspension).
-    if ((data.role && data.role !== 'admin' && target.role === 'admin') ||
-        (data.status === 'suspended' && target.role === 'admin')) {
-      const activeAdmins = await prisma.user.count({ where: { role: 'admin', status: 'active' } })
-      if (activeAdmins <= 1) return apiError('You cannot remove the last active admin.', 400)
-    }
-    // Guard: don't let an admin change their own role (avoid self-lockout).
-    if (id === actor.id && data.role && data.role !== actor.role) {
-      return apiError('You cannot change your own role.', 400)
-    }
-
-    const updated = await prisma.user.update({
-      where: { id },
-      data,
-      select: { id: true, name: true, email: true, role: true, status: true, title: true, avatarColor: true, createdAt: true, lastLoginAt: true },
+    const target = await prisma.guildMembership.findUnique({
+      where: { guildId_userId: { guildId, userId: id } },
+      include: { user: true },
     })
+    if (!target) return apiError('Workspace member not found', 404)
+    const data = updateUserSchema.parse(await request.json())
+
+    if (guard.role !== 'admin' && (data.role === 'admin' || target.role === 'admin')) {
+      return apiError('Only a workspace admin can modify an admin.', 403)
+    }
+    const nextStatus = data.status === 'suspended' ? 'revoked' : data.status
+    if (nextStatus === 'active' && target.status !== 'active') {
+      return apiError('Discord verification is required before this invitation can be activated.', 409)
+    }
+    if (target.role === 'admin' && ((data.role && data.role !== 'admin') || nextStatus === 'revoked')) {
+      const activeAdmins = await prisma.guildMembership.count({
+        where: { guildId, role: 'admin', status: 'active' },
+      })
+      if (activeAdmins <= 1) return apiError('You cannot remove the last active workspace admin.', 400)
+    }
+    if (id === guard.id && data.role && data.role !== target.role) {
+      return apiError('You cannot change your own workspace role.', 400)
+    }
+
+    const updatedMembership = await prisma.guildMembership.update({
+      where: { guildId_userId: { guildId, userId: id } },
+      data: {
+        ...(data.role ? { role: data.role } : {}),
+        ...(nextStatus ? { status: nextStatus } : {}),
+      },
+    })
+    invalidateGuildCache(id)
 
     if (data.role && data.role !== target.role) {
       await logAudit({
-        userId: actor.id,
-        actorName: actor.name,
-        action: 'user.role.update',
-        entity: 'User',
-        entityId: id,
+        guildId,
+        userId: guard.id,
+        actorName: guard.name,
+        action: 'membership.role.update',
+        entity: 'GuildMembership',
+        entityId: updatedMembership.id,
         metadata: { before: target.role, after: data.role },
       })
     }
-    if (data.status && data.status !== target.status) {
+    if (nextStatus && nextStatus !== target.status) {
       await logAudit({
-        userId: actor.id,
-        actorName: actor.name,
-        action: `user.${data.status}`,
-        entity: 'User',
-        entityId: id,
+        guildId,
+        userId: guard.id,
+        actorName: guard.name,
+        action: `membership.${nextStatus}`,
+        entity: 'GuildMembership',
+        entityId: updatedMembership.id,
       })
     }
-
-    return ok(updated)
+    return ok({
+      id: target.user.id,
+      name: target.user.name,
+      email: target.user.email,
+      role: updatedMembership.role,
+      status: updatedMembership.status === 'revoked' ? 'suspended' : updatedMembership.status,
+      title: target.user.title,
+      avatarColor: target.user.avatarColor,
+      createdAt: updatedMembership.createdAt,
+      lastLoginAt: target.user.lastLoginAt,
+    })
   } catch (error) {
     return handleError(error)
   }
 }
 
-export async function DELETE(_request: Request, ctx: { params: Promise<{ id: string }> }) {
+export async function DELETE(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
-    const guard = await requireUser('users.delete')
+    const guard = await requireMutation(request, 'users.delete')
     if (guard instanceof Response) return guard
-    const actor = guard
+    const guildId = guard.selectedGuildId as string
     const { id } = await ctx.params
-
-    if (id === actor.id) return apiError('You cannot delete your own account.', 400)
-
-    const target = await prisma.user.findUnique({ where: { id } })
-    if (!target) return apiError('User not found', 404)
-
+    if (id === guard.id) return apiError('You cannot remove yourself from the workspace.', 400)
+    const target = await prisma.guildMembership.findUnique({
+      where: { guildId_userId: { guildId, userId: id } },
+    })
+    if (!target) return apiError('Workspace member not found', 404)
     if (target.role === 'admin') {
-      const activeAdmins = await prisma.user.count({ where: { role: 'admin', status: 'active' } })
-      if (activeAdmins <= 1) return apiError('You cannot delete the last active admin.', 400)
+      const activeAdmins = await prisma.guildMembership.count({
+        where: { guildId, role: 'admin', status: 'active' },
+      })
+      if (activeAdmins <= 1) return apiError('You cannot remove the last active workspace admin.', 400)
     }
-
-    await prisma.user.delete({ where: { id } })
-    await logAudit({ userId: actor.id, actorName: actor.name, action: 'user.delete', entity: 'User', entityId: id })
+    await prisma.guildMembership.delete({ where: { guildId_userId: { guildId, userId: id } } })
+    invalidateGuildCache(id)
+    await logAudit({ guildId, userId: guard.id, actorName: guard.name, action: 'membership.delete', entity: 'GuildMembership', entityId: target.id })
     return ok({ success: true })
   } catch (error) {
     return handleError(error)

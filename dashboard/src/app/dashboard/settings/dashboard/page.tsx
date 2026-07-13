@@ -60,10 +60,8 @@ export default function DashboardPreferencesPage() {
             options={[
               { label: 'CSV', value: 'csv' },
               { label: 'JSON', value: 'json' },
-              { label: 'XLSX', value: 'xlsx' },
-              { label: 'PDF', value: 'pdf' },
             ]}
-            value={config.exportFormat}
+            value={config.exportFormat === 'json' ? 'json' : 'csv'}
             onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
           />
         </SettingRow>

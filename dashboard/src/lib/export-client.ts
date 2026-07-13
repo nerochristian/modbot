@@ -18,7 +18,8 @@ export function toCsv(rows: Record<string, unknown>[]): string {
   if (rows.length === 0) return ''
   const headers = Object.keys(rows[0])
   const escape = (v: unknown) => {
-    const s = v == null ? '' : String(v)
+    let s = v == null ? '' : String(v)
+    if (/^[=+\-@]/.test(s)) s = `'${s}`
     return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s
   }
   const lines = [headers.join(',')]
@@ -26,11 +27,7 @@ export function toCsv(rows: Record<string, unknown>[]): string {
   return lines.join('\n')
 }
 
-/**
- * Export an array of records in the requested format. XLSX/PDF fall back to CSV
- * content with the requested extension (real generators can be swapped in later)
- * so the action always produces a usable download.
- */
+/** Export records in the two formats implemented entirely in the browser. */
 export function exportRecords(
   rows: Record<string, unknown>[],
   format: 'csv' | 'json' | 'xlsx' | 'pdf',
@@ -40,7 +37,9 @@ export function exportRecords(
     downloadFile(`${baseName}.json`, JSON.stringify(rows, null, 2), 'application/json')
     return
   }
+  if (format !== 'csv') {
+    throw new Error('PDF and XLSX exports are generated from the Reports page.')
+  }
   const csv = toCsv(rows)
-  const ext = format === 'csv' ? 'csv' : format
-  downloadFile(`${baseName}.${ext}`, csv, 'text/csv')
+  downloadFile(`${baseName}.csv`, csv, 'text/csv')
 }

@@ -2,12 +2,14 @@ import 'server-only'
 
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
 import { prisma } from '@/lib/prisma'
+import { isSystemOwner } from '@/lib/auth'
 
 const DISCORD_API = 'https://discord.com/api/v10'
 const ADMINISTRATOR = BigInt(8)
 const MANAGE_GUILD = BigInt(32)
 const TOKEN_REFRESH_SKEW_MS = 60_000
 const CACHE_TTL_MS = 30_000
+const TRANSIENT_AUTHORITY_GRACE_MS = 2 * 60_000
 
 export type DiscordUser = {
   id: string
@@ -46,7 +48,35 @@ export type DiscordGuildMember = {
   nick: string | null
   avatar: string | null
   joined_at: string
+  roles: string[]
   communication_disabled_until?: string | null
+}
+
+export type DiscordGuildRoleResource = {
+  id: string
+  name: string
+  position: number
+  color: number
+}
+
+export type DiscordGuildChannelResource = {
+  id: string
+  name: string
+  type: 0 | 5
+  parentId: string | null
+  position: number
+}
+
+type DiscordGuildRolePayload = DiscordGuildRoleResource & {
+  managed: boolean
+}
+
+type DiscordGuildChannelPayload = {
+  id: string
+  name: string
+  type: number
+  parent_id?: string | null
+  position?: number
 }
 
 export type ManagedGuild = {
@@ -58,12 +88,24 @@ export type ManagedGuild = {
   memberCount: number | null
   onlineCount: number | null
   inviteUrl: string
+  canManage: boolean
+  membershipRole: 'admin' | 'manager' | 'viewer'
 }
 
 export class DiscordReauthRequiredError extends Error {
   constructor(message = 'Discord authorization has expired. Sign in again to continue.') {
     super(message)
     this.name = 'DiscordReauthRequiredError'
+  }
+}
+
+export class DiscordTemporaryError extends Error {
+  readonly status: number
+
+  constructor(status: number) {
+    super(`Discord API request failed (${status})`)
+    this.name = 'DiscordTemporaryError'
+    this.status = status
   }
 }
 
@@ -107,27 +149,29 @@ export function discordRedirectUri(requestUrl?: string): string {
   return `${dashboardBaseUrl(requestUrl)}/api/auth/discord/callback`
 }
 
-function encryptionKey(): Buffer {
-  const secret = process.env.AUTH_SECRET || process.env.SESSION_SECRET
+function encryptionKey(version: 'v1' | 'v2'): Buffer {
+  const secret = version === 'v2'
+    ? process.env.DISCORD_TOKEN_ENCRYPTION_KEY || process.env.AUTH_SECRET || process.env.SESSION_SECRET
+    : process.env.AUTH_SECRET || process.env.SESSION_SECRET
   if (!secret) throw new Error('AUTH_SECRET or SESSION_SECRET is not configured')
   return createHash('sha256').update(secret).digest()
 }
 
 export function sealDiscordToken(token: string): string {
   const iv = randomBytes(12)
-  const cipher = createCipheriv('aes-256-gcm', encryptionKey(), iv)
+  const cipher = createCipheriv('aes-256-gcm', encryptionKey('v2'), iv)
   const encrypted = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()])
   const tag = cipher.getAuthTag()
-  return ['v1', iv.toString('base64url'), tag.toString('base64url'), encrypted.toString('base64url')].join('.')
+  return ['v2', iv.toString('base64url'), tag.toString('base64url'), encrypted.toString('base64url')].join('.')
 }
 
 function openDiscordToken(value: string): string {
   const [version, iv, tag, encrypted] = value.split('.')
-  if (version !== 'v1' || !iv || !tag || !encrypted) {
+  if ((version !== 'v1' && version !== 'v2') || !iv || !tag || !encrypted) {
     throw new DiscordReauthRequiredError()
   }
   try {
-    const decipher = createDecipheriv('aes-256-gcm', encryptionKey(), Buffer.from(iv, 'base64url'))
+    const decipher = createDecipheriv('aes-256-gcm', encryptionKey(version), Buffer.from(iv, 'base64url'))
     decipher.setAuthTag(Buffer.from(tag, 'base64url'))
     return Buffer.concat([
       decipher.update(Buffer.from(encrypted, 'base64url')),
@@ -144,6 +188,7 @@ async function discordRequest<T>(path: string, authorization: string): Promise<T
     cache: 'no-store',
   })
   if (response.status === 401) throw new DiscordReauthRequiredError()
+  if (response.status === 429 || response.status >= 500) throw new DiscordTemporaryError(response.status)
   if (!response.ok) {
     throw new Error(`Discord API request failed (${response.status})`)
   }
@@ -165,22 +210,111 @@ async function discordMutation(path: string, method: string, body?: unknown): Pr
   if (!response.ok) throw new Error(`Discord moderation request failed (${response.status})`)
 }
 
+async function discordJsonMutation<T>(path: string, method: string, body: unknown): Promise<T> {
+  const token = process.env.DISCORD_TOKEN?.trim()
+  if (!token) throw new Error('DISCORD_TOKEN is not configured')
+  const response = await fetch(`${DISCORD_API}${path}`, {
+    method,
+    headers: {
+      Authorization: `Bot ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+  })
+  if (!response.ok) throw new Error(`Discord moderation request failed (${response.status})`)
+  return response.json() as Promise<T>
+}
+
+async function sendBotDirectMessage(userId: string, content: string): Promise<void> {
+  const channel = await discordJsonMutation<{ id: string }>('/users/@me/channels', 'POST', {
+    recipient_id: userId,
+  })
+  await discordMutation(`/channels/${channel.id}/messages`, 'POST', {
+    content: content.slice(0, 2000),
+    allowed_mentions: { parse: [] },
+  })
+}
+
+export async function sendBotChannelMessage(channelId: string, content: string): Promise<void> {
+  if (!/^\d{15,22}$/.test(channelId)) throw new Error('Invalid Discord channel ID')
+  await discordMutation(`/channels/${channelId}/messages`, 'POST', {
+    content: content.slice(0, 2000),
+    allowed_mentions: { parse: [] },
+  })
+}
+
+const guildResourceCache = new Map<string, {
+  expiresAt: number
+  value: { roles: DiscordGuildRoleResource[]; channels: DiscordGuildChannelResource[] }
+}>()
+
+/**
+ * Load the selectable moderation resources with the bot credential. The route
+ * calling this function is already scoped to the authenticated user's selected
+ * guild; accepting only a guild ID here keeps the bot token server-only.
+ */
+export async function getBotGuildResources(guildId: string): Promise<{
+  roles: DiscordGuildRoleResource[]
+  channels: DiscordGuildChannelResource[]
+}> {
+  if (!/^\d{15,22}$/.test(guildId)) throw new Error('Invalid Discord guild ID')
+  const cached = guildResourceCache.get(guildId)
+  if (cached && cached.expiresAt > Date.now()) return cached.value
+
+  const token = process.env.DISCORD_TOKEN?.trim()
+  if (!token) throw new Error('DISCORD_TOKEN is not configured')
+  const [rolePayload, channelPayload] = await Promise.all([
+    discordRequest<DiscordGuildRolePayload[]>(`/guilds/${guildId}/roles`, `Bot ${token}`),
+    discordRequest<DiscordGuildChannelPayload[]>(`/guilds/${guildId}/channels`, `Bot ${token}`),
+  ])
+  const value = {
+    roles: rolePayload
+      .filter((role) => role.id !== guildId && !role.managed)
+      .map(({ id, name, position, color }) => ({ id, name, position, color }))
+      .sort((a, b) => b.position - a.position || a.name.localeCompare(b.name)),
+    channels: channelPayload
+      .filter((channel): channel is DiscordGuildChannelPayload & { type: 0 | 5 } => (
+        channel.type === 0 || channel.type === 5
+      ))
+      .map((channel) => ({
+        id: channel.id,
+        name: channel.name,
+        type: channel.type,
+        parentId: channel.parent_id ?? null,
+        position: channel.position ?? 0,
+      }))
+      .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name)),
+  }
+  guildResourceCache.set(guildId, { value, expiresAt: Date.now() + CACHE_TTL_MS })
+  return value
+}
+
 export async function getBotGuildMembers(
   guildId: string,
   page: number,
   pageSize: number,
   query = '',
-): Promise<DiscordGuildMember[]> {
+): Promise<{ data: DiscordGuildMember[]; total: number | null }> {
   const token = process.env.DISCORD_TOKEN?.trim()
   if (!token) throw new Error('DISCORD_TOKEN is not configured')
   const offset = Math.max(0, page - 1) * pageSize
   if (query) {
+    if (/^\d{15,22}$/.test(query)) {
+      try {
+        const member = await getBotGuildMember(guildId, query)
+        return { data: offset === 0 ? [member] : [], total: 1 }
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('(404)')) return { data: [], total: 0 }
+        throw error
+      }
+    }
     const params = new URLSearchParams({ query: query.slice(0, 100), limit: '1000' })
     const matches = await discordRequest<DiscordGuildMember[]>(
       `/guilds/${guildId}/members/search?${params}`,
       `Bot ${token}`,
     )
-    return matches.slice(offset, offset + pageSize)
+    return { data: matches.slice(offset, offset + pageSize), total: matches.length }
   }
 
   const collected: DiscordGuildMember[] = []
@@ -196,7 +330,7 @@ export async function getBotGuildMembers(
     if (batch.length === 0 || batch.length < Number(params.get('limit'))) break
     after = batch.at(-1)?.user.id ?? after
   }
-  return collected.slice(offset, offset + pageSize)
+  return { data: collected.slice(offset, offset + pageSize), total: null }
 }
 
 export async function getBotGuildMember(guildId: string, userId: string): Promise<DiscordGuildMember> {
@@ -210,22 +344,43 @@ export async function executeModerationAction(
   userId: string,
   action: string,
   durationHours = 0,
+  options: {
+    reason?: string
+    dmUser?: boolean
+    preserveBanMessages?: boolean
+  } = {},
 ): Promise<void> {
   if (!/^\d{15,22}$/.test(guildId) || !/^\d{15,22}$/.test(userId)) {
     throw new Error('Invalid Discord ID')
   }
-  if (action === 'timeout' || action === 'mute') {
+  const normalizedAction = action === 'mute' ? 'timeout' : action
+  if (options.dmUser && ['timeout', 'kick', 'ban'].includes(normalizedAction)) {
+    const verb = normalizedAction === 'timeout'
+      ? 'timed out'
+      : normalizedAction === 'kick' ? 'kicked' : 'banned'
+    const duration = normalizedAction === 'timeout'
+      ? `\nDuration: ${durationHours > 0 ? durationHours : 1} hour(s)`
+      : ''
+    await sendBotDirectMessage(
+      userId,
+      `You were ${verb} by Docket.\nReason: ${options.reason || 'No reason provided'}${duration}`,
+    ).catch(() => undefined)
+  }
+
+  if (normalizedAction === 'timeout') {
     const hours = durationHours > 0 ? Math.min(durationHours, 24 * 28) : 1
     await discordMutation(`/guilds/${guildId}/members/${userId}`, 'PATCH', {
       communication_disabled_until: new Date(Date.now() + hours * 3_600_000).toISOString(),
     })
-  } else if (action === 'kick') {
+  } else if (normalizedAction === 'kick') {
     await discordMutation(`/guilds/${guildId}/members/${userId}`, 'DELETE')
-  } else if (action === 'ban') {
-    await discordMutation(`/guilds/${guildId}/bans/${userId}`, 'PUT', { delete_message_seconds: 0 })
-  } else if (action === 'unban') {
+  } else if (normalizedAction === 'ban') {
+    await discordMutation(`/guilds/${guildId}/bans/${userId}`, 'PUT', {
+      delete_message_seconds: options.preserveBanMessages === false ? 86_400 : 0,
+    })
+  } else if (normalizedAction === 'unban') {
     await discordMutation(`/guilds/${guildId}/bans/${userId}`, 'DELETE')
-  } else if (!['warn', 'note'].includes(action)) {
+  } else if (!['warn', 'note'].includes(normalizedAction)) {
     throw new Error(`Unsupported moderation action: ${action}`)
   }
 }
@@ -243,13 +398,18 @@ async function tokenRequest(params: URLSearchParams): Promise<DiscordTokenRespon
   return response.json() as Promise<DiscordTokenResponse>
 }
 
-export async function exchangeDiscordCode(code: string, redirectUri: string): Promise<DiscordTokenResponse> {
+export async function exchangeDiscordCode(
+  code: string,
+  redirectUri: string,
+  codeVerifier: string,
+): Promise<DiscordTokenResponse> {
   return tokenRequest(new URLSearchParams({
     client_id: requiredEnv('DISCORD_CLIENT_ID'),
     client_secret: requiredEnv('DISCORD_CLIENT_SECRET'),
     grant_type: 'authorization_code',
     code,
     redirect_uri: redirectUri,
+    code_verifier: codeVerifier,
   }))
 }
 
@@ -257,7 +417,9 @@ export async function fetchDiscordUser(accessToken: string): Promise<DiscordUser
   return discordRequest<DiscordUser>('/users/@me', `Bearer ${accessToken}`)
 }
 
-async function refreshAccessToken(user: {
+const refreshLocks = new Map<string, Promise<string>>()
+
+async function performAccessTokenRefresh(user: {
   id: string
   discordRefreshToken: string | null
 }): Promise<string> {
@@ -281,6 +443,21 @@ async function refreshAccessToken(user: {
   return accessToken
 }
 
+async function refreshAccessToken(user: {
+  id: string
+  discordRefreshToken: string | null
+}): Promise<string> {
+  const inFlight = refreshLocks.get(user.id)
+  if (inFlight) return inFlight
+  const refresh = performAccessTokenRefresh(user)
+  refreshLocks.set(user.id, refresh)
+  try {
+    return await refresh
+  } finally {
+    if (refreshLocks.get(user.id) === refresh) refreshLocks.delete(user.id)
+  }
+}
+
 async function getAccessToken(userId: string): Promise<string> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -298,28 +475,41 @@ async function getAccessToken(userId: string): Promise<string> {
   return openDiscordToken(user.discordAccessToken)
 }
 
-let botGuildCache: { expiresAt: number; ids: Set<string> } | null = null
+let botGuildCache: { expiresAt: number; guilds: Map<string, DiscordGuild> } | null = null
 
-async function getBotGuildIds(): Promise<Set<string>> {
-  if (botGuildCache && botGuildCache.expiresAt > Date.now()) return botGuildCache.ids
+async function getBotGuilds(): Promise<Map<string, DiscordGuild>> {
+  if (botGuildCache && botGuildCache.expiresAt > Date.now()) return botGuildCache.guilds
   const token = process.env.DISCORD_TOKEN?.trim()
   if (!token) throw new Error('DISCORD_TOKEN is not configured')
 
-  const ids = new Set<string>()
+  const guilds = new Map<string, DiscordGuild>()
   let after: string | undefined
   for (;;) {
-    const query = new URLSearchParams({ limit: '200', ...(after ? { after } : {}) })
+    const query = new URLSearchParams({ limit: '200', with_counts: 'true', ...(after ? { after } : {}) })
     const page = await discordRequest<DiscordGuild[]>(`/users/@me/guilds?${query}`, `Bot ${token}`)
-    page.forEach((guild) => ids.add(guild.id))
+    page.forEach((guild) => guilds.set(guild.id, guild))
     if (page.length < 200) break
     after = page.at(-1)?.id
     if (!after) break
   }
-  botGuildCache = { ids, expiresAt: Date.now() + CACHE_TTL_MS }
-  return ids
+  const installedIds = Array.from(guilds.keys())
+  await prisma.$transaction([
+    ...Array.from(guilds.values()).map((guild) => prisma.guild.upsert({
+      where: { id: guild.id },
+      create: { id: guild.id, name: guild.name, icon: guild.icon, installed: true },
+      update: { name: guild.name, icon: guild.icon, installed: true },
+    })),
+    prisma.guild.updateMany({
+      where: installedIds.length ? { installed: true, id: { notIn: installedIds } } : { installed: true },
+      data: { installed: false },
+    }),
+  ])
+  botGuildCache = { guilds, expiresAt: Date.now() + CACHE_TTL_MS }
+  return guilds
 }
 
 const userGuildCache = new Map<string, { expiresAt: number; guilds: ManagedGuild[] }>()
+const userGuildRefreshes = new Map<string, Promise<ManagedGuild[]>>()
 
 function canManageGuild(guild: DiscordGuild): boolean {
   if (guild.owner) return true
@@ -328,6 +518,15 @@ function canManageGuild(guild: DiscordGuild): boolean {
     return (permissions & ADMINISTRATOR) === ADMINISTRATOR || (permissions & MANAGE_GUILD) === MANAGE_GUILD
   } catch {
     return false
+  }
+}
+
+function discordGuildRole(guild: DiscordGuild): 'admin' | 'manager' {
+  if (guild.owner) return 'admin'
+  try {
+    return (BigInt(guild.permissions ?? '0') & ADMINISTRATOR) === ADMINISTRATOR ? 'admin' : 'manager'
+  } catch {
+    return 'manager'
   }
 }
 
@@ -348,29 +547,257 @@ export function botInviteUrl(guildId: string): string {
   return `https://discord.com/oauth2/authorize?${params}`
 }
 
-export async function getManageableGuilds(userId: string, force = false): Promise<ManagedGuild[]> {
-  const cached = userGuildCache.get(userId)
-  if (!force && cached && cached.expiresAt > Date.now()) return cached.guilds
+async function fetchUserGuilds(accessToken: string): Promise<DiscordGuild[]> {
+  const guilds: DiscordGuild[] = []
+  let after: string | undefined
+  for (;;) {
+    const params = new URLSearchParams({
+      limit: '200',
+      with_counts: 'true',
+      ...(after ? { after } : {}),
+    })
+    const page = await discordRequest<DiscordGuild[]>(`/users/@me/guilds?${params}`, `Bearer ${accessToken}`)
+    guilds.push(...page)
+    if (page.length < 200) break
+    after = page.at(-1)?.id
+    if (!after) break
+  }
+  return guilds
+}
 
-  const [accessToken, installedIds] = await Promise.all([getAccessToken(userId), getBotGuildIds()])
-  const params = new URLSearchParams({ limit: '200', with_counts: 'true' })
-  const guilds = await discordRequest<DiscordGuild[]>(`/users/@me/guilds?${params}`, `Bearer ${accessToken}`)
-  const manageable = guilds
-    .filter(canManageGuild)
-    .map((guild): ManagedGuild => ({
+async function syncGuildMemberships(
+  userId: string,
+  userGuilds: DiscordGuild[],
+  botGuilds: Map<string, DiscordGuild>,
+): Promise<void> {
+  const manageable = userGuilds.filter(canManageGuild)
+  const manageableIds = manageable.map((guild) => guild.id)
+  const existing = manageableIds.length
+    ? await prisma.guildMembership.findMany({ where: { userId, guildId: { in: manageableIds } } })
+    : []
+  const byGuild = new Map(existing.map((membership) => [membership.guildId, membership]))
+  const now = new Date()
+
+  const syncOperations = [
+    ...manageable.map((guild) => prisma.guild.upsert({
+      where: { id: guild.id },
+      create: {
+        id: guild.id,
+        name: guild.name,
+        icon: guild.icon,
+        installed: botGuilds.has(guild.id),
+      },
+      update: { name: guild.name, icon: guild.icon, installed: botGuilds.has(guild.id) },
+    })),
+    ...manageable.map((guild) => {
+      const current = byGuild.get(guild.id)
+      const invitedAndVerified = current?.source === 'invite' && botGuilds.has(guild.id)
+      return prisma.guildMembership.upsert({
+        where: { guildId_userId: { guildId: guild.id, userId } },
+        create: {
+          guildId: guild.id,
+          userId,
+          role: discordGuildRole(guild),
+          status: botGuilds.has(guild.id) ? 'active' : 'revoked',
+          source: 'discord',
+          verifiedAt: botGuilds.has(guild.id) ? now : null,
+        },
+        update: current?.source === 'invite'
+          ? {
+              status: invitedAndVerified ? 'active' : current.status,
+              verifiedAt: invitedAndVerified ? now : current.verifiedAt,
+            }
+          : {
+              role: discordGuildRole(guild),
+              status: botGuilds.has(guild.id) ? 'active' : 'revoked',
+              source: 'discord',
+              verifiedAt: botGuilds.has(guild.id) ? now : null,
+            },
+      })
+    }),
+  ]
+  if (syncOperations.length) await prisma.$transaction(syncOperations)
+
+  const userGuildIds = new Set(userGuilds.map((guild) => guild.id))
+  const verifiableInvites = await prisma.guildMembership.findMany({
+    where: { userId, source: 'invite', status: 'invited' },
+    select: { id: true, guildId: true },
+  })
+  const activatedInviteIds = verifiableInvites
+    .filter((membership) => userGuildIds.has(membership.guildId) && botGuilds.has(membership.guildId))
+    .map((membership) => membership.id)
+  if (activatedInviteIds.length) {
+    await prisma.guildMembership.updateMany({
+      where: { id: { in: activatedInviteIds } },
+      data: { status: 'active', verifiedAt: now },
+    })
+  }
+  const botGuildIds = Array.from(botGuilds.keys())
+  await prisma.guildMembership.updateMany({
+    where: {
+      userId,
+      source: 'invite',
+      status: 'active',
+      ...(userGuildIds.size ? { guildId: { notIn: Array.from(userGuildIds) } } : {}),
+    },
+    data: { status: 'revoked' },
+  })
+  await prisma.guildMembership.updateMany({
+    where: {
+      userId,
+      source: 'invite',
+      status: 'active',
+      ...(botGuildIds.length ? { guildId: { notIn: botGuildIds } } : {}),
+    },
+    data: { status: 'revoked' },
+  })
+  await prisma.guildMembership.updateMany({
+    where: {
+      userId,
+      source: 'discord',
+      ...(manageableIds.length ? { guildId: { notIn: manageableIds } } : {}),
+    },
+    data: { status: 'revoked' },
+  })
+}
+
+export function invalidateGuildCache(userId?: string): void {
+  if (userId) userGuildCache.delete(userId)
+  else userGuildCache.clear()
+}
+
+async function refreshManageableGuilds(userId: string): Promise<ManagedGuild[]> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { discordId: true } })
+  if (!user?.discordId) throw new DiscordReauthRequiredError()
+  const [botGuilds, accessToken] = await Promise.all([getBotGuilds(), getAccessToken(userId)])
+  const userGuilds = await fetchUserGuilds(accessToken)
+  const liveManageable = userGuilds.filter(canManageGuild)
+
+  if (isSystemOwner(user.discordId)) {
+    const now = new Date()
+    const installedGuilds = Array.from(botGuilds.values())
+    if (installedGuilds.length) {
+      await prisma.$transaction(installedGuilds.map((guild) => prisma.guild.upsert({
+        where: { id: guild.id },
+        create: { id: guild.id, name: guild.name, icon: guild.icon, installed: true },
+        update: { name: guild.name, icon: guild.icon, installed: true },
+      })))
+      await prisma.$transaction(installedGuilds.map((guild) => prisma.guildMembership.upsert({
+        where: { guildId_userId: { guildId: guild.id, userId } },
+        create: { guildId: guild.id, userId, role: 'admin', status: 'active', source: 'system', verifiedAt: now },
+        update: { role: 'admin', status: 'active', source: 'system', verifiedAt: now },
+      })))
+    }
+  } else {
+    await syncGuildMemberships(userId, userGuilds, botGuilds)
+  }
+
+  const memberships = await prisma.guildMembership.findMany({
+    where: { userId, status: 'active', guild: { installed: true } },
+    include: { guild: true },
+  })
+  const liveById = new Map(liveManageable.map((guild) => [guild.id, guild]))
+  const manageableById = new Map(memberships.map((membership): [string, ManagedGuild] => {
+    const live = liveById.get(membership.guildId) ?? botGuilds.get(membership.guildId)
+    const stored = membership.guild
+    const guild: DiscordGuild = live ?? {
+      id: stored.id,
+      name: stored.name,
+      icon: stored.icon,
+    }
+    return [guild.id, {
       id: guild.id,
       name: guild.name,
       iconUrl: guildIconUrl(guild),
       owner: Boolean(guild.owner),
-      installed: installedIds.has(guild.id),
+      installed: stored.installed,
       memberCount: guild.approximate_member_count ?? null,
       onlineCount: guild.approximate_presence_count ?? null,
       inviteUrl: botInviteUrl(guild.id),
-    }))
+      canManage: isSystemOwner(user.discordId) || liveById.has(guild.id),
+      membershipRole: isSystemOwner(user.discordId) ? 'admin' : isRoleValue(membership.role),
+    }]
+  }))
+  for (const guild of liveManageable) {
+    if (botGuilds.has(guild.id) || manageableById.has(guild.id)) continue
+    manageableById.set(guild.id, {
+      id: guild.id,
+      name: guild.name,
+      iconUrl: guildIconUrl(guild),
+      owner: Boolean(guild.owner),
+      installed: false,
+      memberCount: guild.approximate_member_count ?? null,
+      onlineCount: guild.approximate_presence_count ?? null,
+      inviteUrl: botInviteUrl(guild.id),
+      canManage: true,
+      membershipRole: isSystemOwner(user.discordId) ? 'admin' : discordGuildRole(guild),
+    })
+  }
+  const manageable = Array.from(manageableById.values())
     .sort((a, b) => Number(b.installed) - Number(a.installed) || a.name.localeCompare(b.name))
 
   userGuildCache.set(userId, { guilds: manageable, expiresAt: Date.now() + CACHE_TTL_MS })
   return manageable
+}
+
+async function loadRecentlyVerifiedGuilds(userId: string): Promise<ManagedGuild[]> {
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { discordId: true } })
+  if (!user?.discordId) return []
+  const memberships = await prisma.guildMembership.findMany({
+    where: {
+      userId,
+      status: 'active',
+      verifiedAt: { gte: new Date(Date.now() - TRANSIENT_AUTHORITY_GRACE_MS) },
+      guild: { installed: true },
+    },
+    include: { guild: true },
+  })
+  const systemAdmin = isSystemOwner(user.discordId)
+  return memberships
+    .map((membership): ManagedGuild => {
+      const guild = membership.guild
+      return {
+        id: guild.id,
+        name: guild.name,
+        iconUrl: guildIconUrl({ id: guild.id, name: guild.name, icon: guild.icon }),
+        owner: false,
+        installed: true,
+        memberCount: null,
+        onlineCount: null,
+        inviteUrl: botInviteUrl(guild.id),
+        canManage: true,
+        membershipRole: systemAdmin ? 'admin' : isRoleValue(membership.role),
+      }
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+export async function getManageableGuilds(userId: string, force = false): Promise<ManagedGuild[]> {
+  const cached = userGuildCache.get(userId)
+  if (!force && cached && cached.expiresAt > Date.now()) return cached.guilds
+
+  const inFlight = userGuildRefreshes.get(userId)
+  if (inFlight) return inFlight
+  if (force) botGuildCache = null
+
+  const refresh = refreshManageableGuilds(userId).catch(async (error) => {
+    if (!(error instanceof DiscordTemporaryError)) throw error
+    const recentlyVerified = await loadRecentlyVerifiedGuilds(userId)
+    if (recentlyVerified.length === 0) throw error
+    userGuildCache.set(userId, {
+      guilds: recentlyVerified,
+      expiresAt: Date.now() + CACHE_TTL_MS,
+    })
+    return recentlyVerified
+  }).finally(() => {
+    if (userGuildRefreshes.get(userId) === refresh) userGuildRefreshes.delete(userId)
+  })
+  userGuildRefreshes.set(userId, refresh)
+  return refresh
+}
+
+function isRoleValue(value: string): 'admin' | 'manager' | 'viewer' {
+  return value === 'admin' || value === 'manager' ? value : 'viewer'
 }
 
 export function discordAvatarUrl(user: Pick<DiscordUser, 'id' | 'avatar'>): string | null {

@@ -53,7 +53,6 @@ const FORMAT_OPTIONS = [
   { label: 'PDF', value: 'pdf' },
   { label: 'XLSX', value: 'xlsx' },
 ]
-
 export function ReportsClient() {
   const toast = useToast()
   const canWrite = useConfigStore((s) => s.can('reports.write'))
@@ -209,10 +208,9 @@ export function ReportsClient() {
 
 function ReportForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const toast = useToast()
-  const exportFormat = useConfigStore((s) => s.config.exportFormat)
   const [busy, setBusy] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [form, setForm] = useState({ name: '', type: 'actions', format: exportFormat })
+  const [form, setForm] = useState({ name: '', type: 'actions', format: 'csv' })
 
   async function submit() {
     setBusy(true)
@@ -271,7 +269,7 @@ function ReportForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
             <Select options={TYPE_OPTIONS.slice(1)} value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} />
           </Field>
           <Field label="Format">
-            <Select options={FORMAT_OPTIONS} value={form.format} onChange={(e) => setForm({ ...form, format: e.target.value as typeof form.format })} />
+            <Select options={FORMAT_OPTIONS} value={form.format} onChange={(e) => setForm({ ...form, format: e.target.value })} />
           </Field>
         </div>
       </div>

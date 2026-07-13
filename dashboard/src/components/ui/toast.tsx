@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useState } from 'react'
 import { CheckCircle2, AlertTriangle, Info, XCircle, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { createClientId } from '@/lib/client-id'
 
 type ToastVariant = 'success' | 'error' | 'warning' | 'info'
 type Toast = { id: string; title: string; description?: string; variant: ToastVariant }
@@ -46,7 +47,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
 
   const toast = useCallback(
     (t: Omit<Toast, 'id'>) => {
-      const id = crypto.randomUUID()
+      const id = createClientId('toast')
       setToasts((prev) => [...prev, { ...t, id }])
       setTimeout(() => remove(id), 5000)
     },

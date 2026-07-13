@@ -7,11 +7,12 @@ export async function GET(request: Request) {
   try {
     const guard = await requireUser('audit.read')
     if (guard instanceof Response) return guard
+    const guildId = guard.selectedGuildId as string
 
     const url = new URL(request.url)
     const query = parseListQuery(url, { defaultSort: 'createdAt', maxPageSize: 50 })
 
-    const where: Prisma.AuditLogWhereInput = {}
+    const where: Prisma.AuditLogWhereInput = { guildId }
     if (query.q) {
       where.OR = [
         { actorName: { contains: query.q } },

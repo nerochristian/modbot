@@ -34,6 +34,7 @@ from dotenv import load_dotenv
 
 from config import Config
 from utils.embeds import ModEmbed
+from utils.moderation_settings import moderation_bool
 from utils.status_emojis import (
     apply_status_emoji_overrides,
     get_loading_emoji_for_guild,
@@ -812,7 +813,7 @@ class ModBot(commands.Bot):
             return any(role_id in role_ids for role_id in self._normalize_id_set(settings.get(key)))
 
         # Dashboard/legacy hierarchy mapping.
-        if has_role("manager_role"):
+        if has_role("owner_role") or has_role("manager_role"):
             return 5
         if has_role("supervisor_role"):
             return 4
@@ -2017,8 +2018,35 @@ class ModBot(commands.Bot):
         logger.info(f"[CMD] {ctx.author} used '{ctx.command.name}' in {location}")
 
     async def on_command_completion(self, ctx: commands.Context):
-        """Clear loading marker once a command completes."""
+        """Clear loading state and apply successful moderation command policy."""
         await self._clear_prefix_loading_for_ctx(ctx)
+        if ctx.guild is None or ctx.command is None:
+            return
+        cog = getattr(ctx.command, "cog", None)
+        if getattr(cog, "qualified_name", None) != "Moderation":
+            return
+        try:
+            settings = await self.db.get_settings(ctx.guild.id)
+            legacy_default = moderation_bool(
+                settings,
+                "moderation_delete_command_messages",
+                True,
+            )
+            if not moderation_bool(
+                settings,
+                "moderation_delete_commands",
+                legacy_default,
+            ):
+                return
+            await ctx.message.delete()
+        except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+            pass
+        except Exception as exc:
+            logger.debug(
+                "Failed to apply moderation command deletion policy in guild %s: %s",
+                ctx.guild.id,
+                exc,
+            )
 
     async def on_command_error(self, ctx: commands.Context, error: Exception):
         """Global command error handler."""

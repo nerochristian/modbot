@@ -1,16 +1,22 @@
 import discord
 from discord import app_commands
 from discord.ext import commands
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Optional
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_mod, is_bot_owner_id
+from utils.warning_escalation import apply_warning_escalation
 
 class WarningCommands:
     async def _warn_logic(self, source, user: discord.Member, reason: str):
         author = source.user if isinstance(source, discord.Interaction) else source.author
-        can_mod, error = await self.can_moderate(source.guild.id, author, user)
+        can_mod, error = await self.can_moderate(
+            source.guild.id,
+            author,
+            user,
+            allow_protected_target=True,
+        )
         if not can_mod:
             return await self._respond(source, embed=ModEmbed.error("Cannot Warn", error), ephemeral=True)
         
@@ -43,35 +49,53 @@ class WarningCommands:
         )
         await self.dm_user(user, dm_embed)
 
-        # Check warn thresholds for auto-punishment
+        # Apply only the highest escalation whose threshold this warning crossed.
         settings = await self.bot.db.get_settings(source.guild.id)
-        if settings.get("warn_thresholds_enabled"):
-            ban_at = settings.get("warn_threshold_ban", 7)
-            kick_at = settings.get("warn_threshold_kick", 5)
-            mute_at = settings.get("warn_threshold_mute", 3)
-            auto_action = None
-            try:
-                if ban_at and warn_count >= ban_at:
-                    await source.guild.ban(user, reason=f"Auto-ban: {warn_count} warnings reached")
-                    auto_action = f"🔨 **Auto-banned** {user.mention} — reached {warn_count} warnings"
-                    await self.bot.db.create_case(source.guild.id, user.id, self.bot.user.id, "Ban", f"Auto-ban: {warn_count} warnings reached")
-                elif kick_at and warn_count >= kick_at:
-                    await source.guild.kick(user, reason=f"Auto-kick: {warn_count} warnings reached")
-                    auto_action = f"👢 **Auto-kicked** {user.mention} — reached {warn_count} warnings"
-                    await self.bot.db.create_case(source.guild.id, user.id, self.bot.user.id, "Kick", f"Auto-kick: {warn_count} warnings reached")
-                elif mute_at and warn_count >= mute_at:
-                    mute_dur = settings.get("warn_mute_duration", 3600)
-                    await user.timeout(timedelta(seconds=mute_dur), reason=f"Auto-mute: {warn_count} warnings reached")
-                    auto_action = f"🔇 **Auto-muted** {user.mention} for {mute_dur // 60}m — reached {warn_count} warnings"
-                    await self.bot.db.create_case(source.guild.id, user.id, self.bot.user.id, "Mute", f"Auto-mute: {warn_count} warnings reached")
-            except discord.Forbidden:
-                auto_action = f"⚠️ Auto-punishment failed for {user.mention}: missing permissions"
-            except Exception:
-                pass
-            
-            if auto_action:
-                auto_embed = discord.Embed(description=auto_action, color=Colors.ERROR, timestamp=datetime.now(timezone.utc))
-                await self._respond(source, embed=auto_embed)
+        auto_action = None
+
+        async def create_escalation_case(action: str, action_reason: str, duration_seconds: Optional[int]):
+            duration = f"{duration_seconds // 60}m" if duration_seconds else None
+            await self.bot.db.create_case(
+                source.guild.id,
+                user.id,
+                self.bot.user.id,
+                action,
+                action_reason,
+                duration,
+            )
+
+        try:
+            escalation = await apply_warning_escalation(
+                source.guild,
+                user,
+                settings,
+                warn_count,
+                previous_count=max(0, warn_count - 1),
+                reason_prefix="Automatic warning escalation",
+                ban_delete_days=1,
+                create_case=create_escalation_case,
+            )
+            if escalation is not None:
+                action_labels = {
+                    "timeout": "Auto-timed out",
+                    "kick": "Auto-kicked",
+                    "ban": "Auto-banned",
+                }
+                duration = ""
+                if escalation.rule.duration_seconds:
+                    duration = f" for {escalation.rule.duration_seconds // 60}m"
+                auto_action = (
+                    f"**{action_labels[escalation.rule.action]}** {user.mention}{duration} "
+                    f"— reached {warn_count} warnings"
+                )
+        except discord.Forbidden:
+            auto_action = f"Auto-punishment failed for {user.mention}: missing permissions"
+        except discord.HTTPException as exc:
+            auto_action = f"Auto-punishment failed for {user.mention}: {exc}"
+
+        if auto_action:
+            auto_embed = discord.Embed(description=auto_action, color=Colors.ERROR, timestamp=datetime.now(timezone.utc))
+            await self._respond(source, embed=auto_embed)
 
     async def _warnings_logic(self, source, user: discord.Member):
         warnings = await self.bot.db.get_warnings(source.guild.id, user.id)

@@ -31,6 +31,7 @@ DO_BASE_URL = "https://inference.do-ai.run/v1"
 from utils.embeds import ModEmbed
 from utils.logging import send_log_embed
 from utils.checks import is_admin, is_mod, is_bot_owner_id
+from utils.moderation_settings import moderation_bool
 from config import Config
 
 
@@ -365,7 +366,10 @@ class AntiRaid(commands.Cog):
                 # assign quarantine role if configured
                 quarantine_role_id = settings.get("antiraid_quarantine_role")
                 if quarantine_role_id:
-                    role = member.guild.get_role(quarantine_role_id)
+                    try:
+                        role = member.guild.get_role(int(quarantine_role_id))
+                    except (TypeError, ValueError):
+                        role = None
                     if role:
                         await member.add_roles(
                             role,
@@ -451,10 +455,13 @@ class AntiRaid(commands.Cog):
         # log the detection
         log_channel_id = settings.get("mod_log_channel")
         if log_channel_id:
-            channel = guild.get_channel(log_channel_id)
+            try:
+                channel = guild.get_channel(int(log_channel_id))
+            except (TypeError, ValueError):
+                channel = None
             if channel:
                 try:
-                    await send_log_embed(channel, embed)
+                    await send_log_embed(channel, embed, bot=self.bot)
                 except Exception:
                     pass
 
@@ -497,7 +504,15 @@ class AntiRaid(commands.Cog):
                     else:
                         await member.ban(
                             reason="[ANTI-RAID] Automatic raid protection",
-                            delete_message_days=1,
+                            delete_message_days=(
+                                0
+                                if moderation_bool(
+                                    settings,
+                                    "moderation_preserve_ban_messages",
+                                    True,
+                                )
+                                else 1
+                            ),
                         )
                     action_count += 1
                 except Exception:
@@ -507,7 +522,10 @@ class AntiRaid(commands.Cog):
             # add quarantine role to recent joiners
             quarantine_role_id = settings.get("antiraid_quarantine_role")
             if quarantine_role_id:
-                role = guild.get_role(quarantine_role_id)
+                try:
+                    role = guild.get_role(int(quarantine_role_id))
+                except (TypeError, ValueError):
+                    role = None
                 if role:
                     recent_members = [
                         m for m in self.member_tracker[guild.id]
@@ -534,10 +552,13 @@ class AntiRaid(commands.Cog):
                 inline=False,
             )
             if log_channel_id:
-                channel = guild.get_channel(log_channel_id)
+                try:
+                    channel = guild.get_channel(int(log_channel_id))
+                except (TypeError, ValueError):
+                    channel = None
                 if channel:
                     try:
-                        await send_log_embed(channel, embed)
+                        await send_log_embed(channel, embed, bot=self.bot)
                     except Exception:
                         pass
 

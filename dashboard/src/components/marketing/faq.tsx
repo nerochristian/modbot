@@ -19,15 +19,15 @@ const FAQS = [
   },
   {
     q: 'Is my data secure?',
-    a: 'Sessions use signed, httpOnly cookies with server-side revocation, passwords are hashed with bcrypt, and every moderation action is written to an immutable audit log. Premium plans add SAML SSO and 2FA enforcement for your mod team.',
+    a: 'Docket signs you in through Discord and uses signed, httpOnly dashboard sessions with server-side revocation. Your Discord password, authenticator, and recovery codes stay with Discord and are managed in Discord account settings.',
   },
   {
     q: 'Can I export cases and member data?',
-    a: 'Anytime. Export any case, member list, or report as CSV, JSON, XLSX, or PDF. Server-side filtering and sorting mean exports reflect exactly what you see on screen.',
+    a: 'Dashboard tables and charts can be downloaded as CSV or JSON. Generated reports support CSV, JSON, PDF, and XLSX.',
   },
   {
-    q: 'What happens after the free trial?',
-    a: 'Your cases, rules, and audit history stay intact. Choose a plan to keep going, or downgrade to the limited free tier. We will never delete your data without warning, and there are no cancellation fees.',
+    q: 'Can I buy a paid plan in the dashboard?',
+    a: 'Not currently. Paid checkout and plan management are hidden until Docket has a real billing provider and verified entitlements.',
   },
 ]
 

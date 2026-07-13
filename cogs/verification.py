@@ -327,8 +327,11 @@ class Verification(commands.Cog):
     ) -> tuple[Optional[discord.Role], Optional[discord.Role]]:
         settings = await self.bot.db.get_settings(guild.id)
         sync_setup_aliases(settings)
-        unverified_id = settings.get("unverified_role")
-        verified_id = settings.get("verified_role")
+        try:
+            unverified_id = int(settings.get("unverified_role", 0) or 0)
+            verified_id = int(settings.get("verified_role", 0) or 0)
+        except (TypeError, ValueError):
+            return None, None
         unverified = guild.get_role(unverified_id) if unverified_id else None
         verified = guild.get_role(verified_id) if verified_id else None
         return unverified, verified

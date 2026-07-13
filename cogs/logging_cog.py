@@ -23,6 +23,7 @@ from utils.cache import ChannelCache
 from utils.transcript import generate_html_transcript, EphemeralTranscriptView
 from utils.logging import prepare_log_embed
 from utils.components_v2 import ensure_layout_view_action_rows, layout_view_from_embeds
+from utils.server_setup import module_enabled
 
 CACHE_DIR = Path(tempfile.gettempdir()) / "modbot_images"
 try:
@@ -167,6 +168,21 @@ class Logging(commands.Cog):
         self._suppress_message_delete_until: dict[int, datetime] = {}
         self._message_snapshots: dict[int, discord.Message] = {}
         self._snapshot_lock = asyncio.Lock()
+        self._logging_state_cache: dict[int, tuple[float, bool]] = {}
+
+    async def _logging_enabled(self, guild_id: int) -> bool:
+        now = time.monotonic()
+        cached = self._logging_state_cache.get(guild_id)
+        if cached and cached[0] > now:
+            return cached[1]
+        try:
+            settings = await self.bot.db.get_settings(guild_id)
+            enabled = module_enabled(settings, "logging", True)
+        except Exception as exc:
+            logger.error("Failed to resolve logging state for guild %s: %s", guild_id, exc)
+            return False
+        self._logging_state_cache[guild_id] = (now + 5.0, enabled)
+        return enabled
 
     async def cog_load(self):
         self._cleanup_temp_cache.start()
@@ -367,6 +383,9 @@ class Logging(commands.Cog):
         Get the appropriate log channel for a log type
         Uses advanced caching with TTL to reduce DB queries
         """
+        if not await self._logging_enabled(guild.id):
+            return None
+
         # Check cache first
         channel_id = await self._channel_cache.get(guild.id, log_type)
         
@@ -456,6 +475,11 @@ class Logging(commands.Cog):
         """
         if not channel:
             return False
+        guild_id = getattr(getattr(channel, "guild", None), "id", None)
+        bot_db = getattr(getattr(self, "bot", None), "db", None)
+        if guild_id is not None and bot_db is not None:
+            if not await self._logging_enabled(guild_id):
+                return False
 
         # Hard routing guard: if an audit/message card is about to be posted in the
         # wrong channel, reroute before sending.
@@ -1484,6 +1508,8 @@ class Logging(commands.Cog):
     async def on_message(self, message: discord.Message):
         """Cache recent messages so raw delete fallback can still show author/content."""
         if not message.guild:
+            return
+        if not await self._logging_enabled(message.guild.id):
             return
         try:
             await self._reroute_misplaced_log_message(message)

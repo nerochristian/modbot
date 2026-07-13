@@ -228,7 +228,7 @@ function Widget({
       )
     case 'chart-channels':
       return (
-        <ChartCard title="Flagged channels">
+        <ChartCard title="Active channels by message volume">
           <TrendChart data={data.channels} type="bar" showAxes valueFormatter={(v) => formatCompact(v)} />
         </ChartCard>
       )
@@ -346,36 +346,46 @@ function Widget({
           </CardContent>
         </Card>
       )
-    case 'status-system':
+    case 'status-system': {
+      const statuses = data.systemStatus.map((service) => service.status.trim().toLowerCase())
+      const overall = statuses.every((status) => status === 'operational')
+        ? 'operational'
+        : statuses.some((status) => status === 'down' || status === 'unavailable')
+          ? 'down'
+          : 'degraded'
       return (
         <Card className="h-full">
           <CardHeader>
             <CardTitle>Bot status</CardTitle>
-            <Badge tone="success" dot>
-              Operational
+            <Badge tone={statusTone(overall)} dot>
+              {overall === 'operational' ? 'Operational' : overall === 'degraded' ? 'Degraded' : 'Attention needed'}
             </Badge>
           </CardHeader>
           <CardContent className="space-y-2.5 pt-3">
-            {data.systemStatus.map((s) => (
-              <div key={s.name} className="flex items-center justify-between text-sm">
-                <span className="flex items-center gap-2 text-foreground">
-                  <span
-                    className={`size-2 rounded-full ${
-                      s.status === 'operational'
-                        ? 'bg-success'
-                        : s.status === 'degraded'
-                          ? 'bg-warning'
-                          : 'bg-danger'
-                    }`}
-                  />
-                  {s.name}
-                </span>
-                <Badge tone={statusTone(s.status)}>{s.uptime}</Badge>
-              </div>
-            ))}
+            {data.systemStatus.map((service) => {
+              const status = service.status.trim().toLowerCase()
+              return (
+                <div key={service.name} className="flex items-center justify-between text-sm">
+                  <span className="flex items-center gap-2 text-foreground">
+                    <span
+                      className={`size-2 rounded-full ${
+                        status === 'operational'
+                          ? 'bg-success'
+                          : status === 'degraded'
+                            ? 'bg-warning'
+                            : 'bg-danger'
+                      }`}
+                    />
+                    {service.name}
+                  </span>
+                  <Badge tone={statusTone(status)}>{service.uptime}</Badge>
+                </div>
+              )
+            })}
           </CardContent>
         </Card>
       )
+    }
     default:
       return null
   }

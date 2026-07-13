@@ -15,9 +15,9 @@ export async function GET(
     return new Response('Not found', { status: 404 })
   }
 
-  const transcriptDirectory =
-    process.env.TRANSCRIPT_STORAGE_DIR || path.join(process.cwd(), 'data', 'transcripts')
-  const transcriptPath = path.join(transcriptDirectory, filename)
+  const transcriptPath = process.env.TRANSCRIPT_STORAGE_DIR
+    ? path.join(/*turbopackIgnore: true*/ process.env.TRANSCRIPT_STORAGE_DIR, filename)
+    : path.join(process.cwd(), 'data', 'transcripts', filename)
 
   try {
     const transcript = await readFile(transcriptPath)

@@ -2,10 +2,53 @@ import 'server-only'
 
 import { botQuery } from '@/lib/bot-db'
 
+const SNOWFLAKE_SETTING_KEYS = [
+  'owner_role',
+  'admin_role',
+  'manager_role',
+  'supervisor_role',
+  'senior_mod_role',
+  'mod_role',
+  'trial_mod_role',
+  'staff_role',
+  'antiraid_quarantine_role',
+  'verified_role',
+  'unverified_role',
+  'verify_channel',
+  'verify_log_channel',
+  'ticket_category',
+  'ticket_support_role',
+  'ticket_log_channel',
+  'log_channel_mod',
+  'mod_log_channel',
+  'log_channel_audit',
+  'log_channel_message',
+  'log_channel_voice',
+  'log_channel_automod',
+  'log_channel_report',
+  'log_channel_ticket',
+  'welcome_channel',
+  'auto_role',
+] as const
+
 export async function getBotGuildSettings(guildId: string): Promise<Record<string, unknown>> {
   const rows = await botQuery<{ settings: string | Record<string, unknown> }>(
-    'SELECT settings FROM guild_settings WHERE guild_id = $1::bigint',
-    [guildId],
+    `SELECT COALESCE(
+       jsonb_object_agg(
+         entry.key,
+         CASE
+           WHEN entry.key = ANY($2::text[]) AND jsonb_typeof(entry.value) = 'number'
+             THEN to_jsonb(entry.value #>> '{}')
+           ELSE entry.value
+         END
+       ) FILTER (WHERE entry.key IS NOT NULL),
+       '{}'::jsonb
+     )::text AS settings
+     FROM guild_settings AS guild
+     LEFT JOIN LATERAL jsonb_each(COALESCE(NULLIF(guild.settings, ''), '{}')::jsonb) AS entry ON TRUE
+     WHERE guild.guild_id = $1::bigint
+     GROUP BY guild.guild_id`,
+    [guildId, SNOWFLAKE_SETTING_KEYS],
   )
   const value = rows[0]?.settings
   if (!value) return {}
@@ -22,14 +65,15 @@ export async function patchBotGuildSettings(
   guildId: string,
   changes: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
-  const rows = await botQuery<{ settings: string | Record<string, unknown> }>(
-    `UPDATE guild_settings
-     SET settings = (COALESCE(NULLIF(settings, ''), '{}')::jsonb || $2::jsonb)::text
-     WHERE guild_id = $1::bigint
-     RETURNING settings`,
+  await botQuery<{ guild_id: string }>(
+    `INSERT INTO guild_settings (guild_id, settings)
+     VALUES ($1::bigint, $2::jsonb::text)
+     ON CONFLICT (guild_id) DO UPDATE
+     SET settings = (
+       COALESCE(NULLIF(guild_settings.settings, ''), '{}')::jsonb || EXCLUDED.settings::jsonb
+     )::text
+     RETURNING guild_id`,
     [guildId, JSON.stringify(changes)],
   )
-  if (!rows[0]) throw new Error('Guild settings are not initialized')
-  const value = rows[0].settings
-  return typeof value === 'object' ? value : JSON.parse(value)
+  return getBotGuildSettings(guildId)
 }

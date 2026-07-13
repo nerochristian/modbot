@@ -59,9 +59,56 @@ install_dependencies() {
     (
       cd dashboard
       npm ci
-      npx prisma db push --accept-data-loss
+      mkdir -p data
+      export DATABASE_URL="${DASHBOARD_DATABASE_URL:-file:${APP_DIR}/dashboard/data/dashboard.db}"
+      if [[ "${DATABASE_URL}" == file:* ]]; then
+        dashboard_db_path="${DATABASE_URL#file:}"
+        legacy_db="${APP_DIR}/dashboard/.next/standalone/dev.db"
+        if [[ ! -f "${dashboard_db_path}" && -f "${legacy_db}" ]]; then
+          mkdir -p "$(dirname "${dashboard_db_path}")"
+          cp -p "${legacy_db}" "${dashboard_db_path}"
+        fi
+      fi
+      # Existing dashboard databases predate Prisma Migrate. Baseline them once,
+      # then apply only tracked forward migrations. Fresh databases apply the
+      # baseline normally.
+      if node -e '
+        const { createClient } = require("@libsql/client");
+        const db = createClient({ url: process.env.DATABASE_URL });
+        Promise.all([
+          db.execute({
+            sql: "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = ? AND name NOT LIKE ?",
+            args: ["table", "sqlite_%"],
+          }),
+          db.execute({
+            sql: "SELECT COUNT(*) AS count FROM sqlite_master WHERE type = ? AND name = ?",
+            args: ["table", "_prisma_migrations"],
+          }),
+        ]).then(([tables, migrations]) => {
+          const hasTables = Number(tables.rows[0].count) > 0;
+          const hasMigrations = Number(migrations.rows[0].count) > 0;
+          process.exit(hasTables && !hasMigrations ? 0 : 1);
+        }).catch(() => process.exit(1));
+      '; then
+        npx prisma migrate resolve --applied 20260712160000_baseline
+      fi
+      npx prisma migrate deploy
       npm run build
+      rm -f .next/standalone/.env .next/standalone/.env.local \
+        .next/standalone/.env.production .next/standalone/.env.production.local
+      mkdir -p .next/standalone/.next
+      cp -a .next/static .next/standalone/.next/
+      cp -a public .next/standalone/
     )
+  fi
+}
+
+restart_dashboard() {
+  if command -v pm2 >/dev/null 2>&1; then
+    mkdir -p "${APP_DIR}/dashboard/data"
+    pm2 startOrReload ecosystem.config.cjs --only modbot-dashboard --update-env
+    pm2 save
+    pm2 describe modbot-dashboard >/dev/null
   fi
 }
 
@@ -109,12 +156,13 @@ compile_check() {
   log "Deploying ${current_commit} -> ${target_commit}."
   git merge --ff-only "${REMOTE}/${BRANCH}"
 
-  if ! install_dependencies || ! compile_check || ! restart_service; then
+  if ! install_dependencies || ! compile_check || ! restart_service || ! restart_dashboard; then
     log "Deploy failed; rolling back to ${current_commit}."
     git reset --hard "${current_commit}"
     install_dependencies || true
     compile_check || true
     restart_service || true
+    restart_dashboard || true
     exit 1
   fi
 

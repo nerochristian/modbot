@@ -60,7 +60,7 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     : null
   const membershipActive = membership
     && membership.guild.installed
-    && (membership.status === 'active' || membership.status === 'invited')
+    && membership.status === 'active'
   const role: Role = systemAdmin
     ? 'admin'
     : membershipActive && isRole(membership.role)
@@ -107,6 +107,33 @@ export async function getRolePermissions(
     return DEFAULT_ROLE_MATRIX[role]
   }
   return rows.filter((row) => row.allowed && isPermission(row.permission)).map((row) => row.permission as Permission)
+}
+
+/** Re-read selected-guild authority after a live Discord membership refresh. */
+export async function refreshSelectedGuildAuthority(user: CurrentUser): Promise<CurrentUser> {
+  if (!user.selectedGuildId) return user
+  if (user.systemAdmin) {
+    const guild = await prisma.guild.findFirst({
+      where: { id: user.selectedGuildId, installed: true },
+      select: { id: true },
+    })
+    return guild
+      ? { ...user, role: 'admin', permissions: [...PERMISSIONS] }
+      : { ...user, selectedGuildId: null, role: 'viewer', permissions: [] }
+  }
+  const membership = await prisma.guildMembership.findUnique({
+    where: { guildId_userId: { guildId: user.selectedGuildId, userId: user.id } },
+    include: { guild: { select: { installed: true } } },
+  })
+  if (!membership || membership.status !== 'active' || !membership.guild.installed) {
+    return { ...user, selectedGuildId: null, role: 'viewer', permissions: [] }
+  }
+  const role: Role = isRole(membership.role) ? membership.role : 'viewer'
+  return {
+    ...user,
+    role,
+    permissions: await getRolePermissions(role, user.selectedGuildId),
+  }
 }
 
 export function userCan(user: CurrentUser | null, permission: Permission): boolean {

@@ -24,7 +24,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="flex flex-1 items-center justify-center py-10">
           <div className="w-full max-w-sm">{children}</div>
         </div>
-        <p className="text-center font-mono text-xs text-muted-2">© 2026 Docket · Demo environment</p>
+        <p className="text-center font-mono text-xs text-muted-2">© 2026 Docket · Discord-secured access</p>
       </div>
 
       {/* Side panel — a live docket sheet, not a gradient. */}
@@ -33,7 +33,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
         <div className="relative">
           <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">
-            Today’s docket
+            Example docket
           </p>
           <blockquote className="mt-5 max-w-md font-display text-2xl font-semibold leading-snug tracking-tight text-foreground">
             The overwhelmed shift becomes a calm one. Automod files the noise; every case and appeal
@@ -45,7 +45,7 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
         <div className="relative rounded-lg border border-border bg-card p-3 shadow-[0_24px_60px_-30px_rgba(20,22,28,0.4)]">
           <div className="flex items-center justify-between px-1 pb-2">
             <span className="text-xs font-medium text-foreground">Open cases</span>
-            <span className="font-mono text-[0.625rem] uppercase tracking-wider text-success">Live</span>
+            <span className="font-mono text-[0.625rem] uppercase tracking-wider text-muted">Preview</span>
           </div>
           <ul className="space-y-1">
             {DOCKET_SAMPLE.map((r) => (
@@ -63,12 +63,12 @@ export default function AuthLayout({ children }: { children: React.ReactNode }) 
 
         <div className="relative flex gap-8">
           <div>
-            <p className="font-display text-2xl font-semibold text-foreground">2.5M+</p>
-            <p className="text-sm text-muted">Messages scanned daily</p>
+            <p className="font-display text-lg font-semibold text-foreground">Guild-scoped</p>
+            <p className="text-sm text-muted">Every workspace stays isolated</p>
           </div>
           <div>
-            <p className="font-display text-2xl font-semibold text-foreground">40k+</p>
-            <p className="text-sm text-muted">Communities protected</p>
+            <p className="font-display text-lg font-semibold text-foreground">Auditable</p>
+            <p className="text-sm text-muted">Every moderation action is recorded</p>
           </div>
         </div>
       </div>

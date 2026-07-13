@@ -9,6 +9,11 @@ import asyncio
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_mod, is_senior_mod, is_admin, is_bot_owner_id
+from utils.moderation_settings import (
+    moderation_bool,
+    moderation_id_set,
+    render_moderation_response,
+)
 from utils.time_parser import parse_time
 from config import Config
 
@@ -127,19 +132,33 @@ class ManagementCommands:
         can_bot, bot_error = await self.can_bot_moderate(user, moderator=moderator)
         if not can_bot:
             return await self._respond(source, embed=ModEmbed.error("Bot Permission Error", bot_error), ephemeral=True)
-            
-        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Kick", reason)
+
+        settings = await self.bot.db.get_settings(guild.id)
         
         dm_embed = discord.Embed(title=f"👢 Kicked from {guild.name}", description=f"**Reason:** {reason}", color=Colors.ERROR)
-        await self.dm_user(user, dm_embed)
+        if moderation_bool(settings, "moderation_dm_users", True):
+            await self.dm_user(user, dm_embed)
         
         try:
             await user.kick(reason=f"{moderator}: {reason}")
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not kick: {e}"), ephemeral=True)
+        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Kick", reason)
             
         embed = await self.create_mod_embed(title="👢 User Kicked", user=user, moderator=moderator, reason=reason, color=Colors.ERROR, case_num=case_num)
-        await self._respond(source, embed=embed)
+        response = render_moderation_response(
+            settings,
+            "kick",
+            user=user,
+            reason=reason,
+            moderator=moderator,
+        )
+        await self._respond(
+            source,
+            content=response,
+            allowed_mentions=discord.AllowedMentions.none(),
+            delete_command_message=True,
+        )
         await self.log_action(guild, embed)
 
     async def _ban_logic(self, source, user: discord.Member, reason: str, delete_days: int = 1):
@@ -153,19 +172,42 @@ class ManagementCommands:
         can_bot, bot_error = await self.can_bot_moderate(user, moderator=moderator)
         if not can_bot:
             return await self._respond(source, embed=ModEmbed.error("Bot Permission Error", bot_error), ephemeral=True)
-            
-        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Ban", reason)
+
+        settings = await self.bot.db.get_settings(guild.id)
         
         dm_embed = discord.Embed(title=f"🔨 Banned from {guild.name}", description=f"**Reason:** {reason}\n\nYou have been permanently banned.", color=Colors.DARK_RED)
-        await self.dm_user(user, dm_embed)
-        
+        if moderation_bool(settings, "moderation_dm_users", True):
+            await self.dm_user(user, dm_embed)
+
+        preserve_messages = moderation_bool(
+            settings,
+            "moderation_preserve_ban_messages",
+            True,
+        )
+        effective_delete_days = 0 if preserve_messages else max(0, min(7, delete_days))
         try:
-            await user.ban(reason=f"{moderator}: {reason}", delete_message_days=delete_days)
+            await user.ban(
+                reason=f"{moderator}: {reason}",
+                delete_message_days=effective_delete_days,
+            )
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not ban: {e}"), ephemeral=True)
+        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Ban", reason)
             
         embed = await self.create_mod_embed(title="🔨 User Banned", user=user, moderator=moderator, reason=reason, color=Colors.DARK_RED, case_num=case_num)
-        await self._respond(source, embed=embed)
+        response = render_moderation_response(
+            settings,
+            "ban",
+            user=user,
+            reason=reason,
+            moderator=moderator,
+        )
+        await self._respond(
+            source,
+            content=response,
+            allowed_mentions=discord.AllowedMentions.none(),
+            delete_command_message=True,
+        )
         await self.log_action(guild, embed)
 
     async def _unban_logic(self, source, user_id: int, reason: str):
@@ -186,9 +228,22 @@ class ManagementCommands:
              
         await self.bot.db.remove_tempban(guild.id, user.id)
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Unban", reason)
-        
+
+        settings = await self.bot.db.get_settings(guild.id)
         embed = await self.create_mod_embed(title="🔓 User Unbanned", user=user, moderator=moderator, reason=reason, color=Colors.SUCCESS, case_num=case_num)
-        await self._respond(source, embed=embed)
+        response = render_moderation_response(
+            settings,
+            "unban",
+            user=user,
+            reason=reason,
+            moderator=moderator,
+        )
+        await self._respond(
+            source,
+            content=response,
+            allowed_mentions=discord.AllowedMentions.none(),
+            delete_command_message=True,
+        )
         await self.log_action(guild, embed)
 
     async def _softban_logic(self, source, user: discord.Member, reason: str):
@@ -202,21 +257,35 @@ class ManagementCommands:
         can_bot, bot_error = await self.can_bot_moderate(user)
         if not can_bot:
             return await self._respond(source, embed=ModEmbed.error("Bot Permission Error", bot_error), ephemeral=True)
-            
-        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Softban", reason)
+
+        settings = await self.bot.db.get_settings(guild.id)
         
         dm_embed = discord.Embed(title=f"🧹 Softbanned from {guild.name}", description=f"**Reason:** {reason}\n\nYou can rejoin the server.", color=Colors.ERROR)
-        await self.dm_user(user, dm_embed)
+        if moderation_bool(settings, "moderation_dm_users", True):
+            await self.dm_user(user, dm_embed)
         
         try:
             await user.ban(reason=f"[SOFTBAN] {reason}", delete_message_days=7)
             await guild.unban(user, reason="Softban - immediate unban")
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not softban: {e}"), ephemeral=True)
+        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Softban", reason)
             
         embed = await self.create_mod_embed(title="🧹 User Softbanned", user=user, moderator=moderator, reason=reason, color=Colors.ERROR, case_num=case_num)
         embed.set_footer(text=f"Case #{case_num} | 7 days of messages deleted")
-        await self._respond(source, embed=embed)
+        response = render_moderation_response(
+            settings,
+            "softban",
+            user=user,
+            reason=reason,
+            moderator=moderator,
+        )
+        await self._respond(
+            source,
+            content=response,
+            allowed_mentions=discord.AllowedMentions.none(),
+            delete_command_message=True,
+        )
         await self.log_action(guild, embed)
 
     async def _tempban_logic(self, source, user: discord.Member, duration: str, reason: str):
@@ -237,20 +306,30 @@ class ManagementCommands:
         
         delta, human_duration = parsed
         expires_at = datetime.now(timezone.utc) + delta
-        
-        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Tempban", reason, human_duration)
-        await self.bot.db.add_tempban(guild.id, user.id, moderator.id, reason, expires_at)
+
+        settings = await self.bot.db.get_settings(guild.id)
         
         dm_embed = discord.Embed(title=f"⏰ Temporarily Banned from {guild.name}", description=f"**Reason:** {reason}\n**Duration:** {human_duration}\n**Expires:** <t:{int(expires_at.timestamp())}:F>", color=Colors.DARK_RED)
-        await self.dm_user(user, dm_embed)
-        
+        if moderation_bool(settings, "moderation_dm_users", True):
+            await self.dm_user(user, dm_embed)
+
+        preserve_messages = moderation_bool(
+            settings,
+            "moderation_preserve_ban_messages",
+            True,
+        )
         try:
-            await user.ban(reason=f"[TEMPBAN] {moderator}: {reason} ({human_duration})", delete_message_days=1)
+            await user.ban(
+                reason=f"[TEMPBAN] {moderator}: {reason} ({human_duration})",
+                delete_message_days=0 if preserve_messages else 1,
+            )
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not tempban: {e}"), ephemeral=True)
+        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Tempban", reason, human_duration)
+        await self.bot.db.add_tempban(guild.id, user.id, moderator.id, reason, expires_at)
             
         embed = await self.create_mod_embed(title="⏰ User Temporarily Banned", user=user, moderator=moderator, reason=reason, color=Colors.DARK_RED, case_num=case_num, extra_fields={"Duration": human_duration, "Expires": f"<t:{int(expires_at.timestamp())}:R>"})
-        await self._respond(source, embed=embed)
+        await self._respond(source, embed=embed, delete_command_message=True)
         await self.log_action(guild, embed)
 
     async def _mute_logic(self, source, user: discord.Member, duration: str, reason: str):
@@ -275,6 +354,8 @@ class ManagementCommands:
         can_bot, bot_error = await self.can_bot_moderate(user, moderator=moderator)
         if not can_bot:
             return await self._respond(source, embed=ModEmbed.error("Bot Permission Error", bot_error), ephemeral=True)
+
+        settings = await self.bot.db.get_settings(guild.id)
 
         bot_member = guild.me
         if not bot_member.guild_permissions.moderate_members:
@@ -318,15 +399,25 @@ class ManagementCommands:
             case_num=case_num,
             extra_fields={"Duration": human_duration},
         )
-        response_embed = ModEmbed.success(
-            f"{user.mention} muted",
-            f"**Duration:** {human_duration}",
+        response = render_moderation_response(
+            settings,
+            "mute",
+            user=user,
+            reason=reason,
+            moderator=moderator,
+            duration=human_duration,
         )
-        await self._respond(source, embed=response_embed)
+        await self._respond(
+            source,
+            content=response,
+            allowed_mentions=discord.AllowedMentions.none(),
+            delete_command_message=True,
+        )
         await self.log_action(guild, log_embed)
         
         dm_embed = discord.Embed(title=f"🔇 Muted in {guild.name}", description=f"**Reason:** {reason}\n**Duration:** {human_duration}", color=Colors.ERROR)
-        await self.dm_user(user, dm_embed)
+        if moderation_bool(settings, "moderation_dm_users", True):
+            await self.dm_user(user, dm_embed)
 
     async def _unmute_logic(self, source, user: discord.Member, reason: str):
         guild = source.guild
@@ -335,7 +426,12 @@ class ManagementCommands:
         if not user.is_timed_out():
             return await self._respond(source, embed=ModEmbed.error("Not Muted", "User is not muted."), ephemeral=True)
 
-        can_mod, error = await self.can_moderate(guild.id, moderator, user)
+        can_mod, error = await self.can_moderate(
+            guild.id,
+            moderator,
+            user,
+            allow_protected_target=True,
+        )
         if not can_mod:
             return await self._respond(source, embed=ModEmbed.error("Cannot Unmute", error), ephemeral=True)
 
@@ -353,6 +449,7 @@ class ManagementCommands:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not unmute: {e}"), ephemeral=True)
             
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Unmute", reason)
+        settings = await self.bot.db.get_settings(guild.id)
 
         log_embed = await self.create_mod_embed(
             title=f"Unmute {user.display_name}",
@@ -362,8 +459,19 @@ class ManagementCommands:
             color=Colors.SUCCESS,
             case_num=case_num,
         )
-        response_embed = ModEmbed.success(f"{user.mention} unmuted")
-        await self._respond(source, embed=response_embed)
+        response = render_moderation_response(
+            settings,
+            "unmute",
+            user=user,
+            reason=reason,
+            moderator=moderator,
+        )
+        await self._respond(
+            source,
+            content=response,
+            allowed_mentions=discord.AllowedMentions.none(),
+            delete_command_message=True,
+        )
         await self.log_action(guild, log_embed)
 
     # ==================== MASS ACTIONS ====================
@@ -389,21 +497,58 @@ class ManagementCommands:
         
         banned = []
         failed = []
+        settings = await self.bot.db.get_settings(source.guild.id)
+        protected_role_ids = moderation_id_set(settings, "protected_roles")
+        moderator = source.user if isinstance(source, discord.Interaction) else source.author
+        owner_override = (
+            moderator.id == source.guild.owner_id
+            or await self._is_bot_owner(moderator)
+        )
+        preserve_messages = moderation_bool(
+            settings,
+            "moderation_preserve_ban_messages",
+            True,
+        )
         
         for uid in parsed_ids:
             try:
                 user_id = int(uid)
-                try:
-                    user = await self.bot.fetch_user(user_id)
-                    user_str = f"{user} (`{user.id}`)"
-                    ban_target = user
-                except discord.NotFound:
-                    user_str = f"User {user_id}"
-                    ban_target = discord.Object(id=user_id)
+                member = source.guild.get_member(user_id)
+                if member is None:
+                    try:
+                        member = await source.guild.fetch_member(user_id)
+                    except discord.NotFound:
+                        member = None
+                    except (discord.Forbidden, discord.HTTPException):
+                        failed.append(f"`{uid}` (could not verify protected roles)")
+                        continue
+
+                if member is not None:
+                    if (
+                        not owner_override
+                        and protected_role_ids
+                        and any(
+                            member_role.id in protected_role_ids
+                            for member_role in member.roles
+                        )
+                    ):
+                        failed.append(f"`{uid}` (protected role)")
+                        continue
+                    user_str = f"{member} (`{member.id}`)"
+                    ban_target = member
+                else:
+                    try:
+                        user = await self.bot.fetch_user(user_id)
+                        user_str = f"{user} (`{user.id}`)"
+                        ban_target = user
+                    except discord.NotFound:
+                        user_str = f"User {user_id}"
+                        ban_target = discord.Object(id=user_id)
 
                 await source.guild.ban(
                     ban_target,
-                    reason=f"[MASSBAN] {source.user if isinstance(source, discord.Interaction) else source.author}: {reason}"
+                    reason=f"[MASSBAN] {moderator}: {reason}",
+                    delete_message_days=0 if preserve_messages else 1,
                 )
                 banned.append(user_str)
             except ValueError:
@@ -442,6 +587,12 @@ class ManagementCommands:
 
     async def _mass_kick_role(self, source, role: discord.Role, reason: str):
         moderator = source.user if isinstance(source, discord.Interaction) else source.author
+        settings = await self.bot.db.get_settings(source.guild.id)
+        protected_role_ids = moderation_id_set(settings, "protected_roles")
+        owner_override = (
+            moderator.id == source.guild.owner_id
+            or await self._is_bot_owner(moderator)
+        )
         
         await self._respond(source, embed=ModEmbed.info("Mass Kick", f"Kicking {len(role.members)} members..."), ephemeral=True)
         
@@ -449,7 +600,17 @@ class ManagementCommands:
         failed = 0
         
         for member in role.members:
-            if member.top_role >= moderator.top_role and not is_bot_owner_id(moderator.id):
+            if (
+                not owner_override
+                and protected_role_ids
+                and any(
+                    member_role.id in protected_role_ids
+                    for member_role in member.roles
+                )
+            ):
+                failed += 1
+                continue
+            if member.top_role >= moderator.top_role and not owner_override:
                 failed += 1
                 continue
             try:
@@ -462,6 +623,17 @@ class ManagementCommands:
 
     async def _mass_ban_role(self, source, role: discord.Role, reason: str):
         moderator = source.user if isinstance(source, discord.Interaction) else source.author
+        settings = await self.bot.db.get_settings(source.guild.id)
+        preserve_messages = moderation_bool(
+            settings,
+            "moderation_preserve_ban_messages",
+            True,
+        )
+        protected_role_ids = moderation_id_set(settings, "protected_roles")
+        owner_override = (
+            moderator.id == source.guild.owner_id
+            or await self._is_bot_owner(moderator)
+        )
         
         await self._respond(source, embed=ModEmbed.info("Mass Ban", f"Banning {len(role.members)} members..."), ephemeral=True)
         
@@ -469,11 +641,24 @@ class ManagementCommands:
         failed = 0
         
         for member in role.members:
-            if member.top_role >= moderator.top_role and not is_bot_owner_id(moderator.id):
+            if (
+                not owner_override
+                and protected_role_ids
+                and any(
+                    member_role.id in protected_role_ids
+                    for member_role in member.roles
+                )
+            ):
+                failed += 1
+                continue
+            if member.top_role >= moderator.top_role and not owner_override:
                 failed += 1
                 continue
             try:
-                await member.ban(reason=f"Mass ban by {moderator}: {reason}")
+                await member.ban(
+                    reason=f"Mass ban by {moderator}: {reason}",
+                    delete_message_days=0 if preserve_messages else 1,
+                )
                 count += 1
             except (discord.Forbidden, discord.HTTPException):
                 failed += 1

@@ -43,6 +43,10 @@ export function WidgetCustomizer({ open, onClose }: { open: boolean; onClose: ()
         {ordered.map((w, i) => {
           const meta = CATALOG_BY_KEY[w.key]
           if (!meta) return null
+          const displayName = w.key === 'chart-channels' ? 'Active channels' : meta.name
+          const displayDescription = w.key === 'chart-channels'
+            ? 'Channels ranked by recorded message volume'
+            : meta.description
           return (
             <li
               key={w.key}
@@ -68,13 +72,13 @@ export function WidgetCustomizer({ open, onClose }: { open: boolean; onClose: ()
               </div>
               <GripVertical className="size-4 shrink-0 text-muted-2" />
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium text-foreground">{meta.name}</p>
-                <p className="truncate text-xs text-muted">{meta.description}</p>
+                <p className="text-sm font-medium text-foreground">{displayName}</p>
+                <p className="truncate text-xs text-muted">{displayDescription}</p>
               </div>
               {SUPPORTS_CHART_TYPE.has(w.key) && w.visible && (
                 <SegmentedControl
                   size="sm"
-                  aria-label={`${meta.name} chart type`}
+                  aria-label={`${displayName} chart type`}
                   value={(w.chartType ?? 'area') as ChartType}
                   onChange={(v) => setWidgetChartType(w.key, v)}
                   options={[
@@ -87,7 +91,7 @@ export function WidgetCustomizer({ open, onClose }: { open: boolean; onClose: ()
               <Switch
                 checked={w.visible}
                 onChange={(v) => updateWidget(w.key, { visible: v })}
-                label={`Toggle ${meta.name}`}
+                label={`Toggle ${displayName}`}
               />
             </li>
           )

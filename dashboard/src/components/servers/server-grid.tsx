@@ -7,6 +7,7 @@ import { ArrowUpRight, Check, Loader2, LogOut, Plus, RefreshCw, Server } from 'l
 import { buttonVariants } from '@/components/ui/button'
 import type { ManagedGuild } from '@/lib/discord'
 import { cn, initials } from '@/lib/utils'
+import { useToast } from '@/components/ui/toast'
 
 function ServerMark({ guild }: { guild: ManagedGuild }) {
   if (guild.iconUrl) {
@@ -30,6 +31,7 @@ function ServerMark({ guild }: { guild: ManagedGuild }) {
 
 export function SignOutButton() {
   const router = useRouter()
+  const toast = useToast()
   const [loading, setLoading] = useState(false)
   return (
     <button
@@ -37,9 +39,19 @@ export function SignOutButton() {
       disabled={loading}
       onClick={async () => {
         setLoading(true)
-        await fetch('/api/auth/logout', { method: 'POST' }).catch(() => undefined)
-        router.push('/login')
-        router.refresh()
+        try {
+          const response = await fetch('/api/auth/logout', { method: 'POST' })
+          const body = await response.json().catch(() => ({}))
+          if (!response.ok) throw new Error(body.error ?? 'Could not sign out')
+          router.push('/login')
+          router.refresh()
+        } catch (reason) {
+          toast.error(
+            'You are still signed in',
+            reason instanceof Error ? reason.message : 'Try again in a moment.',
+          )
+          setLoading(false)
+        }
       }}
       className={buttonVariants({ variant: 'ghost', size: 'sm' })}
     >
@@ -51,21 +63,31 @@ export function SignOutButton() {
 
 export function ServerGrid({ guilds }: { guilds: ManagedGuild[] }) {
   const router = useRouter()
+  const toast = useToast()
   const [opening, setOpening] = useState<string | null>(null)
+  const [openError, setOpenError] = useState<string | null>(null)
   const [refreshing, setRefreshing] = useState(false)
   const installed = guilds.filter((guild) => guild.installed).length
 
   async function openGuild(guildId: string) {
     setOpening(guildId)
+    setOpenError(null)
     try {
       const response = await fetch('/api/guilds/select', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ guildId }),
       })
-      if (!response.ok) throw new Error('Server selection failed')
-      router.push('/dashboard')
-      router.refresh()
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error ?? 'Server selection failed')
+      window.location.assign('/dashboard/modules')
+    } catch (reason) {
+      const message = reason instanceof Error ? reason.message : 'Try again in a moment.'
+      setOpenError(message)
+      toast.error(
+        'Server could not be opened',
+        message,
+      )
     } finally {
       setOpening(null)
     }
@@ -83,9 +105,19 @@ export function ServerGrid({ guilds }: { guilds: ManagedGuild[] }) {
           disabled={refreshing}
           onClick={async () => {
             setRefreshing(true)
-            await fetch('/api/guilds?refresh=1', { cache: 'no-store' }).catch(() => undefined)
-            router.refresh()
-            setRefreshing(false)
+            try {
+              const response = await fetch('/api/guilds?refresh=1', { cache: 'no-store' })
+              const body = await response.json().catch(() => ({}))
+              if (!response.ok) throw new Error(body.error ?? 'Could not refresh servers')
+              router.refresh()
+            } catch (reason) {
+              toast.error(
+                'Servers were not refreshed',
+                reason instanceof Error ? reason.message : 'Try again in a moment.',
+              )
+            } finally {
+              setRefreshing(false)
+            }
           }}
           className={buttonVariants({ variant: 'outline', size: 'sm' })}
         >
@@ -93,6 +125,19 @@ export function ServerGrid({ guilds }: { guilds: ManagedGuild[] }) {
           Refresh servers
         </button>
       </div>
+
+      {openError && (
+        <div className="mb-5 flex items-start justify-between gap-3 border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger" role="alert">
+          <span>Server could not be opened: {openError}</span>
+          <button
+            type="button"
+            onClick={() => setOpenError(null)}
+            className="focus-ring shrink-0 rounded-sm px-1 font-medium"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {guilds.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border-strong bg-surface p-10 text-center">
@@ -140,7 +185,7 @@ export function ServerGrid({ guilds }: { guilds: ManagedGuild[] }) {
                     className={buttonVariants({ size: 'sm' })}
                   >
                     {opening === guild.id ? <Loader2 className="size-4 animate-spin" /> : <Check className="size-4" />}
-                    Open
+                    {opening === guild.id ? 'Opening…' : 'Open'}
                   </button>
                 ) : (
                   <a

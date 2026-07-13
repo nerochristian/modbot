@@ -7,11 +7,6 @@ import re
 import discord
 from discord import app_commands
 from discord.ext import commands
-from typing import Callable
-from functools import wraps
-
-
-
 def get_owner_ids() -> set[int]:
     """Return bot owner IDs from `OWNER_IDS`/`OWNER_ID` env vars.
 
@@ -40,104 +35,179 @@ def is_bot_owner_id(user_id: int) -> bool:
     return user_id in get_owner_ids()
 
 
-async def is_bot_owner(interaction: discord.Interaction) -> bool:
-    """Return True when the interaction user is treated as the bot owner."""
-    if is_bot_owner_id(interaction.user.id):
+def _command_actor(subject):
+    return getattr(subject, "user", None) or getattr(subject, "author", None)
+
+
+def _command_client(subject):
+    return getattr(subject, "client", None) or getattr(subject, "bot", None)
+
+
+def _command_guild_id(subject):
+    guild_id = getattr(subject, "guild_id", None)
+    if guild_id is not None:
+        return guild_id
+    return getattr(getattr(subject, "guild", None), "id", None)
+
+
+def _configured_role_ids(settings: dict, *keys: str) -> set[int]:
+    role_ids: set[int] = set()
+    for key in keys:
+        raw = settings.get(key)
+        values = raw if isinstance(raw, (list, tuple, set, frozenset)) else [raw]
+        for value in values:
+            if isinstance(value, bool):
+                continue
+            try:
+                role_id = int(value)
+            except (TypeError, ValueError, OverflowError):
+                continue
+            if role_id > 0:
+                role_ids.add(role_id)
+    return role_ids
+
+
+def _missing_permissions(subject, labels: list[str]):
+    if isinstance(subject, commands.Context):
+        raise commands.MissingPermissions(labels)
+    raise app_commands.MissingPermissions(labels)
+
+
+def _dual_check(predicate):
+    """Apply the same async predicate to prefix and application commands."""
+    def decorator(callback):
+        callback = commands.check(predicate)(callback)
+        return app_commands.check(predicate)(callback)
+    return decorator
+
+
+async def is_bot_owner(subject) -> bool:
+    """Return True when the command actor is treated as the bot owner."""
+    actor = _command_actor(subject)
+    client = _command_client(subject)
+    if actor is None or client is None:
+        return False
+    if is_bot_owner_id(actor.id):
         return True
 
-    owner_ids = getattr(interaction.client, "owner_ids", None)
-    if owner_ids and interaction.user.id in owner_ids:
+    owner_ids = getattr(client, "owner_ids", None)
+    if owner_ids and actor.id in owner_ids:
         return True
 
-    is_owner = getattr(interaction.client, "is_owner", None)
+    is_owner = getattr(client, "is_owner", None)
     if is_owner is None:
         return False
 
     try:
-        return bool(await is_owner(interaction.user))
+        return bool(await is_owner(actor))
     except Exception:
         return False
 
 
+async def moderator_predicate(subject) -> bool:
+    actor = _command_actor(subject)
+    client = _command_client(subject)
+    guild_id = _command_guild_id(subject)
+    if actor is None or client is None or guild_id is None:
+        _missing_permissions(subject, ["Moderator"])
+    if await is_bot_owner(subject):
+        return True
+    permissions = actor.guild_permissions
+    if (
+        permissions.administrator
+        or permissions.kick_members
+        or permissions.ban_members
+        or permissions.manage_messages
+        or permissions.moderate_members
+    ):
+        return True
+    settings = await client.db.get_settings(guild_id)
+    configured = _configured_role_ids(
+        settings,
+        "mod_roles",
+        "mod_role",
+        "moderator_role",
+        "trial_mod_role",
+        "senior_mod_role",
+        "supervisor_role",
+        "manager_role",
+        "admin_role",
+        "admin_roles",
+    )
+    if configured.intersection(role.id for role in actor.roles):
+        return True
+    _missing_permissions(subject, ["Moderator"])
+
+
 def is_mod():
-    """Check if user is a moderator"""
-    async def predicate(interaction: discord.Interaction) -> bool:
-        if await is_bot_owner(interaction):
-            return True
-        if interaction.user.guild_permissions.administrator:
-            return True
-        if interaction.user.guild_permissions.kick_members:
-            return True
-        if interaction.user.guild_permissions.ban_members:
-            return True
-        if interaction.user.guild_permissions.manage_messages:
-            return True
-        
-        # Check for mod roles from database
-        settings = await interaction.client.db.get_settings(interaction.guild_id)
-        mod_roles = settings.get("mod_roles", [])
-        user_role_ids = [r.id for r in interaction.user.roles]
-        
-        if any(role_id in user_role_ids for role_id in mod_roles):
-            return True
-        
-        raise app_commands.MissingPermissions(['Moderator'])
-    
-    return app_commands.check(predicate)
+    """Require moderator authority for prefix and application commands."""
+    return _dual_check(moderator_predicate)
 
 def is_owner_only():
     """Check if user is a bot owner - for owner-only commands"""
-    async def predicate(interaction: discord.Interaction) -> bool:
-        if await is_bot_owner(interaction):
+    async def predicate(subject) -> bool:
+        if await is_bot_owner(subject):
             return True
-        raise app_commands.MissingPermissions(['Bot Owner'])
-    return app_commands.check(predicate)
+        _missing_permissions(subject, ["Bot Owner"])
+    return _dual_check(predicate)
+
+async def senior_mod_predicate(subject) -> bool:
+    actor = _command_actor(subject)
+    client = _command_client(subject)
+    guild_id = _command_guild_id(subject)
+    if actor is None or client is None or guild_id is None:
+        _missing_permissions(subject, ["Senior Moderator"])
+    if await is_bot_owner(subject):
+        return True
+    permissions = actor.guild_permissions
+    if permissions.administrator or permissions.ban_members:
+        return True
+    settings = await client.db.get_settings(guild_id)
+    configured = _configured_role_ids(
+        settings,
+        "mod_roles",
+        "senior_mod_role",
+        "senior_mod_roles",
+        "supervisor_role",
+        "manager_role",
+        "admin_role",
+        "admin_roles",
+    )
+    if configured.intersection(role.id for role in actor.roles):
+        return True
+    _missing_permissions(subject, ["Senior Moderator"])
+
 
 def is_senior_mod():
-    """Check if user is a senior moderator"""
-    async def predicate(interaction:  discord.Interaction) -> bool:
-        if await is_bot_owner(interaction):
-            return True
-        if interaction.user.guild_permissions.administrator:
-            return True
-        if interaction.user.guild_permissions.ban_members:
-            return True
-        
-        settings = await interaction.client.db.get_settings(interaction.guild_id)
-        senior_mod_role = settings.get("senior_mod_role")
-        admin_roles = settings.get("admin_roles", [])
-        user_role_ids = [r.id for r in interaction.user.roles]
-        
-        if senior_mod_role and senior_mod_role in user_role_ids:
-            return True
-        if any(role_id in user_role_ids for role_id in admin_roles):
-            return True
-        
-        raise app_commands.MissingPermissions(['Senior Moderator'])
-    
-    return app_commands.check(predicate)
+    """Require senior-moderator authority for both command surfaces."""
+    return _dual_check(senior_mod_predicate)
+
+async def admin_predicate(subject) -> bool:
+    actor = _command_actor(subject)
+    client = _command_client(subject)
+    guild_id = _command_guild_id(subject)
+    if actor is None or client is None or guild_id is None:
+        _missing_permissions(subject, ["Administrator", "Manager"])
+    if await is_bot_owner(subject):
+        return True
+    if actor.guild_permissions.administrator:
+        return True
+    settings = await client.db.get_settings(guild_id)
+    configured = _configured_role_ids(
+        settings,
+        "admin_role",
+        "admin_roles",
+        "manager_role",
+        "manager_roles",
+    )
+    if configured.intersection(role.id for role in actor.roles):
+        return True
+    _missing_permissions(subject, ["Administrator", "Manager"])
+
 
 def is_admin():
-    """Check if user is an admin"""
-    async def predicate(interaction: discord.Interaction) -> bool:
-        if await is_bot_owner(interaction):
-            return True
-        if interaction.user.guild_permissions.administrator:
-            return True
-        
-        settings = await interaction.client.db.get_settings(interaction.guild_id)
-        admin_roles = settings.get("admin_roles", [])
-        manager_role = settings.get("manager_role")
-        user_role_ids = [r.id for r in interaction.user.roles]
-        
-        if manager_role and manager_role in user_role_ids:
-            return True
-        if any(role_id in user_role_ids for role_id in admin_roles):
-            return True
-        
-        raise app_commands.MissingPermissions(['Administrator', 'Manager'])
-    
-    return app_commands.check(predicate)
+    """Require administrator authority for both command surfaces."""
+    return _dual_check(admin_predicate)
 
 def has_permissions_or_owner(**perms):
     """Prefix-command permission check that always allows configured bot owners."""

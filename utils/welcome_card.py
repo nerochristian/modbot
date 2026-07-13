@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import io
+import asyncio
+import ipaddress
 import logging
 import os
+import socket
 import urllib.request
+from urllib.parse import urljoin, urlsplit
 from dataclasses import dataclass
 from typing import Optional
 
@@ -301,12 +305,68 @@ def _text_fit(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont, m
     return best
 
 
-async def _fetch(session: aiohttp.ClientSession, url: str) -> Optional[Image.Image]:
+async def _is_public_https_url(url: str) -> bool:
     try:
-        async with session.get(url) as r:
-            if r.status != 200:
+        parsed = urlsplit(url)
+        if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+            return False
+        if parsed.port not in (None, 443):
+            return False
+        addresses = await asyncio.get_running_loop().getaddrinfo(
+            parsed.hostname,
+            443,
+            type=socket.SOCK_STREAM,
+        )
+        return bool(addresses) and all(
+            ipaddress.ip_address(address[4][0]).is_global
+            for address in addresses
+        )
+    except (OSError, ValueError):
+        return False
+
+
+async def _fetch(session: aiohttp.ClientSession, url: str) -> Optional[Image.Image]:
+    current_url = url
+    try:
+        for _ in range(4):
+            if not await _is_public_https_url(current_url):
                 return None
-            return Image.open(io.BytesIO(await r.read())).convert("RGBA")
+            async with session.get(
+                current_url,
+                allow_redirects=False,
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as response:
+                connection = response.connection
+                transport = connection.transport if connection else None
+                peer = transport.get_extra_info("peername") if transport else None
+                if not peer or not ipaddress.ip_address(peer[0]).is_global:
+                    return None
+                if response.status in {301, 302, 303, 307, 308}:
+                    location = response.headers.get("Location")
+                    if not location:
+                        return None
+                    current_url = urljoin(current_url, location)
+                    continue
+                if response.status != 200:
+                    return None
+                if not response.headers.get("Content-Type", "").lower().startswith("image/"):
+                    return None
+                declared_size = response.content_length
+                if declared_size is not None and declared_size > 8 * 1024 * 1024:
+                    return None
+                chunks: list[bytes] = []
+                received = 0
+                async for chunk in response.content.iter_chunked(64 * 1024):
+                    received += len(chunk)
+                    if received > 8 * 1024 * 1024:
+                        return None
+                    chunks.append(chunk)
+                with Image.open(io.BytesIO(b"".join(chunks))) as source:
+                    if source.width * source.height > 16_000_000:
+                        return None
+                    source.load()
+                    return source.convert("RGBA")
+        return None
     except Exception:
         return None
 
@@ -479,8 +539,6 @@ async def _build_welcome_card_png_inner(
     *,
     options: WelcomeCardOptions = WelcomeCardOptions(),
 ) -> bytes:
-    import asyncio
-
     async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=15)) as session:
 
         # Full user object

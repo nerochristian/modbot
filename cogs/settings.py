@@ -378,6 +378,7 @@ class WarnThresholdsModal(discord.ui.Modal, title="📊 Warning Thresholds"):
                 return await interaction.response.send_message("Thresholds must be: mute < kick < ban (1-50)", ephemeral=True)
             if d < 60:
                 return await interaction.response.send_message("Mute duration must be ≥60 seconds", ephemeral=True)
+            self.view.settings.pop("moderation_autopunish_rules", None)
             self.view.settings.update({"warn_threshold_mute": m, "warn_threshold_kick": k, "warn_threshold_ban": b, "warn_mute_duration": d})
             await _save(self.view.cog, interaction.guild_id, self.view.settings)
             await interaction.response.edit_message(embed=self.view.get_embed(), view=self.view)
