@@ -115,8 +115,8 @@ export const DEFAULT_TABLE_COLUMNS: Record<string, string[]> = {
 const defaultChannel: NotificationChannelPrefs = { email: true, push: false, inApp: true }
 
 export const DEFAULT_DASHBOARD_CONFIG: DashboardConfig = {
-  theme: 'light',
-  accent: 'cobalt',
+  theme: 'dark',
+  accent: 'blue',
   density: 'compact',
   sidebarCollapsed: false,
   refreshInterval: 0,

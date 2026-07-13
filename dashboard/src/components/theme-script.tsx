@@ -5,8 +5,8 @@
  */
 export function ThemeScript() {
   const script = `(function(){try{
-    var t=localStorage.getItem('aegis-theme')||'light';
-    var a=localStorage.getItem('aegis-accent')||'#2743e6';
+    var t=localStorage.getItem('aegis-theme')||'dark';
+    var a=localStorage.getItem('aegis-accent')||'#2f6bff';
     var d=localStorage.getItem('aegis-density')||'compact';
     var m=window.matchMedia('(prefers-color-scheme: dark)').matches;
     var dark=t==='dark'||(t==='system'&&m);
