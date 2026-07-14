@@ -1,28 +1,28 @@
+import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { requireMutation, handleError, ok } from '@/lib/api'
 import { logActivity, logAudit } from '@/lib/log'
 import { parseJson } from '@/lib/json'
 import type { DashboardConfig } from '@/lib/dashboard-config'
-import { z } from 'zod'
 
 const schema = z.object({
   title: z.string().min(2).max(120),
   body: z.string().min(2).max(500),
   level: z.enum(['info', 'success', 'warning', 'error']).default('info'),
-  audience: z.enum(['all', 'admin', 'manager', 'viewer']).default('all'),
-})
+}).strict()
 
 export async function POST(request: Request) {
   try {
-    const guard = await requireMutation(request, 'admin.access')
+    const guard = await requireMutation(request, 'notifications.read')
     if (guard instanceof Response) return guard
     const guildId = guard.selectedGuildId as string
     const data = schema.parse(await request.json())
     const memberships = await prisma.guildMembership.findMany({
       where: {
         guildId,
+        role: 'admin',
+        source: 'discord',
         status: 'active',
-        ...(data.audience === 'all' ? {} : { role: data.audience }),
       },
       select: { userId: true, user: { select: { dashboardConfig: { select: { config: true } } } } },
     })
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
       actorName: guard.name,
       action: 'notification.broadcast',
       entity: 'Notification',
-      metadata: { audience: data.audience, recipients: recipients.length },
+      metadata: { recipients: recipients.length },
     })
     return ok({ success: true, recipients: recipients.length })
   } catch (error) {

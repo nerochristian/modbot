@@ -28,7 +28,7 @@ type Payload = { data: AuditEntry[]; page: number; pageSize: number; total: numb
 
 export default function AuditHistoryPage() {
   const list = useListParams({ pageSize: 15 })
-  const { data, loading, error, refetch } = useApi<Payload>(`/api/admin/audit?${list.queryString}`)
+  const { data, loading, error, refetch } = useApi<Payload>(`/api/activity/audit?${list.queryString}`)
 
   return (
     <>

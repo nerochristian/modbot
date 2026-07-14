@@ -19,10 +19,10 @@ export default function BroadcastPage() {
     setBusy(true)
     setErrors({})
     try {
-      const response = await fetch('/api/admin/broadcast', {
+      const response = await fetch('/api/notifications/broadcast', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ title: form.title, body: form.body, level: form.level }),
       })
       const data = await response.json().catch(() => ({}))
       if (!response.ok) {

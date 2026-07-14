@@ -8,10 +8,7 @@ export async function GET(request: Request) {
     const guard = await requireUser('audit.read')
     if (guard instanceof Response) return guard
     const guildId = guard.selectedGuildId as string
-
-    const url = new URL(request.url)
-    const query = parseListQuery(url, { defaultSort: 'createdAt', maxPageSize: 50 })
-
+    const query = parseListQuery(new URL(request.url), { defaultSort: 'createdAt', maxPageSize: 50 })
     const where: Prisma.AuditLogWhereInput = { guildId }
     if (query.q) {
       where.OR = [
@@ -32,22 +29,16 @@ export async function GET(request: Request) {
       prisma.auditLog.count({ where }),
     ])
 
-    return ok(
-      paginate(
-        rows.map((r) => ({
-          id: r.id,
-          actorName: r.actorName,
-          action: r.action,
-          entity: r.entity,
-          entityId: r.entityId,
-          ip: r.ip,
-          createdAt: r.createdAt.toISOString(),
-          metadata: parseJson<Record<string, unknown>>(r.metadata, {}),
-        })),
-        total,
-        query,
-      ),
-    )
+    return ok(paginate(rows.map((row) => ({
+      id: row.id,
+      actorName: row.actorName,
+      action: row.action,
+      entity: row.entity,
+      entityId: row.entityId,
+      ip: row.ip,
+      createdAt: row.createdAt.toISOString(),
+      metadata: parseJson<Record<string, unknown>>(row.metadata, {}),
+    })), total, query))
   } catch (error) {
     return handleError(error)
   }
