@@ -36,6 +36,7 @@ export function Avatar({
           alt=""
           width={128}
           height={128}
+          unoptimized
           className="size-full rounded-full object-cover"
         />
       ) : initials(name)}
