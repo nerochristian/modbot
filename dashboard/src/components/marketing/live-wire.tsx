@@ -98,8 +98,8 @@ export function LiveWire() {
       <div className="absolute -left-5 -top-5 z-20 hidden items-center gap-2.5 rounded-lg border border-border bg-surface/90 px-3.5 py-2.5 shadow-xl backdrop-blur wire-float sm:flex">
         <span className="inline-flex size-2.5 rounded-full bg-success wire-blip" />
         <div className="text-left">
-          <span className="block font-mono text-[0.5625rem] font-semibold uppercase tracking-[0.14em] text-muted-2">Shield status</span>
-          <span className="text-xs font-semibold text-foreground">Raid protection · active</span>
+          <span className="block font-mono text-[0.5625rem] font-semibold uppercase tracking-[0.14em] text-muted-2">Protection</span>
+          <span className="text-xs font-semibold text-foreground">Raid rule enabled</span>
         </div>
       </div>
       <div className="absolute -bottom-6 -right-4 z-20 hidden items-center gap-3 rounded-lg border border-border bg-surface/90 px-3.5 py-2.5 shadow-xl backdrop-blur wire-float-slow sm:flex">
@@ -107,8 +107,8 @@ export function LiveWire() {
           <Zap className="size-4" />
         </span>
         <div className="text-left">
-          <span className="block font-mono text-[0.5625rem] font-semibold uppercase tracking-[0.14em] text-muted-2">Decision engine</span>
-          <span className="text-xs font-semibold text-foreground">Policy pipeline ready</span>
+          <span className="block font-mono text-[0.5625rem] font-semibold uppercase tracking-[0.14em] text-muted-2">Result</span>
+          <span className="text-xs font-semibold text-foreground">Messages blocked automatically</span>
         </div>
       </div>
 
@@ -122,7 +122,7 @@ export function LiveWire() {
             </span>
         </div>
         <span className="font-mono text-[0.625rem] uppercase tracking-[0.16em] text-accent">
-          Automod · live
+          Automod · example
         </span>
       </div>
 
@@ -165,7 +165,7 @@ export function LiveWire() {
             <span className="font-mono text-2xl font-semibold tabular-nums text-threat">
               {count}
             </span>
-            <span className="text-xs text-muted">accounts stopped</span>
+            <span className="text-xs text-muted">raid accounts blocked</span>
           </div>
           <div
             className={

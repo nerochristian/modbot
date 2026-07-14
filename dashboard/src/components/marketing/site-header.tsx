@@ -85,7 +85,7 @@ export function SiteHeader({ user }: { user: HeaderUser | null }) {
           ) : (
             <>
               <Link href="/login" className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'hidden sm:inline-flex')}>Sign in</Link>
-              <Link href="/register" className={buttonVariants({ variant: 'primary', size: 'sm' })}>Open console</Link>
+              <Link href="/register" className={buttonVariants({ variant: 'primary', size: 'sm' })}>Open dashboard</Link>
             </>
           )}
           <button
