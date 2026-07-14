@@ -24,6 +24,7 @@ export type ModuleFieldType =
   | 'roleIds'
   | 'multiSelect'
   | 'autopunishRules'
+  | 'ticketOptions'
 
 export type AutopunishAction = 'timeout' | 'kick' | 'ban'
 
@@ -32,6 +33,29 @@ export type AutopunishRule = {
   action: AutopunishAction
   durationMinutes: number | null
 }
+
+export type TicketQuestion = {
+  id: string
+  label: string
+  placeholder: string
+  style: 'short' | 'paragraph'
+  required: boolean
+}
+
+export type TicketOption = {
+  id: string
+  label: string
+  description: string
+  emoji: string
+  questions: TicketQuestion[]
+}
+
+export const DEFAULT_TICKET_OPTIONS: TicketOption[] = [
+  { id: 'general', label: 'Support', description: 'Help with an issue', emoji: '🛠️', questions: [{ id: 'details', label: 'How can we help you?', placeholder: 'Describe your issue…', style: 'paragraph', required: true }] },
+  { id: 'report', label: 'Report', description: 'Report a user or problem', emoji: '🚨', questions: [{ id: 'reported', label: 'Who are you reporting?', placeholder: 'Name or Discord ID', style: 'short', required: true }, { id: 'reason', label: 'What happened?', placeholder: 'Explain the situation…', style: 'paragraph', required: true }, { id: 'evidence', label: 'Evidence (optional)', placeholder: 'Message or media links', style: 'paragraph', required: false }] },
+  { id: 'appeal', label: 'Appeal', description: 'Appeal a punishment', emoji: '📝', questions: [{ id: 'punishment', label: 'What are you appealing?', placeholder: 'Ban, timeout, warning…', style: 'short', required: true }, { id: 'appeal', label: 'Why should it be lifted?', placeholder: 'Give staff the relevant context…', style: 'paragraph', required: true }] },
+  { id: 'other', label: 'Other', description: 'Anything else', emoji: '💬', questions: [{ id: 'details', label: 'How can we help you?', placeholder: 'Describe what you need…', style: 'paragraph', required: true }] },
+]
 
 export type ModuleField = {
   /** Flat settings key written to the bot's guild_settings blob. */
@@ -47,7 +71,7 @@ export type ModuleField = {
   max?: number
   maxLength?: number
   /** Default shown when the key is absent. */
-  fallback?: string | number | boolean | string[] | AutopunishRule[]
+  fallback?: string | number | boolean | string[] | AutopunishRule[] | TicketOption[]
 }
 
 export type ModuleBadge = 'new' | 'standard' | 'premium' | 'core'
@@ -373,6 +397,7 @@ export const MODULE_DEFINITIONS: readonly ModuleDefinition[] = [
       { key: 'ticket_category', label: 'Ticket category', type: 'channelId', channelTypes: [4], hint: 'Discord category new private ticket channels open under.' },
       { key: 'ticket_support_role', label: 'Support role', type: 'roleId', hint: 'Granted access to every new ticket.' },
       { key: 'ticket_log_channel', label: 'Ticket log channel', type: 'channelId', channelTypes: [0, 5], hint: 'Closed-ticket transcripts and staff actions are posted here.' },
+      { key: 'ticket_options', label: 'Panel options and questions', type: 'ticketOptions', fallback: DEFAULT_TICKET_OPTIONS, hint: 'Each dropdown option can ask up to five questions. Emoji are optional.' },
     ],
   },
   {

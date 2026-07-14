@@ -43,9 +43,10 @@ import {
   type AutopunishRule,
   type ModuleField,
   type ModuleSpecial,
+  type TicketOption,
 } from '@/lib/modules-contract'
 
-type ModuleValues = Record<string, string | number | boolean | string[] | AutopunishRule[] | null>
+type ModuleValues = Record<string, string | number | boolean | string[] | AutopunishRule[] | TicketOption[] | null>
 type Module = {
   id: string
   name: string
@@ -1234,7 +1235,7 @@ function AutopunishBuilder({
 }
 
 type OperationalSpecial = Exclude<ModuleSpecial, 'moderation' | 'whitelist'>
-type OperationalValue = string | boolean | string[]
+type OperationalValue = string | boolean | string[] | TicketOption[]
 type OperationalForm = Record<string, OperationalValue>
 
 type OperationalSectionDefinition = {
@@ -1345,6 +1346,8 @@ function operationalInitialForm(mod: Module): OperationalForm {
     const value = mod.values[field.key]
     if (field.type === 'toggle') {
       initial[field.key] = Boolean(value)
+    } else if (field.type === 'ticketOptions') {
+      initial[field.key] = Array.isArray(value) ? structuredClone(value as TicketOption[]) : []
     } else if (field.type === 'roleIds' || field.type === 'channelIds' || field.type === 'multiSelect') {
       initial[field.key] = Array.isArray(value)
         ? value.filter((item): item is string => typeof item === 'string')
@@ -1703,6 +1706,14 @@ function validateModuleForm(
       }
       continue
     }
+    if (field.type === 'ticketOptions') {
+      const options = Array.isArray(value) ? value as TicketOption[] : []
+      if (options.length < 1 || options.length > 10) errors[field.key] = 'Add between 1 and 10 ticket options'
+      else if (options.some((option) => !option.id.trim() || !option.label.trim() || option.questions.length < 1 || option.questions.length > 5 || option.questions.some((question) => !question.label.trim()))) {
+        errors[field.key] = 'Every option needs a label, unique ID, and 1–5 named questions'
+      }
+      continue
+    }
     const raw = String(value ?? '').trim()
     if (field.type === 'number') {
       if (!/^-?\d+$/.test(raw) || !Number.isSafeInteger(Number(raw))) {
@@ -1999,3 +2010,15 @@ function WhitelistSheet({
     </div>
   )
 }
+  if (field.type === 'ticketOptions') {
+    return (
+      <div className="md:col-span-2">
+        <TicketOptionsEditor
+          options={Array.isArray(value) ? value as TicketOption[] : []}
+          disabled={disabled}
+          error={error}
+          onChange={onChange}
+        />
+      </div>
+    )
+  }

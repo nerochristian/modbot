@@ -10,6 +10,8 @@ import {
   moduleEnabled,
   type ModuleDefinition,
   type ModuleField,
+  type TicketOption,
+  DEFAULT_TICKET_OPTIONS,
 } from '@/lib/modules-contract'
 import {
   legacyThresholdSnapshot,
@@ -20,7 +22,7 @@ import {
 
 export type ModuleValues = Record<
   string,
-  string | number | boolean | string[] | ModerationAutopunishRule[] | null
+  string | number | boolean | string[] | ModerationAutopunishRule[] | TicketOption[] | null
 >
 
 export class ModuleValidationError extends Error {
@@ -115,6 +117,10 @@ function readValue(settings: Record<string, unknown>, field: ModuleField): Modul
     }
     case 'autopunishRules':
       return moderationAutopunishRulesFromSettings(settings)
+    case 'ticketOptions': {
+      const source = Array.isArray(raw) ? raw : (field.fallback ?? DEFAULT_TICKET_OPTIONS)
+      return structuredClone(source as TicketOption[])
+    }
     default: {
       if (raw === undefined || raw === null) return field.fallback !== undefined ? String(field.fallback) : ''
       return String(raw)
@@ -171,6 +177,47 @@ function coerceField(field: ModuleField, value: unknown): unknown {
       if (field.min !== undefined && n < field.min) throw new ModuleValidationError(`${field.label} must be ≥ ${field.min}`)
       if (field.max !== undefined && n > field.max) throw new ModuleValidationError(`${field.label} must be ≤ ${field.max}`)
       return n
+    }
+    case 'ticketOptions': {
+      if (!Array.isArray(value) || value.length < 1 || value.length > 10) {
+        throw new ModuleValidationError('Tickets need between 1 and 10 panel options')
+      }
+      const ids = new Set<string>()
+      return value.map((rawOption, optionIndex) => {
+        if (!rawOption || typeof rawOption !== 'object' || Array.isArray(rawOption)) {
+          throw new ModuleValidationError(`Ticket option ${optionIndex + 1} is invalid`)
+        }
+        const option = rawOption as Record<string, unknown>
+        const id = String(option.id ?? '').trim().toLowerCase()
+        const label = String(option.label ?? '').trim()
+        const description = String(option.description ?? '').trim()
+        const emoji = String(option.emoji ?? '').trim()
+        if (!/^[a-z0-9_-]{2,40}$/.test(id) || ids.has(id)) throw new ModuleValidationError('Every ticket option needs a unique ID')
+        if (label.length < 2 || label.length > 100) throw new ModuleValidationError('Ticket option labels must be 2–100 characters')
+        if (description.length > 100) throw new ModuleValidationError('Ticket option descriptions can be at most 100 characters')
+        if (emoji.length > 64) throw new ModuleValidationError('Ticket option emoji is too long')
+        ids.add(id)
+        if (!Array.isArray(option.questions) || option.questions.length < 1 || option.questions.length > 5) {
+          throw new ModuleValidationError(`${label} needs between 1 and 5 questions`)
+        }
+        const questionIds = new Set<string>()
+        const questions = option.questions.map((rawQuestion, questionIndex) => {
+          if (!rawQuestion || typeof rawQuestion !== 'object' || Array.isArray(rawQuestion)) {
+            throw new ModuleValidationError(`${label} question ${questionIndex + 1} is invalid`)
+          }
+          const question = rawQuestion as Record<string, unknown>
+          const questionId = String(question.id ?? '').trim().toLowerCase()
+          const questionLabel = String(question.label ?? '').trim()
+          const placeholder = String(question.placeholder ?? '').trim()
+          const style = question.style === 'short' ? 'short' : 'paragraph'
+          if (!/^[a-z0-9_-]{2,40}$/.test(questionId) || questionIds.has(questionId)) throw new ModuleValidationError(`${label} question IDs must be unique`)
+          if (questionLabel.length < 2 || questionLabel.length > 45) throw new ModuleValidationError(`${label} question labels must be 2–45 characters`)
+          if (placeholder.length > 100) throw new ModuleValidationError(`${label} question placeholders can be at most 100 characters`)
+          questionIds.add(questionId)
+          return { id: questionId, label: questionLabel, placeholder, style, required: question.required !== false }
+        })
+        return { id, label, description, emoji, questions }
+      })
     }
     case 'roleId':
     case 'channelId': {
