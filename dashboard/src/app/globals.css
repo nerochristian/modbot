@@ -50,6 +50,40 @@
   --sev-critical: #e8442a;
 }
 
+/* Docket motion language: a single quick ledger-slide on navigation, then quiet micro-interactions. */
+@keyframes docket-ledger-in {
+  from { opacity: 0; transform: translate3d(0, 10px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+@keyframes docket-detail-open {
+  from { opacity: 0; transform: translate3d(0, -5px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+.dashboard-stage,
+.commands-reveal {
+  animation: docket-ledger-in 420ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+.command-detail {
+  animation: docket-detail-open 220ms cubic-bezier(.2,.8,.2,1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-stage,
+  .commands-reveal,
+  .command-detail {
+    animation: none !important;
+  }
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /* Dark — "Nova after dark": a near-black control room. Deep ink        */
 /* surfaces (#08080f paper, #0f0f19 panels), lavender-white text, a     */
