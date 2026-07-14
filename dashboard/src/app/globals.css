@@ -465,30 +465,30 @@ body {
 /* only, so the dashboard's calm light identity is untouched.         */
 /* ================================================================== */
 .situation {
-  --paper: #060913;
-  --surface: #0b1020;
-  --surface-2: #111a30;
-  --card: #0d1425;
+  --paper: #070a14;          /* deep navy — matches the logo backdrop */
+  --surface: #0d1220;
+  --surface-2: #141b2c;
+  --card: #0d1220;
   --overlay: rgba(2, 4, 9, 0.74);
-  --border: rgba(148, 163, 184, 0.14);
-  --border-strong: rgba(148, 163, 184, 0.25);
-  --foreground: #f7f9ff;
-  --muted: #9aa8c1;
-  --muted-2: #66748d;
+  --border: #1e263a;
+  --border-strong: #2c3752;
+  --foreground: #eef2fb;
+  --muted: #93a0bc;
+  --muted-2: #5b6884;
 
-  --accent: #3b82f6;
+  --accent: #1e78ff;         /* brand electric blue — primary signal */
   --accent-foreground: #ffffff;
   --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
   --accent-line: color-mix(in srgb, var(--accent) 36%, transparent);
   /* Brand gradient sampled from the logo's D stroke + cyan checkmarks. */
-  --brand-from: #3b82f6;
-  --brand-to: #2563eb;
-  --brand-cyan: #38bdf8;
+  --brand-from: #005bf3;
+  --brand-to: #0a87fd;
+  --brand-cyan: #33d6ff;
 
-  --threat: #ff4d4d; /* threat / blocked — the counter-signal */
+  --threat: #ff4d4d;         /* threat / blocked — the counter-signal */
   --threat-soft: color-mix(in srgb, #ff4d4d 15%, transparent);
 
-  --success: #33d6ff; /* contained / safe — brand cyan */
+  --success: #33d6ff;        /* contained / safe — brand cyan */
   --success-soft: color-mix(in srgb, #33d6ff 16%, transparent);
   --mint: var(--success);
   --mint-soft: var(--success-soft);
