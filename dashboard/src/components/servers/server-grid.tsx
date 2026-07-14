@@ -93,7 +93,7 @@ export function ServerGrid({ guilds }: { guilds: ManagedGuild[] }) {
       const body = await response.json().catch(() => ({}));
       if (!response.ok)
         throw new Error(body.error ?? "Server selection failed");
-      window.location.assign("/dashboard/modules");
+      window.location.assign('/dashboard/modules');
     } catch (reason) {
       const message =
         reason instanceof Error ? reason.message : "Try again in a moment.";
