@@ -5,7 +5,9 @@ import { ensureDashboardBackendSchema } from '@/lib/bot-schema'
 import { recordGuildAudit } from '@/lib/bot-audit'
 import {
   executeModerationAction,
+  getBotGuild,
   getBotGuildMember,
+  getBotGuildMemberRoles,
   sendBotChannelMessage,
 } from '@/lib/discord'
 import { getBotGuildSettings } from '@/lib/bot-settings'
@@ -29,8 +31,8 @@ export type CreateModerationInput = {
 }
 
 export class ProtectedModerationTargetError extends Error {
-  constructor() {
-    super('This member has a protected role and cannot be muted, kicked, or banned.')
+  constructor(message = 'This member has a protected role and cannot be muted, kicked, or banned.') {
+    super(message)
     this.name = 'ProtectedModerationTargetError'
   }
 }
@@ -47,11 +49,48 @@ async function assertTargetIsNotProtected(
   settings: Record<string, unknown>,
 ): Promise<void> {
   if (!['mute', 'timeout', 'kick', 'ban'].includes(input.action)) return
+  const botId = process.env.DISCORD_CLIENT_ID?.trim()
+  if (botId && input.targetUserId === botId) {
+    throw new ProtectedModerationTargetError('Docket cannot moderate itself. Choose a server member instead.')
+  }
+  const [guild, member, roles, botMember] = await Promise.all([
+    getBotGuild(input.guildId),
+    getBotGuildMember(input.guildId, input.targetUserId),
+    getBotGuildMemberRoles(input.guildId),
+    botId ? getBotGuildMember(input.guildId, botId) : Promise.resolve(null),
+  ])
+  if (input.targetUserId === guild.owner_id) {
+    throw new ProtectedModerationTargetError('The server owner cannot be moderated.')
+  }
+  if (member.user.bot) {
+    throw new ProtectedModerationTargetError('Bots cannot be moderated from the case system.')
+  }
+
+  const roleById = new Map(roles.map((role) => [role.id, role]))
+  const targetRoles = member.roles.map((id) => roleById.get(id)).filter((role) => role !== undefined)
+  const administratorRole = targetRoles.find((role) => {
+    try {
+      return (BigInt(role.permissions || '0') & BigInt(8)) === BigInt(8)
+    } catch {
+      return false
+    }
+  })
+  if (administratorRole) {
+    throw new ProtectedModerationTargetError('Discord administrators cannot be moderated from the dashboard.')
+  }
+  if (botMember) {
+    const targetPosition = Math.max(0, ...targetRoles.map((role) => role.position))
+    const botPosition = Math.max(0, ...botMember.roles.map((id) => roleById.get(id)?.position ?? 0))
+    if (targetPosition >= botPosition) {
+      throw new ProtectedModerationTargetError(
+        'Docket\'s role must be above this member\'s highest role before Discord will allow that action.',
+      )
+    }
+  }
   const configured = Array.isArray(settings.protected_roles) ? settings.protected_roles : []
   const protectedRoles = new Set(configured.map(String).filter((id) => /^\d{15,22}$/.test(id)))
   if (protectedRoles.size === 0) return
   try {
-    const member = await getBotGuildMember(input.guildId, input.targetUserId)
     if (member.roles.some((roleId) => protectedRoles.has(roleId))) {
       throw new ProtectedModerationTargetError()
     }
