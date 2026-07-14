@@ -73,12 +73,14 @@ class TicketPanelView(discord.ui.LayoutView):
         *,
         guild: Optional[discord.Guild] = None,
         category_emojis: Optional[dict[str, object]] = None,
+        ticket_options: Optional[list[dict[str, Any]]] = None,
     ):
         super().__init__(timeout=None)
         self.cog = cog
 
         logo_url, banner_url = get_guild_brand_assets(guild)
         category_emojis = category_emojis or {}
+        ticket_options = _normalize_ticket_options(ticket_options)
         title = f"{guild.name} Tickets" if guild else "Tickets"
         description = (
             "If you need help, click on the option corresponding to the type of ticket you want to open.\n"
@@ -91,65 +93,15 @@ class TicketPanelView(discord.ui.LayoutView):
             max_values=1,
             options=[
                 discord.SelectOption(
-                    label="Support",
-                    value="general",
-                    description="Help with an issue",
-                    emoji="🛠️",
-                ),
-                discord.SelectOption(
-                    label="Report",
-                    value="report",
-                    description="Report a user or problem",
-                    emoji="🚨",
-                ),
-                discord.SelectOption(
-                    label="Appeal",
-                    value="appeal",
-                    description="Appeal a punishment",
-                    emoji="📝",
-                ),
-                discord.SelectOption(
-                    label="Other",
-                    value="other",
-                    description="Anything else",
-                    emoji="💬",
-                ),
+                    label=option["label"],
+                    value=option["id"],
+                    description=option["description"] or None,
+                    emoji=(discord.PartialEmoji.from_str(option["emoji"]) if option["emoji"] else category_emojis.get(option["id"])),
+                )
+                for option in ticket_options
             ],
             custom_id="ticket_panel_select",
         )
-        select.options[0].emoji = category_emojis.get("general") or resolve_guild_component_emoji(
-            guild,
-            "ticket_support",
-            "support",
-            "ticket",
-            "help",
-            fallback="🛠️",
-        )
-        select.options[1].emoji = category_emojis.get("report") or resolve_guild_component_emoji(
-            guild,
-            "ticket_report",
-            "report",
-            "alert",
-            "siren",
-            fallback="🚨",
-        )
-        select.options[2].emoji = category_emojis.get("appeal") or resolve_guild_component_emoji(
-            guild,
-            "ticket_appeal",
-            "appeal",
-            "note",
-            "pencil",
-            fallback="📝",
-        )
-        select.options[3].emoji = category_emojis.get("other") or resolve_guild_component_emoji(
-            guild,
-            "ticket_other",
-            "other",
-            "chat",
-            "message",
-            fallback="💬",
-        )
-
         async def _select_cb(interaction: discord.Interaction):
             await self._on_select(interaction, select)
 
@@ -174,7 +126,8 @@ class TicketPanelView(discord.ui.LayoutView):
             )
 
         category = (select.values[0] if select.values else "general").strip().lower()
-        await interaction.response.send_modal(TicketDetailsModal(self.cog, category=category))
+        settings = await self.cog.bot.db.get_settings(interaction.guild_id)
+        await interaction.response.send_modal(TicketDetailsModal(self.cog, option=self.cog._ticket_option(settings, category)))
 
 
 def _slugify_display_name(name: str) -> str:
