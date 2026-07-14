@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button'
 import { Field, Input, Textarea } from '@/components/ui/input'
 import { Select } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
-import { ROLES, ROLE_LABELS } from '@/lib/rbac'
 
 export default function BroadcastPage() {
   const toast = useToast()
@@ -70,27 +69,18 @@ export default function BroadcastPage() {
           <Field label="Message" error={errors.body}>
             <Textarea value={form.body} onChange={(event) => setForm({ ...form, body: event.target.value })} placeholder="What should dashboard administrators know?" />
           </Field>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Level">
-              <Select
-                options={[
-                  { label: 'Info', value: 'info' },
-                  { label: 'Success', value: 'success' },
-                  { label: 'Warning', value: 'warning' },
-                  { label: 'Error', value: 'error' },
-                ]}
-                value={form.level}
-                onChange={(event) => setForm({ ...form, level: event.target.value })}
-              />
-            </Field>
-            <Field label="Audience">
-              <Select
-                options={[{ label: 'All administrators', value: 'all' }, ...ROLES.map((role) => ({ label: ROLE_LABELS[role], value: role }))]}
-                value={form.audience}
-                onChange={(event) => setForm({ ...form, audience: event.target.value })}
-              />
-            </Field>
-          </div>
+          <Field label="Level">
+            <Select
+              options={[
+                { label: 'Info', value: 'info' },
+                { label: 'Success', value: 'success' },
+                { label: 'Warning', value: 'warning' },
+                { label: 'Error', value: 'error' },
+              ]}
+              value={form.level}
+              onChange={(event) => setForm({ ...form, level: event.target.value })}
+            />
+          </Field>
         </div>
       </SettingsCard>
     </>

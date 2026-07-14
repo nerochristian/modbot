@@ -566,10 +566,6 @@ async function syncGuildMemberships(
 ): Promise<void> {
   const administrable = userGuilds.filter(hasAdministratorAccess)
   const administrableIds = administrable.map((guild) => guild.id)
-  const existing = administrableIds.length
-    ? await prisma.guildMembership.findMany({ where: { userId, guildId: { in: administrableIds } } })
-    : []
-  const byGuild = new Map(existing.map((membership) => [membership.guildId, membership]))
   const now = new Date()
 
   const syncOperations = [

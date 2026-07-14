@@ -6,7 +6,6 @@ import {
   DEFAULT_ROLE_MATRIX,
   PERMISSIONS,
   isPermission,
-  isRole,
   type Permission,
   type Role,
 } from '@/lib/rbac'
