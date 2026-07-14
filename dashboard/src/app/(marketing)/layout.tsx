@@ -9,7 +9,7 @@ import { getCurrentUser } from '@/lib/session'
 export default async function MarketingLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser()
   return (
-    <div className="situation flex min-h-full flex-col bg-paper">
+    <div className="situation modern-marketing flex min-h-full flex-col">
       <SiteHeader user={user ? { name: user.name, email: user.email, avatarUrl: user.avatarUrl, avatarColor: user.avatarColor } : null} />
       <main className="flex-1">{children}</main>
       <SiteFooter />

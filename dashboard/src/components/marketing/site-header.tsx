@@ -41,21 +41,26 @@ export function SiteHeader({ user }: { user: HeaderUser | null }) {
   return (
     <header
       className={cn(
-        'sticky top-0 z-50 transition-colors',
-        scrolled ? 'border-b border-border bg-bg/80 backdrop-blur-md' : 'border-b border-transparent',
+        'sticky top-0 z-50 px-3 pt-3 transition-all sm:px-5',
+        scrolled ? 'pb-2' : 'pb-0',
       )}
     >
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
+      <div className={cn(
+        'mx-auto flex h-16 max-w-7xl items-center justify-between rounded-2xl border px-4 transition-all sm:px-5',
+        scrolled
+          ? 'border-border bg-surface/88 shadow-2xl shadow-black/20 backdrop-blur-xl'
+          : 'border-white/8 bg-surface/45 backdrop-blur-md',
+      )}>
         <Link href="/" className="focus-ring rounded-lg">
           <Logo />
         </Link>
 
-        <nav className="hidden items-center gap-1 md:flex">
+        <nav className="hidden items-center gap-1 rounded-xl border border-border bg-surface-2/55 p-1 md:flex">
           {NAV.map((item) => (
             <a
               key={item.href}
               href={item.href}
-              className="focus-ring rounded-md px-3 py-2 text-sm font-medium text-muted transition-colors hover:text-foreground"
+              className="focus-ring rounded-lg px-3.5 py-2 text-sm font-medium text-muted transition-colors hover:bg-surface hover:text-foreground"
             >
               {item.label}
             </a>
@@ -66,7 +71,7 @@ export function SiteHeader({ user }: { user: HeaderUser | null }) {
           {user ? (
             <Dropdown>
               <DropdownTrigger>
-                <span className="focus-ring flex items-center gap-2 rounded-full border border-accent-line bg-accent-soft p-1 pr-3 transition-colors hover:bg-accent/15">
+                <span className="focus-ring flex items-center gap-2 rounded-xl border border-border bg-surface-2/70 p-1.5 pr-3 transition-colors hover:border-accent-line hover:bg-accent-soft">
                   <Avatar name={user.name} src={user.avatarUrl} color={user.avatarColor} size="sm" />
                   <span className="hidden max-w-28 truncate text-sm font-semibold text-foreground sm:block">{user.name}</span>
                 </span>
@@ -99,7 +104,7 @@ export function SiteHeader({ user }: { user: HeaderUser | null }) {
       </div>
 
       {open && (
-        <div className="border-t border-border bg-surface md:hidden">
+            <div className="mx-auto mt-2 max-w-7xl rounded-2xl border border-border bg-surface/95 shadow-2xl backdrop-blur-xl md:hidden">
           <nav className="mx-auto flex max-w-6xl flex-col gap-1 p-4">
             {NAV.map((item) => (
               <a
