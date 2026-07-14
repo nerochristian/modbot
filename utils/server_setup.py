@@ -897,6 +897,12 @@ async def quickstart_server(guild: discord.Guild, settings: Dict[str, Any]) -> D
         updated[spec["setting_key"]] = channel.id
 
     await _sync_log_channel_order(category_lookup.get("logs_category"), updated, errors)
+    private_log_sync = await apply_private_log_permissions(
+        guild,
+        category_lookup.get("logs_category"),
+        updated,
+    )
+    errors.extend(private_log_sync["errors"])
 
     for key, default in FEATURE_DEFAULTS.items():
         updated.setdefault(key, default)
@@ -919,3 +925,124 @@ async def quickstart_server(guild: discord.Guild, settings: Dict[str, Any]) -> D
         "errors": errors,
         "permissionUpdates": verification_sync.get("updated", 0),
     }
+
+
+async def apply_private_log_permissions(
+    guild: discord.Guild,
+    category: Optional[discord.CategoryChannel],
+    settings: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Make the moderation log category private while preserving explicit staff access."""
+    if category is None:
+        return {"updated": 0, "errors": ["Moderation Logs category is unavailable"]}
+
+    errors: List[str] = []
+    updated = 0
+    bot_member = guild.me
+    if bot_member is None:
+        return {"updated": 0, "errors": ["Bot member is unavailable for log permissions"]}
+
+    try:
+        await category.set_permissions(
+            guild.default_role,
+            view_channel=False,
+            reason="Docket private moderation logs",
+        )
+        await category.set_permissions(
+            bot_member,
+            view_channel=True,
+            send_messages=True,
+            read_message_history=True,
+            manage_channels=True,
+            reason="Docket private moderation logs",
+        )
+        updated += 2
+    except Exception as exc:
+        errors.append(f"Moderation Logs privacy: {exc}")
+
+    staff_role_ids: set[int] = set()
+    for key in (
+        "owner_role", "manager_role", "admin_role", "supervisor_role",
+        "senior_mod_role", "mod_role", "trial_mod_role", "staff_role",
+        "logs_access_role", "ticket_support_role",
+    ):
+        role_id = _coerce_int(settings.get(key))
+        if role_id:
+            staff_role_ids.add(role_id)
+    for key in ("admin_roles", "mod_roles"):
+        raw = settings.get(key)
+        if isinstance(raw, list):
+            staff_role_ids.update(role_id for role_id in (_coerce_int(value) for value in raw) if role_id)
+
+    for role_id in staff_role_ids:
+        role = guild.get_role(role_id)
+        if role is None:
+            continue
+        try:
+            await category.set_permissions(
+                role,
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                reason="Docket private moderation logs",
+            )
+            updated += 1
+        except Exception as exc:
+            errors.append(f"Log access for {role.name}: {exc}")
+
+    for channel in category.channels:
+        try:
+            if not channel.permissions_synced:
+                await channel.edit(sync_permissions=True, reason="Docket private moderation logs")
+                updated += 1
+        except Exception as exc:
+            errors.append(f"Log channel {channel.name} privacy: {exc}")
+
+    return {"updated": updated, "errors": errors}
+
+
+async def ensure_private_moderation_logs(guild: discord.Guild, settings: Dict[str, Any]) -> Dict[str, Any]:
+    """Create or reuse Docket's standard log channels and keep them private."""
+    updated = dict(settings)
+    created: List[str] = []
+    errors: List[str] = []
+    category = _find_category(guild, updated.get("logs_category"), "Moderation Logs", prefer_name=True)
+    if category is None:
+        try:
+            category = await guild.create_category(name="Moderation Logs", reason="Docket automatic private logs")
+            created.append("Moderation Logs")
+        except Exception as exc:
+            return {"settings": updated, "created": created, "errors": [f"Moderation Logs: {exc}"]}
+    updated["logs_category"] = category.id
+
+    for spec in (item for item in CHANNEL_SPECS if item.get("category") == "logs_category"):
+        channel = _find_text_channel(
+            guild,
+            updated.get(spec["setting_key"]),
+            spec["name"],
+            prefer_name=True,
+        )
+        if channel is None:
+            try:
+                channel = await guild.create_text_channel(
+                    name=spec["name"],
+                    category=category,
+                    topic=spec.get("topic"),
+                    reason="Docket automatic private logs",
+                )
+                created.append(spec["name"])
+            except Exception as exc:
+                errors.append(f"{spec['name']}: {exc}")
+                continue
+        elif channel.category_id != category.id:
+            try:
+                await channel.edit(category=category, sync_permissions=True, reason="Docket automatic private logs")
+            except Exception as exc:
+                errors.append(f"{spec['name']} category: {exc}")
+        updated[spec["setting_key"]] = channel.id
+
+    apply_compact_log_routing(updated)
+    permission_result = await apply_private_log_permissions(guild, category, updated)
+    errors.extend(permission_result["errors"])
+    await _sync_log_channel_order(category, updated, errors)
+    return {"settings": updated, "created": created, "errors": errors}

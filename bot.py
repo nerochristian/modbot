@@ -35,6 +35,8 @@ from dotenv import load_dotenv
 from config import Config
 from utils.embeds import ModEmbed
 from utils.moderation_settings import moderation_bool
+from utils.components_v2 import branded_panel_container, ensure_layout_view_action_rows
+from utils.server_setup import ensure_private_moderation_logs
 from utils.status_emojis import (
     apply_status_emoji_overrides,
     get_loading_emoji_for_guild,
@@ -48,6 +50,14 @@ load_dotenv(override=True)
 # ==================== ENVIRONMENT HELPERS ====================
 IS_RENDER = os.getenv("RENDER", "").lower() in ("true", "1", "yes")
 IS_RAILWAY = os.getenv("RAILWAY_ENVIRONMENT") is not None
+
+
+def _dashboard_public_url() -> str:
+    for key in ("DASHBOARD_PUBLIC_URL", "FRONTEND_PUBLIC_URL", "NEXT_PUBLIC_APP_URL"):
+        value = (os.getenv(key) or "").strip().rstrip("/")
+        if value.startswith(("https://", "http://")):
+            return value
+    return "https://docketbot.xyz"
 
 
 def _env_enabled(var_name: str, default: bool = False) -> bool:

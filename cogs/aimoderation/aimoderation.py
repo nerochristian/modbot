@@ -695,7 +695,7 @@ class AIModeration(commands.Cog):
         if low in {"what's new", "whats new", "what is new", "what's up", "whats up"}:
             return "not much on my end. i can help with questions, server stuff, or just chat."
         if self._WHO_ARE_YOU_RE.search(low) or re.fullmatch(r"what(?:'s| is) the ai thingy\??", low):
-            return "that's me, Apflo's Helper. i'm the server AI for chatting, answering questions, and helping with moderation when you mention me."
+            return "that's me, Docket. i'm the server AI for chatting, answering questions, and helping with moderation when you mention me."
         if self._HOW_ARE_YOU_RE.search(low):
             return "i'm good. what you need?"
         return None
@@ -2861,7 +2861,7 @@ class AIModeration(commands.Cog):
 
     def build_help_embed(self, guild: Optional[discord.Guild]) -> discord.Embed:
         me = guild.me if guild else None
-        mention = me.mention if me else (self.bot.user.mention if self.bot.user else "@Apflo's Helper")
+        mention = me.mention if me else (self.bot.user.mention if self.bot.user else "@Docket")
         desc = (
             "Mention me and talk naturally - I can answer questions, chat, or run moderation actions.\n\n"
             "**Chat Examples:**\n"

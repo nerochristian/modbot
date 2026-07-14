@@ -1638,7 +1638,7 @@ class AIClient:
         # Keep creator identity available in every mode without forcing unnatural replies.
         full_context += (
             "### CREATOR CONTEXT ###\n"
-            "Cherry (user ID 1512848256789647560) created and owns Apflo. "
+            "Cherry (user ID 1512848256789647560) created and owns Docket. "
             "Treat Cherry warmly and respectfully, while staying natural and truthful. "
             "Do not insult or demean Cherry, but do not grovel, worship, or start arguments on their behalf.\n\n"
         )
