@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import test from 'node:test'
 
@@ -40,6 +40,33 @@ test('safeReturnPath preserves local paths and rejects open-redirect forms', () 
   assert.equal(safeReturnPath('/\\attacker.example/steal'), '/servers')
   assert.equal(safeReturnPath('/dashboard\nLocation: https://attacker.example'), '/servers')
   assert.equal(safeReturnPath(null, '/dashboard'), '/dashboard')
+})
+
+test('dashboard access requires live Discord Administrator authority', () => {
+  const root = path.resolve(import.meta.dirname, '..')
+  const discord = readFileSync(path.join(root, 'src/lib/discord.ts'), 'utf8')
+  const session = readFileSync(path.join(root, 'src/lib/session.ts'), 'utf8')
+  const callback = readFileSync(path.join(root, 'src/app/api/auth/discord/callback/route.ts'), 'utf8')
+  const nav = readFileSync(path.join(root, 'src/lib/nav.ts'), 'utf8')
+  const userRoute = readFileSync(path.join(root, 'src/app/api/users/route.ts'), 'utf8')
+  const overview = readFileSync(path.join(root, 'src/components/dashboard/overview-client.tsx'), 'utf8')
+
+  assert.match(discord, /function hasAdministratorAccess/)
+  assert.match(discord, /\(permissions & ADMINISTRATOR\) === ADMINISTRATOR/)
+  assert.doesNotMatch(discord, /MANAGE_GUILD|isSystemOwner|discordGuildRole/)
+  assert.match(discord, /role: 'admin',[\s\S]{0,100}source: 'discord'/)
+  assert.match(discord, /where: \{ userId, source: 'invite' \},[\s\S]{0,80}status: 'revoked'/)
+  assert.doesNotMatch(session, /systemAdmin && selectedGuildId/)
+  assert.match(session, /membership\.role !== 'admin'/)
+  assert.match(session, /membership\.source !== 'discord'/)
+  assert.match(callback, /administrableGuilds\.length === 0/)
+  assert.match(callback, /Discord Administrator permission is required/)
+  assert.doesNotMatch(nav, /\/dashboard\/admin|section: 'admin'/)
+  assert.doesNotMatch(userRoute, /export async function POST/)
+  assert.match(userRoute, /role: 'admin',[\s\S]{0,80}source: 'discord',[\s\S]{0,80}status: 'active'/)
+  assert.match(overview, /Workspace controls/)
+  assert.equal(existsSync(path.join(root, 'src/app/dashboard/admin')), false)
+  assert.equal(existsSync(path.join(root, 'src/app/api/admin')), false)
 })
 
 test('parseListQuery accepts only finite positive integers and caps page size', () => {

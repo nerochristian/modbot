@@ -306,6 +306,7 @@ class DeepSeekWebChatModeTests(unittest.IsolatedAsyncioTestCase):
         page.locator.side_effect = locator
         page.get_by_text.return_value = rename_candidates
         page.wait_for_function = AsyncMock()
+        link.wait_for = AsyncMock()
         link.count = AsyncMock(return_value=1)
         link.is_visible = AsyncMock(return_value=True)
         link.hover = AsyncMock()
@@ -325,8 +326,61 @@ class DeepSeekWebChatModeTests(unittest.IsolatedAsyncioTestCase):
         renamed = await client._rename_current_chat(page, "Soul -> General")
 
         self.assertTrue(renamed)
+        link.wait_for.assert_awaited_once_with(state="attached", timeout=5_000)
         rename_input.fill.assert_awaited_once_with("Soul -> General")
         rename_input.press.assert_awaited_once_with("Enter")
+
+    async def test_current_chat_waits_for_hidden_sidebar_before_rename(self) -> None:
+        client = DeepSeekWebClient()
+        page = MagicMock()
+        page.url = "https://chat.deepseek.com/a/chat/s/abc1234567890-def"
+        link = MagicMock()
+        menu_button = MagicMock()
+        rename_candidates = MagicMock()
+        rename_option = MagicMock()
+        input_candidates = MagicMock()
+        rename_input = MagicMock()
+
+        def locator(selector: str) -> MagicMock:
+            if selector.startswith('a[href='):
+                return link
+            if selector.startswith("input.ds-input__input"):
+                return input_candidates
+            raise AssertionError(f"Unexpected selector: {selector}")
+
+        page.locator.side_effect = locator
+        page.get_by_text.return_value = rename_candidates
+        page.wait_for_function = AsyncMock()
+        page.keyboard.press = AsyncMock()
+        link.wait_for = AsyncMock()
+        link.count = AsyncMock(return_value=1)
+        link.is_visible = AsyncMock(side_effect=[False, True])
+        link.hover = AsyncMock()
+        link.locator.return_value = menu_button
+        menu_button.count = AsyncMock(return_value=1)
+        menu_button.click = AsyncMock()
+        rename_candidates.count = AsyncMock(return_value=1)
+        rename_candidates.nth.return_value = rename_option
+        rename_option.is_visible = AsyncMock(return_value=True)
+        rename_option.click = AsyncMock()
+        input_candidates.count = AsyncMock(return_value=1)
+        input_candidates.nth.return_value = rename_input
+        rename_input.is_visible = AsyncMock(return_value=True)
+        rename_input.fill = AsyncMock()
+        rename_input.press = AsyncMock()
+
+        renamed = await client._rename_current_chat(page, "Soul -> General")
+
+        self.assertTrue(renamed)
+        self.assertEqual(
+            link.wait_for.await_args_list,
+            [
+                unittest.mock.call(state="attached", timeout=5_000),
+                unittest.mock.call(state="visible", timeout=5_000),
+            ],
+        )
+        page.keyboard.press.assert_awaited_once_with("Control+J")
+        rename_input.fill.assert_awaited_once_with("Soul -> General")
 
     async def test_fast_copy_uses_new_rendered_assistant_message(self) -> None:
         client = DeepSeekWebClient()

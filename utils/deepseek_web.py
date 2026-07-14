@@ -1023,12 +1023,22 @@ class DeepSeekWebClient:
 
         path = urlsplit(current_url).path
         link = page.locator(f'a[href="{path}"]')
-        link_count = await link.count()
-        if link_count != 1 or not await link.is_visible():
+        try:
+            # DeepSeek creates the conversation URL before its sidebar entry is
+            # rendered. Waiting for attachment prevents first-turn renames from
+            # failing and being deferred until the channel's next message.
+            await link.wait_for(state="attached", timeout=5_000)
+        except Exception:
+            return False
+        if await link.count() != 1:
+            return False
+        if not await link.is_visible():
             await page.keyboard.press("Control+J")
-            await asyncio.sleep(0.2)
-            link = page.locator(f'a[href="{path}"]')
-        if await link.count() != 1 or not await link.is_visible():
+            try:
+                await link.wait_for(state="visible", timeout=5_000)
+            except Exception:
+                return False
+        if not await link.is_visible():
             return False
 
         await link.hover()
