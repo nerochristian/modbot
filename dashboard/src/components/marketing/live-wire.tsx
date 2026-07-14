@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { Zap } from 'lucide-react'
 
 /**
  * The Live Wire — the landing page's signature moment. On load, a raid of
@@ -37,8 +36,8 @@ const FINAL_COUNT = 300
 const ROW_INTERVAL = 420
 
 export function LiveWire() {
-  const [visible, setVisible] = useState<Row[]>([])
-  const [count, setCount] = useState(0)
+  const [visible, setVisible] = useState<Row[]>(RAID.slice(0, 3))
+  const [count, setCount] = useState(96)
   const [settled, setSettled] = useState(false)
   const startedRef = useRef(false)
 
@@ -65,28 +64,28 @@ export function LiveWire() {
     }
 
     // Stream the rows in.
-    RAID.forEach((row, i) => {
+    RAID.slice(3).forEach((row, i) => {
       timers.push(
         setTimeout(() => {
           setVisible((v) => [...v, row])
-        }, 500 + i * ROW_INTERVAL),
+        }, 700 + i * ROW_INTERVAL),
       )
     })
 
     // Climb the counter from 0 → 300 across the stream, then settle.
     const climbStart = 700
-    const climbDuration = RAID.length * ROW_INTERVAL
+    const climbDuration = (RAID.length - 3) * ROW_INTERVAL
     const climbSteps = 60
     for (let s = 1; s <= climbSteps; s++) {
       timers.push(
         setTimeout(() => {
-          setCount(Math.round((FINAL_COUNT * s) / climbSteps))
+          setCount(96 + Math.round(((FINAL_COUNT - 96) * s) / climbSteps))
         }, climbStart + (climbDuration * s) / climbSteps),
       )
     }
 
     timers.push(
-      setTimeout(() => setSettled(true), 500 + RAID.length * ROW_INTERVAL + 400),
+      setTimeout(() => setSettled(true), 700 + (RAID.length - 3) * ROW_INTERVAL + 400),
     )
 
     return () => timers.forEach(clearTimeout)
@@ -94,59 +93,41 @@ export function LiveWire() {
 
   return (
     <div className="relative">
-      {/* Floating glass status widgets — adapted from the reference hero. */}
-      <div className="absolute -left-5 -top-5 z-20 hidden items-center gap-2.5 rounded-lg border border-border bg-surface/90 px-3.5 py-2.5 shadow-xl backdrop-blur wire-float sm:flex">
-        <span className="inline-flex size-2.5 rounded-full bg-success wire-blip" />
-        <div className="text-left">
-          <span className="block font-mono text-[0.5625rem] font-semibold uppercase tracking-[0.14em] text-muted-2">Shield status</span>
-          <span className="text-xs font-semibold text-foreground">Raid protection · active</span>
-        </div>
-      </div>
-      <div className="absolute -bottom-6 -right-4 z-20 hidden items-center gap-3 rounded-lg border border-border bg-surface/90 px-3.5 py-2.5 shadow-xl backdrop-blur wire-float-slow sm:flex">
-        <span className="bg-brand-gradient grid size-8 place-items-center rounded-md text-white">
-          <Zap className="size-4" />
-        </span>
-        <div className="text-left">
-          <span className="block font-mono text-[0.5625rem] font-semibold uppercase tracking-[0.14em] text-muted-2">Decision engine</span>
-          <span className="text-xs font-semibold text-foreground">Policy pipeline ready</span>
-        </div>
-      </div>
-
-      <div className="wire-sweep ring-brand relative overflow-hidden rounded-lg border border-border bg-card">
+      <div className="relative overflow-hidden rounded-2xl border border-border bg-card/90 shadow-2xl shadow-black/20">
         {/* Board header — channel + live status */}
-        <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+        <div className="flex items-center justify-between border-b border-border bg-surface-2/45 px-4 py-3.5 sm:px-5">
           <div className="flex items-center gap-2">
             <span className="wire-blip inline-flex size-2 rounded-full bg-threat" />
-            <span className="font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-muted">
-              The Nexus / #general
+            <span className="text-xs font-semibold text-muted">
+              #general · protection feed
             </span>
         </div>
-        <span className="font-mono text-[0.625rem] uppercase tracking-[0.16em] text-accent">
-          Automod · live
+        <span className="rounded-full border border-accent-line bg-accent-soft px-2.5 py-1 text-[0.6875rem] font-semibold text-accent">
+          Automod live
         </span>
       </div>
 
       {/* The feed — older rows dissolve into a mask at the top, like a live console. */}
       <div
-        className="scanfield relative h-[300px] overflow-hidden px-3 py-3"
+        className="relative h-[318px] overflow-hidden px-3 py-4 sm:px-4"
         style={{
           maskImage: 'linear-gradient(to bottom, transparent 0, #000 56px)',
           WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, #000 56px)',
         }}
       >
-        <ul className="flex flex-col justify-end gap-1.5">
+          <ul className="flex flex-col justify-end gap-2">
           {visible.map((row) => (
             <li
               key={row.id}
-              className="animate-wire-in animate-wire-flash flex items-center gap-3 rounded-md px-2.5 py-2"
+              className="animate-wire-in flex items-center gap-3 rounded-xl border border-border bg-surface/55 px-3 py-2.5"
             >
-              <span className="font-mono text-[0.6875rem] text-muted-2">{row.user}</span>
+              <span className="font-mono text-[0.6875rem] font-medium text-muted">{row.user}</span>
               <span className="min-w-0 flex-1 truncate text-[0.8125rem] text-muted line-through decoration-threat/50">
                 {row.content}
               </span>
               <span
                 className={
-                  'animate-wire-stamp shrink-0 rounded-sm border px-1.5 py-0.5 font-mono text-[0.5625rem] font-bold uppercase tracking-[0.1em] ' +
+                  'animate-wire-stamp shrink-0 rounded-md border px-2 py-1 font-mono text-[0.5625rem] font-bold uppercase tracking-[0.1em] ' +
                   (row.verdict === 'blocked'
                     ? 'border-threat/40 bg-threat-soft text-threat'
                     : 'border-warning/40 bg-warning-soft text-warning')
@@ -160,7 +141,7 @@ export function LiveWire() {
       </div>
 
         {/* The payoff bar */}
-        <div className="flex items-center justify-between border-t border-border px-4 py-3">
+        <div className="flex items-center justify-between border-t border-border bg-surface-2/45 px-4 py-4 sm:px-5">
           <div className="flex items-baseline gap-2">
             <span className="font-mono text-2xl font-semibold tabular-nums text-threat">
               {count}
