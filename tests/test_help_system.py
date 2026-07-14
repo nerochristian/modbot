@@ -1,6 +1,8 @@
 import unittest
+from unittest.mock import patch
 from types import SimpleNamespace
 
+import discord
 from discord.ext import commands
 
 from cogs.help import Help, HelpView, _HelpIndex, _normalize_command_name
@@ -50,6 +52,45 @@ class HelpSystemTests(unittest.TestCase):
         self.assertFalse(hasattr(Help, "modpanel"))
         self.assertFalse(hasattr(Help, "adminpanel"))
         self.assertFalse(hasattr(Help, "ownerpanel"))
+
+    def test_website_help_matches_three_row_action_card(self) -> None:
+        help_cog = Help(SimpleNamespace())
+        with patch.dict(
+            "os.environ",
+            {
+                "DASHBOARD_PUBLIC_URL": "https://docket.example",
+                "SUPPORT_SERVER_URL": "https://discord.gg/docket",
+            },
+        ):
+            view = help_cog._website_help_view()
+
+        self.assertIsInstance(view, discord.ui.LayoutView)
+        self.assertEqual(len(view.children), 1)
+        container = view.children[0]
+        self.assertIsInstance(container, discord.ui.Container)
+
+        sections = [
+            child for child in container.children
+            if isinstance(child, discord.ui.Section)
+        ]
+        separators = [
+            child for child in container.children
+            if isinstance(child, discord.ui.Separator)
+        ]
+        self.assertEqual(len(sections), 3)
+        self.assertEqual(len(separators), 2)
+        self.assertEqual(
+            [section.accessory.label for section in sections],
+            ["Commands", "Go to Dashboard", "Support Server"],
+        )
+        self.assertEqual(
+            [section.accessory.url for section in sections],
+            [
+                "https://docket.example/commands",
+                "https://docket.example/dashboard",
+                "https://discord.gg/docket",
+            ],
+        )
 
 
 if __name__ == "__main__":

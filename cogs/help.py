@@ -16,7 +16,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from config import Config
-from utils.components_v2 import branded_panel_container, ensure_layout_view_action_rows
+from utils.components_v2 import ensure_layout_view_action_rows
 
 
 # =============================================================================
@@ -506,32 +506,76 @@ class Help(commands.Cog):
         self.bot = bot
 
     @staticmethod
-    def _commands_url(command: Optional[str] = None) -> str:
-        base = (
+    def _public_base_url() -> str:
+        return (
             os.getenv("DASHBOARD_PUBLIC_URL")
             or os.getenv("FRONTEND_PUBLIC_URL")
             or "https://docketbot.xyz"
         ).rstrip("/")
+
+    @classmethod
+    def _commands_url(cls, command: Optional[str] = None) -> str:
+        base = cls._public_base_url()
         if not command:
             return f"{base}/commands"
         from urllib.parse import quote_plus
         return f"{base}/commands?q={quote_plus(command)}"
 
-    def _website_help_view(self, command: Optional[str] = None) -> discord.ui.LayoutView:
-        url = self._commands_url(command)
-        description = (
-            "Search every Docket command by category, see its inputs, and copy the exact slash or prefix form."
-            if not command
-            else f"Open the command directory with **{command}** already searched."
+    @classmethod
+    def _support_url(cls) -> str:
+        return (
+            os.getenv("SUPPORT_SERVER_URL")
+            or f"{cls._public_base_url()}/commands#support"
+        ).strip()
+
+    @staticmethod
+    def _help_row(
+        *,
+        icon: str,
+        title: str,
+        description: str,
+        button_label: str,
+        url: str,
+    ) -> discord.ui.Section:
+        return discord.ui.Section(
+            discord.ui.TextDisplay(f"{icon} **{title}**\n{description}"),
+            accessory=discord.ui.Button(label=button_label, url=url),
         )
-        container = branded_panel_container(
-            title="Docket command directory",
-            description=description,
+
+    def _website_help_view(self, command: Optional[str] = None) -> discord.ui.LayoutView:
+        commands_description = (
+            "Use `/` or `,` to run commands."
+            if not command
+            else f"Open the directory with **{command}** ready to search."
+        )
+        container = discord.ui.Container(
+            self._help_row(
+                icon="📖",
+                title="Commands",
+                description=commands_description,
+                button_label="Commands",
+                url=self._commands_url(command),
+            ),
+            discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+            self._help_row(
+                icon="💻",
+                title="Dashboard",
+                description="Manage Docket's settings.",
+                button_label="Go to Dashboard",
+                url=f"{self._public_base_url()}/dashboard",
+            ),
+            discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+            self._help_row(
+                icon="❓",
+                title="Need Help?",
+                description="Open support and troubleshooting.",
+                button_label="Support Server",
+                url=self._support_url(),
+            ),
             accent_color=Config.COLOR_BRAND,
         )
         view = discord.ui.LayoutView(timeout=300)
         view.add_item(container)
-        view.add_item(discord.ui.Button(label="View commands", url=url))
         return ensure_layout_view_action_rows(view)
 
     def _build_details_embed(
