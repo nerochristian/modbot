@@ -2,18 +2,24 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Menu, X } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { CircleHelp, Command, LayoutDashboard, LogOut, Menu, X } from 'lucide-react'
 import { Logo } from '@/components/logo'
 import { buttonVariants } from '@/components/ui/button'
+import { Avatar } from '@/components/ui/avatar'
+import { Dropdown, DropdownItem, DropdownLabel, DropdownMenu, DropdownSeparator, DropdownTrigger } from '@/components/ui/dropdown'
 import { cn } from '@/lib/utils'
 
 const NAV = [
-  { label: 'How it works', href: '#pipeline' },
-  { label: 'Commands', href: '#commands' },
-  { label: 'FAQ', href: '#faq' },
+  { label: 'How it works', href: '/#pipeline' },
+  { label: 'Commands', href: '/commands' },
+  { label: 'Support', href: '/commands#support' },
 ]
 
-export function SiteHeader() {
+type HeaderUser = { name: string; email: string; avatarUrl: string | null; avatarColor: string }
+
+export function SiteHeader({ user }: { user: HeaderUser | null }) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
 
@@ -23,6 +29,14 @@ export function SiteHeader() {
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
+
+  async function logout() {
+    const response = await fetch('/api/auth/logout', { method: 'POST' })
+    if (response.ok) {
+      router.push('/')
+      router.refresh()
+    }
+  }
 
   return (
     <header
@@ -49,12 +63,30 @@ export function SiteHeader() {
         </nav>
 
         <div className="flex items-center gap-2">
-          <Link href="/login" className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'hidden sm:inline-flex')}>
-            Sign in
-          </Link>
-          <Link href="/register" className={buttonVariants({ variant: 'primary', size: 'sm' })}>
-            Open console
-          </Link>
+          {user ? (
+            <Dropdown>
+              <DropdownTrigger>
+                <span className="focus-ring flex items-center gap-2 rounded-full border border-accent-line bg-accent-soft p-1 pr-3 transition-colors hover:bg-accent/15">
+                  <Avatar name={user.name} src={user.avatarUrl} color={user.avatarColor} size="sm" />
+                  <span className="hidden max-w-28 truncate text-sm font-semibold text-foreground sm:block">{user.name}</span>
+                </span>
+              </DropdownTrigger>
+              <DropdownMenu align="right" className="w-64">
+                <DropdownLabel><span className="block truncate text-foreground">{user.name}</span><span className="block truncate font-normal text-muted-2">{user.email}</span></DropdownLabel>
+                <DropdownSeparator />
+                <Link href="/dashboard"><DropdownItem icon={LayoutDashboard}>Dashboard</DropdownItem></Link>
+                <Link href="/commands"><DropdownItem icon={Command}>Commands</DropdownItem></Link>
+                <Link href="/commands#support"><DropdownItem icon={CircleHelp}>Support</DropdownItem></Link>
+                <DropdownSeparator />
+                <DropdownItem icon={LogOut} destructive onClick={() => void logout()}>Sign out</DropdownItem>
+              </DropdownMenu>
+            </Dropdown>
+          ) : (
+            <>
+              <Link href="/login" className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'hidden sm:inline-flex')}>Sign in</Link>
+              <Link href="/register" className={buttonVariants({ variant: 'primary', size: 'sm' })}>Open console</Link>
+            </>
+          )}
           <button
             onClick={() => setOpen((v) => !v)}
             className="focus-ring inline-flex size-9 items-center justify-center rounded-md border border-border text-foreground md:hidden"
@@ -79,12 +111,7 @@ export function SiteHeader() {
                 {item.label}
               </a>
             ))}
-            <Link
-              href="/login"
-              className="rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-surface-2"
-            >
-              Sign in
-            </Link>
+            {!user && <Link href="/login" className="rounded-lg px-3 py-2.5 text-sm font-medium text-foreground hover:bg-surface-2">Sign in</Link>}
           </nav>
         </div>
       )}
