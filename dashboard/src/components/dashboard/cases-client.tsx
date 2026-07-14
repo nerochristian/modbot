@@ -118,6 +118,10 @@ export function CasesClient() {
   const setTableColumns = useConfigStore((s) => s.setTableColumns)
 
   const [presetMember] = useState(() => searchParams.get('member') ?? '')
+  const [presetAction] = useState(() => {
+    const action = searchParams.get('type') ?? ''
+    return TYPE_OPTIONS.some((option) => option.value === action) ? action : ''
+  })
   const list = useListParams({
     sort: 'createdAt',
     order: 'desc',
@@ -339,6 +343,7 @@ export function CasesClient() {
       {creating && (
         <CaseForm
           presetMember={presetMember}
+          presetAction={presetAction}
           onClose={() => setCreating(false)}
           onSaved={() => {
             setCreating(false)
@@ -406,10 +411,12 @@ function renderCell(c: Case, key: string) {
 
 function CaseForm({
   presetMember,
+  presetAction,
   onClose,
   onSaved,
 }: {
   presetMember: string
+  presetAction: string
   onClose: () => void
   onSaved: () => void
 }) {
@@ -419,8 +426,14 @@ function CaseForm({
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [form, setForm] = useState({
     memberId: presetMember,
-    type: 'warn',
-    severity: 'low',
+    type: presetAction || 'warn',
+    severity: presetAction === 'ban'
+      ? 'critical'
+      : presetAction === 'kick'
+        ? 'high'
+        : presetAction === 'timeout' || presetAction === 'mute'
+          ? 'medium'
+          : 'low',
     reason: '',
     channel: '',
     duration: '',

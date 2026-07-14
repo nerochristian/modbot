@@ -46,7 +46,6 @@ export const memberSchema = z.object({
   username: z.string().min(2).max(80),
   displayName: z.string().min(1).max(80),
   discordId: z.string().regex(/^\d{15,20}$/, 'Enter a valid Discord ID (15–20 digits)'),
-  standing: z.enum(['good', 'watchlist', 'muted', 'banned', 'left']),
   riskLevel: z.enum(['low', 'medium', 'high', 'critical']),
   note: z.string().max(500).nullable().optional(),
 })

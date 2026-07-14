@@ -24,8 +24,6 @@ type Member = {
   handle: string
   initials: string
   color: string
-  standing: 'good' | 'watchlist' | 'muted' | 'banned'
-  standingLabel: string
   risk: 'none' | 'low' | 'medium' | 'high' | 'critical'
   joined: string
   summary: string
@@ -38,8 +36,6 @@ const MEMBERS: Member[] = [
     handle: '@Vandalizer',
     initials: 'VZ',
     color: '#ff4d4d',
-    standing: 'banned',
-    standingLabel: 'Banned',
     risk: 'critical',
     joined: '2h before ban',
     summary: 'Raid account. Escalated from mute to permanent ban within one session.',
@@ -54,8 +50,6 @@ const MEMBERS: Member[] = [
     handle: '@vibe_master',
     initials: 'VM',
     color: '#e0942e',
-    standing: 'watchlist',
-    standingLabel: 'Watchlist',
     risk: 'medium',
     joined: '4 months ago',
     summary: 'Long-time member with a recent pattern of heated arguments. No bans.',
@@ -71,8 +65,6 @@ const MEMBERS: Member[] = [
     handle: '@Newcomer',
     initials: 'NC',
     color: '#1e78ff',
-    standing: 'watchlist',
-    standingLabel: 'Under review',
     risk: 'low',
     joined: '2 hours ago',
     summary: 'New account flagged once. No action taken yet — low confidence.',
@@ -86,8 +78,6 @@ const MEMBERS: Member[] = [
     handle: '@RegularRuby',
     initials: 'RR',
     color: '#33d6ff',
-    standing: 'good',
-    standingLabel: 'Good standing',
     risk: 'none',
     joined: '1 year ago',
     summary: 'Trusted regular. One old, resolved case. Clean since.',
@@ -114,13 +104,6 @@ const ACTION_TONE: Record<ActionKind, string> = {
   watch: 'text-accent',
   note: 'text-muted',
   unmute: 'text-success',
-}
-
-const STANDING_TONE: Record<Member['standing'], string> = {
-  good: 'bg-success-soft text-success',
-  watchlist: 'bg-warning-soft text-warning',
-  muted: 'bg-warning-soft text-warning',
-  banned: 'bg-threat-soft text-threat',
 }
 
 const TYPE_SPEED = 30
@@ -229,12 +212,7 @@ export function CommandDemo() {
                     {selected.initials}
                   </span>
                   <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-mono text-sm font-semibold text-foreground">{selected.handle}</span>
-                      <span className={`rounded-sm px-1.5 py-0.5 font-mono text-[0.5625rem] font-bold uppercase tracking-wide ${STANDING_TONE[selected.standing]}`}>
-                        {selected.standingLabel}
-                      </span>
-                    </div>
+                    <span className="font-mono text-sm font-semibold text-foreground">{selected.handle}</span>
                     <p className="mt-0.5 text-[0.6875rem] text-muted">Joined {selected.joined}</p>
                   </div>
                   <div className="flex flex-col items-end gap-1">

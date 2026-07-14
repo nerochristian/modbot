@@ -125,7 +125,6 @@ model Member {
   displayName  String // server nickname / global display name
   discordId    String   @unique // 17-19 digit snowflake
   avatarColor  String   @default("#5865f2")
-  standing     String   @default("good") // good | watchlist | muted | banned | left
   riskLevel    String   @default("low") // low | medium | high | critical
   warnings     Int      @default(0)
   messages     Int      @default(0)
@@ -137,7 +136,6 @@ model Member {
   cases   Case[]
   appeals Appeal[]
 
-  @@index([standing])
   @@index([riskLevel])
 }
 

@@ -161,12 +161,12 @@ export default function LandingPage() {
               Ping a member.<br />See everything on record.
             </h2>
             <p className="mt-5 max-w-md text-base leading-relaxed text-muted">
-              The preview uses an example roster. In an authenticated workspace, Docket returns live standing,
+              The preview uses an example roster. In an authenticated workspace, Docket returns live Discord status,
               risk level, and a full timeline of every warn, mute, ban, note, and appeal — who did it,
               when, and why. Try it: pick a member on the right.
             </p>
             <ul className="mt-6 space-y-2.5 text-sm text-muted">
-              <li className="flex items-center gap-2.5"><span className="size-1.5 rounded-full bg-accent" /> Standing and risk at a glance</li>
+              <li className="flex items-center gap-2.5"><span className="size-1.5 rounded-full bg-accent" /> Discord status and risk signals at a glance</li>
               <li className="flex items-center gap-2.5"><span className="size-1.5 rounded-full bg-accent" /> Complete, attributable action history</li>
               <li className="flex items-center gap-2.5"><span className="size-1.5 rounded-full bg-accent" /> Nothing lost between shifts or channels</li>
             </ul>

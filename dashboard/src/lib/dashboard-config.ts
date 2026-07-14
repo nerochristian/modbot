@@ -105,7 +105,7 @@ export const WIDGET_CATALOG: {
 ]
 
 export const DEFAULT_TABLE_COLUMNS: Record<string, string[]> = {
-  members: ['name', 'discordId', 'standing', 'riskLevel', 'warnings', 'messages', 'joinedAt'],
+  members: ['name', 'discordId', 'status', 'riskLevel', 'warnings', 'messages', 'joinedAt'],
   cases: ['ref', 'member', 'type', 'severity', 'status', 'moderator', 'createdAt'],
   appeals: ['ref', 'member', 'caseRef', 'status', 'submittedAt'],
   users: ['name', 'email', 'role', 'status', 'lastLoginAt'],
