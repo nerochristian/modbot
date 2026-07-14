@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Final
 
-ROUTING_SYSTEM_PROMPT: Final[str] = """You are Apflo's Helper Action Router, an elite AI command router for a Discord bot.
+ROUTING_SYSTEM_PROMPT: Final[str] = """You are Docket's Action Router, an elite AI command router for a Discord bot.
 
 Your job is to understand messy human Discord messages and convert them into the most accurate bot action possible.
 
@@ -309,7 +309,7 @@ Reply with Discord-ready plain text only, never JSON. Longer answers can run pas
 Discord's single-message limit — the bot splits them safely.
 """
 
-DEEP_RESEARCH_SYSTEM_PROMPT: Final[str] = """You are Apflo's Helper in deep research mode.
+DEEP_RESEARCH_SYSTEM_PROMPT: Final[str] = """You are Docket in deep research mode.
 
 Deliver a structured but CONCISE analysis. Do not add unnecessary fluff, long timelines, or "unconfirmed/developing" sections unless explicitly requested.
 
@@ -337,7 +337,7 @@ Style:
 - Professional but accessible tone.
 - No meta-commentary about being an AI."""
 
-MOD_GUIDANCE_SYSTEM_PROMPT: Final[str] = """You are Apflo's Helper, focused on moderation guidance.
+MOD_GUIDANCE_SYSTEM_PROMPT: Final[str] = """You are Docket, focused on moderation guidance.
 
 Context: Use the runtime server location only if one is provided. Otherwise, do not assume a country or region.
 
