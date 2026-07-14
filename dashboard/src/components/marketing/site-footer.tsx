@@ -1,12 +1,12 @@
-import Link from 'next/link'
-import { Logo } from '@/components/logo'
+import Link from "next/link";
+import { Logo } from "@/components/logo";
 
 const LINKS = [
-  { label: 'Commands', href: '/commands' },
-  { label: 'How it works', href: '/#pipeline' },
-  { label: 'Support', href: '/commands#support' },
-  { label: 'Dashboard', href: '/dashboard' },
-]
+  { label: "Commands", href: "/commands" },
+  { label: "How it works", href: "/#pipeline" },
+  { label: "Support", href: "/commands#support" },
+  { label: "Dashboard", href: "/dashboard" },
+];
 
 export function SiteFooter() {
   return (
@@ -16,12 +16,17 @@ export function SiteFooter() {
           <div className="space-y-4">
             <Logo />
             <p className="max-w-md text-sm leading-6 text-muted">
-              One modern control center for Discord moderation, member reports, tickets, cases, and server safety.
+              One modern control center for Discord moderation, member reports,
+              tickets, cases, and server safety.
             </p>
           </div>
           <nav className="flex flex-wrap gap-x-6 gap-y-3">
             {LINKS.map((link) => (
-              <Link key={link.label} href={link.href} className="text-sm font-medium text-muted transition-colors hover:text-foreground">
+              <Link
+                key={link.label}
+                href={link.href}
+                className="text-sm font-medium text-muted transition-colors hover:text-foreground"
+              >
                 {link.label}
               </Link>
             ))}
@@ -33,5 +38,5 @@ export function SiteFooter() {
         </div>
       </div>
     </footer>
-  )
+  );
 }
