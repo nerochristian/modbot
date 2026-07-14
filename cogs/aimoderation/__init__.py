@@ -24,7 +24,7 @@ from .prompts import (
 )
 from .context import ToolResult, ToolContext, action_embed, parse_hex_color
 from .registry import ToolRegistry
-from .ai_client import AIClient, GeminiClient
+from .ai_client import AIClient
 from .aimoderation import AIModeration, setup
 
 __all__ = [
@@ -38,7 +38,6 @@ __all__ = [
     "DEEP_RESEARCH_SYSTEM_PROMPT",
     "Decision",
     "DecisionType",
-    "GeminiClient",
     "GuildSettings",
     "ImageContext",
     "MAX_MODERATION_REASON_LENGTH",

@@ -1,5 +1,5 @@
 """
-AntiRaid - Advanced raid protection with Gemini AI pattern detection
+AntiRaid - Advanced raid protection with DeepSeek AI pattern detection
 
 Features:
 - Automatic raid detection based on join velocity
@@ -41,7 +41,7 @@ from config import Config
 
 class AIRaidAnalyzer:
     """
-    Uses Gemini to detect sophisticated raid patterns by analyzing:
+    Uses DeepSeek to detect sophisticated raid patterns by analyzing:
     - Username similarity and bot-like patterns
     - Account ages (new accounts are suspicious)
     - Avatar/banner presence (default avatars in bulk)
@@ -58,7 +58,7 @@ class AIRaidAnalyzer:
         # config
         self.cache_ttl_seconds = 180  # 3 min cache for raid analysis
         self.max_requests_per_minute = 20  # conservative for raid checks
-        self.model = "gemini-2.5-flash"  # fast model for real-time
+        self.model = os.getenv("DO_PROFILE_MODEL", "deepseek-4-flash").strip()
 
     def _hash_members(self, members: List[discord.Member]) -> str:
         """Create cache key from member data"""
@@ -188,7 +188,7 @@ Guidelines:
 
         try:
             payload = {
-                "model": "deepseek-4-flash",
+                "model": self.model,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.15,
                 "max_tokens": 250,
@@ -245,7 +245,7 @@ Guidelines:
             return result
 
         except Exception as e:
-            print(f"[Gemini AntiRaid] Error analyzing raid: {e}")
+            print(f"[DeepSeek AntiRaid] Error analyzing raid: {e}")
             return {
                 "is_raid": False,
                 "confidence": 0,
@@ -880,7 +880,7 @@ class AntiRaid(commands.Cog):
         embed = ModEmbed.success(
             "AI Detection Updated",
             (
-                f"Gemini AI detection is **{ai_status}**.\n"
+                f"DeepSeek AI detection is **{ai_status}**.\n"
                 f"Min confidence: **{conf}%**\n"
                 f"Override AI action: **{'Yes' if override else 'No'}**"
             ),

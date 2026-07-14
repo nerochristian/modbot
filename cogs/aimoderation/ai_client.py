@@ -1797,7 +1797,6 @@ class AIClient:
         text = re.sub(r"\n{3,}", "\n\n", text)
         text = AIClient._strip_citation_tokens(text)
         text = AIClient._convert_simple_markdown_table(text)
-        text = AIClient._strip_consumer_app_footers(text)
 
         # The user requested to stop using long dash separators and use commas instead.
         text = text.replace(" \u2014 ", ", ").replace("\u2014", ", ")
@@ -1826,21 +1825,6 @@ class AIClient:
         if text.startswith('"') and text.endswith('"') and text.count('"') == 2:
             text = text[1:-1].strip()
 
-        return text
-
-    @staticmethod
-    def _strip_consumer_app_footers(content: str) -> str:
-        """Remove Gemini/Google consumer-app enablement footers from API replies."""
-        text = content or ""
-        patterns = (
-            r"(?:^|\n)\s*(?:By the way,\s*)?to unlock the full functionality of all apps,?\s*enable\s+Gemini Apps Activity\.?\s*$",
-            r"(?:^|\n)\s*(?:By the way,\s*)?(?:please\s+)?enable\s+Gemini Apps Activity\b.*$",
-            r"(?:^|\n)\s*(?:By the way,\s*)?.*\bGemini Apps Activity\b.*$",
-            r"(?:^|\n)\s*(?:By the way,\s*)?.*\bGoogle Apps Activity\b.*$",
-            r"(?:^|\n)\s*(?:By the way,\s*)?.*\bGoogle app activity\b.*$",
-        )
-        for pattern in patterns:
-            text = re.sub(pattern, "", text, flags=re.IGNORECASE | re.MULTILINE).strip()
         return text
 
     @staticmethod
@@ -2267,8 +2251,4 @@ class AIClient:
                 )
 
         return updated
-
-
-# Backward-compatible alias for older imports/tests. The provider is no longer Gemini.
-GeminiClient = AIClient
 
