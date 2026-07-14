@@ -9,12 +9,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Optional, List, Dict, Any
 from datetime import datetime, timezone
+import os
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
 from config import Config
+from utils.components_v2 import branded_panel_container, ensure_layout_view_action_rows
 
 
 # =============================================================================
@@ -503,6 +505,35 @@ class Help(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
+    @staticmethod
+    def _commands_url(command: Optional[str] = None) -> str:
+        base = (
+            os.getenv("DASHBOARD_PUBLIC_URL")
+            or os.getenv("FRONTEND_PUBLIC_URL")
+            or "https://docketbot.xyz"
+        ).rstrip("/")
+        if not command:
+            return f"{base}/commands"
+        from urllib.parse import quote_plus
+        return f"{base}/commands?q={quote_plus(command)}"
+
+    def _website_help_view(self, command: Optional[str] = None) -> discord.ui.LayoutView:
+        url = self._commands_url(command)
+        description = (
+            "Search every Docket command by category, see its inputs, and copy the exact slash or prefix form."
+            if not command
+            else f"Open the command directory with **{command}** already searched."
+        )
+        container = branded_panel_container(
+            title="Docket command directory",
+            description=description,
+            accent_color=Config.COLOR_BRAND,
+        )
+        view = discord.ui.LayoutView(timeout=300)
+        view.add_item(container)
+        view.add_item(discord.ui.Button(label="View commands", url=url))
+        return ensure_layout_view_action_rows(view)
+
     def _build_details_embed(
         self,
         cmd: app_commands.Command | app_commands.Group | commands.Command,
@@ -596,6 +627,9 @@ class Help(commands.Cog):
     @commands.command(name="help", help="Browse commands and get detailed help")
     async def help_prefix(self, ctx: commands.Context, *, command: Optional[str] = None):
         """Browse the same help index used by /help."""
+        if not command:
+            await ctx.send(view=self._website_help_view())
+            return
         index = self._build_unified_index()
 
         if command:
@@ -612,6 +646,9 @@ class Help(commands.Cog):
     @app_commands.command(name="help", description="Browse commands and get detailed help")
     @app_commands.describe(command="Specific command to view (example: ban, warn, vc)")
     async def help_slash(self, interaction: discord.Interaction, command: Optional[str] = None) -> None:
+        if not command:
+            await interaction.response.send_message(view=self._website_help_view(), ephemeral=True)
+            return
         index = self._build_unified_index()
 
         if command:
