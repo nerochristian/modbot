@@ -12,7 +12,6 @@ import {
   Activity,
   Bell,
   Settings,
-  ShieldCheck,
 } from 'lucide-react'
 import type { Permission } from '@/lib/rbac'
 
@@ -21,7 +20,7 @@ export type NavItem = {
   href: string
   icon: LucideIcon
   permission: Permission
-  section: 'main' | 'account' | 'admin'
+  section: 'main' | 'account'
   badge?: 'NEW' | 'UPDATE' | 'PLUS'
 }
 
@@ -38,7 +37,6 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Team', href: '/dashboard/users', icon: UserCog, permission: 'users.read', section: 'account' },
   { label: 'Notifications', href: '/dashboard/notifications', icon: Bell, permission: 'notifications.read', section: 'account' },
   { label: 'Settings', href: '/dashboard/settings', icon: Settings, permission: 'settings.read', section: 'account' },
-  { label: 'Admin', href: '/dashboard/admin', icon: ShieldCheck, permission: 'admin.access', section: 'admin' },
 ]
 
 /** Human labels for the search command palette and breadcrumbs. */

@@ -10,10 +10,9 @@ import { cn } from '@/lib/utils'
 const SECTION_LABELS: Record<string, string> = {
   main: 'Moderation',
   account: 'Workspace',
-  admin: 'Administration',
 }
 
-const SECTIONS = ['main', 'account', 'admin'] as const
+const SECTIONS = ['main', 'account'] as const
 
 const BADGE_STYLES: Record<NonNullable<NavItem['badge']>, string> = {
   NEW: 'bg-success-soft text-success',

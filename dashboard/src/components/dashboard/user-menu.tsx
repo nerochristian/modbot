@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { LogOut, User, Settings, ShieldCheck } from 'lucide-react'
+import { LogOut, User, Settings } from 'lucide-react'
 import {
   Dropdown,
   DropdownTrigger,
@@ -20,7 +20,6 @@ export function UserMenu() {
   const router = useRouter()
   const toast = useToast()
   const user = useConfigStore((s) => s.user)
-  const can = useConfigStore((s) => s.can)
   if (!user) return null
 
   async function logout() {
@@ -62,11 +61,6 @@ export function UserMenu() {
         <Link href="/dashboard/settings">
           <DropdownItem icon={Settings}>Settings</DropdownItem>
         </Link>
-        {can('admin.access') && (
-          <Link href="/dashboard/admin">
-            <DropdownItem icon={ShieldCheck}>Admin panel</DropdownItem>
-          </Link>
-        )}
         <DropdownSeparator />
         <DropdownItem icon={LogOut} destructive onClick={logout}>
           Sign out

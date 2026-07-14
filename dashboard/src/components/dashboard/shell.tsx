@@ -16,7 +16,6 @@ import type { ManagedGuild } from '@/lib/discord'
 const SECTION_LABELS: Record<string, string> = {
   main: 'Moderation',
   account: 'Workspace',
-  admin: 'Administration',
 }
 
 function MobileDrawer({
@@ -31,7 +30,7 @@ function MobileDrawer({
   const pathname = usePathname()
   if (!open || typeof document === 'undefined') return null
   const visible = NAV_ITEMS.filter((i) => permissions.includes(i.permission))
-  const sections = ['main', 'account', 'admin'] as const
+  const sections = ['main', 'account'] as const
 
   return createPortal(
     <div className="fixed inset-0 z-[80] lg:hidden">

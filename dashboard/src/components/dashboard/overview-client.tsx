@@ -9,6 +9,12 @@ import {
   Scale,
   SlidersHorizontal,
   Download,
+  Blocks,
+  Users2,
+  ScrollText,
+  Megaphone,
+  Settings,
+  ArrowUpRight,
 } from 'lucide-react'
 import { PageHeader } from '@/components/dashboard/page-header'
 import { StatCard } from '@/components/dashboard/stat-card'
@@ -43,6 +49,20 @@ type OverviewData = {
   systemStatus: { name: string; status: string; uptime: string }[]
 }
 
+type WorkspaceSummary = {
+  dashboardAdministrators: number
+  auditEvents: number
+  serverMembers: number | null
+}
+
+const WORKSPACE_ACTIONS = [
+  { label: 'Modules', description: 'Configure bot features', href: '/dashboard/modules', icon: Blocks },
+  { label: 'Team', description: 'Review dashboard administrators', href: '/dashboard/users', icon: Users2 },
+  { label: 'Audit history', description: 'Inspect sensitive changes', href: '/dashboard/activity/audit', icon: ScrollText },
+  { label: 'Broadcast', description: 'Notify the dashboard team', href: '/dashboard/notifications/broadcast', icon: Megaphone },
+  { label: 'Settings', description: 'Manage workspace preferences', href: '/dashboard/settings', icon: Settings },
+]
+
 const SPAN: Record<string, string> = {
   'kpi-actions': 'lg:col-span-3',
   'kpi-openCases': 'lg:col-span-3',
@@ -73,7 +93,7 @@ function humanAction(action: string) {
   return action.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase())
 }
 
-export function OverviewClient() {
+export function OverviewClient({ workspaceSummary }: { workspaceSummary: WorkspaceSummary }) {
   const widgets = useConfigStore((s) => s.config.widgets)
   const dateRange = useConfigStore((s) => s.config.dateRange)
   const refreshInterval = useConfigStore((s) => s.config.refreshInterval)
@@ -127,6 +147,8 @@ export function OverviewClient() {
         }
       />
 
+      <WorkspaceControls summary={workspaceSummary} />
+
       {error && !data ? (
         <Card>
           <ErrorState onRetry={refetch} description={error} />
@@ -163,6 +185,60 @@ export function OverviewClient() {
 
       <WidgetCustomizer open={customizing} onClose={() => setCustomizing(false)} />
     </>
+  )
+}
+
+function WorkspaceControls({ summary }: { summary: WorkspaceSummary }) {
+  return (
+    <Card className="mb-4 overflow-hidden">
+      <div className="grid lg:grid-cols-[minmax(240px,0.8fr)_minmax(0,2.2fr)]">
+        <div className="border-b border-border bg-surface-2/45 p-5 lg:border-b-0 lg:border-r">
+          <p className="font-mono text-[0.625rem] font-semibold uppercase tracking-[0.16em] text-accent">
+            Workspace controls
+          </p>
+          <h2 className="mt-2 font-display text-lg font-semibold text-foreground">Everything in one place</h2>
+          <p className="mt-1 text-sm leading-6 text-muted">
+            Access follows your live Discord Administrator permission for this server.
+          </p>
+          <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-border pt-4">
+            <div>
+              <dt className="text-[0.6875rem] text-muted-2">Admins</dt>
+              <dd className="mt-0.5 text-sm font-semibold tabular-nums text-foreground">{summary.dashboardAdministrators}</dd>
+            </div>
+            <div>
+              <dt className="text-[0.6875rem] text-muted-2">Members</dt>
+              <dd className="mt-0.5 text-sm font-semibold tabular-nums text-foreground">
+                {summary.serverMembers?.toLocaleString() ?? 'Live'}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-[0.6875rem] text-muted-2">Audit</dt>
+              <dd className="mt-0.5 text-sm font-semibold tabular-nums text-foreground">{summary.auditEvents.toLocaleString()}</dd>
+            </div>
+          </dl>
+        </div>
+        <div className="grid gap-px bg-border sm:grid-cols-2 xl:grid-cols-3">
+          {WORKSPACE_ACTIONS.map((action) => (
+            <Link
+              key={action.href}
+              href={action.href}
+              className="group flex min-h-24 items-start gap-3 bg-card p-4 transition-colors hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+            >
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
+                <action.icon className="size-4.5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
+                  {action.label}
+                  <ArrowUpRight className="size-3.5 text-muted-2 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+                </span>
+                <span className="mt-1 block text-xs leading-5 text-muted">{action.description}</span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </Card>
   )
 }
 
