@@ -1,6 +1,6 @@
 import { apiError, handleError, ok, paginate, parseListQuery, requireUser } from '@/lib/api'
 import { botQuery } from '@/lib/bot-db'
-import { getBotGuildMembers } from '@/lib/discord'
+import { discordMemberAvatarUrl, getBotGuildMembers } from '@/lib/discord'
 import { getSelectedGuild } from '@/lib/guild-context'
 
 type MemberStats = {
@@ -60,21 +60,18 @@ export async function GET(request: Request) {
     const rows = discordMembers.map((member) => {
       const row = byId.get(member.user.id)
       const score = Number(row?.risk_score || 0)
-      const timedOut = member.communication_disabled_until
-        ? new Date(member.communication_disabled_until).getTime() > Date.now()
-        : false
-      const standing = timedOut ? 'muted' : score >= 35 ? 'watchlist' : 'good'
       return {
         id: member.user.id,
         username: member.user.username,
         displayName: member.nick || member.user.global_name || member.user.username,
         discordId: member.user.id,
-        standing,
         riskLevel: riskLevel(score),
         warnings: Number(row?.warnings || 0),
         messages: Number(row?.messages || 0),
         note: null,
         avatarColor: avatarColor(member.user.id),
+        avatarUrl: discordMemberAvatarUrl(guild.id, member),
+        timedOutUntil: member.communication_disabled_until ?? null,
         joinedAt: member.joined_at,
         lastActiveAt: row?.last_active ? new Date(row.last_active).toISOString() : member.joined_at,
       }

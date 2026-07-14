@@ -22,6 +22,7 @@ type Administrator = {
   status: 'active'
   title: string | null
   avatarColor: string
+  avatarUrl: string | null
   createdAt: string
   lastLoginAt: string | null
 }
@@ -77,7 +78,7 @@ export function UsersClient() {
                   <TR key={administrator.id} className="hover:bg-surface-2/50">
                     <TD>
                       <div className="flex items-center gap-3">
-                        <Avatar name={administrator.name} color={administrator.avatarColor} size="sm" />
+                        <Avatar name={administrator.name} color={administrator.avatarColor} src={administrator.avatarUrl} size="sm" />
                         <div className="min-w-0">
                           <p className="truncate font-medium text-foreground">{administrator.name}</p>
                           <p className="truncate text-xs text-muted">{administrator.email}</p>

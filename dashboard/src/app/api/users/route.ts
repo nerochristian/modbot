@@ -1,5 +1,6 @@
 import { prisma } from '@/lib/prisma'
 import { requireUser, handleError, ok, parseListQuery, paginate } from '@/lib/api'
+import { discordAvatarUrl } from '@/lib/discord'
 import type { Prisma } from '@prisma/client'
 
 const SORTABLE = new Set(['name', 'email', 'createdAt', 'lastLoginAt'])
@@ -14,11 +15,21 @@ function presentMembership(row: {
     email: string
     title: string | null
     avatarColor: string
+    discordId: string | null
+    discordAvatar: string | null
     lastLoginAt: Date | null
   }
 }) {
   return {
-    ...row.user,
+    id: row.user.id,
+    name: row.user.name,
+    email: row.user.email,
+    title: row.user.title,
+    avatarColor: row.user.avatarColor,
+    avatarUrl: row.user.discordId
+      ? discordAvatarUrl({ id: row.user.discordId, avatar: row.user.discordAvatar })
+      : null,
+    lastLoginAt: row.user.lastLoginAt,
     role: row.role,
     status: row.status === 'revoked' ? 'suspended' : row.status,
     createdAt: row.createdAt,
@@ -61,6 +72,8 @@ export async function GET(request: Request) {
               email: true,
               title: true,
               avatarColor: true,
+              discordId: true,
+              discordAvatar: true,
               lastLoginAt: true,
             },
           },
