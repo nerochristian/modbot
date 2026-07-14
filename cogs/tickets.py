@@ -175,62 +175,22 @@ def _ticket_category_label(category: str) -> str:
 
 
 class TicketDetailsModal(discord.ui.Modal):
-    def __init__(self, cog: "Tickets", *, category: str):
+    def __init__(self, cog: "Tickets", *, option: dict[str, Any]):
         self.cog = cog
-        self.category = (category or "general").strip().lower()
-
-        title = f"{_ticket_category_label(self.category)} Ticket"
-        super().__init__(title=title, timeout=300)
-
-        if self.category == "report":
-            self.reported = discord.ui.TextInput(
-                label="Who are you reporting? (name/ID)",
-                placeholder="User#0000 or 1234567890",
-                required=True,
-                max_length=100,
-            )
-            self.reason = discord.ui.TextInput(
-                label="Reason",
-                placeholder="Explain what happened...",
-                required=True,
-                style=discord.TextStyle.paragraph,
+        self.option = option
+        self.category = str(option["id"])
+        self.inputs: list[tuple[str, discord.ui.TextInput]] = []
+        super().__init__(title=f"{str(option['label'])[:39]} Ticket", timeout=300)
+        for question in option["questions"][:5]:
+            field = discord.ui.TextInput(
+                label=str(question["label"])[:45],
+                placeholder=str(question.get("placeholder") or "")[:100] or None,
+                required=bool(question.get("required", True)),
+                style=discord.TextStyle.short if question.get("style") == "short" else discord.TextStyle.paragraph,
                 max_length=1000,
             )
-            self.evidence = discord.ui.TextInput(
-                label="Evidence (links) (optional)",
-                placeholder="Links to screenshots/videos/messages",
-                required=False,
-                style=discord.TextStyle.paragraph,
-                max_length=1000,
-            )
-            self.add_item(self.reported)
-            self.add_item(self.reason)
-            self.add_item(self.evidence)
-        elif self.category == "appeal":
-            self.punishment = discord.ui.TextInput(
-                label="What are you appealing? (ban/mute/etc.)",
-                placeholder="e.g. mute",
-                required=True,
-                max_length=60,
-            )
-            self.why = discord.ui.TextInput(
-                label="Why should it be lifted?",
-                placeholder="Explain why you should be unpunished...",
-                required=True,
-                style=discord.TextStyle.paragraph,
-                max_length=1000,
-            )
-            self.add_item(self.punishment)
-            self.add_item(self.why)
-        else:
-            self.details = discord.ui.TextInput(
-                label="How can we help you?",
-                placeholder="Describe your issue...",
-                required=True,
-                style=discord.TextStyle.paragraph,
-                max_length=1000,
-            )
-            self.add_item(self.details)
+            self.inputs.append((str(question["label"]), field))
+            self.add_item(field)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
         if not interaction.guild or not interaction.guild_id:
@@ -239,24 +199,8 @@ class TicketDetailsModal(discord.ui.Modal):
                 ephemeral=True,
             )
             return
-
-        details = ""
-        if self.category == "report":
-            evidence = (getattr(self, "evidence").value or "").strip()
-            details = (
-                f"**Reported:** {getattr(self, 'reported').value.strip()}\n"
-                f"**Reason:** {getattr(self, 'reason').value.strip()}"
-            )
-            if evidence:
-                details += f"\n**Evidence:** {evidence}"
-        elif self.category == "appeal":
-            details = (
-                f"**Punishment:** {getattr(self, 'punishment').value.strip()}\n"
-                f"**Appeal:** {getattr(self, 'why').value.strip()}"
-            )
-        else:
-            details = getattr(self, "details").value.strip()
-
+        answers = [f"**{label}:** {field.value.strip()}" for label, field in self.inputs if field.value.strip()]
+        details = "\n".join(answers) or "No details provided."
         await interaction.response.defer(ephemeral=True)
         await self.cog._create_ticket_from_panel(interaction, category=self.category, details=details)
 
@@ -407,7 +351,8 @@ class TicketCreateButton(ui.View):
                 embed=ModEmbed.error("Unavailable", "Ticket system is still starting up. Try again in a moment."),
                 ephemeral=True,
             )
-        await interaction.response.send_modal(TicketDetailsModal(self.cog, category="general"))
+        settings = await self.cog.bot.db.get_settings(interaction.guild_id)
+        await interaction.response.send_modal(TicketDetailsModal(self.cog, option=self.cog._ticket_option(settings, "general")))
 
 class Tickets(commands.Cog):
     ticket_group = app_commands.Group(name="ticket", description="Ticket management commands")
@@ -424,6 +369,16 @@ class Tickets(commands.Cog):
         if value not in {"general", "report", "appeal", "other"}:
             return "general"
         return value
+
+    @staticmethod
+    def _ticket_options(settings: dict[str, Any]) -> list[dict[str, Any]]:
+        return _normalize_ticket_options(settings.get("ticket_options"))
+
+    @classmethod
+    def _ticket_option(cls, settings: dict[str, Any], category: str) -> dict[str, Any]:
+        options = cls._ticket_options(settings)
+        normalized = (category or "").strip().lower()
+        return next((option for option in options if option["id"] == normalized), options[0])
 
     @staticmethod
     def _normalize_ticket_channel_name(name: str) -> Optional[str]:
@@ -787,16 +742,15 @@ class Tickets(commands.Cog):
     async def ticket_create(
         self,
         interaction: discord.Interaction,
-        category: Literal["general", "report", "appeal", "other"] = "general",
+        category: str = "general",
     ) -> None:
         if not interaction.guild:
             return await interaction.response.send_message(
                 embed=ModEmbed.error("Unavailable", "Tickets can only be created in a server."),
                 ephemeral=True,
             )
-        await interaction.response.send_modal(
-            TicketDetailsModal(self, category=self._normalize_ticket_category(str(category)))
-        )
+        settings = await self.bot.db.get_settings(interaction.guild_id)
+        await interaction.response.send_modal(TicketDetailsModal(self, option=self._ticket_option(settings, category)))
 
     @ticket_group.command(name="close", description="Close the current ticket")
     @app_commands.describe(reason="Reason for closing the ticket")
