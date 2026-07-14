@@ -7,7 +7,7 @@ from discord import app_commands, ui
 from discord.ext import commands
 import asyncio
 from datetime import datetime
-from typing import Optional, Literal, Any
+from typing import Optional, Any
 import re
 import unicodedata
 from utils.embeds import ModEmbed
@@ -16,7 +16,6 @@ from utils.checks import is_mod, is_bot_owner_id
 from utils.guild_branding import (
     get_guild_brand_assets,
     get_ticket_panel_component_emojis,
-    resolve_guild_component_emoji,
 )
 from utils.logging import send_log_embed
 from config import Config
@@ -171,7 +170,7 @@ def _ticket_category_label(category: str) -> str:
         "report": "Report",
         "appeal": "Appeal",
         "other": "Other",
-    }.get(category, "Support")
+    }.get(category, category.replace("-", " ").replace("_", " ").title() or "Support")
 
 
 class TicketDetailsModal(discord.ui.Modal):
@@ -366,9 +365,7 @@ class Tickets(commands.Cog):
     @staticmethod
     def _normalize_ticket_category(category: Optional[str]) -> str:
         value = (category or "general").strip().lower()
-        if value not in {"general", "report", "appeal", "other"}:
-            return "general"
-        return value
+        return value if re.fullmatch(r"[a-z0-9_-]{2,40}", value) else "general"
 
     @staticmethod
     def _ticket_options(settings: dict[str, Any]) -> list[dict[str, Any]]:
@@ -666,7 +663,15 @@ class Tickets(commands.Cog):
 
     async def _send_ticket_panel_to_channel(self, channel: discord.TextChannel, guild: discord.Guild) -> None:
         category_emojis = await get_ticket_panel_component_emojis(guild)
-        await channel.send(view=TicketPanelView(self, guild=guild, category_emojis=category_emojis))
+        settings = await self.bot.db.get_settings(guild.id)
+        await channel.send(
+            view=TicketPanelView(
+                self,
+                guild=guild,
+                category_emojis=category_emojis,
+                ticket_options=self._ticket_options(settings),
+            )
+        )
 
     async def _handle_ticket_claim_button(self, interaction: discord.Interaction, *, panel: TicketThreadPanel) -> None:
         if not interaction.guild or not isinstance(interaction.user, discord.Member):
