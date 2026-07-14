@@ -4,7 +4,7 @@ import { ensureDashboardBackendSchema } from '@/lib/bot-schema'
 import {
   discordMemberAvatarUrl,
   getBotGuildMember,
-  getBotGuildResources,
+  getBotGuildMemberRoles,
 } from '@/lib/discord'
 import { getSelectedGuild } from '@/lib/guild-context'
 
@@ -44,7 +44,7 @@ export async function GET(_request: Request, ctx: RouteContext<'/api/members/[id
     await ensureDashboardBackendSchema()
     const [member, resources, stats, cases] = await Promise.all([
       getBotGuildMember(guild.id, id),
-      getBotGuildResources(guild.id),
+      getBotGuildMemberRoles(guild.id),
       botQuery<MemberStats>(
         `SELECT
            (SELECT COUNT(*) FROM warnings WHERE guild_id = $1::bigint AND user_id = $2::bigint)::int AS warnings,
@@ -67,7 +67,7 @@ export async function GET(_request: Request, ctx: RouteContext<'/api/members/[id
     ])
     const row = stats[0]
     const score = Number(row?.risk_score || 0)
-    const rolesById = new Map(resources.roles.map((role) => [role.id, role]))
+    const rolesById = new Map(resources.map((role) => [role.id, role]))
     return ok({
       id,
       discordId: id,

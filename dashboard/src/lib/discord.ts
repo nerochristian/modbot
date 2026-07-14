@@ -245,7 +245,11 @@ export async function sendBotChannelMessage(channelId: string, content: string):
 
 const guildResourceCache = new Map<string, {
   expiresAt: number
-  value: { roles: DiscordGuildRoleResource[]; channels: DiscordGuildChannelResource[] }
+  value: {
+    roles: DiscordGuildRoleResource[]
+    memberRoles: DiscordGuildRoleResource[]
+    channels: DiscordGuildChannelResource[]
+  }
 }>()
 
 /**
@@ -259,7 +263,9 @@ export async function getBotGuildResources(guildId: string): Promise<{
 }> {
   if (!/^\d{15,22}$/.test(guildId)) throw new Error('Invalid Discord guild ID')
   const cached = guildResourceCache.get(guildId)
-  if (cached && cached.expiresAt > Date.now()) return cached.value
+  if (cached && cached.expiresAt > Date.now()) {
+    return { roles: cached.value.roles, channels: cached.value.channels }
+  }
 
   const token = process.env.DISCORD_TOKEN?.trim()
   if (!token) throw new Error('DISCORD_TOKEN is not configured')
@@ -268,6 +274,10 @@ export async function getBotGuildResources(guildId: string): Promise<{
     discordRequest<DiscordGuildChannelPayload[]>(`/guilds/${guildId}/channels`, `Bot ${token}`),
   ])
   const value = {
+    memberRoles: rolePayload
+      .filter((role) => role.id !== guildId)
+      .map(({ id, name, position, color }) => ({ id, name, position, color }))
+      .sort((a, b) => b.position - a.position || a.name.localeCompare(b.name)),
     roles: rolePayload
       .filter((role) => role.id !== guildId && !role.managed)
       .map(({ id, name, position, color }) => ({ id, name, position, color }))
@@ -290,7 +300,12 @@ export async function getBotGuildResources(guildId: string): Promise<{
       .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name)),
   }
   guildResourceCache.set(guildId, { value, expiresAt: Date.now() + CACHE_TTL_MS })
-  return value
+  return { roles: value.roles, channels: value.channels }
+}
+
+export async function getBotGuildMemberRoles(guildId: string): Promise<DiscordGuildRoleResource[]> {
+  await getBotGuildResources(guildId)
+  return guildResourceCache.get(guildId)?.value.memberRoles ?? []
 }
 
 export async function getBotGuildMembers(
@@ -746,7 +761,7 @@ export async function getManageableGuilds(userId: string, force = false): Promis
 }
 
 
-export function discordAvatarUrl(user: Pick<DiscordUser, 'id' | 'avatar'>): string | null {
+export function discordAvatarUrl(user: Pick<DiscordUser, 'id' | 'avatar'>): string {
   if (user.avatar) {
     return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.webp?size=128`
   }
@@ -758,5 +773,5 @@ export function discordMemberAvatarUrl(guildId: string, member: DiscordGuildMemb
   if (member.avatar) {
     return `https://cdn.discordapp.com/guilds/${guildId}/users/${member.user.id}/avatars/${member.avatar}.webp?size=128`
   }
-  return discordAvatarUrl(member.user) as string
+  return discordAvatarUrl(member.user)
 }
