@@ -2,11 +2,9 @@ import 'server-only'
 
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto'
 import { prisma } from '@/lib/prisma'
-import { isSystemOwner } from '@/lib/auth'
 
 const DISCORD_API = 'https://discord.com/api/v10'
 const ADMINISTRATOR = BigInt(8)
-const MANAGE_GUILD = BigInt(32)
 const TOKEN_REFRESH_SKEW_MS = 60_000
 const CACHE_TTL_MS = 30_000
 const TRANSIENT_AUTHORITY_GRACE_MS = 2 * 60_000
@@ -516,22 +514,13 @@ async function getBotGuilds(): Promise<Map<string, DiscordGuild>> {
 const userGuildCache = new Map<string, { expiresAt: number; guilds: ManagedGuild[] }>()
 const userGuildRefreshes = new Map<string, Promise<ManagedGuild[]>>()
 
-function canManageGuild(guild: DiscordGuild): boolean {
+function hasAdministratorAccess(guild: DiscordGuild): boolean {
   if (guild.owner) return true
   try {
     const permissions = BigInt(guild.permissions ?? '0')
-    return (permissions & ADMINISTRATOR) === ADMINISTRATOR || (permissions & MANAGE_GUILD) === MANAGE_GUILD
+    return (permissions & ADMINISTRATOR) === ADMINISTRATOR
   } catch {
     return false
-  }
-}
-
-function discordGuildRole(guild: DiscordGuild): 'admin' | 'manager' {
-  if (guild.owner) return 'admin'
-  try {
-    return (BigInt(guild.permissions ?? '0') & ADMINISTRATOR) === ADMINISTRATOR ? 'admin' : 'manager'
-  } catch {
-    return 'manager'
   }
 }
 
@@ -575,16 +564,16 @@ async function syncGuildMemberships(
   userGuilds: DiscordGuild[],
   botGuilds: Map<string, DiscordGuild>,
 ): Promise<void> {
-  const manageable = userGuilds.filter(canManageGuild)
-  const manageableIds = manageable.map((guild) => guild.id)
-  const existing = manageableIds.length
-    ? await prisma.guildMembership.findMany({ where: { userId, guildId: { in: manageableIds } } })
+  const administrable = userGuilds.filter(hasAdministratorAccess)
+  const administrableIds = administrable.map((guild) => guild.id)
+  const existing = administrableIds.length
+    ? await prisma.guildMembership.findMany({ where: { userId, guildId: { in: administrableIds } } })
     : []
   const byGuild = new Map(existing.map((membership) => [membership.guildId, membership]))
   const now = new Date()
 
   const syncOperations = [
-    ...manageable.map((guild) => prisma.guild.upsert({
+    ...administrable.map((guild) => prisma.guild.upsert({
       where: { id: guild.id },
       create: {
         id: guild.id,
@@ -594,73 +583,40 @@ async function syncGuildMemberships(
       },
       update: { name: guild.name, icon: guild.icon, installed: botGuilds.has(guild.id) },
     })),
-    ...manageable.map((guild) => {
-      const current = byGuild.get(guild.id)
-      const invitedAndVerified = current?.source === 'invite' && botGuilds.has(guild.id)
+    ...administrable.map((guild) => {
       return prisma.guildMembership.upsert({
         where: { guildId_userId: { guildId: guild.id, userId } },
         create: {
           guildId: guild.id,
           userId,
-          role: discordGuildRole(guild),
+          role: 'admin',
           status: botGuilds.has(guild.id) ? 'active' : 'revoked',
           source: 'discord',
           verifiedAt: botGuilds.has(guild.id) ? now : null,
         },
-        update: current?.source === 'invite'
-          ? {
-              status: invitedAndVerified ? 'active' : current.status,
-              verifiedAt: invitedAndVerified ? now : current.verifiedAt,
-            }
-          : {
-              role: discordGuildRole(guild),
-              status: botGuilds.has(guild.id) ? 'active' : 'revoked',
-              source: 'discord',
-              verifiedAt: botGuilds.has(guild.id) ? now : null,
-            },
+        update: {
+          role: 'admin',
+          status: botGuilds.has(guild.id) ? 'active' : 'revoked',
+          source: 'discord',
+          verifiedAt: botGuilds.has(guild.id) ? now : null,
+        },
       })
     }),
   ]
   if (syncOperations.length) await prisma.$transaction(syncOperations)
 
-  const userGuildIds = new Set(userGuilds.map((guild) => guild.id))
-  const verifiableInvites = await prisma.guildMembership.findMany({
-    where: { userId, source: 'invite', status: 'invited' },
-    select: { id: true, guildId: true },
-  })
-  const activatedInviteIds = verifiableInvites
-    .filter((membership) => userGuildIds.has(membership.guildId) && botGuilds.has(membership.guildId))
-    .map((membership) => membership.id)
-  if (activatedInviteIds.length) {
-    await prisma.guildMembership.updateMany({
-      where: { id: { in: activatedInviteIds } },
-      data: { status: 'active', verifiedAt: now },
-    })
-  }
-  const botGuildIds = Array.from(botGuilds.keys())
+  // Dashboard access is derived exclusively from live Discord Administrator
+  // authority. An invitation may identify an expected person, but it never
+  // activates or preserves access by itself.
   await prisma.guildMembership.updateMany({
-    where: {
-      userId,
-      source: 'invite',
-      status: 'active',
-      ...(userGuildIds.size ? { guildId: { notIn: Array.from(userGuildIds) } } : {}),
-    },
-    data: { status: 'revoked' },
-  })
-  await prisma.guildMembership.updateMany({
-    where: {
-      userId,
-      source: 'invite',
-      status: 'active',
-      ...(botGuildIds.length ? { guildId: { notIn: botGuildIds } } : {}),
-    },
+    where: { userId, source: 'invite' },
     data: { status: 'revoked' },
   })
   await prisma.guildMembership.updateMany({
     where: {
       userId,
       source: 'discord',
-      ...(manageableIds.length ? { guildId: { notIn: manageableIds } } : {}),
+      ...(administrableIds.length ? { guildId: { notIn: administrableIds } } : {}),
     },
     data: { status: 'revoked' },
   })
@@ -676,32 +632,23 @@ async function refreshManageableGuilds(userId: string): Promise<ManagedGuild[]> 
   if (!user?.discordId) throw new DiscordReauthRequiredError()
   const [botGuilds, accessToken] = await Promise.all([getBotGuilds(), getAccessToken(userId)])
   const userGuilds = await fetchUserGuilds(accessToken)
-  const liveManageable = userGuilds.filter(canManageGuild)
+  const liveAdministrable = userGuilds.filter(hasAdministratorAccess)
+  const liveAdministratorIds = liveAdministrable.map((guild) => guild.id)
 
-  if (isSystemOwner(user.discordId)) {
-    const now = new Date()
-    const installedGuilds = Array.from(botGuilds.values())
-    if (installedGuilds.length) {
-      await prisma.$transaction(installedGuilds.map((guild) => prisma.guild.upsert({
-        where: { id: guild.id },
-        create: { id: guild.id, name: guild.name, icon: guild.icon, installed: true },
-        update: { name: guild.name, icon: guild.icon, installed: true },
-      })))
-      await prisma.$transaction(installedGuilds.map((guild) => prisma.guildMembership.upsert({
-        where: { guildId_userId: { guildId: guild.id, userId } },
-        create: { guildId: guild.id, userId, role: 'admin', status: 'active', source: 'system', verifiedAt: now },
-        update: { role: 'admin', status: 'active', source: 'system', verifiedAt: now },
-      })))
-    }
-  } else {
-    await syncGuildMemberships(userId, userGuilds, botGuilds)
-  }
+  await syncGuildMemberships(userId, userGuilds, botGuilds)
 
   const memberships = await prisma.guildMembership.findMany({
-    where: { userId, status: 'active', guild: { installed: true } },
+    where: {
+      userId,
+      role: 'admin',
+      status: 'active',
+      source: 'discord',
+      guildId: { in: liveAdministratorIds },
+      guild: { installed: true },
+    },
     include: { guild: true },
   })
-  const liveById = new Map(liveManageable.map((guild) => [guild.id, guild]))
+  const liveById = new Map(liveAdministrable.map((guild) => [guild.id, guild]))
   const manageableById = new Map(memberships.map((membership): [string, ManagedGuild] => {
     const live = liveById.get(membership.guildId) ?? botGuilds.get(membership.guildId)
     const stored = membership.guild
@@ -719,11 +666,11 @@ async function refreshManageableGuilds(userId: string): Promise<ManagedGuild[]> 
       memberCount: guild.approximate_member_count ?? null,
       onlineCount: guild.approximate_presence_count ?? null,
       inviteUrl: botInviteUrl(guild.id),
-      canManage: isSystemOwner(user.discordId) || liveById.has(guild.id),
-      membershipRole: isSystemOwner(user.discordId) ? 'admin' : isRoleValue(membership.role),
+      canManage: liveById.has(guild.id),
+      membershipRole: 'admin',
     }]
   }))
-  for (const guild of liveManageable) {
+  for (const guild of liveAdministrable) {
     if (botGuilds.has(guild.id) || manageableById.has(guild.id)) continue
     manageableById.set(guild.id, {
       id: guild.id,
@@ -735,7 +682,7 @@ async function refreshManageableGuilds(userId: string): Promise<ManagedGuild[]> 
       onlineCount: guild.approximate_presence_count ?? null,
       inviteUrl: botInviteUrl(guild.id),
       canManage: true,
-      membershipRole: isSystemOwner(user.discordId) ? 'admin' : discordGuildRole(guild),
+      membershipRole: 'admin',
     })
   }
   const manageable = Array.from(manageableById.values())
@@ -751,13 +698,14 @@ async function loadRecentlyVerifiedGuilds(userId: string): Promise<ManagedGuild[
   const memberships = await prisma.guildMembership.findMany({
     where: {
       userId,
+      role: 'admin',
+      source: 'discord',
       status: 'active',
       verifiedAt: { gte: new Date(Date.now() - TRANSIENT_AUTHORITY_GRACE_MS) },
       guild: { installed: true },
     },
     include: { guild: true },
   })
-  const systemAdmin = isSystemOwner(user.discordId)
   return memberships
     .map((membership): ManagedGuild => {
       const guild = membership.guild
@@ -771,7 +719,7 @@ async function loadRecentlyVerifiedGuilds(userId: string): Promise<ManagedGuild[
         onlineCount: null,
         inviteUrl: botInviteUrl(guild.id),
         canManage: true,
-        membershipRole: systemAdmin ? 'admin' : isRoleValue(membership.role),
+        membershipRole: 'admin',
       }
     })
     .sort((a, b) => a.name.localeCompare(b.name))
@@ -801,9 +749,6 @@ export async function getManageableGuilds(userId: string, force = false): Promis
   return refresh
 }
 
-function isRoleValue(value: string): 'admin' | 'manager' | 'viewer' {
-  return value === 'admin' || value === 'manager' ? value : 'viewer'
-}
 
 export function discordAvatarUrl(user: Pick<DiscordUser, 'id' | 'avatar'>): string | null {
   if (!user.avatar) return null

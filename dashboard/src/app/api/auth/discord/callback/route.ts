@@ -107,7 +107,10 @@ export async function GET(request: NextRequest) {
       update: {},
       create: { userId: user.id, config: JSON.stringify(DEFAULT_DASHBOARD_CONFIG) },
     })
-    await getManageableGuilds(user.id, true)
+    const administrableGuilds = await getManageableGuilds(user.id, true)
+    if (administrableGuilds.length === 0) {
+      return authError(request, 'Discord Administrator permission is required to access Docket.')
+    }
     await startSession({ id: user.id, role: user.role, name: user.name, email: user.email })
 
     const nextCookie = cookieStore.get('discord_oauth_next')?.value

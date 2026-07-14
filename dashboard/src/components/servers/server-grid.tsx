@@ -142,9 +142,9 @@ export function ServerGrid({ guilds }: { guilds: ManagedGuild[] }) {
       {guilds.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-border-strong bg-surface p-10 text-center">
           <Server className="mx-auto size-7 text-muted-2" />
-          <h2 className="mt-4 font-semibold text-foreground">No manageable servers found</h2>
+          <h2 className="mt-4 font-semibold text-foreground">Administrator permission required</h2>
           <p className="mx-auto mt-2 max-w-md text-sm text-muted">
-            Discord only returns servers where you are the owner or have Manage Server access.
+            Docket only shows servers you own or where your Discord account has Administrator permission.
           </p>
         </div>
       ) : (

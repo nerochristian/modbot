@@ -60,17 +60,11 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     : null
   const membershipActive = membership
     && membership.guild.installed
+    && membership.role === 'admin'
+    && membership.source === 'discord'
     && membership.status === 'active'
-  const role: Role = systemAdmin
-    ? 'admin'
-    : membershipActive && isRole(membership.role)
-      ? membership.role
-      : 'viewer'
-  const authorizedGuildId = systemAdmin && selectedGuildId
-    ? (await prisma.guild.findFirst({ where: { id: selectedGuildId, installed: true }, select: { id: true } }))?.id ?? null
-    : membershipActive
-      ? selectedGuildId
-      : null
+  const role: Role = membershipActive ? 'admin' : 'viewer'
+  const authorizedGuildId = membershipActive ? selectedGuildId : null
   const permissions = authorizedGuildId
     ? await getRolePermissions(role, authorizedGuildId, systemAdmin)
     : []
@@ -112,27 +106,23 @@ export async function getRolePermissions(
 /** Re-read selected-guild authority after a live Discord membership refresh. */
 export async function refreshSelectedGuildAuthority(user: CurrentUser): Promise<CurrentUser> {
   if (!user.selectedGuildId) return user
-  if (user.systemAdmin) {
-    const guild = await prisma.guild.findFirst({
-      where: { id: user.selectedGuildId, installed: true },
-      select: { id: true },
-    })
-    return guild
-      ? { ...user, role: 'admin', permissions: [...PERMISSIONS] }
-      : { ...user, selectedGuildId: null, role: 'viewer', permissions: [] }
-  }
   const membership = await prisma.guildMembership.findUnique({
     where: { guildId_userId: { guildId: user.selectedGuildId, userId: user.id } },
     include: { guild: { select: { installed: true } } },
   })
-  if (!membership || membership.status !== 'active' || !membership.guild.installed) {
+  if (
+    !membership
+    || membership.role !== 'admin'
+    || membership.source !== 'discord'
+    || membership.status !== 'active'
+    || !membership.guild.installed
+  ) {
     return { ...user, selectedGuildId: null, role: 'viewer', permissions: [] }
   }
-  const role: Role = isRole(membership.role) ? membership.role : 'viewer'
   return {
     ...user,
-    role,
-    permissions: await getRolePermissions(role, user.selectedGuildId),
+    role: 'admin',
+    permissions: await getRolePermissions('admin', user.selectedGuildId, user.systemAdmin),
   }
 }
 
