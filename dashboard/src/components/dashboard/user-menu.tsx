@@ -42,7 +42,7 @@ export function UserMenu() {
     <Dropdown>
       <DropdownTrigger>
         <span className="focus-ring flex items-center gap-2 rounded-lg p-1 pr-2 transition-colors hover:bg-surface-2">
-          <Avatar name={user.name} color={user.avatarColor} size="sm" />
+          <Avatar name={user.name} color={user.avatarColor} src={user.avatarUrl} size="sm" />
           <span className="hidden text-left sm:block">
             <span className="block text-sm font-medium leading-tight text-foreground">{user.name}</span>
             <span className="block text-xs leading-tight text-muted">{ROLE_LABELS[user.role]}</span>

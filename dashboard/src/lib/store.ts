@@ -20,6 +20,7 @@ export type SessionUser = {
   email: string
   role: Role
   avatarColor: string
+  avatarUrl: string | null
   title: string | null
   permissions: Permission[]
 }

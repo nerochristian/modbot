@@ -747,7 +747,16 @@ export async function getManageableGuilds(userId: string, force = false): Promis
 
 
 export function discordAvatarUrl(user: Pick<DiscordUser, 'id' | 'avatar'>): string | null {
-  if (!user.avatar) return null
-  const extension = user.avatar.startsWith('a_') ? 'gif' : 'webp'
-  return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.${extension}?size=128`
+  if (user.avatar) {
+    return `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.webp?size=128`
+  }
+  const defaultIndex = Number((BigInt(user.id) >> BigInt(22)) % BigInt(6))
+  return `https://cdn.discordapp.com/embed/avatars/${defaultIndex}.png`
+}
+
+export function discordMemberAvatarUrl(guildId: string, member: DiscordGuildMember): string {
+  if (member.avatar) {
+    return `https://cdn.discordapp.com/guilds/${guildId}/users/${member.user.id}/avatars/${member.avatar}.webp?size=128`
+  }
+  return discordAvatarUrl(member.user) as string
 }

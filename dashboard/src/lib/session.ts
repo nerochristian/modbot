@@ -2,6 +2,7 @@ import { cookies } from 'next/headers'
 import { cache } from 'react'
 import { prisma } from '@/lib/prisma'
 import { isSystemOwner, SELECTED_GUILD_COOKIE, SESSION_COOKIE, verifySession } from '@/lib/auth'
+import { discordAvatarUrl } from '@/lib/discord'
 import {
   DEFAULT_ROLE_MATRIX,
   PERMISSIONS,
@@ -18,6 +19,7 @@ export type CurrentUser = {
   role: Role
   status: string
   avatarColor: string
+  avatarUrl: string | null
   title: string | null
   timezone: string
   twoFactorEnabled: boolean
@@ -76,6 +78,9 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
     role,
     status: user.status,
     avatarColor: user.avatarColor,
+    avatarUrl: user.discordId
+      ? discordAvatarUrl({ id: user.discordId, avatar: user.discordAvatar })
+      : null,
     title: user.title,
     timezone: user.timezone,
     twoFactorEnabled: user.twoFactorEnabled,

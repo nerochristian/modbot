@@ -1,13 +1,16 @@
+import Image from 'next/image'
 import { cn, initials } from '@/lib/utils'
 
 export function Avatar({
   name,
   color,
+  src,
   size = 'md',
   className,
 }: {
   name: string
   color?: string | null
+  src?: string | null
   size?: 'xs' | 'sm' | 'md' | 'lg'
   className?: string
 }) {
@@ -27,7 +30,15 @@ export function Avatar({
       style={{ backgroundColor: color ?? '#6366f1' }}
       aria-hidden
     >
-      {initials(name)}
+      {src ? (
+        <Image
+          src={src}
+          alt=""
+          width={128}
+          height={128}
+          className="size-full rounded-full object-cover"
+        />
+      ) : initials(name)}
     </span>
   )
 }

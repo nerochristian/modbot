@@ -26,6 +26,7 @@ export default async function DashboardLayout({ children }: { children: React.Re
     email: user.email,
     role: user.role,
     avatarColor: user.avatarColor,
+    avatarUrl: user.avatarUrl,
     title: user.title,
     permissions: user.permissions,
   }
