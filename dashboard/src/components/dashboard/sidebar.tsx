@@ -50,10 +50,10 @@ function NavigationLink({ item }: { item: NavItem }) {
     <Link
       href={item.href}
       className={cn(
-        'group flex h-9 items-center gap-3 rounded-lg px-3 text-sm font-medium transition-all duration-200',
+        'group relative flex h-10 items-center gap-3 rounded-xl border px-3 text-sm font-medium transition-all duration-200',
         isActive
-          ? 'bg-accent text-accent-foreground shadow-[0_8px_25px_-8px_var(--accent)]'
-          : 'text-muted hover:bg-surface-2 hover:text-foreground',
+          ? 'border-accent-line bg-accent-soft text-foreground shadow-[0_14px_30px_-24px_var(--accent)]'
+          : 'border-transparent text-muted hover:border-border hover:bg-surface-2/70 hover:text-foreground',
       )}
     >
       <Icon
@@ -61,7 +61,7 @@ function NavigationLink({ item }: { item: NavItem }) {
         strokeWidth={1.8}
         className={cn(
           'shrink-0 transition-colors',
-          isActive ? 'text-accent-foreground' : 'text-muted-2 group-hover:text-foreground',
+          isActive ? 'text-accent' : 'text-muted-2 group-hover:text-foreground',
         )}
       />
       <span className="truncate">{item.label}</span>
@@ -95,8 +95,8 @@ function ServerRail({ guilds, current }: { guilds: ManagedGuild[]; current: Mana
   }
 
   return (
-    <div className="flex w-[68px] shrink-0 flex-col items-center border-r border-border bg-bg py-3">
-      <Link href="/servers" aria-label="All servers" className="focus-ring grid size-10 place-items-center rounded-xl bg-surface-2 text-muted transition-colors hover:text-foreground">
+    <div className="flex w-[72px] shrink-0 flex-col items-center border-r border-border bg-paper/65 py-4 backdrop-blur-xl">
+      <Link href="/servers" aria-label="All servers" className="focus-ring grid size-11 place-items-center rounded-2xl border border-border bg-surface-2/80 text-muted transition-colors hover:border-accent-line hover:text-accent">
         <Home className="size-4" />
       </Link>
       <div className="my-3 h-px w-8 bg-border" />
@@ -104,7 +104,7 @@ function ServerRail({ guilds, current }: { guilds: ManagedGuild[]; current: Mana
         {guilds.filter((guild) => guild.installed).map((guild) => {
           const active = guild.id === current.id
           return (
-            <button key={guild.id} type="button" title={guild.name} aria-label={`Open ${guild.name}`} aria-current={active ? 'page' : undefined} onClick={() => void selectGuild(guild.id)} className={cn('focus-ring group relative grid size-11 shrink-0 place-items-center overflow-visible rounded-xl border transition-all duration-200', active ? 'border-accent bg-accent-soft shadow-[0_0_24px_-9px_var(--accent)]' : 'border-border bg-surface hover:rounded-lg hover:border-accent-line')}>
+            <button key={guild.id} type="button" title={guild.name} aria-label={`Open ${guild.name}`} aria-current={active ? 'page' : undefined} onClick={() => void selectGuild(guild.id)} className={cn('focus-ring group relative grid size-11 shrink-0 place-items-center overflow-visible rounded-2xl border transition-all duration-200', active ? 'border-accent bg-accent-soft shadow-[0_0_28px_-10px_var(--accent)]' : 'border-border bg-surface hover:scale-[1.04] hover:border-accent-line')}>
               {active ? <span className="absolute -left-[9px] h-7 w-1 rounded-r-full bg-accent" /> : null}
               {loading === guild.id ? <Loader2 className="size-4 animate-spin text-accent" /> : guild.iconUrl ? <Image src={guild.iconUrl} alt="" width={44} height={44} unoptimized className="size-full rounded-[inherit] object-cover" /> : <span className="font-display text-xs font-bold text-accent">{guild.name.slice(0, 2).toUpperCase()}</span>}
             </button>
@@ -120,18 +120,18 @@ export function Sidebar({ permissions = [], guilds, currentGuild }: { permission
   const visible = NAV_ITEMS.filter((i) => permissions.includes(i.permission))
 
   return (
-    <aside className="hidden h-screen w-[318px] shrink-0 border-r border-border bg-surface lg:flex">
+    <aside className="hidden h-screen w-[304px] shrink-0 border-r border-border bg-surface/82 shadow-[18px_0_60px_-40px_rgba(0,0,0,.8)] backdrop-blur-xl lg:flex">
       <ServerRail guilds={guilds} current={currentGuild} />
       <div className="flex min-w-0 flex-1 flex-col">
       {/* Logo */}
-      <div className="flex h-16 items-center border-b border-border px-5">
+      <div className="flex h-[72px] items-center border-b border-border px-5">
         <Link href="/dashboard" aria-label="Dashboard home" className="flex items-center">
           <Logo />
         </Link>
       </div>
 
       {/* Navigation */}
-      <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5">
+      <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-6">
         {SECTIONS.map((section) => {
           const items = visible.filter((i) => i.section === section)
           if (!items.length) return null
@@ -151,7 +151,7 @@ export function Sidebar({ permissions = [], guilds, currentGuild }: { permission
       </nav>
 
       {/* Footer signal — live/online marker echoing Nova's green pip */}
-      <div className="flex h-12 items-center gap-2 border-t border-border px-5">
+      <div className="m-3 flex h-11 items-center gap-2 rounded-xl border border-border bg-surface-2/55 px-4">
         <span className="relative flex size-2">
           <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-60" />
           <span className="relative inline-flex size-2 rounded-full bg-success" />

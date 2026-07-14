@@ -18,10 +18,11 @@ export function Topbar({
   currentGuild: ManagedGuild
 }) {
   return (
-    <header className="sticky top-0 z-30 flex h-16 min-w-0 items-center gap-2 border-b border-border bg-bg/80 px-3 backdrop-blur-md sm:gap-3 sm:px-6">
+    <header className="sticky top-0 z-30 min-w-0 px-3 pt-3 sm:px-5">
+      <div className="glass-panel flex h-14 min-w-0 items-center gap-2 rounded-2xl px-3 sm:gap-3 sm:px-4">
       <button
         onClick={onOpenMobile}
-        className="focus-ring inline-flex size-9 items-center justify-center rounded-lg text-muted hover:bg-surface-2 lg:hidden"
+        className="focus-ring inline-flex size-9 items-center justify-center rounded-xl text-muted hover:bg-surface-2 lg:hidden"
         aria-label="Open menu"
       >
         <Menu className="size-5" />
@@ -29,7 +30,7 @@ export function Topbar({
 
       <div className="lg:hidden"><GuildSwitcher guilds={guilds} current={currentGuild} /></div>
       <div className="hidden min-w-0 items-center gap-2 lg:flex">
-        <span className="grid size-7 place-items-center rounded-md bg-accent-soft text-accent"><span className="font-display text-[0.625rem] font-bold">{currentGuild.name.slice(0, 2).toUpperCase()}</span></span>
+        <span className="grid size-8 place-items-center rounded-xl border border-accent-line bg-accent-soft text-accent"><span className="font-display text-[0.625rem] font-bold">{currentGuild.name.slice(0, 2).toUpperCase()}</span></span>
         <span className="max-w-40 truncate text-sm font-semibold text-foreground">{currentGuild.name}</span>
       </div>
       <div className="hidden min-w-0 md:block">
@@ -43,6 +44,7 @@ export function Topbar({
         <NotificationsMenu />
         <div className="mx-1 hidden h-6 w-px bg-border sm:block" />
         <UserMenu />
+      </div>
       </div>
     </header>
   )

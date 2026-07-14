@@ -7,7 +7,7 @@ type Size = 'sm' | 'md' | 'lg' | 'icon'
 
 const VARIANTS: Record<Variant, string> = {
   primary:
-    'bg-accent text-accent-foreground hover:brightness-110 active:brightness-95',
+    'bg-accent text-accent-foreground shadow-[0_12px_30px_-18px_var(--accent)] hover:-translate-y-px hover:brightness-110 active:translate-y-0 active:brightness-95',
   secondary:
     'bg-surface-2 text-foreground hover:bg-border/60 border border-border',
   outline:
@@ -18,10 +18,10 @@ const VARIANTS: Record<Variant, string> = {
 }
 
 const SIZES: Record<Size, string> = {
-  sm: 'h-8 px-3 text-sm gap-1.5 rounded-md',
-  md: 'h-10 px-4 text-sm gap-2 rounded-md',
-  lg: 'h-11 px-6 text-base gap-2 rounded-md',
-  icon: 'h-9 w-9 rounded-md',
+  sm: 'h-9 px-3.5 text-sm gap-1.5 rounded-lg',
+  md: 'h-10 px-4 text-sm gap-2 rounded-xl',
+  lg: 'h-12 px-6 text-base gap-2 rounded-xl',
+  icon: 'h-10 w-10 rounded-xl',
 }
 
 export function buttonVariants({
