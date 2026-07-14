@@ -6,28 +6,28 @@ import { cn } from '@/lib/utils'
 
 const FAQS = [
   {
-    q: 'How long does it take to get set up?',
-    a: 'Most servers are protected in under 10 minutes. Add the bot to your server, invite your mod team, and turn on a starter automod ruleset — your command deck populates automatically. No engineering required for the core setup.',
+    q: 'Who can open the dashboard?',
+    a: 'Only the server owner or someone whose live Discord permissions include Administrator can select that server and enter its dashboard.',
   },
   {
-    q: 'Can I customize how moderation works?',
-    a: 'Extensively. Build layered automod rules with your own severity thresholds and actions, then let every moderator reorder, show, or hide deck widgets, choose date ranges, pick a theme and accent color, adjust density, and save custom views — all persisted to their account.',
+    q: 'Does the dashboard use real Discord data?',
+    a: 'Yes. Signed-in workspaces load the selected server’s Discord members, roles, channels, and recorded moderation activity. Any examples on the public landing page are clearly labeled as preview data.',
   },
   {
-    q: 'Do you support roles and permissions?',
-    a: 'Yes. Docket ships with Admin, Moderator, and Helper roles out of the box, and admins can edit the exact permission matrix per role at any time. Console visibility and API access are both enforced against permissions.',
+    q: 'What can automod handle?',
+    a: 'You can configure rules for blocked words, spam, links, invites, duplicate messages, mention floods, caps, and raid behavior, including the action taken when a rule triggers.',
   },
   {
-    q: 'Is my data secure?',
-    a: 'Docket signs you in through Discord and uses signed, httpOnly dashboard sessions with server-side revocation. Your Discord password, authenticator, and recovery codes stay with Discord and are managed in Discord account settings.',
+    q: 'How do member reports work?',
+    a: 'A normal member or staff member can use /report. The report is stored for the server’s moderation team to review and update without posting the details publicly.',
   },
   {
-    q: 'Can I export cases and member data?',
-    a: 'Dashboard tables and charts can be downloaded as CSV or JSON. Generated reports support CSV, JSON, PDF, and XLSX.',
+    q: 'Can I configure ticket questions?',
+    a: 'Yes. Ticket settings let you choose the panel options, the questions asked for each option, an optional emoji, staff access, routing, and transcript logging.',
   },
   {
-    q: 'Can I buy a paid plan in the dashboard?',
-    a: 'Not currently. Paid checkout and plan management are hidden until Docket has a real billing provider and verified entitlements.',
+    q: 'Where can I see every command?',
+    a: 'Open the Commands page from this website, or use /help or ,help in Discord to get the same help destination.',
   },
 ]
 
@@ -39,9 +39,9 @@ export function Faq() {
       <div className="text-center">
         <span className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">FAQ</span>
         <h2 className="mt-3 font-display text-3xl font-semibold tracking-[-0.02em] text-foreground sm:text-4xl">
-          Questions, on the record
+          Common questions
         </h2>
-        <p className="mt-4 text-lg text-muted">Everything you need to know before you file the first case.</p>
+        <p className="mt-4 text-lg text-muted">Straight answers about access, setup, and everyday moderation.</p>
       </div>
 
       <div className="mt-12 divide-y divide-border rounded-lg border border-border bg-card">

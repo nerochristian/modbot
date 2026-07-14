@@ -11,7 +11,8 @@ import { Dropdown, DropdownItem, DropdownLabel, DropdownMenu, DropdownSeparator,
 import { cn } from '@/lib/utils'
 
 const NAV = [
-  { label: 'How it works', href: '/#pipeline' },
+  { label: 'Features', href: '/#features' },
+  { label: 'How it works', href: '/#setup' },
   { label: 'Commands', href: '/commands' },
   { label: 'Support', href: '/commands#support' },
 ]

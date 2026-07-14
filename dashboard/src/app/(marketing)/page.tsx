@@ -1,88 +1,115 @@
 import Link from 'next/link'
-import Image from 'next/image'
-import { ArrowRight, LogIn } from 'lucide-react'
+import {
+  ArrowRight,
+  FileClock,
+  LogIn,
+  MessageSquareWarning,
+  Settings2,
+  ShieldCheck,
+  TicketCheck,
+  UsersRound,
+} from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 import { LiveWire } from '@/components/marketing/live-wire'
 import { CircuitField } from '@/components/marketing/circuit-field'
 import { CommandDemo } from '@/components/marketing/command-demo'
 import { Faq } from '@/components/marketing/faq'
 
-// The three things a shift actually does, in order. Numbered because it IS a
-// sequence: a threat arrives, it's judged, it becomes a permanent record.
-const PIPELINE = [
+const PRODUCT_AREAS = [
+  { value: 'Automod', label: 'Stop harmful messages automatically' },
+  { value: 'Cases', label: 'Keep every staff action on record' },
+  { value: 'Reports', label: 'Give members a private way to report' },
+  { value: 'Tickets', label: 'Run support in private channels' },
+]
+
+const FEATURES = [
+  {
+    icon: ShieldCheck,
+    title: 'Automod you can control',
+    body: 'Configure spam, links, invites, mention floods, blocked words, duplicate messages, and raid protection from one place.',
+  },
+  {
+    icon: FileClock,
+    title: 'Cases and member history',
+    body: 'Warnings, timeouts, kicks, bans, reasons, evidence, and staff notes stay attached to the member who received them.',
+  },
+  {
+    icon: MessageSquareWarning,
+    title: 'Private member reports',
+    body: 'Members or staff can use /report. Reports reach the moderation team without exposing the reporter in a public channel.',
+  },
+  {
+    icon: TicketCheck,
+    title: 'Tickets built around your server',
+    body: 'Choose ticket options, questions, optional emoji, staff access, private channels, and transcript logging from the dashboard.',
+  },
+]
+
+const SETUP = [
   {
     n: '01',
-    head: 'It arrives',
-    body: 'Raids, spam floods, scam links, mention storms. Docket watches every message the instant it posts — before a human is even online.',
+    title: 'Sign in with Discord',
+    body: 'Docket uses your Discord account to identify you. Your Discord password always stays with Discord.',
   },
   {
     n: '02',
-    head: 'It’s judged',
-    body: 'Layered rules score content in real time and act: block, mute, timeout, ban. Severity decides the response. No queue, no delay.',
+    title: 'Choose a server you administer',
+    body: 'The dashboard only shows servers you own or where your live Discord permissions include Administrator.',
   },
   {
     n: '03',
-    head: 'It’s on the record',
-    body: 'Every action opens a case with evidence, reason, and the moderator or rule behind it. Nothing is lost between shifts.',
+    title: 'Configure how your team works',
+    body: 'Turn modules on, choose channels and roles, build automod rules, and manage moderation from Discord or the dashboard.',
   },
 ]
 
-const STATS = [
-  { value: 'Live', label: 'Discord and bot data' },
-  { value: 'Guild', label: 'Isolated access and queries' },
-  { value: '4', label: 'CSV, JSON, PDF, XLSX exports' },
-  { value: '1×', label: 'One-time appeal links' },
-]
-
-// A representative case file used to explain the live case schema.
-const CASE = {
-  ref: 'CASE-0421',
-  filed: '07·12 14:22Z',
-  subject: 'user4821',
-  type: 'Ban',
-  severity: 'critical',
-  reason: 'Coordinated raid — 1 of 300 spoofed accounts posting scam links to @everyone within a 9-second window.',
-  rule: 'raid-shield · mention-flood',
-  evidence: '@everyone free nitro → grabnitro.gg',
-}
-
-const TESTIMONIALS = [
-  { quote: 'Moderation commands are recorded before execution, assigned an idempotency key, and retain any Discord failure for review.', name: 'Durable actions', title: 'Command ledger + guild audit trail' },
-  { quote: 'Cases, reports, roles, saved views, and preferences are authorized and queried within the selected Discord guild.', name: 'Tenant isolation', title: 'Guild-scoped identity and data access' },
-  { quote: 'Appeal links expire, work once, and keep reversals pending when Discord cannot complete the requested action.', name: 'Reviewable appeals', title: 'Tokenized member submission + reversal status' },
+const WORKFLOW = [
+  {
+    icon: UsersRound,
+    title: 'Understand the member',
+    body: 'Open a member to see their Discord identity, roles, recorded actions, cases, appeals, and staff notes together.',
+  },
+  {
+    icon: Settings2,
+    title: 'Take the right action',
+    body: 'Warn, timeout, kick, ban, add a note, or review a report with the reason and result kept on the record.',
+  },
+  {
+    icon: FileClock,
+    title: 'Know what happened later',
+    body: 'Cases, action logs, reports, and transcripts give the next moderator enough context to continue the work.',
+  },
 ]
 
 export default function LandingPage() {
   return (
     <>
-      {/* ============================================================ */}
-      {/* ACT I — the incident. The hero IS the product, mid-raid.     */}
-      {/* ============================================================ */}
       <section className="relative overflow-hidden border-b border-border">
         <CircuitField className="pointer-events-none absolute inset-0 h-full w-full opacity-70" />
-        <div className="pointer-events-none absolute inset-0 scanfield opacity-40" />
-        {/* Brand glow beams bleeding from the edges. */}
-        <div className="pointer-events-none absolute -left-32 top-0 h-[420px] w-[420px] rounded-full opacity-25 blur-[120px]" style={{ background: 'radial-gradient(circle, var(--brand-from), transparent 70%)' }} />
-        <div className="pointer-events-none absolute -right-24 bottom-0 h-[380px] w-[380px] rounded-full opacity-20 blur-[120px]" style={{ background: 'radial-gradient(circle, var(--brand-cyan), transparent 70%)' }} />
-        {/* A faint vertical rule anchors the asymmetric split. */}
+        <div className="scanfield pointer-events-none absolute inset-0 opacity-40" />
+        <div
+          className="pointer-events-none absolute -left-32 top-0 h-[420px] w-[420px] rounded-full opacity-25 blur-[120px]"
+          style={{ background: 'radial-gradient(circle, var(--brand-from), transparent 70%)' }}
+        />
+        <div
+          className="pointer-events-none absolute -right-24 bottom-0 h-[380px] w-[380px] rounded-full opacity-20 blur-[120px]"
+          style={{ background: 'radial-gradient(circle, var(--brand-cyan), transparent 70%)' }}
+        />
         <div className="pointer-events-none absolute left-1/2 top-0 hidden h-full w-px bg-border lg:block" />
-        <div className="relative mx-auto grid max-w-6xl items-center gap-x-12 gap-y-10 px-6 py-16 lg:grid-cols-[0.85fr_1.15fr] lg:py-20">
-          {/* Left — the claim */}
+
+        <div className="relative mx-auto grid max-w-6xl items-center gap-x-12 gap-y-10 px-6 py-16 lg:grid-cols-[0.9fr_1.1fr] lg:py-20">
           <div>
             <p className="inline-flex items-center gap-2 rounded-sm border border-border bg-surface px-3 py-1 font-mono text-[0.6875rem] font-medium uppercase tracking-[0.16em] text-accent">
-              <span className="inline-flex size-1.5 rounded-full bg-threat wire-blip" />
-              Raid response preview
+              <span className="inline-flex size-1.5 rounded-full bg-accent wire-blip" />
+              Discord moderation dashboard
             </p>
-            <h1 className="mt-6 font-display text-[2.75rem] font-semibold leading-[0.95] tracking-[-0.02em] text-foreground sm:text-6xl">
-              300 accounts
+            <h1 className="mt-6 font-display text-[2.75rem] font-semibold leading-[0.98] tracking-[-0.02em] text-foreground sm:text-6xl">
+              Moderate your server.
               <br />
-              hit your server.
-              <br />
-              <span className="text-brand-gradient">Nobody saw&nbsp;it.</span>
+              <span className="text-brand-gradient">Keep the full record.</span>
             </h1>
-            <p className="mt-6 max-w-md text-lg leading-relaxed text-muted">
-              Docket reads every message the instant it posts and stops raids, spam, and scams
-              before your community notices. Each action becomes a case you can read back.
+            <p className="mt-6 max-w-lg text-lg leading-relaxed text-muted">
+              Docket brings automod, cases, member reports, tickets, appeals, and staff actions into one dashboard connected to your Discord server.
             </p>
             <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link
@@ -90,230 +117,170 @@ export default function LandingPage() {
                 className={buttonVariants({ variant: 'primary', size: 'lg', className: 'gap-2.5 px-7' })}
               >
                 <LogIn className="size-4" />
-                Deploy Docket
+                Sign in with Discord
               </Link>
               <Link
-                href="#pipeline"
+                href="#features"
                 className={buttonVariants({ variant: 'outline', size: 'lg', className: 'gap-2' })}
               >
-                How it works
+                See what Docket does
                 <ArrowRight className="size-4" />
               </Link>
             </div>
             <p className="mt-5 font-mono text-[0.6875rem] uppercase tracking-[0.14em] text-muted-2">
-              Discord sign-in required · Server access follows your Discord permissions
+              Dashboard access requires live Discord Administrator permission
             </p>
           </div>
 
-          {/* Right — the Live Wire board, the anchor of the composition */}
           <div className="lg:-mr-4">
+            <div className="mb-3 flex items-center justify-between font-mono text-[0.625rem] uppercase tracking-[0.14em] text-muted-2">
+              <span>Example automod response</span>
+              <span>Preview data</span>
+            </div>
             <LiveWire />
           </div>
         </div>
       </section>
 
-      {/* Stats — an instrument readout strip. */}
       <section className="border-b border-border bg-surface">
         <div className="mx-auto grid max-w-6xl grid-cols-2 divide-x divide-y divide-border sm:grid-cols-4 sm:divide-y-0">
-          {STATS.map((s) => (
-            <div key={s.label} className="px-6 py-7">
-              <div className="font-display text-3xl font-semibold tracking-tight text-foreground">{s.value}</div>
-              <div className="mt-1 text-sm text-muted">{s.label}</div>
+          {PRODUCT_AREAS.map((area) => (
+            <div key={area.value} className="px-6 py-7">
+              <div className="font-display text-xl font-semibold tracking-tight text-foreground">{area.value}</div>
+              <div className="mt-1.5 text-sm leading-snug text-muted">{area.label}</div>
             </div>
           ))}
         </div>
       </section>
 
-      {/* ============================================================ */}
-      {/* ACT II — the pipeline. A real 3-step sequence, numbered.     */}
-      {/* ============================================================ */}
-      <section id="pipeline" className="mx-auto max-w-6xl scroll-mt-20 px-6 py-20">
+      <section id="features" className="mx-auto max-w-6xl scroll-mt-20 px-6 py-20">
         <div className="max-w-2xl">
           <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">
-            Threat to record, in one pass
+            One place for the moderation team
           </p>
           <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.02em] text-foreground">
-            From arrival to a durable record.
+            The tools your server actually uses.
           </h2>
+          <p className="mt-4 text-base leading-relaxed text-muted">
+            Configure the bot, review what happened, and act on members without searching through old channels or disconnected commands.
+          </p>
         </div>
 
-        <div className="mt-14 grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-3">
-          {PIPELINE.map((step) => (
-            <div key={step.n} className="relative bg-surface p-8">
-              <span className="font-mono text-5xl font-semibold tracking-tight text-accent/25">{step.n}</span>
-              <h3 className="mt-5 font-display text-xl font-semibold tracking-tight text-foreground">{step.head}</h3>
-              <p className="mt-2.5 text-sm leading-relaxed text-muted">{step.body}</p>
-            </div>
-          ))}
+        <div className="mt-12 grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-2">
+          {FEATURES.map((feature) => {
+            const Icon = feature.icon
+            return (
+              <article key={feature.title} className="bg-surface p-7 sm:p-8">
+                <span className="grid size-10 place-items-center rounded-md border border-accent-line bg-accent-soft text-accent">
+                  <Icon className="size-5" />
+                </span>
+                <h3 className="mt-5 font-display text-xl font-semibold tracking-tight text-foreground">{feature.title}</h3>
+                <p className="mt-2.5 text-sm leading-relaxed text-muted">{feature.body}</p>
+              </article>
+            )
+          })}
         </div>
       </section>
 
-      {/* ============================================================ */}
-      {/* ACT II.5 — pull any member's record. Interactive demo.       */}
-      {/* ============================================================ */}
-      <section id="commands" className="border-t border-border bg-surface">
+      <section id="setup" className="border-y border-border bg-surface">
+        <div className="mx-auto max-w-6xl px-6 py-20">
+          <div className="max-w-2xl">
+            <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">
+              How setup works
+            </p>
+            <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.02em] text-foreground">
+              From Discord to your dashboard in three steps.
+            </h2>
+          </div>
+
+          <div className="mt-12 grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-3">
+            {SETUP.map((step) => (
+              <article key={step.n} className="bg-card p-7">
+                <span className="font-mono text-sm font-semibold text-accent">{step.n}</span>
+                <h3 className="mt-5 font-display text-xl font-semibold tracking-tight text-foreground">{step.title}</h3>
+                <p className="mt-2.5 text-sm leading-relaxed text-muted">{step.body}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="members" className="border-b border-border">
         <div className="mx-auto grid max-w-6xl scroll-mt-20 items-center gap-12 px-6 py-20 lg:grid-cols-2">
           <div>
             <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">
-              Interactive product preview
+              Member records
             </p>
             <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.02em] text-foreground">
-              Ping a member.<br />See everything on record.
+              Open a member. Understand the situation.
             </h2>
             <p className="mt-5 max-w-md text-base leading-relaxed text-muted">
-              The preview uses an example roster. In an authenticated workspace, Docket returns live Discord status,
-              risk level, and a full timeline of every warn, mute, ban, note, and appeal — who did it,
-              when, and why. Try it: pick a member on the right.
+              See a member’s Discord identity and recorded moderation history together. Staff can review past actions before deciding what to do next.
             </p>
-            <ul className="mt-6 space-y-2.5 text-sm text-muted">
-              <li className="flex items-center gap-2.5"><span className="size-1.5 rounded-full bg-accent" /> Discord status and risk signals at a glance</li>
-              <li className="flex items-center gap-2.5"><span className="size-1.5 rounded-full bg-accent" /> Complete, attributable action history</li>
-              <li className="flex items-center gap-2.5"><span className="size-1.5 rounded-full bg-accent" /> Nothing lost between shifts or channels</li>
-            </ul>
+            <p className="mt-4 max-w-md text-sm leading-relaxed text-muted-2">
+              The interactive panel uses example members. Signed-in dashboards load the selected server’s real Discord members and moderation records.
+            </p>
+            <Link
+              href="/commands"
+              className={buttonVariants({ variant: 'subtle', size: 'md', className: 'mt-7 gap-2' })}
+            >
+              Browse bot commands
+              <ArrowRight className="size-4" />
+            </Link>
           </div>
           <CommandDemo />
         </div>
       </section>
 
-      {/* ============================================================ */}
-      {/* ACT III — the record. ONE case file, in full.               */}
-      {/* ============================================================ */}
-      <section className="border-y border-border bg-surface">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 px-6 py-20 lg:grid-cols-2">
-          <div>
+      <section className="bg-surface">
+        <div className="mx-auto max-w-6xl px-6 py-20">
+          <div className="max-w-2xl">
             <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">
-              What’s left behind
+              A complete moderation shift
             </p>
             <h2 className="mt-3 font-display text-4xl font-semibold tracking-[-0.02em] text-foreground">
-              Every action becomes a file you can read back.
+              Review, act, and leave useful context.
             </h2>
-            <p className="mt-5 max-w-md text-base leading-relaxed text-muted">
-              No disappearing DM logs, no “who muted this person and why.” The moment automod acts —
-              or a moderator does — Docket opens a case with the evidence, the reason, and the rule
-              or person behind it. Months later, it still reads clearly.
-            </p>
-            <Link
-              href="/api/auth/discord/authorize"
-              className={buttonVariants({ variant: 'subtle', size: 'md', className: 'mt-7 gap-2' })}
-            >
-              Open the caseload
-              <ArrowRight className="size-4" />
-            </Link>
           </div>
-
-          {/* The case file — a representative record matching the live schema. */}
-          <div className="rounded-lg border border-border bg-card">
-            <div className="flex items-center justify-between border-b border-border px-5 py-3">
-              <span className="font-mono text-xs font-semibold tracking-wide text-foreground">Example · {CASE.ref}</span>
-              <span className="font-mono text-[0.6875rem] uppercase tracking-[0.12em] text-muted-2">
-                Filed {CASE.filed}
-              </span>
-            </div>
-            <div className="space-y-4 p-5">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-sm border border-threat/40 bg-threat-soft px-2 py-0.5 font-mono text-[0.625rem] font-bold uppercase tracking-[0.1em] text-threat">
-                  {CASE.type}
-                </span>
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="tickmeter" style={{ ['--tick-color' as string]: 'var(--sev-critical)' }}>
-                    <span className="tick on" /><span className="tick on" /><span className="tick on" /><span className="tick on" /><span className="tick on" />
-                  </span>
-                  <span className="font-mono text-[0.6875rem] uppercase tracking-wider text-threat">{CASE.severity}</span>
-                </span>
-              </div>
-
-              <Field label="Subject">
-                <span className="font-mono text-sm text-foreground">@{CASE.subject}</span>
-              </Field>
-              <Field label="Reason">
-                <span className="text-sm leading-relaxed text-muted">{CASE.reason}</span>
-              </Field>
-              <Field label="Evidence">
-                <span className="block rounded-sm bg-surface-2 px-2.5 py-1.5 font-mono text-xs text-muted line-through decoration-threat/50">
-                  {CASE.evidence}
-                </span>
-              </Field>
-              <Field label="Acted by">
-                <span className="font-mono text-xs text-accent">{CASE.rule}</span>
-              </Field>
-            </div>
+          <div className="mt-12 grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-3">
+            {WORKFLOW.map((item) => {
+              const Icon = item.icon
+              return (
+                <article key={item.title} className="bg-card p-7">
+                  <Icon className="size-5 text-accent" />
+                  <h3 className="mt-5 font-display text-lg font-semibold text-foreground">{item.title}</h3>
+                  <p className="mt-2.5 text-sm leading-relaxed text-muted">{item.body}</p>
+                </article>
+              )
+            })}
           </div>
-        </div>
-      </section>
-
-      {/* Supported backend guarantees, shown with the docket rail. */}
-      <section id="testimonials" className="border-t border-border">
-        <div className="mx-auto max-w-6xl px-6 py-20">
-        <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-muted-2">
-          Backend guarantees
-        </p>
-        <div className="mt-10 grid gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-3">
-          {TESTIMONIALS.map((t) => (
-            <figure key={t.name} className="flex flex-col justify-between bg-surface p-7">
-              <blockquote className="rail rail-accent text-[15px] leading-snug text-foreground">
-                {t.quote}
-              </blockquote>
-              <figcaption className="mt-6 flex items-center gap-3">
-                <div className="grid size-8 place-items-center rounded-md bg-accent-soft font-display text-xs font-semibold text-accent">
-                  {t.name.split(' ').map((w) => w[0]).join('')}
-                </div>
-                <div className="text-sm">
-                  <div className="font-medium text-foreground">{t.name}</div>
-                  <div className="text-xs text-muted">{t.title}</div>
-                </div>
-              </figcaption>
-            </figure>
-          ))}
-        </div>
         </div>
       </section>
 
       <Faq />
 
-      {/* Brand banner — the real Docket promo mark. */}
-      <section className="border-t border-border">
-        <div className="mx-auto max-w-6xl px-6 py-16">
-          <div className="relative overflow-hidden rounded-xl border border-border ring-brand">
-            <Image
-              src="/brand/docket-wordmark.png"
-              alt="Docket — advanced Discord moderation"
-              width={2172}
-              height={724}
-              className="h-auto w-full"
-              sizes="(max-width: 1152px) 100vw, 1152px"
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* Final CTA */}
       <section className="border-t border-border">
         <div className="mx-auto max-w-4xl px-6 pb-24 pt-20 text-center">
           <h2 className="font-display text-4xl font-semibold tracking-[-0.02em] text-foreground sm:text-5xl">
-            The next raid is already being planned.
+            Ready to manage your server?
           </h2>
-          <p className="mx-auto mt-4 max-w-md text-lg text-muted">
-            Sign in with Discord, choose a server where the bot is installed, and manage its live moderation data.
+          <p className="mx-auto mt-4 max-w-xl text-lg text-muted">
+            Sign in with Discord, choose a server you administer, and open its moderation dashboard.
           </p>
-          <div className="mt-8 flex justify-center">
+          <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link
               href="/api/auth/discord/authorize"
               className={buttonVariants({ variant: 'primary', size: 'lg', className: 'gap-2.5 px-8' })}
             >
-              <LogIn className="size-4.5" /> Open dashboard
+              <LogIn className="size-4.5" />
+              Sign in with Discord
+            </Link>
+            <Link href="/commands" className={buttonVariants({ variant: 'outline', size: 'lg' })}>
+              View commands
             </Link>
           </div>
         </div>
       </section>
     </>
-  )
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="grid grid-cols-[88px_1fr] items-start gap-3">
-      <span className="pt-0.5 font-mono text-[0.625rem] uppercase tracking-[0.14em] text-muted-2">{label}</span>
-      <div className="min-w-0">{children}</div>
-    </div>
   )
 }
