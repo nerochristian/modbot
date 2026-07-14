@@ -37,8 +37,8 @@ logger = logging.getLogger("ModBot.AIModeration.Client")
 _DO_API_KEY: Final[str] = os.getenv("DO_API_KEY", "").strip()
 _DO_BASE_URL: Final[str] = os.getenv("DO_INFERENCE_BASE_URL", "https://inference.do-ai.run/v1").strip().rstrip("/")
 
-# Real DeepSeek HTTP API (OpenAI-compatible). Preferred over the Playwright
-# browser scraper when a key is configured — same request shape as DigitalOcean.
+# Optional DeepSeek HTTP API (OpenAI-compatible). The authenticated web session
+# remains primary whenever it is enabled.
 _DEEPSEEK_API_KEY: Final[str] = os.getenv("DEEPSEEK_API_KEY", "").strip()
 _DEEPSEEK_BASE_URL: Final[str] = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").strip().rstrip("/")
 _DEEPSEEK_API_MODEL: Final[str] = os.getenv("DEEPSEEK_MODEL", "deepseek-chat").strip()
@@ -71,11 +71,11 @@ def _now() -> datetime:
 
 
 def _deepseek_web_primary_timeout() -> float:
-    raw = os.getenv("DEEPSEEK_WEB_PRIMARY_TIMEOUT", "25").strip()
+    raw = os.getenv("DEEPSEEK_WEB_PRIMARY_TIMEOUT", "90").strip()
     try:
         timeout = float(raw)
     except ValueError:
-        timeout = 25.0
+        timeout = 90.0
     return min(90.0, max(0.1, timeout))
 
 
@@ -247,24 +247,8 @@ class AIClient:
         session_name: Optional[str] = None,
         long_answer: bool = False,
     ) -> Optional[str]:
-        # Preferred path: the real DeepSeek HTTP API (stable, structured-output
-        # capable). Falls back to the browser scraper only if explicitly enabled,
-        # then to DigitalOcean inference.
-        if _deepseek_api_enabled():
-            try:
-                result = await self._call_deepseek_api(
-                    messages,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                    model=model,
-                    json_mode=json_mode,
-                    allow_multimodal=allow_multimodal,
-                )
-                if result is not None:
-                    return result
-            except Exception:
-                logger.warning("DeepSeek API call failed; trying next provider.", exc_info=True)
-
+        # Use the authenticated browser session first. This keeps moderation
+        # operational without a paid API key and preserves DeepSeek web search.
         if self._deepseek_web.enabled:
             prompt_parts: List[str] = []
             for message in messages:
@@ -287,7 +271,22 @@ class AIClient:
                     timeout=_deepseek_web_primary_timeout(),
                 )
             except (DeepSeekWebError, asyncio.TimeoutError):
-                logger.warning("DeepSeek web call failed; falling back to DigitalOcean.", exc_info=True)
+                logger.warning("DeepSeek web call failed; trying HTTP fallbacks.", exc_info=True)
+
+        if _deepseek_api_enabled():
+            try:
+                result = await self._call_deepseek_api(
+                    messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    model=model,
+                    json_mode=json_mode,
+                    allow_multimodal=allow_multimodal,
+                )
+                if result is not None:
+                    return result
+            except Exception:
+                logger.warning("DeepSeek API call failed; trying DigitalOcean.", exc_info=True)
 
         return await self._call_digitalocean(
             messages,
@@ -541,7 +540,9 @@ class AIClient:
 
     async def _preflight(self, user_id: int) -> Optional[str]:
         """Return an error string if the call should be blocked, else None."""
-        blocked = self._get_block_message()
+        # An HTTP provider's auth/quota failure must never suppress the healthy
+        # authenticated DeepSeek browser lane.
+        blocked = None if self._deepseek_web.enabled else self._get_block_message()
         if blocked:
             return blocked
         is_limited, retry_after = await self._rate_limiter.is_rate_limited(user_id)
