@@ -69,7 +69,7 @@ def _get_groupbot_token() -> Optional[str]:
 
 def validate_environment() -> None:
     """Validate required environment variables."""
-    optional_warnings = ["GEMINI_API_KEY", "OWNER_IDS"]
+    optional_warnings = ["OWNER_IDS"]
     log = logging.getLogger("ModBot")
 
     if not _get_modbot_token():

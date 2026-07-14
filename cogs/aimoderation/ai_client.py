@@ -44,9 +44,26 @@ _DEEPSEEK_BASE_URL: Final[str] = os.getenv("DEEPSEEK_BASE_URL", "https://api.dee
 _DEEPSEEK_API_MODEL: Final[str] = os.getenv("DEEPSEEK_MODEL", "deepseek-chat").strip()
 
 
+def _credential_is_configured(value: str) -> bool:
+    """Reject empty and documented placeholder credentials."""
+    normalized = (value or "").strip().upper()
+    if not normalized:
+        return False
+    return not any(
+        marker in normalized
+        for marker in (
+            "YOUR_API_KEY",
+            "YOUR_DEEPSEEK_API_KEY",
+            "REPLACE_ME",
+            "CHANGEME",
+            "PLACEHOLDER",
+        )
+    )
+
+
 def _deepseek_api_enabled() -> bool:
     """The DeepSeek HTTP API is usable when an API key is configured."""
-    return bool(_DEEPSEEK_API_KEY)
+    return _credential_is_configured(_DEEPSEEK_API_KEY)
 
 
 def _now() -> datetime:

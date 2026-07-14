@@ -101,3 +101,18 @@ def test_deepseek_api_enabled_reflects_key(monkeypatch):
     assert ai_client_module._deepseek_api_enabled() is True
     monkeypatch.setattr(ai_client_module, "_DEEPSEEK_API_KEY", "")
     assert ai_client_module._deepseek_api_enabled() is False
+
+
+@pytest.mark.parametrize(
+    "placeholder",
+    (
+        "YOUR_DEEPSEEK_API_KEY_HERE",
+        "your_api_key",
+        "replace_me",
+        "changeme",
+        "placeholder",
+    ),
+)
+def test_deepseek_api_placeholders_are_disabled(monkeypatch, placeholder):
+    monkeypatch.setattr(ai_client_module, "_DEEPSEEK_API_KEY", placeholder)
+    assert ai_client_module._deepseek_api_enabled() is False

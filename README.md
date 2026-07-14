@@ -1,20 +1,15 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Docket moderation bot
 
-# Run and deploy your AI Studio app
-
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/ad8b52f1-adf7-4a64-bdc1-b277aa9f9e2c
+Discord moderation bot and dashboard with AI moderation powered by an
+authenticated DeepSeek Web browser session.
 
 ## Run Locally
 
-**Prerequisites:**  Node.js
+**Prerequisites:** Python 3.11+ and Node.js
 
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+1. Copy `.env.example` to `.env` and configure the Discord and database values.
+2. Install the bot dependencies with `python -m pip install -r requirements.txt`.
+3. Install the browser runtime with `python -m playwright install chromium`.
+4. Install dashboard dependencies with `npm install`.
+5. Start the bot with `python bot.py` and the dashboard with `npm run dev`.
