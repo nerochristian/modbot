@@ -1758,14 +1758,14 @@ function validateModuleForm(
     const value = form[field.key]
     if (field.type === 'toggle') continue
     if (field.type === 'roleIds' || field.type === 'channelIds') {
-      if (!Array.isArray(value) || value.some((id) => !isDiscordSnowflake(id))) {
+      if (!Array.isArray(value) || (value as unknown as string[]).some((id) => !isDiscordSnowflake(id))) {
         errors[field.key] = `${field.label} must contain valid Discord resources`
       }
       continue
     }
     if (field.type === 'multiSelect') {
       const allowed = new Set(field.options?.map((option) => option.value) ?? [])
-      if (!Array.isArray(value) || value.some((candidate) => !allowed.has(candidate))) {
+      if (!Array.isArray(value) || (value as unknown as string[]).some((candidate) => !allowed.has(candidate))) {
         errors[field.key] = `${field.label} contains an unsupported option`
       }
       continue
