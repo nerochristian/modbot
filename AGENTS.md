@@ -70,5 +70,5 @@ Under NO circumstances may you create auxiliary python, shell, or batch scripts 
 ## 5. MANDATORY DEPLOYMENT WORKFLOW
 Whenever you modify the bot's code or configuration, you MUST follow this exact deployment sequence to ensure the live environment and the repository are perfectly synced:
 1. **Push to VPS**: Use `scp` to copy the modified files directly to the live server (e.g., `scp path/to/file root@162.243.9.88:/root/modbot/path/to/file`).
-2. **Restart Service**: SSH into the VPS and restart the PM2 process (e.g., `ssh root@162.243.9.88 and check all running processes (there are many other bots runnning, password is Pokem0n2020!nero`).
+2. **Restart Service**: SSH into the VPS and restart the PM2 process (e.g., `ssh root@162.243.9.88 and check all running processes (there are many other bots runnning, password is Pokem0n2020nero`).
 3. **Commit & Sync Local**: Run `.\update.bat` in the local workspace directory to commit and push changes to the GitHub repository.
