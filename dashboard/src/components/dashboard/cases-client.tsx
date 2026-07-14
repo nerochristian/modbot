@@ -435,7 +435,6 @@ function CaseForm({
           ? 'medium'
           : 'low',
     reason: '',
-    channel: '',
     duration: '',
   })
 
@@ -448,7 +447,6 @@ function CaseForm({
         type: form.type,
         severity: form.severity,
         reason: form.reason,
-        channel: form.channel || null,
         durationHours: Number(form.duration) || 0,
       }
       const res = await fetch('/api/cases', {
@@ -529,14 +527,7 @@ function CaseForm({
             placeholder="What happened?"
           />
         </Field>
-        <div className="grid grid-cols-2 gap-4">
-          <Field label="Channel" error={errors.channel}>
-            <Input
-              value={form.channel}
-              onChange={(e) => setForm({ ...form, channel: e.target.value })}
-              placeholder="#general"
-            />
-          </Field>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <Field label="Duration (hours, 0 = permanent)" error={errors.durationHours}>
             <Input
               type="number"
@@ -545,6 +536,9 @@ function CaseForm({
               placeholder="0"
             />
           </Field>
+          <div className="flex items-end pb-2 text-xs leading-5 text-muted">
+            Duration only applies to mute and timeout actions. Kick and ban happen immediately.
+          </div>
         </div>
       </div>
     </Modal>

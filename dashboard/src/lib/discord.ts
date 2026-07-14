@@ -36,12 +36,17 @@ type DiscordGuild = {
   approximate_presence_count?: number
 }
 
+type DiscordBotGuild = DiscordGuild & {
+  owner_id: string
+}
+
 export type DiscordGuildMember = {
   user: {
     id: string
     username: string
     global_name: string | null
     avatar: string | null
+    bot?: boolean
   }
   nick: string | null
   avatar: string | null
@@ -55,6 +60,7 @@ export type DiscordGuildRoleResource = {
   name: string
   position: number
   color: number
+  permissions?: string
 }
 
 export type DiscordGuildChannelResource = {
@@ -206,7 +212,11 @@ async function discordMutation(path: string, method: string, body?: unknown): Pr
     body: body === undefined ? undefined : JSON.stringify(body),
     cache: 'no-store',
   })
-  if (!response.ok) throw new Error(`Discord moderation request failed (${response.status})`)
+  if (!response.ok) {
+    const detail = await response.json().catch(() => null) as { message?: string; code?: number } | null
+    const reason = detail?.message ? `: ${detail.message}` : ''
+    throw new Error(`Discord rejected the moderation action (${response.status}${detail?.code ? ` / ${detail.code}` : ''})${reason}`)
+  }
 }
 
 async function discordJsonMutation<T>(path: string, method: string, body: unknown): Promise<T> {
@@ -276,11 +286,11 @@ export async function getBotGuildResources(guildId: string): Promise<{
   const value = {
     memberRoles: rolePayload
       .filter((role) => role.id !== guildId)
-      .map(({ id, name, position, color }) => ({ id, name, position, color }))
+      .map(({ id, name, position, color, permissions }) => ({ id, name, position, color, permissions }))
       .sort((a, b) => b.position - a.position || a.name.localeCompare(b.name)),
     roles: rolePayload
       .filter((role) => role.id !== guildId && !role.managed)
-      .map(({ id, name, position, color }) => ({ id, name, position, color }))
+      .map(({ id, name, position, color, permissions }) => ({ id, name, position, color, permissions }))
       .sort((a, b) => b.position - a.position || a.name.localeCompare(b.name)),
     channels: channelPayload
       .filter((channel): channel is DiscordGuildChannelPayload & { type: 0 | 2 | 4 | 5 | 13 } => (
@@ -537,6 +547,12 @@ function hasAdministratorAccess(guild: DiscordGuild): boolean {
   } catch {
     return false
   }
+}
+
+export async function getBotGuild(guildId: string): Promise<DiscordBotGuild> {
+  const token = process.env.DISCORD_TOKEN?.trim()
+  if (!token) throw new Error('DISCORD_TOKEN is not configured')
+  return discordRequest<DiscordBotGuild>(`/guilds/${guildId}`, `Bot ${token}`)
 }
 
 function guildIconUrl(guild: DiscordGuild): string | null {

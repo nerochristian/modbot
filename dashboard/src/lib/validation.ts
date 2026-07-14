@@ -55,7 +55,6 @@ export const caseSchema = z.object({
   type: z.enum(['note', 'warn', 'mute', 'timeout', 'kick', 'ban', 'unban']),
   severity: z.enum(['low', 'medium', 'high', 'critical']),
   reason: z.string().min(3, 'Give a reason').max(500),
-  channel: z.string().max(80).nullable().optional(),
   durationHours: z.number().int().min(0).max(8760).nullable().optional(),
   idempotencyKey: z.string().min(8).max(128).regex(/^[A-Za-z0-9._:-]+$/).optional(),
 })

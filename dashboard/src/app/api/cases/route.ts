@@ -156,7 +156,6 @@ export async function POST(request: Request) {
       action: data.type,
       reason: data.reason,
       severity: data.severity,
-      channel: data.channel,
       durationHours,
       idempotencyKey,
     })
@@ -168,7 +167,11 @@ export async function POST(request: Request) {
       )
     }
     if (result.row.execution_status === 'failed') {
-      return apiError('Discord moderation action failed; the failed command was recorded.', 502, { case: response })
+      return apiError(
+        result.row.error_message || 'Discord rejected this moderation action. The failed attempt was recorded.',
+        502,
+        { case: response },
+      )
     }
     const appeal = result.replayed
       ? { eligible: false as const, replayed: true as const }
