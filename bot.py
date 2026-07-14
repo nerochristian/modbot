@@ -1869,6 +1869,7 @@ class ModBot(commands.Bot):
         for guild in self.guilds:
             try:
                 await self.db.init_guild(guild.id)
+                await self._ensure_private_logs(guild)
                 success += 1
             except Exception as e:
                 logger.error(f"[ERR] Failed to init {guild.name}: {e}")
@@ -1921,10 +1922,56 @@ class ModBot(commands.Bot):
 
     # ─── Guild Events ─────────────────────────────────────────────────────
 
+    async def _ensure_private_logs(self, guild: discord.Guild) -> Dict[str, Any]:
+        settings = await self.db.get_settings(guild.id)
+        result = await ensure_private_moderation_logs(guild, settings)
+        updated = result["settings"]
+        if updated != settings:
+            await self.db.update_settings(guild.id, updated)
+        if result["errors"]:
+            logger.warning("Private log setup for %s: %s", guild.name, "; ".join(result["errors"][:5]))
+        return result
+
+    def _guild_onboarding_view(self, guild: discord.Guild) -> discord.ui.LayoutView:
+        base_url = _dashboard_public_url()
+        container = branded_panel_container(
+            title="Docket is ready",
+            description=(
+                f"Thanks for adding Docket to **{guild.name}**. Your private moderation log channels are ready.\n\n"
+                "**Next steps**\n"
+                "â€¢ Open the dashboard to choose modules and staff roles.\n"
+                "â€¢ Review the command directory for moderation, reports, tickets, and AutoMod.\n"
+                "â€¢ Run `/setup` if you want Docket to create the full recommended server structure."
+            ),
+            logo_url=str(self.user.display_avatar.url) if self.user else None,
+            accent_color=Config.COLOR_BRAND,
+        )
+        view = discord.ui.LayoutView(timeout=None)
+        view.add_item(container)
+        view.add_item(discord.ui.Button(label="Open dashboard", url=f"{base_url}/servers"))
+        view.add_item(discord.ui.Button(label="View commands", url=f"{base_url}/commands"))
+        return ensure_layout_view_action_rows(view)
+
+    async def _send_guild_onboarding(self, guild: discord.Guild) -> None:
+        candidates = [guild.system_channel, *guild.text_channels]
+        target = next(
+            (
+                channel for channel in candidates
+                if channel is not None
+                and channel.permissions_for(guild.me).send_messages
+                and channel.permissions_for(guild.me).view_channel
+            ),
+            None,
+        )
+        if target is not None:
+            await target.send(view=self._guild_onboarding_view(guild))
+
     async def on_guild_join(self, guild: discord.Guild):
         """Handle joining a new guild."""
         try:
             await self.db.init_guild(guild.id)
+            await self._ensure_private_logs(guild)
+            await self._send_guild_onboarding(guild)
             logger.info(f"[OK] Joined guild: {guild.name} (ID: {guild.id}, Members: {guild.member_count})")
             await self.update_presence()
         except Exception as e:
