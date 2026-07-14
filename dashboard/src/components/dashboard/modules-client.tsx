@@ -1305,7 +1305,7 @@ const OPERATIONAL_SECTIONS: Record<OperationalSpecial, OperationalSectionDefinit
       register: 'ROUTING / 01',
       title: 'Support routing',
       description: 'Choose where private tickets open, which team can respond, and where closure records land.',
-      keys: ['ticket_category', 'ticket_support_role', 'ticket_log_channel'],
+      keys: ['ticket_category', 'ticket_support_role', 'ticket_log_channel', 'ticket_options'],
     },
   ],
   logging: [
@@ -1501,6 +1501,19 @@ function OperationalField({
     ? resources.roles
     : resources.channels.filter((channel) => (field.channelTypes ?? [0, 5]).includes(channel.type ?? 0))
 
+  if (field.type === 'ticketOptions') {
+    return (
+      <div className="md:col-span-2">
+        <TicketOptionsEditor
+          options={Array.isArray(value) ? value as TicketOption[] : []}
+          disabled={disabled}
+          error={error}
+          onChange={onChange}
+        />
+      </div>
+    )
+  }
+
   if (field.type === 'roleId' || field.type === 'channelId') {
     const kind = field.type === 'roleId' ? 'role' : 'channel'
     return (
@@ -1526,7 +1539,7 @@ function OperationalField({
         <MultiResourcePicker
           field={field}
           resources={fieldResources}
-          selected={Array.isArray(value) ? value : []}
+          selected={Array.isArray(value) ? value as string[] : []}
           loading={resourcesLoading}
           disabled={disabled}
           kind={kind}
@@ -1538,7 +1551,7 @@ function OperationalField({
   }
 
   if (field.type === 'multiSelect') {
-    const selected = Array.isArray(value) ? value : []
+    const selected = Array.isArray(value) ? value as string[] : []
     return (
       <fieldset className="md:col-span-2">
         <legend className="text-sm font-medium text-foreground">{field.label}</legend>
@@ -1583,6 +1596,57 @@ function OperationalField({
         onChange={onChange}
       />
     </div>
+  )
+}
+
+function TicketOptionsEditor({
+  options,
+  disabled,
+  error,
+  onChange,
+}: {
+  options: TicketOption[]
+  disabled: boolean
+  error?: string
+  onChange: (value: TicketOption[]) => void
+}) {
+  const updateOption = (index: number, changes: Partial<TicketOption>) => {
+    onChange(options.map((option, candidate) => candidate === index ? { ...option, ...changes } : option))
+  }
+  const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
+  return (
+    <fieldset>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div><legend className="text-sm font-semibold text-foreground">Panel options and questions</legend><p className="mt-1 text-xs leading-5 text-muted">Build the dropdown members see. Each option opens its own form with up to five questions.</p></div>
+        <Button type="button" size="sm" variant="outline" disabled={disabled || options.length >= 10} onClick={() => onChange([...options, { id: `option-${options.length + 1}`, label: 'New option', description: '', emoji: '', questions: [{ id: 'details', label: 'How can we help?', placeholder: 'Describe what you need…', style: 'paragraph', required: true }] }])}><Plus className="size-4" /> Add option</Button>
+      </div>
+      {error ? <p className="mt-2 text-xs text-danger">{error}</p> : null}
+      <div className="mt-3 space-y-3">
+        {options.map((option, optionIndex) => (
+          <div key={`${option.id}-${optionIndex}`} className="rounded-lg border border-border bg-surface p-4">
+            <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_7rem_auto]">
+              <Field label="Option label"><Input value={option.label} disabled={disabled} maxLength={100} onChange={(event) => updateOption(optionIndex, { label: event.target.value, id: option.id.startsWith('option-') ? slug(event.target.value) || option.id : option.id })} /></Field>
+              <Field label="Short description"><Input value={option.description} disabled={disabled} maxLength={100} onChange={(event) => updateOption(optionIndex, { description: event.target.value })} /></Field>
+              <Field label="Emoji (optional)"><Input value={option.emoji} disabled={disabled} maxLength={64} placeholder="🎫" onChange={(event) => updateOption(optionIndex, { emoji: event.target.value })} /></Field>
+              <button type="button" disabled={disabled || options.length === 1} onClick={() => onChange(options.filter((_, candidate) => candidate !== optionIndex))} className="focus-ring mt-6 grid size-9 place-items-center rounded-md text-muted hover:bg-danger-soft hover:text-danger disabled:opacity-40" aria-label={`Remove ${option.label}`}><Trash2 className="size-4" /></button>
+            </div>
+            <p className="mt-1 font-mono text-[0.625rem] text-muted-2">Option ID: {option.id}</p>
+            <div className="mt-4 space-y-2 border-l-2 border-accent-line pl-3">
+              {option.questions.map((question, questionIndex) => (
+                <div key={`${question.id}-${questionIndex}`} className="grid gap-2 rounded-md bg-surface-2 p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem_7rem_auto] md:items-end">
+                  <Field label={`Question ${questionIndex + 1}`}><Input value={question.label} disabled={disabled} maxLength={45} onChange={(event) => { const questions = option.questions.map((item, candidate) => candidate === questionIndex ? { ...item, label: event.target.value, id: item.id.startsWith('question-') ? slug(event.target.value) || item.id : item.id } : item); updateOption(optionIndex, { questions }) }} /></Field>
+                  <Field label="Placeholder"><Input value={question.placeholder} disabled={disabled} maxLength={100} onChange={(event) => { const questions = option.questions.map((item, candidate) => candidate === questionIndex ? { ...item, placeholder: event.target.value } : item); updateOption(optionIndex, { questions }) }} /></Field>
+                  <Field label="Answer style"><Select value={question.style} disabled={disabled} options={[{ label: 'Short', value: 'short' }, { label: 'Paragraph', value: 'paragraph' }]} onChange={(event) => { const questions = option.questions.map((item, candidate) => candidate === questionIndex ? { ...item, style: event.target.value as 'short' | 'paragraph' } : item); updateOption(optionIndex, { questions }) }} /></Field>
+                  <div className="flex h-10 items-center justify-between rounded-md border border-border bg-surface px-2"><span className="text-xs text-muted">Required</span><Switch checked={question.required} disabled={disabled} label={`Require ${question.label}`} onChange={(required) => { const questions = option.questions.map((item, candidate) => candidate === questionIndex ? { ...item, required } : item); updateOption(optionIndex, { questions }) }} /></div>
+                  <button type="button" disabled={disabled || option.questions.length === 1} onClick={() => updateOption(optionIndex, { questions: option.questions.filter((_, candidate) => candidate !== questionIndex) })} className="focus-ring grid size-9 place-items-center rounded-md text-muted hover:bg-danger-soft hover:text-danger disabled:opacity-40" aria-label={`Remove question ${questionIndex + 1}`}><Trash2 className="size-4" /></button>
+                </div>
+              ))}
+              <Button type="button" size="sm" variant="ghost" disabled={disabled || option.questions.length >= 5} onClick={() => updateOption(optionIndex, { questions: [...option.questions, { id: `question-${option.questions.length + 1}`, label: 'New question', placeholder: '', style: 'short', required: true }] })}><Plus className="size-4" /> Add question</Button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </fieldset>
   )
 }
 
@@ -2010,15 +2074,3 @@ function WhitelistSheet({
     </div>
   )
 }
-  if (field.type === 'ticketOptions') {
-    return (
-      <div className="md:col-span-2">
-        <TicketOptionsEditor
-          options={Array.isArray(value) ? value as TicketOption[] : []}
-          disabled={disabled}
-          error={error}
-          onChange={onChange}
-        />
-      </div>
-    )
-  }
