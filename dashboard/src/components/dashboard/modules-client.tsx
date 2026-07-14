@@ -308,14 +308,12 @@ function CoverageRegister({ modules }: { modules: Module[] }) {
     <Card className="overflow-hidden rounded-lg border-border-strong shadow-none">
       <div className="grid md:grid-cols-[minmax(0,0.9fr)_minmax(0,1.35fr)]">
         <div className="border-b border-border bg-surface-2 p-5 md:border-b-0 md:border-r">
-          <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.16em] text-accent">
-            Live coverage map
-          </p>
+          <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.16em] text-accent">Protection status</p>
           <h2 className="mt-2 font-display text-xl font-semibold text-foreground">
-            Every active system, on one register.
+            What Docket is running right now.
           </h2>
           <p className="mt-2 max-w-md text-sm leading-6 text-muted">
-            Filled marks are running now. Empty marks are available but inactive or waiting for setup.
+            Blue modules are enabled for this server. Gray modules are off and will not process events.
           </p>
         </div>
         <div className="divide-y divide-border bg-surface">
@@ -331,22 +329,24 @@ function CoverageRegister({ modules }: { modules: Module[] }) {
                   </p>
                   <p className="mt-0.5 text-sm font-medium text-foreground">{category}</p>
                 </div>
-                <div className="flex min-w-0 items-center gap-1.5" role="img" aria-label={`${enabled} of ${categoryModules.length} ${category.toLowerCase()} modules enabled`}>
+                <div className="flex min-w-0 flex-wrap items-center gap-1.5" aria-label={`${enabled} of ${categoryModules.length} ${category.toLowerCase()} modules enabled`}>
                   {categoryModules.map((mod) => (
                     <span
                       key={mod.id}
-                      title={`${mod.name}: ${mod.enabled ? 'enabled' : 'disabled'}`}
                       className={cn(
-                        'h-2.5 min-w-3 flex-1 rounded-[2px] border transition-colors',
+                        'inline-flex items-center gap-1.5 rounded-md border px-2 py-1 text-[0.6875rem] font-medium transition-colors',
                         mod.enabled
-                          ? 'border-accent bg-accent'
-                          : 'border-border-strong bg-surface-2',
+                          ? 'border-accent-line bg-accent-soft text-accent'
+                          : 'border-border bg-surface-2 text-muted-2',
                       )}
-                    />
+                    >
+                      <span className={cn('size-1.5 rounded-full', mod.enabled ? 'bg-accent' : 'bg-muted-2')} />
+                      {mod.name}
+                    </span>
                   ))}
                 </div>
-                <span className="w-10 text-right font-mono text-xs tabular-nums text-muted">
-                  {enabled}/{categoryModules.length}
+                <span className="whitespace-nowrap text-right font-mono text-[0.6875rem] tabular-nums text-muted">
+                  {enabled} on · {categoryModules.length - enabled} off
                 </span>
               </div>
             )
@@ -1339,16 +1339,6 @@ const OPERATIONAL_SECTIONS: Record<OperationalSpecial, OperationalSectionDefinit
   ],
 }
 
-const OPERATIONAL_FLOW: Record<OperationalSpecial, [string, string, string]> = {
-  aimod: ['Request', 'Safety check', 'Response or action'],
-  antiraid: ['Join burst', 'Score & contain', 'Incident record'],
-  verification: ['Member joins', 'Waiting gate', 'Verified access'],
-  tickets: ['Member opens', 'Private support', 'Transcript logged'],
-  logging: ['Server event', 'Classify stream', 'Route to channel'],
-  welcome_card: ['Member joins', 'Render card', 'Post welcome'],
-  autoroles: ['Human joins', 'Check verification', 'Assign role'],
-}
-
 function operationalInitialForm(mod: Module): OperationalForm {
   const initial: OperationalForm = {}
   for (const field of mod.fields) {
@@ -1434,8 +1424,6 @@ function OperationalModuleSheet({
       }}
       className="space-y-5"
     >
-      <OperationalFlow special={special} form={form} fields={mod.fields} />
-
       {resourcesError && (
         <div className="flex flex-col gap-2 border border-warning/40 bg-warning-soft px-3 py-2.5 text-xs text-warning sm:flex-row sm:items-center sm:justify-between">
           <span>Discord channels and roles could not be refreshed. Existing selections are preserved.</span>
@@ -1485,54 +1473,6 @@ function OperationalModuleSheet({
         </Button>
       </div>
     </form>
-  )
-}
-
-function OperationalFlow({
-  special,
-  form,
-  fields,
-}: {
-  special: OperationalSpecial
-  form: OperationalForm
-  fields: ModuleField[]
-}) {
-  const steps = OPERATIONAL_FLOW[special]
-  const configured = fields.filter((field) => {
-    const value = form[field.key]
-    return Array.isArray(value) ? value.length > 0 : value !== '' && value !== false
-  }).length
-  const background = special === 'welcome_card' && typeof form.welcome_bg_url === 'string'
-    && form.welcome_bg_url.startsWith('https://')
-    ? form.welcome_bg_url
-    : ''
-  return (
-    <div
-      className="relative overflow-hidden rounded-lg border border-accent-line bg-surface px-4 py-4"
-      style={background ? {
-        backgroundImage: `linear-gradient(90deg, color-mix(in srgb, var(--surface) 96%, transparent), color-mix(in srgb, var(--surface) 78%, transparent)), url(${JSON.stringify(background)})`,
-        backgroundPosition: 'center',
-        backgroundSize: 'cover',
-      } : undefined}
-    >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="font-mono text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-accent">Live workflow</p>
-          <p className="mt-1 text-sm font-medium text-foreground">
-            {configured} of {fields.length} controls configured
-          </p>
-          <p className="mt-1 text-xs leading-5 text-muted">Changes take effect from the bot settings store after this sheet is saved.</p>
-        </div>
-        <ol className="grid min-w-0 flex-1 grid-cols-3 border border-border bg-surface-2 lg:max-w-2xl">
-          {steps.map((step, index) => (
-            <li key={step} className="relative border-r border-border px-3 py-3 last:border-r-0">
-              <span className="font-mono text-[0.625rem] text-muted-2">0{index + 1}</span>
-              <p className="mt-1 text-xs font-medium leading-4 text-foreground">{step}</p>
-            </li>
-          ))}
-        </ol>
-      </div>
-    </div>
   )
 }
 

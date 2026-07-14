@@ -412,17 +412,6 @@ function RuleBuilder({
           />
         </div>
 
-        <div className="flex items-center justify-between rounded-lg border border-border bg-surface-2/50 px-3 py-2.5">
-          <div>
-            <p className="text-sm font-medium text-foreground">Enabled</p>
-            <p className="text-xs text-muted">Start filtering as soon as this rule is saved.</p>
-          </div>
-          <Switch
-            checked={form.enabled}
-            onChange={(v) => setForm({ ...form, enabled: v })}
-            label="Enable rule"
-          />
-        </div>
       </div>
     </Modal>
   )
