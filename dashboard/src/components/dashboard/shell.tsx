@@ -109,7 +109,7 @@ export function DashboardShell({
   const [mobileOpen, setMobileOpen] = useState(false)
   return (
     <div className="flex min-h-full">
-      <Sidebar permissions={permissions} />
+      <Sidebar permissions={permissions} guilds={guilds} currentGuild={currentGuild} />
       <MobileDrawer open={mobileOpen} onClose={() => setMobileOpen(false)} permissions={permissions} />
       <div className="flex min-w-0 flex-1 flex-col">
         <Topbar onOpenMobile={() => setMobileOpen(true)} guilds={guilds} currentGuild={currentGuild} />

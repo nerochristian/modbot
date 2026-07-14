@@ -27,7 +27,11 @@ export function Topbar({
         <Menu className="size-5" />
       </button>
 
-      <GuildSwitcher guilds={guilds} current={currentGuild} />
+      <div className="lg:hidden"><GuildSwitcher guilds={guilds} current={currentGuild} /></div>
+      <div className="hidden min-w-0 items-center gap-2 lg:flex">
+        <span className="grid size-7 place-items-center rounded-md bg-accent-soft text-accent"><span className="font-display text-[0.625rem] font-bold">{currentGuild.name.slice(0, 2).toUpperCase()}</span></span>
+        <span className="max-w-40 truncate text-sm font-semibold text-foreground">{currentGuild.name}</span>
+      </div>
       <div className="hidden min-w-0 md:block">
         <CommandSearch />
       </div>

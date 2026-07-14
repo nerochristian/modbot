@@ -1,11 +1,16 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import Image from 'next/image'
+import { usePathname, useRouter } from 'next/navigation'
+import { Home, Loader2, Plus } from 'lucide-react'
+import { useState } from 'react'
 import { Logo } from '@/components/logo'
 import { NAV_ITEMS, type NavItem } from '@/lib/nav'
 import type { Permission } from '@/lib/rbac'
 import { cn } from '@/lib/utils'
+import type { ManagedGuild } from '@/lib/discord'
+import { useToast } from '@/components/ui/toast'
 
 const SECTION_LABELS: Record<string, string> = {
   main: 'Moderation',
@@ -65,11 +70,59 @@ function NavigationLink({ item }: { item: NavItem }) {
   )
 }
 
-export function Sidebar({ permissions = [] }: { permissions?: readonly Permission[] }) {
+function ServerRail({ guilds, current }: { guilds: ManagedGuild[]; current: ManagedGuild }) {
+  const router = useRouter()
+  const toast = useToast()
+  const [loading, setLoading] = useState<string | null>(null)
+
+  async function selectGuild(guildId: string) {
+    if (guildId === current.id) return
+    setLoading(guildId)
+    try {
+      const response = await fetch('/api/guilds/select', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guildId }),
+      })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || 'Could not switch servers')
+      router.refresh()
+    } catch (reason) {
+      toast.error('Server was not changed', reason instanceof Error ? reason.message : 'Try again.')
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  return (
+    <div className="flex w-[68px] shrink-0 flex-col items-center border-r border-border bg-bg py-3">
+      <Link href="/servers" aria-label="All servers" className="focus-ring grid size-10 place-items-center rounded-xl bg-surface-2 text-muted transition-colors hover:text-foreground">
+        <Home className="size-4" />
+      </Link>
+      <div className="my-3 h-px w-8 bg-border" />
+      <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-2">
+        {guilds.filter((guild) => guild.installed).map((guild) => {
+          const active = guild.id === current.id
+          return (
+            <button key={guild.id} type="button" title={guild.name} aria-label={`Open ${guild.name}`} aria-current={active ? 'page' : undefined} onClick={() => void selectGuild(guild.id)} className={cn('focus-ring group relative grid size-11 shrink-0 place-items-center overflow-visible rounded-xl border transition-all duration-200', active ? 'border-accent bg-accent-soft shadow-[0_0_24px_-9px_var(--accent)]' : 'border-border bg-surface hover:rounded-lg hover:border-accent-line')}>
+              {active ? <span className="absolute -left-[9px] h-7 w-1 rounded-r-full bg-accent" /> : null}
+              {loading === guild.id ? <Loader2 className="size-4 animate-spin text-accent" /> : guild.iconUrl ? <Image src={guild.iconUrl} alt="" width={44} height={44} unoptimized className="size-full rounded-[inherit] object-cover" /> : <span className="font-display text-xs font-bold text-accent">{guild.name.slice(0, 2).toUpperCase()}</span>}
+            </button>
+          )
+        })}
+        <Link href="/servers" aria-label="Add or manage servers" className="focus-ring grid size-11 shrink-0 place-items-center rounded-xl border border-dashed border-border-strong text-muted transition-colors hover:border-accent hover:bg-accent-soft hover:text-accent"><Plus className="size-4" /></Link>
+      </div>
+    </div>
+  )
+}
+
+export function Sidebar({ permissions = [], guilds, currentGuild }: { permissions?: readonly Permission[]; guilds: ManagedGuild[]; currentGuild: ManagedGuild }) {
   const visible = NAV_ITEMS.filter((i) => permissions.includes(i.permission))
 
   return (
-    <aside className="hidden h-screen w-[250px] shrink-0 flex-col border-r border-border bg-surface lg:flex">
+    <aside className="hidden h-screen w-[318px] shrink-0 border-r border-border bg-surface lg:flex">
+      <ServerRail guilds={guilds} current={currentGuild} />
+      <div className="flex min-w-0 flex-1 flex-col">
       {/* Logo */}
       <div className="flex h-16 items-center border-b border-border px-5">
         <Link href="/dashboard" aria-label="Dashboard home" className="flex items-center">
@@ -104,6 +157,7 @@ export function Sidebar({ permissions = [] }: { permissions?: readonly Permissio
           <span className="relative inline-flex size-2 rounded-full bg-success" />
         </span>
         <span className="text-xs font-medium text-muted">All systems online</span>
+      </div>
       </div>
     </aside>
   )
