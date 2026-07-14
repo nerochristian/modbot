@@ -13,9 +13,10 @@ export default async function ServersPage() {
 
   return (
     <div className="relative min-h-full overflow-hidden bg-bg">
-      <div className="grid-texture pointer-events-none absolute inset-0 opacity-40 [mask-image:linear-gradient(to_bottom,black,transparent_75%)]" />
-      <header className="relative border-b border-border bg-bg/80 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
+      <div className="soft-grid pointer-events-none absolute inset-0 opacity-35 [mask-image:linear-gradient(to_bottom,black,transparent_72%)]" />
+      <div className="blue-orb pointer-events-none absolute -right-40 -top-40 size-[32rem] rounded-full opacity-40" />
+      <header className="relative px-3 pt-3 sm:px-5">
+        <div className="glass-panel mx-auto flex h-16 max-w-7xl items-center justify-between rounded-2xl px-4 sm:px-5">
           <Logo />
           <div className="flex items-center gap-3">
             <span className="hidden text-sm text-muted sm:block">{user.name}</span>
@@ -23,11 +24,11 @@ export default async function ServersPage() {
           </div>
         </div>
       </header>
-      <main className="relative mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
-        <div className="mb-10 max-w-2xl">
-          <p className="font-mono text-[0.6875rem] font-semibold uppercase tracking-[0.18em] text-accent">Server switchboard</p>
-          <h1 className="mt-3 font-display text-3xl font-semibold tracking-[-0.02em] text-foreground sm:text-4xl">Where are you moderating?</h1>
-          <p className="mt-3 text-base leading-7 text-muted">
+      <main className="relative mx-auto max-w-7xl px-4 py-12 sm:px-6 sm:py-16 lg:px-8">
+        <div className="mb-12 max-w-3xl">
+          <p className="text-sm font-semibold text-accent">Your workspaces</p>
+          <h1 className="mt-3 font-display text-4xl font-semibold tracking-[-0.04em] text-foreground sm:text-5xl">Choose a server to manage.</h1>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-muted sm:text-lg">
             Open a connected server or install Docket in another server you manage. Every dashboard view stays scoped to the server you choose.
           </p>
         </div>

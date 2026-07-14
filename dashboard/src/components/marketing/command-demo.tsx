@@ -159,7 +159,7 @@ export function CommandDemo() {
   }, [])
 
   return (
-    <div className="overflow-hidden rounded-lg border border-border bg-card">
+    <div className="overflow-hidden rounded-2xl border border-border bg-card/90 shadow-2xl shadow-black/15">
       {/* Channel header */}
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
         <span className="font-mono text-[0.6875rem] text-muted-2">#mod-commands</span>
@@ -202,11 +202,11 @@ export function CommandDemo() {
               </div>
 
               {/* Member dossier */}
-              <div className="mt-2 rounded-md border border-border bg-surface">
+              <div className="mt-2 rounded-xl border border-border bg-surface/85">
                 {/* Identity row */}
                 <div className="flex items-center gap-3 border-b border-border p-3">
                   <span
-                    className="grid size-9 shrink-0 place-items-center rounded-md font-mono text-xs font-bold text-white"
+                    className="grid size-9 shrink-0 place-items-center rounded-xl font-mono text-xs font-bold text-white"
                     style={{ backgroundColor: selected.color }}
                   >
                     {selected.initials}
@@ -272,7 +272,7 @@ export function CommandDemo() {
                 type="button"
                 onClick={() => lookup(m)}
                 className={
-                  'focus-ring rounded-md border px-2.5 py-1.5 font-mono text-xs transition-colors ' +
+                  'focus-ring rounded-lg border px-2.5 py-1.5 font-mono text-xs transition-colors ' +
                   (active
                     ? 'border-accent-line bg-accent-soft text-accent'
                     : 'border-border bg-surface text-muted hover:border-accent-line hover:text-foreground')

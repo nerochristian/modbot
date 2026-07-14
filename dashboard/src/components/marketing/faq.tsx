@@ -44,14 +44,14 @@ export function Faq() {
         <p className="mt-4 text-lg text-muted">Everything you need to know before you file the first case.</p>
       </div>
 
-      <div className="mt-12 divide-y divide-border rounded-lg border border-border bg-card">
+      <div className="mt-12 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-card/85 shadow-2xl shadow-black/10">
         {FAQS.map((item, i) => {
           const isOpen = open === i
           return (
             <div key={item.q}>
               <button
                 onClick={() => setOpen(isOpen ? null : i)}
-                className="focus-ring flex w-full items-center justify-between gap-4 px-5 py-4 text-left"
+                className="focus-ring flex w-full items-center justify-between gap-4 px-6 py-5 text-left transition-colors hover:bg-surface-2/50"
                 aria-expanded={isOpen}
               >
                 <span className="text-sm font-medium text-foreground sm:text-base">{item.q}</span>
@@ -69,7 +69,7 @@ export function Faq() {
                 )}
               >
                 <div className="overflow-hidden">
-                  <p className="px-5 pb-5 text-sm leading-relaxed text-muted">{item.a}</p>
+                  <p className="px-6 pb-6 text-sm leading-relaxed text-muted">{item.a}</p>
                 </div>
               </div>
             </div>

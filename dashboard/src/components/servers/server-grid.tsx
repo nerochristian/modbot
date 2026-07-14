@@ -94,8 +94,8 @@ export function ServerGrid({ guilds }: { guilds: ManagedGuild[] }) {
   }
 
   return (
-    <div>
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+    <div className="rounded-3xl border border-border bg-surface/45 p-4 shadow-2xl shadow-black/10 backdrop-blur-xl sm:p-6">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-border pb-5">
         <p className="text-sm text-muted">
           <span className="font-semibold text-foreground">{installed}</span> connected ·{' '}
           <span className="font-semibold text-foreground">{guilds.length - installed}</span> available to add
@@ -148,22 +148,22 @@ export function ServerGrid({ guilds }: { guilds: ManagedGuild[] }) {
           </p>
         </div>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {guilds.map((guild) => (
             <article
               key={guild.id}
               className={cn(
-                'group relative overflow-hidden rounded-2xl border bg-surface p-5 transition-all hover:-translate-y-0.5 hover:border-border-strong hover:shadow-xl hover:shadow-black/5',
-                guild.installed ? 'border-mint/25' : 'border-border',
+                'lift-card group relative overflow-hidden rounded-2xl border bg-card/85 p-5',
+                guild.installed ? 'border-accent-line' : 'border-border',
               )}
             >
-              <div className={cn('absolute inset-x-0 top-0 h-px', guild.installed ? 'bg-mint' : 'bg-border')} />
+              <div className={cn('absolute inset-x-5 top-0 h-px', guild.installed ? 'bg-gradient-to-r from-transparent via-accent to-transparent' : 'bg-border')} />
               <div className="flex items-start gap-4">
                 <ServerMark guild={guild} />
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate font-semibold text-foreground">{guild.name}</h2>
                   <p className="mt-1 flex items-center gap-1.5 text-xs text-muted">
-                    <span className={cn('size-1.5 rounded-full', guild.installed ? 'bg-mint' : 'bg-muted-2')} />
+                    <span className={cn('size-1.5 rounded-full', guild.installed ? 'bg-accent shadow-[0_0_10px_var(--color-accent)]' : 'bg-muted-2')} />
                     {guild.installed ? 'Docket connected' : 'Docket not installed'}
                   </p>
                 </div>
