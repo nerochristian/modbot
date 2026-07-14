@@ -25,6 +25,47 @@ from utils.transcript import generate_html_transcript
 from utils.server_setup import module_enabled
 
 
+DEFAULT_TICKET_OPTIONS: list[dict[str, Any]] = [
+    {"id": "general", "label": "Support", "description": "Help with an issue", "emoji": "🛠️", "questions": [{"id": "details", "label": "How can we help you?", "placeholder": "Describe your issue…", "style": "paragraph", "required": True}]},
+    {"id": "report", "label": "Report", "description": "Report a user or problem", "emoji": "🚨", "questions": [{"id": "reported", "label": "Who are you reporting?", "placeholder": "Name or Discord ID", "style": "short", "required": True}, {"id": "reason", "label": "What happened?", "placeholder": "Explain the situation…", "style": "paragraph", "required": True}, {"id": "evidence", "label": "Evidence (optional)", "placeholder": "Message or media links", "style": "paragraph", "required": False}]},
+    {"id": "appeal", "label": "Appeal", "description": "Appeal a punishment", "emoji": "📝", "questions": [{"id": "punishment", "label": "What are you appealing?", "placeholder": "Ban, timeout, warning…", "style": "short", "required": True}, {"id": "appeal", "label": "Why should it be lifted?", "placeholder": "Give staff the relevant context…", "style": "paragraph", "required": True}]},
+    {"id": "other", "label": "Other", "description": "Anything else", "emoji": "💬", "questions": [{"id": "details", "label": "How can we help you?", "placeholder": "Describe what you need…", "style": "paragraph", "required": True}]},
+]
+
+
+def _normalize_ticket_options(value: Any) -> list[dict[str, Any]]:
+    source = value if isinstance(value, list) else DEFAULT_TICKET_OPTIONS
+    normalized: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for raw in source[:10]:
+        if not isinstance(raw, dict):
+            continue
+        option_id = str(raw.get("id") or "").strip().lower()
+        label = str(raw.get("label") or "").strip()
+        if not re.fullmatch(r"[a-z0-9_-]{2,40}", option_id) or option_id in seen or not label:
+            continue
+        questions: list[dict[str, Any]] = []
+        for question in raw.get("questions", [])[:5] if isinstance(raw.get("questions"), list) else []:
+            if not isinstance(question, dict):
+                continue
+            question_id = str(question.get("id") or "").strip().lower()
+            question_label = str(question.get("label") or "").strip()
+            if not question_id or not question_label:
+                continue
+            questions.append({
+                "id": question_id[:40],
+                "label": question_label[:45],
+                "placeholder": str(question.get("placeholder") or "")[:100],
+                "style": "short" if question.get("style") == "short" else "paragraph",
+                "required": question.get("required") is not False,
+            })
+        if not questions:
+            continue
+        seen.add(option_id)
+        normalized.append({"id": option_id, "label": label[:100], "description": str(raw.get("description") or "")[:100], "emoji": str(raw.get("emoji") or "")[:64], "questions": questions})
+    return normalized or [dict(option) for option in DEFAULT_TICKET_OPTIONS]
+
+
 class TicketPanelView(discord.ui.LayoutView):
     def __init__(
         self,
