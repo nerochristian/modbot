@@ -1751,7 +1751,7 @@ function FieldsSheet({
 
 function validateModuleForm(
   mod: Module,
-  form: Record<string, string | boolean | string[]>,
+  form: Record<string, string | boolean | string[] | TicketOption[]>,
 ): Record<string, string> {
   const errors: Record<string, string> = {}
   for (const field of mod.fields) {
@@ -1771,7 +1771,7 @@ function validateModuleForm(
       continue
     }
     if (field.type === 'ticketOptions') {
-      const options = Array.isArray(value) ? value as TicketOption[] : []
+      const options = Array.isArray(value) ? value as unknown as TicketOption[] : []
       if (options.length < 1 || options.length > 10) errors[field.key] = 'Add between 1 and 10 ticket options'
       else if (options.some((option) => !option.id.trim() || !option.label.trim() || option.questions.length < 1 || option.questions.length > 5 || option.questions.some((question) => !question.label.trim()))) {
         errors[field.key] = 'Every option needs a label, unique ID, and 1–5 named questions'

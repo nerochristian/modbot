@@ -71,7 +71,7 @@ export function SiteHeader({ user }: { user: HeaderUser | null }) {
                   <span className="hidden max-w-28 truncate text-sm font-semibold text-foreground sm:block">{user.name}</span>
                 </span>
               </DropdownTrigger>
-              <DropdownMenu align="right" className="w-64">
+              <DropdownMenu align="end" className="w-64">
                 <DropdownLabel><span className="block truncate text-foreground">{user.name}</span><span className="block truncate font-normal text-muted-2">{user.email}</span></DropdownLabel>
                 <DropdownSeparator />
                 <Link href="/dashboard"><DropdownItem icon={LayoutDashboard}>Dashboard</DropdownItem></Link>

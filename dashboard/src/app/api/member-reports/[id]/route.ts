@@ -2,7 +2,7 @@ import { apiError, handleError, ok, requireMutation } from '@/lib/api'
 import { botQuery } from '@/lib/bot-db'
 import { recordGuildAudit } from '@/lib/bot-audit'
 
-export async function PATCH(request: Request, ctx: RouteContext<'/api/member-reports/[id]'>) {
+export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
   try {
     const guard = await requireMutation(request, 'reports.write')
     if (guard instanceof Response) return guard
