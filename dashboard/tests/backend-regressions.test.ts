@@ -69,6 +69,35 @@ test('dashboard access requires live Discord Administrator authority', () => {
   assert.equal(existsSync(path.join(root, 'src/app/api/admin')), false)
 })
 
+test('member directory uses Discord identity and real moderation records without standing', () => {
+  const root = path.resolve(import.meta.dirname, '..')
+  const membersRoute = readFileSync(path.join(root, 'src/app/api/members/route.ts'), 'utf8')
+  const memberRoute = readFileSync(path.join(root, 'src/app/api/members/[id]/route.ts'), 'utf8')
+  const membersClient = readFileSync(path.join(root, 'src/components/dashboard/members-client.tsx'), 'utf8')
+  const avatar = readFileSync(path.join(root, 'src/components/ui/avatar.tsx'), 'utf8')
+  const userMenu = readFileSync(path.join(root, 'src/components/dashboard/user-menu.tsx'), 'utf8')
+  const casesClient = readFileSync(path.join(root, 'src/components/dashboard/cases-client.tsx'), 'utf8')
+  const schema = readFileSync(path.join(root, 'prisma/schema.prisma'), 'utf8')
+  const marketing = readFileSync(path.join(root, 'src/components/marketing/command-demo.tsx'), 'utf8')
+
+  assert.match(membersRoute, /discordMemberAvatarUrl\(guild\.id, member\)/)
+  assert.match(memberRoute, /getBotGuildMemberRoles\(guild\.id\)/)
+  assert.match(memberRoute, /FROM cases[\s\S]{0,160}guild_id = \$1::bigint AND user_id = \$2::bigint/)
+  assert.match(membersClient, /function MemberCaseFile/)
+  assert.match(membersClient, /\/dashboard\/cases\?member=\$\{member\.id\}&new=1&type=\$\{action\}/)
+  assert.match(membersClient, /Past moderation records/)
+  assert.match(avatar, /import Image from 'next\/image'/)
+  assert.match(avatar, /src=\{src\}/)
+  assert.match(userMenu, /src=\{user\.avatarUrl\}/)
+  assert.match(casesClient, /searchParams\.get\('type'\)/)
+  assert.ok(DEFAULT_TABLE_COLUMNS.members.includes('status'))
+  assert.equal(DEFAULT_TABLE_COLUMNS.members.includes('standing'), false)
+  assert.doesNotMatch(membersRoute, /\bstanding\b/i)
+  assert.doesNotMatch(membersClient, /\bstanding\b/i)
+  assert.doesNotMatch(schema, /\bstanding\b/i)
+  assert.doesNotMatch(marketing, /\bstanding\b/i)
+})
+
 test('parseListQuery accepts only finite positive integers and caps page size', () => {
   const valid = parseListQuery(new URL('https://dashboard.test/api?page=4&pageSize=250'), {
     maxPageSize: 100,
