@@ -8,7 +8,8 @@ from typing import Optional
 import discord
 
 from config import Config
-from .models import Action, RuleMatch
+from utils.embeds import Colors, compact_kv_lines
+from .models import Action, RuleMatch, Severity
 
 
 def _trim(value: object, limit: int) -> str:
@@ -16,6 +17,55 @@ def _trim(value: object, limit: int) -> str:
     if len(text) <= limit:
         return text or "None"
     return text[: max(0, limit - 3)].rstrip() + "..."
+
+
+def _friendly_rule(rule: str) -> str:
+    labels = {
+        "badwords": "Blocked words",
+        "caps": "Excessive caps",
+        "duplicates": "Duplicate messages",
+        "emoji_spam": "Emoji spam",
+        "fast_messages": "Fast messages",
+        "invites": "Discord invites",
+        "links": "Suspicious links",
+        "mentions": "Mention spam",
+        "new_accounts": "New account",
+        "scams": "Scam protection",
+        "spam": "Message spam",
+        "unicode_spam": "Unicode spam",
+        "wall_spam": "Message wall",
+    }
+    clean = str(rule or "").strip().lower()
+    return labels.get(clean, clean.replace("_", " ").replace("-", " ").title() or "Unknown rule")
+
+
+def _friendly_action(action: Action) -> str:
+    return {
+        Action.NONE: "No additional action",
+        Action.LOG: "Logged",
+        Action.WARN: "Warned",
+        Action.MUTE: "Timed out",
+        Action.TIMEOUT: "Timed out",
+        Action.KICK: "Kicked",
+        Action.BAN: "Banned",
+    }[action]
+
+
+def _severity_color(severity: Severity, *, failed: bool = False) -> int:
+    if failed:
+        return Colors.ERROR
+    if severity is Severity.CRITICAL:
+        return Colors.DARK_RED
+    if severity is Severity.HIGH:
+        return Colors.ERROR
+    if severity is Severity.MEDIUM:
+        return Colors.WARNING
+    return Colors.INFO
+
+
+def _message_preview(content: object, limit: int = 1000) -> str:
+    text = _trim(content, limit)
+    return "\n".join(f"> {line}" for line in text.splitlines())
 
 
 class AutoModLogger:
@@ -36,26 +86,33 @@ class AutoModLogger:
         if message.guild is None:
             return
         embed = discord.Embed(
-            title="AutoMod Action",
-            color=getattr(Config, "COLOR_WARNING", 0xF59E0B),
+            title="AutoMod action failed" if error else ("AutoMod removed a message" if deleted else "AutoMod rule triggered"),
+            color=_severity_color(match.severity, failed=bool(error)),
             timestamp=datetime.now(timezone.utc),
         )
-        embed.add_field(name="User", value=f"{message.author.mention}\n`{message.author.id}`", inline=True)
-        embed.add_field(name="Channel", value=getattr(message.channel, "mention", str(message.channel)), inline=True)
-        embed.add_field(name="Rule", value=f"`{match.rule}`", inline=True)
-        embed.add_field(name="Action", value=action.value, inline=True)
-        embed.add_field(name="Deleted", value="yes" if deleted else "no", inline=True)
+        rows: list[tuple[str, object]] = [
+            ("Member", f"{message.author.mention} (`{message.author.id}`)"),
+            ("Channel", getattr(message.channel, "mention", str(message.channel))),
+            ("Rule", _friendly_rule(match.rule)),
+            ("Action", _friendly_action(action)),
+            ("Message removed", "Yes" if deleted else "No"),
+        ]
         if offense_count is not None:
-            embed.add_field(name="Recent Offenses", value=str(offense_count), inline=True)
+            rows.append(("Recent offenses", offense_count))
         if case_number:
-            embed.add_field(name="Case", value=f"#{case_number}", inline=True)
-        embed.add_field(name="Reason", value=_trim(match.reason, 900), inline=False)
-        if match.evidence:
-            embed.add_field(name="Evidence", value=_trim(", ".join(match.evidence), 900), inline=False)
+            rows.append(("Case", f"#{case_number}"))
+        rows.append(("Reason", _trim(match.reason, 500)))
+        embed.description = compact_kv_lines(rows, max_value_length=500)
         if message.content:
-            embed.add_field(name="Message", value=_trim(message.content, 1000), inline=False)
+            embed.add_field(name="Message", value=_message_preview(message.content), inline=False)
+        evidence = _trim(", ".join(match.evidence), 900) if match.evidence else ""
+        if evidence and evidence.casefold() != str(message.content or "").strip().casefold():
+            embed.add_field(name="Matched content", value=_message_preview(evidence, 900), inline=False)
         if error:
             embed.add_field(name="Error", value=_trim(error, 900), inline=False)
+        avatar_url = getattr(getattr(message.author, "display_avatar", None), "url", None)
+        if avatar_url:
+            embed.set_thumbnail(url=avatar_url)
         await self._send(message.guild, embed)
 
     async def log_member_action(
@@ -68,17 +125,69 @@ class AutoModLogger:
         error: Optional[str] = None,
     ) -> None:
         embed = discord.Embed(
-            title="AutoMod Member Alert",
-            color=getattr(Config, "COLOR_WARNING", 0xF59E0B),
+            title="AutoMod member alert failed" if error else "AutoMod member alert",
+            color=_severity_color(match.severity, failed=bool(error)),
             timestamp=datetime.now(timezone.utc),
         )
-        embed.add_field(name="User", value=f"{member.mention}\n`{member.id}`", inline=True)
-        embed.add_field(name="Rule", value=f"`{match.rule}`", inline=True)
-        embed.add_field(name="Action", value=action.value, inline=True)
-        embed.add_field(name="Reason", value=_trim(match.reason, 900), inline=False)
+        embed.description = compact_kv_lines(
+            [
+                ("Member", f"{member.mention} (`{member.id}`)"),
+                ("Rule", _friendly_rule(match.rule)),
+                ("Action", _friendly_action(action)),
+                ("Reason", _trim(match.reason, 500)),
+            ],
+            max_value_length=500,
+        )
         if error:
             embed.add_field(name="Error", value=_trim(error, 900), inline=False)
+        avatar_url = getattr(getattr(member, "display_avatar", None), "url", None)
+        if avatar_url:
+            embed.set_thumbnail(url=avatar_url)
         await self._send(guild, embed)
+
+    def build_user_notice(
+        self,
+        message: discord.Message,
+        match: RuleMatch,
+        action: Action,
+        *,
+        deleted: bool,
+        case_number: Optional[int] = None,
+        appeal_instructions: str = "",
+    ) -> discord.Embed:
+        guild = message.guild
+        server_name = guild.name if guild is not None else "this server"
+        embed = discord.Embed(
+            title="AutoMod notice",
+            description=f"One of your messages in **{server_name}** triggered an automatic moderation rule.",
+            color=_severity_color(match.severity),
+            timestamp=datetime.now(timezone.utc),
+        )
+        rows: list[tuple[str, object]] = [
+            ("Rule", _friendly_rule(match.rule)),
+            ("Action", _friendly_action(action)),
+            ("Reason", _trim(match.reason, 500)),
+            ("Message removed", "Yes" if deleted else "No"),
+        ]
+        if case_number:
+            rows.append(("Case", f"#{case_number}"))
+        embed.add_field(name="What happened", value=compact_kv_lines(rows, max_value_length=500), inline=False)
+        if message.content:
+            embed.add_field(name="Your message", value=_message_preview(message.content), inline=False)
+
+        appeal = str(appeal_instructions or "").strip()
+        embed.add_field(
+            name="Appeal or questions",
+            value=_trim(appeal, 900) if appeal else "Contact the server's moderation team if you believe this action was a mistake.",
+            inline=False,
+        )
+        guild_icon = getattr(getattr(guild, "icon", None), "url", None)
+        if guild_icon:
+            embed.set_author(name=server_name, icon_url=guild_icon)
+        else:
+            embed.set_author(name=server_name)
+        embed.set_footer(text="This notice was sent automatically by Docket AutoMod.")
+        return embed
 
     async def _send(self, guild: discord.Guild, embed: discord.Embed) -> None:
         logging_cog = getattr(self.bot, "get_cog", lambda name: None)("Logging")

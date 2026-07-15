@@ -163,7 +163,14 @@ class AutoMod(commands.Cog):
             error=result.error if result else None,
             offense_count=offense_count,
         )
-        await self._notify_user(message, match, action, settings)
+        await self._notify_user(
+            message,
+            match,
+            action,
+            settings,
+            deleted=deleted,
+            case_number=result.case_number if result else None,
+        )
         if settings.get("automod_public_feedback", False) and deleted:
             try:
                 await message.channel.send(
@@ -173,15 +180,29 @@ class AutoMod(commands.Cog):
             except discord.HTTPException:
                 pass
 
-    async def _notify_user(self, message: discord.Message, match: RuleMatch, action: Action, settings: dict[str, Any]) -> None:
+    async def _notify_user(
+        self,
+        message: discord.Message,
+        match: RuleMatch,
+        action: Action,
+        settings: dict[str, Any],
+        *,
+        deleted: bool,
+        case_number: Optional[int] = None,
+    ) -> None:
         if not settings.get("automod_notify_users", True):
             return
         appeal = str(settings.get("automod_appeal_instructions") or "").strip()
-        appeal_text = f"\nAppeal: {appeal}" if appeal else ""
+        embed = self.logger.build_user_notice(
+            message,
+            match,
+            action,
+            deleted=deleted,
+            case_number=case_number,
+            appeal_instructions=appeal,
+        )
         try:
-            await message.author.send(
-                f"AutoMod in {message.guild.name}: {match.reason}. Action: {action.value}.{appeal_text}"
-            )
+            await message.author.send(embed=embed)
         except (discord.Forbidden, discord.HTTPException):
             pass
 
