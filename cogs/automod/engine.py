@@ -21,7 +21,7 @@ class AutoModEngine:
         self.stats: Counter[str] = Counter()
         self.rule_hits: Counter[str] = Counter()
         self.recent: Deque[ViolationRecord] = deque(maxlen=300)
-        self._last_trigger: dict[tuple[int, int, str], float] = {}
+        self._last_action: dict[tuple[int, int, str], float] = {}
         self._joins: dict[int, Deque[tuple[float, int]]] = defaultdict(deque)
         self._offenses: dict[tuple[int, int], Deque[float]] = defaultdict(deque)
 
@@ -40,8 +40,6 @@ class AutoModEngine:
                 continue
             if dry_run:
                 return match
-            if self._is_cooling_down(message, match, settings):
-                return None
             self.stats["violations_detected"] += 1
             self.rule_hits[match.rule] += 1
             return match
@@ -215,24 +213,31 @@ class AutoModEngine:
     def enabled_modules(self, settings: dict[str, Any]) -> list[str]:
         return [module for module, key in MODULE_SETTING_KEYS.items() if settings.get(key, False)]
 
-    def _is_cooling_down(self, message: discord.Message, match: RuleMatch, settings: dict[str, Any]) -> bool:
+    def claim_action(self, message: discord.Message, match: RuleMatch, settings: dict[str, Any]) -> bool:
+        """Claim the punishment/notification slot for a detected violation.
+
+        Detection and message deletion must never be throttled. This cooldown
+        only prevents repeated punishments, DMs, and public/log-channel noise
+        when one member sends the same violation several times in quick
+        succession.
+        """
         guild_id = message.guild.id if message.guild else 0
         user_id = message.author.id
         cooldown = 3600 if match.rule == "new_accounts" else max(1, min(300, int(settings.get("automod_violation_cooldown", 8))))
         key = (guild_id, user_id, match.rule)
         now = time.monotonic()
-        if now - self._last_trigger.get(key, 0) < cooldown:
-            return True
-        self._last_trigger[key] = now
-        return False
+        if now - self._last_action.get(key, 0) < cooldown:
+            return False
+        self._last_action[key] = now
+        return True
 
     def prune(self) -> None:
         now = time.monotonic()
         for rule in self.rules:
             rule.prune(now)
-        for key, created_at in list(self._last_trigger.items()):
+        for key, created_at in list(self._last_action.items()):
             if now - created_at > 3600:
-                self._last_trigger.pop(key, None)
+                self._last_action.pop(key, None)
         for key, entries in list(self._offenses.items()):
             while entries and now - entries[0] > 2592000:
                 entries.popleft()

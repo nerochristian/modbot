@@ -84,7 +84,12 @@ class AutoMod(commands.Cog):
         match = await self.engine.evaluate(message, settings)
         if match is None:
             return
-        await self._handle_message_match(message, match, settings)
+        await self._handle_message_match(
+            message,
+            match,
+            settings,
+            apply_action=self.engine.claim_action(message, match, settings),
+        )
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member) -> None:
@@ -121,23 +126,52 @@ class AutoMod(commands.Cog):
         except Exception:
             logger.exception("Failed to record dashboard member leave for guild %s", member.guild.id)
 
-    async def _handle_message_match(self, message: discord.Message, match: RuleMatch, settings: dict[str, Any]) -> None:
+    async def _handle_message_match(
+        self,
+        message: discord.Message,
+        match: RuleMatch,
+        settings: dict[str, Any],
+        *,
+        apply_action: bool = True,
+    ) -> None:
         deleted = False
+        deletion_error: Optional[str] = None
         if self.engine.should_delete_message(match, settings):
             try:
                 await message.delete()
                 deleted = True
-            except (discord.Forbidden, discord.NotFound, discord.HTTPException):
-                deleted = False
+            except discord.NotFound:
+                # Another moderation integration may have removed it first.
+                deleted = True
+            except discord.Forbidden:
+                deletion_error = "Discord denied message deletion. Check Manage Messages and channel permission overrides."
+            except discord.HTTPException as exc:
+                deletion_error = f"Discord API error while deleting the message: {exc}"
 
         base_action = self.engine.resolve_action(match, settings)
-        action, duration_override, offense_count = self.engine.escalated_action(message.guild.id, message.author.id, base_action, settings)
-        rule_duration = self.engine.resolve_duration(match, settings)
-        duration_override = duration_override or rule_duration
+        action = Action.LOG
+        duration_override = None
+        offense_count = None
         result = None
-        if isinstance(message.author, discord.Member):
-            result = await self.punishments.apply(message.guild, message.author, action, match, settings, duration_override=duration_override)
-            action = result.action
+        if apply_action:
+            action, duration_override, offense_count = self.engine.escalated_action(
+                message.guild.id,
+                message.author.id,
+                base_action,
+                settings,
+            )
+            rule_duration = self.engine.resolve_duration(match, settings)
+            duration_override = duration_override or rule_duration
+            if isinstance(message.author, discord.Member):
+                result = await self.punishments.apply(
+                    message.guild,
+                    message.author,
+                    action,
+                    match,
+                    settings,
+                    duration_override=duration_override,
+                )
+                action = result.action
 
         self.engine.record_action(message, match, action)
         try:
@@ -154,24 +188,27 @@ class AutoMod(commands.Cog):
             )
         except Exception:
             logger.exception("Failed to record AutoMod dashboard event for guild %s", message.guild.id)
-        await self.logger.log_message_action(
-            message,
-            match,
-            action,
-            deleted=deleted,
-            case_number=result.case_number if result else None,
-            error=result.error if result else None,
-            offense_count=offense_count,
-        )
-        await self._notify_user(
-            message,
-            match,
-            action,
-            settings,
-            deleted=deleted,
-            case_number=result.case_number if result else None,
-        )
-        if settings.get("automod_public_feedback", False) and deleted:
+        action_error = result.error if result else None
+        if apply_action or deletion_error:
+            await self.logger.log_message_action(
+                message,
+                match,
+                action,
+                deleted=deleted,
+                case_number=result.case_number if result else None,
+                error=deletion_error or action_error,
+                offense_count=offense_count,
+            )
+        if apply_action:
+            await self._notify_user(
+                message,
+                match,
+                action,
+                settings,
+                deleted=deleted,
+                case_number=result.case_number if result else None,
+            )
+        if apply_action and settings.get("automod_public_feedback", False) and deleted:
             try:
                 await message.channel.send(
                     f"{message.author.mention}, AutoMod removed your message: {match.reason}",

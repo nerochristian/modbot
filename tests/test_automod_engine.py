@@ -164,6 +164,20 @@ class AutoModEngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(match)
         self.assertEqual(match.rule, "spam")
 
+    async def test_violation_cooldown_never_suppresses_detection(self) -> None:
+        settings = base_settings()
+        settings["automod_violation_cooldown"] = 300
+        first_message = FakeMessage("bad phrase", user_id=55)
+        second_message = FakeMessage("bad phrase", user_id=55)
+
+        first = await self.engine.evaluate(first_message, settings)
+        second = await self.engine.evaluate(second_message, settings)
+
+        self.assertIsNotNone(first)
+        self.assertIsNotNone(second)
+        self.assertTrue(self.engine.claim_action(first_message, first, settings))
+        self.assertFalse(self.engine.claim_action(second_message, second, settings))
+
 
 class AutoModUtilityTests(unittest.TestCase):
     def test_domain_matching_does_not_allow_suffix_confusion(self) -> None:
@@ -190,6 +204,44 @@ class AutoModUtilityTests(unittest.TestCase):
 
 
 class AutoModStorageTests(unittest.IsolatedAsyncioTestCase):
+    async def test_settings_reads_are_cached_and_return_isolated_copies(self) -> None:
+        class CountingDatabase:
+            def __init__(self) -> None:
+                self.reads = 0
+
+            async def get_settings(self, guild_id: int) -> dict[str, object]:
+                self.reads += 1
+                return {"automod_enabled": True, "automod_badwords": ["blocked phrase"]}
+
+        database = CountingDatabase()
+        storage = AutoModStorage(SimpleNamespace(db=database), cache_ttl_seconds=60)
+
+        first = await storage.get_settings(123)
+        first["automod_enabled"] = False
+        second = await storage.get_settings(123)
+
+        self.assertEqual(database.reads, 1)
+        self.assertTrue(second["automod_enabled"])
+
+    async def test_stale_settings_are_used_when_refresh_fails(self) -> None:
+        class FlakyDatabase:
+            def __init__(self) -> None:
+                self.fail = False
+
+            async def get_settings(self, guild_id: int) -> dict[str, object]:
+                if self.fail:
+                    raise RuntimeError("database unavailable")
+                return {"automod_enabled": True}
+
+        database = FlakyDatabase()
+        storage = AutoModStorage(SimpleNamespace(db=database), cache_ttl_seconds=1)
+        expected = await storage.get_settings(123)
+        cached_at, cached = storage._cache[123]
+        storage._cache[123] = (cached_at - 2, cached)
+        database.fail = True
+
+        self.assertEqual(await storage.get_settings(123), expected)
+
     async def test_database_save_is_read_back_before_success(self) -> None:
         class FakeDatabase:
             def __init__(self) -> None:
