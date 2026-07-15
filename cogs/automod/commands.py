@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Literal, Optional
 
@@ -56,6 +57,19 @@ class AutoMod(commands.Cog):
     @cleanup_loop.before_loop
     async def before_cleanup_loop(self) -> None:
         await self.bot.wait_until_ready()
+        guilds = list(getattr(self.bot, "guilds", ()))
+        if guilds:
+            results = await asyncio.gather(
+                *(self._settings(guild.id) for guild in guilds),
+                return_exceptions=True,
+            )
+            failures = sum(isinstance(result, Exception) for result in results)
+            if failures:
+                logger.error(
+                    "Failed to pre-load AutoMod settings for %s of %s guilds",
+                    failures,
+                    len(guilds),
+                )
 
     async def _guard(self, interaction: discord.Interaction) -> bool:
         if interaction.guild is None:
@@ -190,15 +204,23 @@ class AutoMod(commands.Cog):
             logger.exception("Failed to record AutoMod dashboard event for guild %s", message.guild.id)
         action_error = result.error if result else None
         if apply_action or deletion_error:
-            await self.logger.log_message_action(
-                message,
-                match,
-                action,
-                deleted=deleted,
-                case_number=result.case_number if result else None,
-                error=deletion_error or action_error,
-                offense_count=offense_count,
-            )
+            try:
+                await self.logger.log_message_action(
+                    message,
+                    match,
+                    action,
+                    deleted=deleted,
+                    case_number=result.case_number if result else None,
+                    error=deletion_error or action_error,
+                    offense_count=offense_count,
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to send AutoMod action log for guild %s, channel %s, message %s",
+                    message.guild.id,
+                    getattr(message.channel, "id", None),
+                    getattr(message, "id", None),
+                )
         if apply_action:
             await self._notify_user(
                 message,

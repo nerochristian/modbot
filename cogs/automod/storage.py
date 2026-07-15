@@ -56,6 +56,7 @@ class AutoModStorage:
                     "Failed to refresh AutoMod settings for guild %s; using the last known configuration",
                     guild_id,
                 )
+                self._cache[guild_id] = (now, cached[1])
                 return dict(cached[1])
 
             self._cache[guild_id] = (now, settings)

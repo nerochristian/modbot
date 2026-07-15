@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from collections import Counter, defaultdict, deque
 from typing import Any, Deque, Optional
@@ -13,6 +14,9 @@ from .models import Action, Category, RuleMatch, Severity, ViolationRecord
 from .rules import ALL_RULES, Rule
 from .utils import id_list
 from utils.checks import is_bot_owner_id
+
+
+logger = logging.getLogger(__name__)
 
 
 class AutoModEngine:
@@ -34,7 +38,16 @@ class AutoModEngine:
             try:
                 match = await rule.check(message, settings, dry_run=dry_run)
             except Exception:
-                self.stats[f"{rule.name}_errors"] += 1
+                error_key = f"{rule.name}_errors"
+                self.stats[error_key] += 1
+                error_count = self.stats[error_key]
+                if error_count <= 3 or error_count % 100 == 0:
+                    logger.exception(
+                        "AutoMod rule %s failed while checking guild %s (failure %s)",
+                        rule.name,
+                        getattr(message.guild, "id", None),
+                        error_count,
+                    )
                 continue
             if match is None:
                 continue

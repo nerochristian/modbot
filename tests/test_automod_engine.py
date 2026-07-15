@@ -3,10 +3,11 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 from cogs.automod import (
     PANEL_PAGES,
+    AutoMod,
     AutoModPanel,
     _compact_duration,
     _parse_duration,
@@ -177,6 +178,43 @@ class AutoModEngineTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(second)
         self.assertTrue(self.engine.claim_action(first_message, first, settings))
         self.assertFalse(self.engine.claim_action(second_message, second, settings))
+
+
+class AutoModMessageHandlingTests(unittest.IsolatedAsyncioTestCase):
+    async def test_cooldown_suppresses_repeated_action_but_still_deletes(self) -> None:
+        message = SimpleNamespace(
+            guild=SimpleNamespace(id=1),
+            author=SimpleNamespace(id=55),
+            channel=SimpleNamespace(id=20),
+            delete=AsyncMock(),
+        )
+        match = RuleMatch(
+            rule="badwords",
+            reason="Blocked word or phrase",
+            severity=Severity.HIGH,
+            category=Category.CONTENT,
+        )
+        engine = SimpleNamespace(
+            should_delete_message=lambda detected, settings: True,
+            resolve_action=lambda detected, settings: Action.WARN,
+            record_action=Mock(),
+        )
+        database = SimpleNamespace(record_automod_event=AsyncMock())
+        cog = AutoMod.__new__(AutoMod)
+        cog.bot = SimpleNamespace(db=database)
+        cog.engine = engine
+        cog.punishments = SimpleNamespace(apply=AsyncMock())
+        cog.logger = SimpleNamespace(log_message_action=AsyncMock())
+        cog._notify_user = AsyncMock()
+
+        await cog._handle_message_match(message, match, base_settings(), apply_action=False)
+
+        message.delete.assert_awaited_once_with()
+        cog.punishments.apply.assert_not_awaited()
+        cog.logger.log_message_action.assert_not_awaited()
+        cog._notify_user.assert_not_awaited()
+        database.record_automod_event.assert_awaited_once()
+        self.assertEqual(database.record_automod_event.await_args.args[6], Action.LOG.value)
 
 
 class AutoModUtilityTests(unittest.TestCase):
