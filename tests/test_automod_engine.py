@@ -15,6 +15,7 @@ from cogs.automod import (
 from cogs.automod import AutoModEngine, Category, domain_matches, normalize_domain
 from cogs.automod.logging import AutoModLogger
 from cogs.automod.models import Action, RuleMatch, Severity
+from cogs.automod.storage import AutoModStorage
 
 
 class FakePermissions:
@@ -186,6 +187,50 @@ class AutoModUtilityTests(unittest.TestCase):
         )
         self.assertIsNone(_parse_threshold_pair("1/30", count_range=(2, 20), window_range=(5, 300)))
         self.assertIsNone(_parse_threshold_pair("5/301", count_range=(2, 20), window_range=(5, 300)))
+
+
+class AutoModStorageTests(unittest.IsolatedAsyncioTestCase):
+    async def test_database_save_is_read_back_before_success(self) -> None:
+        class FakeDatabase:
+            def __init__(self) -> None:
+                self.settings: dict[int, dict[str, object]] = {}
+
+            async def get_settings(self, guild_id: int) -> dict[str, object]:
+                return dict(self.settings.get(guild_id, {}))
+
+            async def update_settings(self, guild_id: int, settings: dict[str, object]) -> None:
+                self.settings[guild_id] = dict(settings)
+
+        database = FakeDatabase()
+        storage = AutoModStorage(SimpleNamespace(db=database))
+
+        saved = await storage.update_settings(
+            123,
+            {
+                "automod_enabled": True,
+                "automod_spam_enabled": False,
+                "automod_badwords": ["blocked phrase"],
+            },
+        )
+        restarted_storage = AutoModStorage(SimpleNamespace(db=database))
+        reloaded = await restarted_storage.get_settings(123)
+
+        self.assertFalse(saved["automod_spam_enabled"])
+        self.assertFalse(reloaded["automod_spam_enabled"])
+        self.assertEqual(reloaded["automod_badwords"], ["blocked phrase"])
+
+    async def test_database_save_fails_if_written_value_is_missing(self) -> None:
+        class DroppingDatabase:
+            async def get_settings(self, guild_id: int) -> dict[str, object]:
+                return {}
+
+            async def update_settings(self, guild_id: int, settings: dict[str, object]) -> None:
+                return None
+
+        storage = AutoModStorage(SimpleNamespace(db=DroppingDatabase()))
+
+        with self.assertRaisesRegex(RuntimeError, "automod_enabled"):
+            await storage.update_settings(123, {"automod_enabled": False})
 
 
 class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):

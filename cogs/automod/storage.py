@@ -32,7 +32,18 @@ class AutoModStorage:
         db = getattr(self.bot, "db", None)
         if db is not None and hasattr(db, "update_settings"):
             await db.update_settings(guild_id, current)
-            return await self.get_settings(guild_id)
+            persisted = await self.get_settings(guild_id)
+            mismatched = [
+                key
+                for key, expected in changes.items()
+                if (key.startswith("automod_") or key in {"ignored_roles", "ignored_channels"})
+                and persisted.get(key) != expected
+            ]
+            if mismatched:
+                raise RuntimeError(
+                    "AutoMod settings were not persisted: " + ", ".join(sorted(mismatched))
+                )
+            return persisted
         payload = self._read_file()
         payload[str(guild_id)] = current
         self.path.parent.mkdir(parents=True, exist_ok=True)

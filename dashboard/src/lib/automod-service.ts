@@ -125,7 +125,15 @@ export async function updateAutomodRule(guildId: string, idOrAlias: string, inpu
     }
     changes.automod_bypass_roles = ids
   }
-  if (Object.keys(changes).length > 0) await patchBotGuildSettings(guildId, changes)
+  if (Object.keys(changes).length > 0) {
+    const persisted = await patchBotGuildSettings(guildId, changes)
+    const mismatched = Object.entries(changes)
+      .filter(([key, value]) => JSON.stringify(persisted[key]) !== JSON.stringify(value))
+      .map(([key]) => key)
+    if (mismatched.length > 0) {
+      throw new Error(`AutoMod settings were not persisted: ${mismatched.sort().join(', ')}`)
+    }
+  }
   return { id: definition.id, ...input, trigger: definition.id }
 }
 

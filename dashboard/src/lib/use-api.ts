@@ -22,7 +22,9 @@ export function useApi<T>(url: string, options?: { refreshInterval?: number; ena
       abortRef.current = controller
       if (!silent) setState((s) => ({ ...s, loading: true, error: null }))
       try {
-        const res = await fetch(url, { signal: controller.signal })
+        // Dashboard data is live operational state. Never reuse a browser or
+        // intermediary cache after a bot/dashboard restart or a settings save.
+        const res = await fetch(url, { signal: controller.signal, cache: 'no-store' })
         if (!res.ok) {
           const body = await res.json().catch(() => ({}))
           throw new Error(body.error || `Request failed (${res.status})`)

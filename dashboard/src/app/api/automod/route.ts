@@ -5,7 +5,11 @@ export async function GET() {
   try {
     const guard = await requireUser('automod.read')
     if (guard instanceof Response) return guard
-    return ok(await listAutomodRules(guard.selectedGuildId!))
+    return ok(await listAutomodRules(guard.selectedGuildId!), {
+      headers: {
+        'Cache-Control': 'private, no-store, no-cache, must-revalidate',
+      },
+    })
   } catch (error) {
     return handleError(error)
   }
