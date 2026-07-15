@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
 from cogs.automod import (
     PANEL_PAGES,
@@ -12,6 +13,8 @@ from cogs.automod import (
     _parse_threshold_pair,
 )
 from cogs.automod import AutoModEngine, Category, domain_matches, normalize_domain
+from cogs.automod.logging import AutoModLogger
+from cogs.automod.models import Action, RuleMatch, Severity
 
 
 class FakePermissions:
@@ -183,6 +186,81 @@ class AutoModUtilityTests(unittest.TestCase):
         )
         self.assertIsNone(_parse_threshold_pair("1/30", count_range=(2, 20), window_range=(5, 300)))
         self.assertIsNone(_parse_threshold_pair("5/301", count_range=(2, 20), window_range=(5, 300)))
+
+
+class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
+    def _message(self):
+        guild = SimpleNamespace(id=1, name="The Supreme People", icon=SimpleNamespace(url="https://example.com/guild.png"))
+        author = SimpleNamespace(
+            id=1051999048644698193,
+            mention="<@1051999048644698193>",
+            display_avatar=SimpleNamespace(url="https://example.com/member.png"),
+        )
+        channel = SimpleNamespace(id=20, mention="<#20>")
+        return SimpleNamespace(guild=guild, author=author, channel=channel, content="@everyone")
+
+    async def test_staff_log_uses_compact_moderation_layout(self) -> None:
+        logging_cog = SimpleNamespace(
+            get_log_channel=AsyncMock(return_value=object()),
+            safe_send_log=AsyncMock(return_value=True),
+        )
+        bot = SimpleNamespace(get_cog=lambda name: logging_cog if name == "Logging" else None)
+        logger = AutoModLogger(bot)
+        message = self._message()
+        match = RuleMatch(
+            rule="badwords",
+            reason="Blocked word or phrase",
+            severity=Severity.HIGH,
+            category=Category.CONTENT,
+            evidence=("@everyone",),
+        )
+
+        await logger.log_message_action(
+            message,
+            match,
+            Action.TIMEOUT,
+            deleted=True,
+            case_number=63,
+            offense_count=1,
+        )
+
+        embed = logging_cog.safe_send_log.await_args.args[1]
+        self.assertEqual(embed.title, "AutoMod removed a message")
+        self.assertIn("**Member:** <@1051999048644698193> (`1051999048644698193`)", embed.description)
+        self.assertIn("**Rule:** Blocked words", embed.description)
+        self.assertIn("**Action:** Timed out", embed.description)
+        self.assertIn("**Case:** #63", embed.description)
+        self.assertEqual([field.name for field in embed.fields], ["Message"])
+        self.assertEqual(embed.fields[0].value, "> @everyone")
+        self.assertEqual(embed.thumbnail.url, "https://example.com/member.png")
+
+    async def test_user_notice_is_a_clean_server_branded_embed(self) -> None:
+        logger = AutoModLogger(SimpleNamespace())
+        message = self._message()
+        match = RuleMatch(
+            rule="badwords",
+            reason="Blocked word or phrase",
+            severity=Severity.HIGH,
+            category=Category.CONTENT,
+        )
+
+        embed = logger.build_user_notice(
+            message,
+            match,
+            Action.TIMEOUT,
+            deleted=True,
+            case_number=63,
+            appeal_instructions="Open a ticket if you think this was a mistake.",
+        )
+
+        self.assertEqual(embed.title, "AutoMod notice")
+        self.assertEqual(embed.author.name, "The Supreme People")
+        self.assertIn("**The Supreme People**", embed.description)
+        self.assertEqual([field.name for field in embed.fields], ["What happened", "Your message", "Appeal or questions"])
+        self.assertIn("**Action:** Timed out", embed.fields[0].value)
+        self.assertEqual(embed.fields[1].value, "> @everyone")
+        self.assertEqual(embed.fields[2].value, "Open a ticket if you think this was a mistake.")
+        self.assertEqual(embed.footer.text, "This notice was sent automatically by Docket AutoMod.")
 
 
 class AutoModPanelTests(unittest.IsolatedAsyncioTestCase):

@@ -7,7 +7,6 @@ from typing import Optional
 
 import discord
 
-from config import Config
 from utils.embeds import Colors, compact_kv_lines
 from .models import Action, RuleMatch, Severity
 
