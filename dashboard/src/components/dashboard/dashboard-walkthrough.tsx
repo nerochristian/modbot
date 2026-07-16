@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, ArrowRight, Blocks, Check, Gavel, Radar, ShieldCheck, X } from 'lucide-react'
 import { Button, buttonVariants } from '@/components/ui/button'
@@ -52,10 +52,18 @@ export function DashboardWalkthrough({
 
   useEffect(() => {
     if (restartToken > 0 || window.localStorage.getItem(storageKey) !== 'complete') {
-      setStep(0)
-      setOpen(true)
+      const timer = window.setTimeout(() => {
+        setStep(0)
+        setOpen(true)
+      }, 0)
+      return () => window.clearTimeout(timer)
     }
   }, [restartToken, storageKey])
+
+  const finish = useCallback(() => {
+    window.localStorage.setItem(storageKey, 'complete')
+    setOpen(false)
+  }, [storageKey])
 
   useEffect(() => {
     if (!open) return
@@ -71,12 +79,7 @@ export function DashboardWalkthrough({
       document.body.style.overflow = previous
       window.removeEventListener('keydown', onKeyDown)
     }
-  }, [open, step])
-
-  function finish() {
-    window.localStorage.setItem(storageKey, 'complete')
-    setOpen(false)
-  }
+  }, [finish, open, step])
 
   if (!open) return null
   const current = STEPS[step]
