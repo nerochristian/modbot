@@ -552,15 +552,15 @@ class Help(commands.Cog):
             self._help_row(
                 icon="📖",
                 title="Commands",
-                description=commands_description,
+                description=commands_description if command else "Browse every slash and prefix command.",
                 button_label="Commands",
                 url=self._commands_url(command),
             ),
             discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
             self._help_row(
-                icon="💻",
+                icon="🖥️",
                 title="Dashboard",
-                description="Manage Docket's settings.",
+                description="Manage modules, staff, logs, and server settings.",
                 button_label="Go to Dashboard",
                 url=f"{self._public_base_url()}/dashboard",
             ),
@@ -568,7 +568,7 @@ class Help(commands.Cog):
             self._help_row(
                 icon="❓",
                 title="Need Help?",
-                description="Open support and troubleshooting.",
+                description="Open setup help and troubleshooting.",
                 button_label="Support Server",
                 url=self._support_url(),
             ),

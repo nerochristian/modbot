@@ -91,6 +91,17 @@ class HelpSystemTests(unittest.TestCase):
                 "https://discord.gg/docket",
             ],
         )
+        text = "\n".join(
+            child.content
+            for section in sections
+            for child in section.children
+            if isinstance(child, discord.ui.TextDisplay)
+        )
+        self.assertIn("📖 **Commands**", text)
+        self.assertIn("🖥️ **Dashboard**", text)
+        self.assertIn("❓ **Need Help?**", text)
+        self.assertNotIn("ð", text)
+        self.assertNotIn("â", text)
 
 
 if __name__ == "__main__":
