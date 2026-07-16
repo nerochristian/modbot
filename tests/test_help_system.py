@@ -97,11 +97,32 @@ class HelpSystemTests(unittest.TestCase):
             for child in section.children
             if isinstance(child, discord.ui.TextDisplay)
         )
-        self.assertIn("📖 **Commands**", text)
-        self.assertIn("🖥️ **Dashboard**", text)
-        self.assertIn("❓ **Need Help?**", text)
+        self.assertIn("## 📖 Commands\n-# Browse every slash and prefix command.", text)
+        self.assertIn("## 🖥️ Dashboard\n-# Manage modules, staff, logs", text)
+        self.assertIn("## ❓ Need Help?\n-# Open setup help", text)
         self.assertNotIn("ð", text)
         self.assertNotIn("â", text)
+
+    def test_website_help_omits_support_without_a_real_server(self) -> None:
+        help_cog = Help(SimpleNamespace())
+        with patch.dict(
+            "os.environ",
+            {
+                "DASHBOARD_PUBLIC_URL": "https://docket.example",
+                "SUPPORT_SERVER_URL": "",
+            },
+        ):
+            view = help_cog._website_help_view()
+
+        container = view.children[0]
+        sections = [
+            child for child in container.children
+            if isinstance(child, discord.ui.Section)
+        ]
+        self.assertEqual(
+            [section.accessory.label for section in sections],
+            ["Commands", "Go to Dashboard"],
+        )
 
 
 if __name__ == "__main__":
