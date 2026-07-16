@@ -362,7 +362,7 @@ class PrefixCommands(commands.Cog):
             await self._toggle_role(ctx, member, role)
             return
 
-        prefix = self._ctx_prefix(ctx)
+        prefix = PrefixCommands._ctx_prefix(ctx)
         usage = (
             f"`{prefix}role add <member> <role>`\n"
             f"`{prefix}role remove <member> <role>`\n"
@@ -381,7 +381,7 @@ class PrefixCommands(commands.Cog):
     ):
         """Add a role to a user."""
         if role is None:
-            usage = f"Usage: `{self._ctx_prefix(ctx)}role add <member> <role>`"
+            usage = f"Usage: `{PrefixCommands._ctx_prefix(ctx)}role add <member> <role>`"
             await self._send_role_embed(ctx, ModEmbed.error("Missing Role", usage))
             return
 
@@ -410,7 +410,7 @@ class PrefixCommands(commands.Cog):
     ):
         """Remove a role from a user."""
         if role is None:
-            usage = f"Usage: `{self._ctx_prefix(ctx)}role remove <member> <role>`"
+            usage = f"Usage: `{PrefixCommands._ctx_prefix(ctx)}role remove <member> <role>`"
             await self._send_role_embed(ctx, ModEmbed.error("Missing Role", usage))
             return
 
@@ -439,7 +439,7 @@ class PrefixCommands(commands.Cog):
     ):
         """Toggle a role on a user."""
         if role is None:
-            usage = f"Usage: `{self._ctx_prefix(ctx)}role toggle <member> <role>`"
+            usage = f"Usage: `{PrefixCommands._ctx_prefix(ctx)}role toggle <member> <role>`"
             await self._send_role_embed(ctx, ModEmbed.error("Missing Role", usage))
             return
 

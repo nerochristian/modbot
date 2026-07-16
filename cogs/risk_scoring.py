@@ -48,7 +48,7 @@ class RiskEngine:
         now = datetime.now(timezone.utc)
 
         # Account age
-        age_days = (now - member.created_at.replace(tzinfo=None)).days
+        age_days = (now - self._as_utc(member.created_at)).days
         if age_days < 7:
             factors["account_age"] = 15
             details["account_age_days"] = age_days
@@ -60,7 +60,7 @@ class RiskEngine:
 
         # Join recency
         if member.joined_at:
-            join_hours = (now - member.joined_at.replace(tzinfo=None)).total_seconds() / 3600
+            join_hours = (now - self._as_utc(member.joined_at)).total_seconds() / 3600
             if join_hours < 1:
                 factors["join_recent"] = 12
             elif join_hours < 24:
@@ -118,6 +118,13 @@ class RiskEngine:
             details=details,
             suggested_action=action,
         )
+
+    @staticmethod
+    def _as_utc(value: datetime) -> datetime:
+        """Normalize Discord timestamps without mixing aware and naive values."""
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc)
 
     async def _count_cases_by_action(self, guild_id: int, user_id: int, action: str, reason_substr: str) -> int:
         try:
