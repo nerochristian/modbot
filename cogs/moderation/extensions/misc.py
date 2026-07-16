@@ -491,21 +491,22 @@ class MiscCommands:
 
         options = WelcomeCardOptions(
             accent_color=card_accent,
-            welcome_label=f"{system_name} - Moderation",
+            welcome_label="WELCOME",
             custom_bg_url=settings.get("welcome_bg_url")
         )
+        member_count = member.guild.member_count or len(member.guild.members)
 
         def build_embed(image_filename: Optional[str] = None) -> discord.Embed:
             embed = discord.Embed(
-                title=f"\N{INVERTED EXCLAMATION MARK}Welcome to {server_name}!",
+                title=f"Welcome to {server_name}!",
                 description=(
-                    f"**User:** {member.mention}\n"
-                    f"**Joined On:** <t:{ts}:D> at <t:{ts}:t>"
+                    f"Say hello to {member.mention}. You are member **#{member_count:,}**.\n"
+                    f"Joined <t:{ts}:R>"
                 ),
                 color=accent,
                 timestamp=datetime.now(timezone.utc),
             )
-            embed.set_author(name=f"{system_name} - {server_name}")
+            embed.set_author(name=system_name)
             if image_filename:
                 embed.set_image(url=f"attachment://{image_filename}")
             else:

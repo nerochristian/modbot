@@ -70,7 +70,10 @@ except Exception:
     HTML_TEMPLATE = _DEFAULT_TEMPLATE
 
 TRANSCRIPT_STORAGE_DIR = Path(
-    os.getenv("TRANSCRIPT_STORAGE_DIR", str(Path.cwd() / "data" / "transcripts"))
+    os.getenv(
+        "TRANSCRIPT_STORAGE_DIR",
+        str(Path(__file__).resolve().parents[1] / "data" / "transcripts"),
+    )
 )
 
 

@@ -665,19 +665,20 @@ def _render_welcome_card_sync(
     
     draw = ImageDraw.Draw(card)
     
-    display_name = (username.upper() if username else display_name.upper())
+    display_name = display_name.upper()
 
     # ── Text WELCOME ───────────────────────────────────────────────────────
-    w_bb = _get_textbbox(draw, "WELCOME", font_welcome)
+    headline = _text_fit(draw, (pill_text or "WELCOME").upper(), font_welcome, W - 40)
+    w_bb = _get_textbbox(draw, headline, font_welcome)
     w_w, w_h = w_bb[2] - w_bb[0], w_bb[3] - w_bb[1]
     
     wx = (W - w_w) // 2
     wy = av_y + AV - (w_h // 2) + 10
     
     # Subtle drop shadow
-    draw.text((wx + 3, wy + 3), "WELCOME", font=font_welcome, fill=(0, 0, 0, 200))
+    draw.text((wx + 3, wy + 3), headline, font=font_welcome, fill=(0, 0, 0, 200))
     # Main text
-    draw.text((wx, wy), "WELCOME", font=font_welcome, fill=(255, 255, 255, 255))
+    draw.text((wx, wy), headline, font=font_welcome, fill=(255, 255, 255, 255))
     
     # ── Text Username ──────────────────────────────────────────────────────
     display_name = _text_fit(draw, display_name, font_user, W - 40)
