@@ -21,6 +21,7 @@ import {
   Trash2,
   UserCheck,
   UserPlus,
+  WandSparkles,
   X,
   type LucideIcon,
 } from 'lucide-react'
@@ -31,7 +32,7 @@ import { Badge } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Select } from '@/components/ui/select'
 import { Field, Input } from '@/components/ui/input'
-import { ConfirmDialog } from '@/components/ui/modal'
+import { ConfirmDialog, Modal } from '@/components/ui/modal'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { useToast } from '@/components/ui/toast'
 import { useConfigStore } from '@/lib/store'
@@ -118,6 +119,8 @@ export function ModulesClient() {
   const [toggling, setToggling] = useState<string | null>(null)
   const [editing, setEditing] = useState<Module | null>(null)
   const [pendingWhitelist, setPendingWhitelist] = useState<Module | null>(null)
+  const [pendingVerification, setPendingVerification] = useState<Module | null>(null)
+  const [autoSettingVerification, setAutoSettingVerification] = useState(false)
 
   const modules = useMemo(() => data?.data ?? [], [data])
   const filtered = useMemo(() => {
@@ -169,7 +172,35 @@ export function ModulesClient() {
       setPendingWhitelist(mod)
       return
     }
+    if (mod.id === 'verification' && next && !verificationIsConfigured(mod)) {
+      setPendingVerification(mod)
+      return
+    }
     void toggle(mod, next)
+  }
+
+  function requestSettings(mod: Module) {
+    if (mod.id === 'verification' && !verificationIsConfigured(mod)) {
+      setPendingVerification(mod)
+      return
+    }
+    setEditing((current) => current?.id === mod.id ? null : mod)
+  }
+
+  async function autoSetupVerification() {
+    setAutoSettingVerification(true)
+    try {
+      const response = await fetch('/api/modules/verification/setup', { method: 'POST' })
+      const body = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(body.error || 'Automatic verification setup failed')
+      toast.success('Verification is ready', `${body.restrictedChannels ?? 0} channels were protected and the verification panel is live.`)
+      setPendingVerification(null)
+      await refetch()
+    } catch (error) {
+      toast.error('Verification setup failed', error instanceof Error ? error.message : 'Try again in a moment.')
+    } finally {
+      setAutoSettingVerification(false)
+    }
   }
 
   if (loading && !data) {
@@ -276,7 +307,7 @@ export function ModulesClient() {
               toggling={toggling}
               editingId={editing?.id ?? null}
               onToggle={requestToggle}
-              onOpenSettings={(mod) => setEditing((current) => current?.id === mod.id ? null : mod)}
+              onOpenSettings={requestSettings}
               onCloseSettings={() => setEditing(null)}
               onSaved={() => {
                 setEditing(null)
@@ -300,6 +331,45 @@ export function ModulesClient() {
         confirmLabel="Enable whitelist"
         destructive
       />
+      <Modal
+        open={Boolean(pendingVerification)}
+        onClose={() => !autoSettingVerification && setPendingVerification(null)}
+        title="Set up verification automatically?"
+        description="Docket can create the roles, verification channels, private logs, and panel, then hide the rest of the server from unverified members."
+        size="md"
+        footer={
+          <>
+            <Button
+              variant="ghost"
+              disabled={autoSettingVerification}
+              onClick={() => {
+                const mod = pendingVerification
+                setPendingVerification(null)
+                if (mod) setEditing(mod)
+              }}
+            >
+              Configure manually
+            </Button>
+            <Button loading={autoSettingVerification} onClick={() => void autoSetupVerification()}>
+              <WandSparkles className="size-4" /> Set up automatically
+            </Button>
+          </>
+        }
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[
+            ['01', 'Create roles', 'Verified and Unverified roles are created or reused.'],
+            ['02', 'Protect channels', 'Unverified members only see the verification entry point.'],
+            ['03', 'Post the panel', 'The verification button and private staff log go live.'],
+          ].map(([number, title, copy]) => (
+            <div key={number} className="rounded-lg border border-border bg-surface-2 p-3">
+              <span className="font-mono text-[0.625rem] font-bold text-accent">{number}</span>
+              <p className="mt-2 text-sm font-semibold text-foreground">{title}</p>
+              <p className="mt-1 text-xs leading-5 text-muted">{copy}</p>
+            </div>
+          ))}
+        </div>
+      </Modal>
     </>
   )
 }
@@ -1288,13 +1358,19 @@ const OPERATIONAL_SECTIONS: Record<OperationalSpecial, OperationalSectionDefinit
   ],
   verification: [
     {
-      register: 'MEMBER / 01',
+      register: 'METHOD / 01',
+      title: 'Human check',
+      description: 'Choose whether members verify inside Discord or through the Cloudflare-protected website.',
+      keys: ['verification_method'],
+    },
+    {
+      register: 'MEMBER / 02',
       title: 'Member path',
       description: 'Connect the waiting role, completion role, verification panel, and staff record.',
       keys: ['unverified_role', 'verified_role', 'verify_channel', 'verify_log_channel'],
     },
     {
-      register: 'VOICE / 02',
+      register: 'VOICE / 03',
       title: 'Voice gate',
       description: 'Optionally hold members in a voice waiting room with bypass roles and an expiry window.',
       keys: ['voice_verification_enabled', 'waiting_verify_voice_channel', 'vc_verify_bypass_roles', 'vc_verify_session_ttl'],

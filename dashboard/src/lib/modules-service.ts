@@ -370,6 +370,11 @@ export async function updateModuleSettings(
       throw new ModuleValidationError('Select a voice waiting room before enabling voice verification')
     }
   }
+  if (def.id === 'verification' && mergedSettings.verification_method === 'website' && (
+    !process.env.TURNSTILE_SITE_KEY?.trim() || !process.env.TURNSTILE_SECRET_KEY?.trim()
+  )) {
+    throw new ModuleValidationError('Website verification needs TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY on the dashboard server')
+  }
   if (
     def.id === 'verification'
     && isDiscordSnowflake(settingValue(mergedSettings, 'verified_role'))
