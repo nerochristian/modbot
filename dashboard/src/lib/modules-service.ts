@@ -11,7 +11,9 @@ import {
   type ModuleDefinition,
   type ModuleField,
   type TicketOption,
+  type TicketQuestion,
   DEFAULT_TICKET_OPTIONS,
+  DEFAULT_APPEAL_QUESTIONS,
 } from '@/lib/modules-contract'
 import {
   legacyThresholdSnapshot,
@@ -22,7 +24,7 @@ import {
 
 export type ModuleValues = Record<
   string,
-  string | number | boolean | string[] | ModerationAutopunishRule[] | TicketOption[] | null
+  string | number | boolean | string[] | ModerationAutopunishRule[] | TicketOption[] | TicketQuestion[] | null
 >
 
 export class ModuleValidationError extends Error {
@@ -121,6 +123,10 @@ function readValue(settings: Record<string, unknown>, field: ModuleField): Modul
       const source = Array.isArray(raw) ? raw : (field.fallback ?? DEFAULT_TICKET_OPTIONS)
       return structuredClone(source as TicketOption[])
     }
+    case 'appealQuestions': {
+      const source = Array.isArray(raw) ? raw : (field.fallback ?? DEFAULT_APPEAL_QUESTIONS)
+      return structuredClone(source as TicketQuestion[])
+    }
     default: {
       if (raw === undefined || raw === null) return field.fallback !== undefined ? String(field.fallback) : ''
       return String(raw)
@@ -217,6 +223,27 @@ function coerceField(field: ModuleField, value: unknown): unknown {
           return { id: questionId, label: questionLabel, placeholder, style, required: question.required !== false }
         })
         return { id, label, description, emoji, questions }
+      })
+    }
+    case 'appealQuestions': {
+      if (!Array.isArray(value) || value.length < 1 || value.length > 5) {
+        throw new ModuleValidationError('Appeals need between 1 and 5 questions')
+      }
+      const ids = new Set<string>()
+      return value.map((rawQuestion, index) => {
+        if (!rawQuestion || typeof rawQuestion !== 'object' || Array.isArray(rawQuestion)) {
+          throw new ModuleValidationError(`Appeal question ${index + 1} is invalid`)
+        }
+        const question = rawQuestion as Record<string, unknown>
+        const id = String(question.id ?? '').trim().toLowerCase()
+        const label = String(question.label ?? '').trim()
+        const placeholder = String(question.placeholder ?? '').trim()
+        const style = question.style === 'short' ? 'short' : 'paragraph'
+        if (!/^[a-z0-9_-]{2,40}$/.test(id) || ids.has(id)) throw new ModuleValidationError('Appeal question IDs must be unique')
+        if (label.length < 2 || label.length > 80) throw new ModuleValidationError('Appeal question labels must be 2–80 characters')
+        if (placeholder.length > 160) throw new ModuleValidationError('Appeal question placeholders can be at most 160 characters')
+        ids.add(id)
+        return { id, label, placeholder, style, required: question.required !== false }
       })
     }
     case 'roleId':
@@ -413,7 +440,7 @@ export async function setModuleEnabled(
   if (!def) throw new Error('Module not found')
   if (!def.enableKey) throw new Error(`${def.name} cannot be toggled`)
   const settings = await getBotGuildSettings(guildId)
-  const resourceBackedModules = new Set(['verification', 'tickets', 'welcome', 'autoroles', 'antiraid'])
+  const resourceBackedModules = new Set(['verification', 'tickets', 'appeals', 'welcome', 'autoroles', 'antiraid'])
   const resources = enabled && resourceBackedModules.has(def.id)
     ? await getBotGuildResources(guildId)
     : null

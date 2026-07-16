@@ -25,6 +25,7 @@ export type ModuleFieldType =
   | 'multiSelect'
   | 'autopunishRules'
   | 'ticketOptions'
+  | 'appealQuestions'
 
 export type AutopunishAction = 'timeout' | 'kick' | 'ban'
 
@@ -41,6 +42,11 @@ export type TicketQuestion = {
   style: 'short' | 'paragraph'
   required: boolean
 }
+
+export const DEFAULT_APPEAL_QUESTIONS: TicketQuestion[] = [
+  { id: 'why', label: 'Why should this punishment be reviewed?', placeholder: 'Explain what happened and why staff should reconsider the case.', style: 'paragraph', required: true },
+  { id: 'context', label: 'Anything else staff should know?', placeholder: 'Add evidence, message links, or relevant context.', style: 'paragraph', required: false },
+]
 
 export type TicketOption = {
   id: string
@@ -71,7 +77,7 @@ export type ModuleField = {
   max?: number
   maxLength?: number
   /** Default shown when the key is absent. */
-  fallback?: string | number | boolean | string[] | AutopunishRule[] | TicketOption[]
+  fallback?: string | number | boolean | string[] | AutopunishRule[] | TicketOption[] | TicketQuestion[]
 }
 
 export type ModuleBadge = 'new' | 'standard' | 'premium' | 'core'
@@ -86,6 +92,7 @@ export type ModuleSpecial =
   | 'logging'
   | 'welcome_card'
   | 'autoroles'
+  | 'appeals'
 
 export type ModuleDefinition = {
   id: string
@@ -345,6 +352,23 @@ export const MODULE_DEFINITIONS: readonly ModuleDefinition[] = [
       { key: 'antiraid_ai_enabled', label: 'AI raid scoring', type: 'toggle', hint: 'Score coordinated join patterns before enforcement.', fallback: false },
       { key: 'antiraid_ai_min_confidence', label: 'Minimum AI confidence', type: 'number', min: 0, max: 100, fallback: 70, hint: 'Confidence percentage required to treat a pattern as a raid.' },
       { key: 'antiraid_override_ai_action', label: 'Always use configured response', type: 'toggle', fallback: false, hint: 'Ignore the AI action recommendation and use the configured raid response.' },
+    ],
+  },
+  {
+    id: 'appeals',
+    name: 'Appeals',
+    description: 'Give punished members a secure, one-time form and route submissions to your staff review queue.',
+    category: 'Moderation',
+    icon: 'scale',
+    badge: 'new',
+    enableKey: 'appeals_enabled',
+    defaultEnabled: false,
+    special: 'appeals',
+    fields: [
+      { key: 'appeals_open', label: 'Accept new appeals', type: 'toggle', fallback: true, hint: 'Closing submissions disables every unused appeal link without deleting pending appeals.' },
+      { key: 'appeal_staff_channel', label: 'Staff review channel', type: 'channelId', channelTypes: [0, 5], hint: 'New appeals and decisions are posted here.' },
+      { key: 'appeal_expiry_days', label: 'Appeal link lifetime', type: 'number', min: 1, max: 30, fallback: 7, hint: 'Days before a one-time appeal link expires.' },
+      { key: 'appeal_questions', label: 'Appeal questions', type: 'appealQuestions', fallback: DEFAULT_APPEAL_QUESTIONS, hint: 'Members answer these questions on the secure appeal page.' },
     ],
   },
   {
