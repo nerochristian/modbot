@@ -1769,6 +1769,7 @@ class ModBot(commands.Bot):
             "cogs.settings",
             "cogs.polls",
             "cogs.tickets",
+            "cogs.appeals",
             "cogs.utility",
             "cogs.admin",
             "cogs.staff",

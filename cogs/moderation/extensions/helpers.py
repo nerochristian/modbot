@@ -265,6 +265,35 @@ class HelperCommands:
         except (discord.Forbidden, discord.HTTPException):
             return False
 
+    async def send_punishment_notice(
+        self,
+        *,
+        guild: discord.Guild,
+        user: discord.abc.User,
+        action: str,
+        reason: str,
+        case_number: int,
+        settings: dict,
+        fallback_embed: discord.Embed,
+        duration: Optional[str] = None,
+    ) -> bool:
+        """Send the case-bound appeal DM, falling back to the legacy notice."""
+        appeals = self.bot.get_cog("Appeals")
+        if appeals is not None and hasattr(appeals, "notify_punishment"):
+            try:
+                return await appeals.notify_punishment(
+                    guild=guild,
+                    user=user,
+                    action=action,
+                    reason=reason,
+                    case_number=case_number,
+                    duration=duration,
+                    settings=settings,
+                )
+            except Exception:
+                logger.exception("Appeal-aware punishment DM failed for case %s", case_number)
+        return await self.dm_user(user, fallback_embed)
+
     async def create_mod_embed(
         self,
         title: str,
