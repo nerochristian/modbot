@@ -15,6 +15,7 @@ import {
   Megaphone,
   Settings,
   ArrowUpRight,
+  BookOpenCheck,
 } from 'lucide-react'
 import { PageHeader } from '@/components/dashboard/page-header'
 import { StatCard } from '@/components/dashboard/stat-card'
@@ -33,6 +34,7 @@ import { exportRecords } from '@/lib/export-client'
 import { formatCompact, formatNumber } from '@/lib/utils'
 import { DATE_RANGES, type ChartType, type DateRange } from '@/lib/dashboard-config'
 import { formatDistanceToNow } from 'date-fns'
+import { DashboardWalkthrough } from '@/components/dashboard/dashboard-walkthrough'
 
 type Kpi = { value: number; delta: number }
 type OverviewData = {
@@ -93,7 +95,7 @@ function humanAction(action: string) {
   return action.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase())
 }
 
-export function OverviewClient({ workspaceSummary }: { workspaceSummary: WorkspaceSummary }) {
+export function OverviewClient({ workspaceSummary, guildId, guildName }: { workspaceSummary: WorkspaceSummary; guildId: string; guildName: string }) {
   const widgets = useConfigStore((s) => s.config.widgets)
   const dateRange = useConfigStore((s) => s.config.dateRange)
   const refreshInterval = useConfigStore((s) => s.config.refreshInterval)
@@ -101,6 +103,7 @@ export function OverviewClient({ workspaceSummary }: { workspaceSummary: Workspa
   const setDateRange = useConfigStore((s) => s.setDateRange)
   const can = useConfigStore((s) => s.can)
   const [customizing, setCustomizing] = useState(false)
+  const [walkthroughRun, setWalkthroughRun] = useState(0)
 
   const { data, error, loading, refetch } = useApi<OverviewData>(
     `/api/analytics/overview?range=${dateRange}`,
@@ -147,7 +150,7 @@ export function OverviewClient({ workspaceSummary }: { workspaceSummary: Workspa
         }
       />
 
-      <WorkspaceControls summary={workspaceSummary} />
+      <WorkspaceControls summary={workspaceSummary} onStartWalkthrough={() => setWalkthroughRun((value) => value + 1)} />
 
       {error && !data ? (
         <Card>
@@ -184,11 +187,12 @@ export function OverviewClient({ workspaceSummary }: { workspaceSummary: Workspa
       ) : null}
 
       <WidgetCustomizer open={customizing} onClose={() => setCustomizing(false)} />
+      <DashboardWalkthrough guildId={guildId} guildName={guildName} restartToken={walkthroughRun} />
     </>
   )
 }
 
-function WorkspaceControls({ summary }: { summary: WorkspaceSummary }) {
+function WorkspaceControls({ summary, onStartWalkthrough }: { summary: WorkspaceSummary; onStartWalkthrough: () => void }) {
   return (
     <Card className="mb-4 overflow-hidden">
       <div className="grid lg:grid-cols-[minmax(240px,0.8fr)_minmax(0,2.2fr)]">
@@ -200,6 +204,9 @@ function WorkspaceControls({ summary }: { summary: WorkspaceSummary }) {
           <p className="mt-1 text-sm leading-6 text-muted">
             Access follows your live Discord Administrator permission for this server.
           </p>
+          <Button variant="ghost" size="sm" onClick={onStartWalkthrough} className="mt-3 -ml-2">
+            <BookOpenCheck className="size-4" /> Walkthrough
+          </Button>
           <dl className="mt-4 grid grid-cols-3 gap-3 border-t border-border pt-4">
             <div>
               <dt className="text-[0.6875rem] text-muted-2">Admins</dt>

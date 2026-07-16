@@ -49,6 +49,7 @@ function NavigationLink({ item }: { item: NavItem }) {
   return (
     <Link
       href={item.href}
+      data-tour={item.href === '/dashboard/modules' ? 'modules' : item.href === '/dashboard/activity' ? 'activity' : undefined}
       className={cn(
         "group relative flex h-10 items-center gap-3 rounded-xl border px-3 text-sm font-medium transition-all duration-200",
         isActive
@@ -126,6 +127,7 @@ function ServerRail({
                 title={guild.name}
                 aria-label={`Open ${guild.name}`}
                 aria-current={active ? "page" : undefined}
+                data-tour={active ? "server-switcher" : undefined}
                 onClick={() => void selectGuild(guild.id)}
                 className={cn(
                   "focus-ring group relative grid size-11 shrink-0 place-items-center overflow-visible rounded-2xl border transition-all duration-200",

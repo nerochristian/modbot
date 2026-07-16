@@ -19,6 +19,8 @@ export default async function DashboardPage() {
 
   return (
     <OverviewClient
+      guildId={guild.id}
+      guildName={guild.name}
       workspaceSummary={{
         dashboardAdministrators,
         auditEvents,
