@@ -47,6 +47,7 @@ _MODULE_ID_ALIASES = {
 _FEATURE_MODULE_KEYS = {
     "automod": ("automod_enabled", True),
     "aimod": ("aimod_enabled", False),
+    "appeals": ("appeals_enabled", False),
 }
 
 _LOG_CHANNEL_MODULE_FIELDS = {
@@ -1000,6 +1001,11 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
             ("cases", "execution_status", "TEXT DEFAULT 'succeeded'"),
             ("cases", "dashboard_command_id", "INTEGER"),
             ("cases", "updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+            ("dashboard_appeals", "answers_json", "TEXT DEFAULT '{}'"),
+            ("dashboard_appeals", "staff_channel_id", "INTEGER"),
+            ("dashboard_appeals", "staff_message_id", "INTEGER"),
+            ("dashboard_appeals", "staff_delivery_error", "TEXT"),
+            ("dashboard_appeal_tokens", "questions_json", "TEXT DEFAULT '[]'"),
         ]
         
         for table, column, col_type in migrations:
@@ -1429,12 +1435,16 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
                         case_id INTEGER NOT NULL,
                         user_id INTEGER NOT NULL,
                         message TEXT NOT NULL,
+                        answers_json TEXT NOT NULL DEFAULT '{}',
                         status TEXT NOT NULL DEFAULT 'pending',
                         decision TEXT,
                         reviewed_by_id TEXT,
                         reviewed_by_name TEXT,
                         submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         reviewed_at TIMESTAMP,
+                        staff_channel_id INTEGER,
+                        staff_message_id INTEGER,
+                        staff_delivery_error TEXT,
                         UNIQUE (guild_id, appeal_number)
                     )
                 """)
@@ -1451,6 +1461,7 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
                         appeal_id INTEGER,
                         delivery_status TEXT NOT NULL DEFAULT 'pending',
                         delivery_error TEXT,
+                        questions_json TEXT NOT NULL DEFAULT '[]',
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         UNIQUE (guild_id, case_id)
                     )

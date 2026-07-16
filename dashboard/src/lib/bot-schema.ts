@@ -40,12 +40,16 @@ async function initializeSchema(): Promise<void> {
       case_id BIGINT NOT NULL,
       user_id BIGINT NOT NULL,
       message TEXT NOT NULL,
+      answers_json TEXT NOT NULL DEFAULT '{}',
       status TEXT NOT NULL DEFAULT 'pending',
       decision TEXT,
       reviewed_by_id TEXT,
       reviewed_by_name TEXT,
       submitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       reviewed_at TIMESTAMP,
+      staff_channel_id BIGINT,
+      staff_message_id BIGINT,
+      staff_delivery_error TEXT,
       UNIQUE (guild_id, appeal_number)
     )
   `)
@@ -65,6 +69,7 @@ async function initializeSchema(): Promise<void> {
       appeal_id BIGINT,
       delivery_status TEXT NOT NULL DEFAULT 'pending',
       delivery_error TEXT,
+      questions_json TEXT NOT NULL DEFAULT '[]',
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       UNIQUE (guild_id, case_id)
     )
@@ -104,6 +109,16 @@ async function initializeSchema(): Promise<void> {
   for (const definition of caseColumns) {
     await botQuery(`ALTER TABLE cases ${definition}`)
   }
+  const appealColumns = [
+    "ADD COLUMN IF NOT EXISTS answers_json TEXT NOT NULL DEFAULT '{}'",
+    'ADD COLUMN IF NOT EXISTS staff_channel_id BIGINT',
+    'ADD COLUMN IF NOT EXISTS staff_message_id BIGINT',
+    'ADD COLUMN IF NOT EXISTS staff_delivery_error TEXT',
+  ]
+  for (const definition of appealColumns) {
+    await botQuery(`ALTER TABLE dashboard_appeals ${definition}`)
+  }
+  await botQuery(`ALTER TABLE dashboard_appeal_tokens ADD COLUMN IF NOT EXISTS questions_json TEXT NOT NULL DEFAULT '[]'`)
   await botQuery(`
     CREATE TABLE IF NOT EXISTS dashboard_schema_migrations (
       key TEXT PRIMARY KEY,
