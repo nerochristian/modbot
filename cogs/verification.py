@@ -11,9 +11,15 @@ Ultra-Improved Verification System:
 from __future__ import annotations
 
 import asyncio
+import base64
+import hashlib
+import hmac
 import io
+import json
+import os
 import random
 import secrets
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Optional, Literal, List
@@ -237,7 +243,7 @@ class VerificationPanelLayout(discord.ui.LayoutView):
                 "To access the server you must verify.\n\n"
                 "**How it works**\n"
                 "1) Press **Start Verification**\n"
-                "2) Solve the captcha image\n"
+                "2) Complete the private human check\n"
                 "3) Receive the **verified** role\n\n"
                 "Need help? Press **Tutorial**."
             ),
@@ -362,6 +368,32 @@ class Verification(commands.Cog):
             return module_enabled(settings, "verification", False)
         except Exception:
             return False
+
+    async def _website_verification_url(self, guild_id: int, user_id: int) -> Optional[str]:
+        settings = await self._get_settings(guild_id)
+        if settings.get("verification_method") != "website":
+            return None
+        base_url = (os.getenv("DASHBOARD_PUBLIC_URL") or "").strip().rstrip("/")
+        secret = (
+            os.getenv("VERIFICATION_LINK_SECRET")
+            or os.getenv("SESSION_SECRET")
+            or ""
+        ).strip()
+        if not base_url or not secret:
+            return None
+        payload = {
+            "e": int(time.time()) + 10 * 60,
+            "g": str(guild_id),
+            "n": secrets.token_hex(16),
+            "u": str(user_id),
+        }
+        encoded = base64.urlsafe_b64encode(
+            json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        ).decode("ascii").rstrip("=")
+        signature = base64.urlsafe_b64encode(
+            hmac.new(secret.encode("utf-8"), encoded.encode("ascii"), hashlib.sha256).digest()
+        ).decode("ascii").rstrip("=")
+        return f"{base_url}/verify/{encoded}.{signature}"
 
     async def _get_verify_log_channel(self, guild: discord.Guild) -> Optional[discord.TextChannel]:
         try:
@@ -722,6 +754,28 @@ class Verification(commands.Cog):
                         "No Unverified Role",
                         "You don't have the `unverified` role. Ask a staff member to run `/setup` again.",
                     ),
+                    ephemeral=ephemeral,
+                )
+                return
+
+            website_url = await self._website_verification_url(guild.id, member.id)
+            if website_url:
+                view = discord.ui.View(timeout=10 * 60)
+                view.add_item(
+                    discord.ui.Button(
+                        label="Open secure verification",
+                        style=discord.ButtonStyle.link,
+                        url=website_url,
+                        emoji="🔐",
+                    )
+                )
+                await interaction.response.send_message(
+                    embed=ModEmbed.info(
+                        "Secure Website Verification",
+                        "Open the protected page below and complete the Cloudflare human check. "
+                        "This private link expires in **10 minutes** and works once.",
+                    ),
+                    view=view,
                     ephemeral=ephemeral,
                 )
                 return

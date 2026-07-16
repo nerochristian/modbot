@@ -40,6 +40,7 @@ module.exports = {
         DASHBOARD_DATABASE_URL: dashboardDatabaseUrl,
         BOT_DATABASE_URL: botDatabaseUrl,
         AUTH_SECRET: rootEnv.AUTH_SECRET || rootEnv.SESSION_SECRET,
+        TRANSCRIPT_STORAGE_DIR: rootEnv.TRANSCRIPT_STORAGE_DIR || path.join(__dirname, 'data', 'transcripts'),
       },
       autorestart: true,
       max_restarts: 10,
