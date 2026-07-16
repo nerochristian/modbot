@@ -468,6 +468,9 @@ export async function setModuleEnabled(
   if (enabled && def.id === 'tickets' && !hasChannel(settings.ticket_category, [4])) {
     throw new ModuleValidationError('Set a ticket category before enabling tickets')
   }
+  if (enabled && def.id === 'appeals' && !hasChannel(settings.appeal_staff_channel, [0, 5])) {
+    throw new ModuleValidationError('Set a staff review channel before enabling appeals')
+  }
   if (enabled && def.id === 'welcome' && !hasChannel(settings.welcome_channel, [0, 5])) {
     throw new ModuleValidationError('Set a welcome channel before enabling the welcome card')
   }

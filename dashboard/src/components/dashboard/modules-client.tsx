@@ -12,6 +12,7 @@ import {
   KeyRound,
   Loader2,
   Search,
+  Scale,
   ScrollText,
   Settings2,
   ShieldCheck,
@@ -45,9 +46,10 @@ import {
   type ModuleField,
   type ModuleSpecial,
   type TicketOption,
+  type TicketQuestion,
 } from '@/lib/modules-contract'
 
-type ModuleValues = Record<string, string | number | boolean | string[] | AutopunishRule[] | TicketOption[] | null>
+type ModuleValues = Record<string, string | number | boolean | string[] | AutopunishRule[] | TicketOption[] | TicketQuestion[] | null>
 type Module = {
   id: string
   name: string
@@ -102,6 +104,7 @@ const MODULE_ICONS: Record<string, LucideIcon> = {
   automod: ShieldAlert,
   aimod: Bot,
   antiraid: Blocks,
+  appeals: Scale,
   verification: UserCheck,
   whitelist: KeyRound,
   tickets: Ticket,
@@ -1305,7 +1308,7 @@ function AutopunishBuilder({
 }
 
 type OperationalSpecial = Exclude<ModuleSpecial, 'moderation' | 'whitelist'>
-type OperationalValue = string | boolean | string[] | TicketOption[]
+type OperationalValue = string | boolean | string[] | TicketOption[] | TicketQuestion[]
 type OperationalForm = Record<string, OperationalValue>
 
 type OperationalSectionDefinition = {
@@ -1384,6 +1387,26 @@ const OPERATIONAL_SECTIONS: Record<OperationalSpecial, OperationalSectionDefinit
       keys: ['ticket_category', 'ticket_support_role', 'ticket_log_channel', 'ticket_options'],
     },
   ],
+  appeals: [
+    {
+      register: 'STATUS / 01',
+      title: 'Submission window',
+      description: 'Open or close unused links and choose how long a member has to submit.',
+      keys: ['appeals_open', 'appeal_expiry_days'],
+    },
+    {
+      register: 'ROUTING / 02',
+      title: 'Staff review route',
+      description: 'Send each case-bound appeal to the private channel where moderators review it.',
+      keys: ['appeal_staff_channel'],
+    },
+    {
+      register: 'FORM / 03',
+      title: 'Member statement',
+      description: 'Ask up to five focused questions. Issued links keep a snapshot of this form.',
+      keys: ['appeal_questions'],
+    },
+  ],
   logging: [
     {
       register: 'ROUTES / 01',
@@ -1422,7 +1445,7 @@ function operationalInitialForm(mod: Module): OperationalForm {
     const value = mod.values[field.key]
     if (field.type === 'toggle') {
       initial[field.key] = Boolean(value)
-    } else if (field.type === 'ticketOptions') {
+    } else if (field.type === 'ticketOptions' || field.type === 'appealQuestions') {
       initial[field.key] = Array.isArray(value) ? structuredClone(value as TicketOption[]) : []
     } else if (field.type === 'roleIds' || field.type === 'channelIds' || field.type === 'multiSelect') {
       initial[field.key] = Array.isArray(value)
@@ -1590,6 +1613,19 @@ function OperationalField({
     )
   }
 
+  if (field.type === 'appealQuestions') {
+    return (
+      <div className="md:col-span-2">
+        <AppealQuestionsEditor
+          questions={Array.isArray(value) ? value as TicketQuestion[] : []}
+          disabled={disabled}
+          error={error}
+          onChange={onChange}
+        />
+      </div>
+    )
+  }
+
   if (field.type === 'roleId' || field.type === 'channelId') {
     const kind = field.type === 'roleId' ? 'role' : 'channel'
     return (
@@ -1719,6 +1755,43 @@ function TicketOptionsEditor({
               ))}
               <Button type="button" size="sm" variant="ghost" disabled={disabled || option.questions.length >= 5} onClick={() => updateOption(optionIndex, { questions: [...option.questions, { id: `question-${option.questions.length + 1}`, label: 'New question', placeholder: '', style: 'short', required: true }] })}><Plus className="size-4" /> Add question</Button>
             </div>
+          </div>
+        ))}
+      </div>
+    </fieldset>
+  )
+}
+
+function AppealQuestionsEditor({
+  questions,
+  disabled,
+  error,
+  onChange,
+}: {
+  questions: TicketQuestion[]
+  disabled: boolean
+  error?: string
+  onChange: (value: TicketQuestion[]) => void
+}) {
+  const slug = (value: string) => value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
+  const update = (index: number, changes: Partial<TicketQuestion>) => onChange(
+    questions.map((question, candidate) => candidate === index ? { ...question, ...changes } : question),
+  )
+  return (
+    <fieldset>
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div><legend className="text-sm font-semibold text-foreground">Appeal questions</legend><p className="mt-1 text-xs leading-5 text-muted">These appear after the member sees the linked moderation case.</p></div>
+        <Button type="button" size="sm" variant="outline" disabled={disabled || questions.length >= 5} onClick={() => onChange([...questions, { id: `question-${questions.length + 1}`, label: 'New question', placeholder: '', style: 'paragraph', required: true }])}><Plus className="size-4" /> Add question</Button>
+      </div>
+      {error ? <p className="mt-2 text-xs text-danger">{error}</p> : null}
+      <div className="mt-3 space-y-2 border-l-2 border-accent-line pl-3">
+        {questions.map((question, index) => (
+          <div key={`${question.id}-${index}`} className="grid gap-2 rounded-md border border-border bg-surface-2 p-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_8rem_7rem_auto] md:items-end">
+            <Field label={`Question ${index + 1}`}><Input value={question.label} disabled={disabled} maxLength={80} onChange={(event) => update(index, { label: event.target.value, id: question.id.startsWith('question-') ? slug(event.target.value) || question.id : question.id })} /></Field>
+            <Field label="Placeholder"><Input value={question.placeholder} disabled={disabled} maxLength={160} onChange={(event) => update(index, { placeholder: event.target.value })} /></Field>
+            <Field label="Answer style"><Select value={question.style} disabled={disabled} options={[{ label: 'Short', value: 'short' }, { label: 'Paragraph', value: 'paragraph' }]} onChange={(event) => update(index, { style: event.target.value as 'short' | 'paragraph' })} /></Field>
+            <div className="flex h-10 items-center justify-between rounded-md border border-border bg-surface px-2"><span className="text-xs text-muted">Required</span><Switch checked={question.required} disabled={disabled} label={`Require ${question.label}`} onChange={(required) => update(index, { required })} /></div>
+            <button type="button" disabled={disabled || questions.length === 1} onClick={() => onChange(questions.filter((_, candidate) => candidate !== index))} className="focus-ring grid size-9 place-items-center rounded-md text-muted hover:bg-danger-soft hover:text-danger disabled:opacity-40" aria-label={`Remove question ${index + 1}`}><Trash2 className="size-4" /></button>
           </div>
         ))}
       </div>
@@ -1860,6 +1933,15 @@ function validateModuleForm(
       if (options.length < 1 || options.length > 10) errors[field.key] = 'Add between 1 and 10 ticket options'
       else if (options.some((option) => !option.id.trim() || !option.label.trim() || option.questions.length < 1 || option.questions.length > 5 || option.questions.some((question) => !question.label.trim()))) {
         errors[field.key] = 'Every option needs a label, unique ID, and 1–5 named questions'
+      }
+      continue
+    }
+    if (field.type === 'appealQuestions') {
+      const questions = Array.isArray(value) ? value as unknown as TicketQuestion[] : []
+      if (questions.length < 1 || questions.length > 5 || questions.some((question) => !question.id.trim() || !question.label.trim())) {
+        errors[field.key] = 'Add between 1 and 5 named appeal questions with unique IDs'
+      } else if (new Set(questions.map((question) => question.id)).size !== questions.length) {
+        errors[field.key] = 'Appeal question IDs must be unique'
       }
       continue
     }
