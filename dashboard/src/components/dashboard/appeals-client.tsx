@@ -31,6 +31,7 @@ type Appeal = {
   caseId: string
   status: string
   message: string
+  answers: Record<string, string>
   decision: string | null
   reviewedBy: string | null
   submittedAt: string
@@ -372,10 +373,17 @@ function AppealReview({
           <p className="mt-2 text-sm text-muted">{appeal.case.reason}</p>
         </div>
 
-        {/* Member's appeal message */}
+        {/* Member's structured appeal statement */}
         <div>
-          <p className="mb-1.5 text-sm font-medium text-foreground">Appeal message</p>
-          <div className="rounded-lg border border-border bg-surface-2 p-3 text-sm">{appeal.message}</div>
+          <p className="mb-1.5 text-sm font-medium text-foreground">Appeal statement</p>
+          <div className="space-y-3 rounded-lg border border-border bg-surface-2 p-3 text-sm">
+            {Object.entries(appeal.answers ?? {}).length > 0 ? Object.entries(appeal.answers).map(([question, answer]) => (
+              <div key={question} className="border-l-2 border-accent-line pl-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-muted">{question.replace(/[-_]/g, ' ')}</p>
+                <p className="mt-1 whitespace-pre-wrap text-foreground">{answer}</p>
+              </div>
+            )) : <p className="whitespace-pre-wrap text-foreground">{appeal.message}</p>}
+          </div>
         </div>
 
         {canReview ? (

@@ -11,6 +11,7 @@ import {
   sendBotChannelMessage,
 } from '@/lib/discord'
 import { getBotGuildSettings } from '@/lib/bot-settings'
+import { issueAppealToken } from '@/lib/appeal-portal-service'
 
 export type ModerationActor = {
   id: string
@@ -286,12 +287,25 @@ export async function createModerationCase(input: CreateModerationInput): Promis
         input.durationHours ?? 0,
         {
           reason: input.reason,
-          dmUser: settingBoolean(settings.moderation_dm_users, true),
+          dmUser: false,
           preserveBanMessages: settingBoolean(settings.moderation_preserve_ban_messages, true),
         },
       )
     }
     await markCommand(commandId, row.id, 'succeeded')
+    if (settingBoolean(settings.moderation_dm_users, true) && input.action !== 'note' && input.action !== 'unban') {
+      const publicBaseUrl = process.env.DASHBOARD_PUBLIC_URL || process.env.FRONTEND_PUBLIC_URL || ''
+      await issueAppealToken({
+        guildId: input.guildId,
+        caseId: row.id,
+        caseNumber: Number(row.case_number),
+        targetUserId: input.targetUserId,
+        action: input.action,
+        reason: input.reason,
+        duration: input.durationHours ? `${input.durationHours} hour(s)` : null,
+        publicBaseUrl,
+      }).catch(() => undefined)
+    }
     await recordGuildAudit(input.guildId, input.actor, `case.${input.action}`, input.targetUserId, {
       caseId: row.id,
       commandId,
