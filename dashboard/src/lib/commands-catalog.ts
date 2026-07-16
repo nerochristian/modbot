@@ -43,7 +43,7 @@ export const COMMANDS: CommandEntry[] = [
   { name: 'lock', category: 'Server tools', description: 'Lock the current channel.', usage: '/lock reason:reason', permission: 'Manage channels' },
   { name: 'unlock', category: 'Server tools', description: 'Unlock the current channel.', usage: '/unlock reason:reason', permission: 'Manage channels' },
   { name: 'slowmode', category: 'Server tools', description: 'Set channel slowmode.', usage: '/slowmode seconds:10', permission: 'Manage channels' },
-  { name: 'serverinfo', category: 'Server tools', description: 'Show server identity and activity information.', usage: ',serverinfo', permission: 'Everyone' },
+  { name: 'server', category: 'Server tools', description: 'Show server identity and live activity information.', usage: '/server', permission: 'Everyone' },
   { name: 'backup', category: 'Server tools', description: 'Create or restore a server configuration backup.', usage: '/backup', permission: 'Administrator' },
 ]
 

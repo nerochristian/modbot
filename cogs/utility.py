@@ -670,80 +670,71 @@ class Utility(commands.Cog):
     
     # ==================== SERVER INFO ====================
     
-    @utility_group.command(name="server", description="📊 Detailed server information")
-    async def serverinfo(self, interaction: discord.Interaction):
+    @app_commands.command(name="server", description="Show this server's identity and activity")
+    @app_commands.guild_only()
+    async def server(self, interaction: discord.Interaction) -> None:
         guild = interaction.guild
-        
-        embed = discord.Embed(
-            title=f"Server Information - {guild.name}",
-            color=Colors.INFO,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        if guild.icon:
-            embed.set_thumbnail(url=guild.icon.url)
-        
-        embed.add_field(name="Owner", value=guild.owner.mention if guild.owner else "Unknown", inline=True)
-        embed.add_field(name="ID", value=f"`{guild.id}`", inline=True)
-        embed.add_field(
-            name="Created",
-            value=f"<t:{int(guild.created_at.timestamp())}:R>",
-            inline=True
-        )
-        
-        # Member counts
-        total = guild.member_count
-        bots = len([m for m in guild.members if m.bot])
-        humans = total - bots
-        
-        embed.add_field(name="Total Members", value=f"{total:,}", inline=True)
-        embed.add_field(name="Humans", value=f"{humans:,}", inline=True)
-        embed.add_field(name="Bots", value=f"{bots:,}", inline=True)
-        
-        # Channels
-        text = len(guild.text_channels)
-        voice = len(guild.voice_channels)
-        categories = len(guild.categories)
-        
-        embed.add_field(name="Text Channels", value=text, inline=True)
-        embed.add_field(name="Voice Channels", value=voice, inline=True)
-        embed.add_field(name="Categories", value=categories, inline=True)
-        
-        embed.add_field(name="Roles", value=len(guild.roles), inline=True)
-        embed.add_field(name="Emojis", value=f"{len(guild.emojis)}/{guild.emoji_limit}", inline=True)
-        
-        # Boost info
-        embed.add_field(
-            name="Boost Status",
-            value=f"Level {guild.premium_tier} ({guild.premium_subscription_count or 0} boosts)",
-            inline=True
-        )
-        
-        # Features
-        features = []
-        feature_map = {
-            "COMMUNITY": "📢 Community",
-            "VERIFIED": "✅ Verified",
-            "PARTNERED": "🤝 Partnered",
-            "DISCOVERABLE": "🔍 Discoverable",
-            "VANITY_URL": "🔗 Vanity URL",
-            "ANIMATED_ICON": "🎬 Animated Icon",
-            "BANNER": "🖼️ Banner",
-            "INVITE_SPLASH": "🌊 Invite Splash",
-            "PREVIEW_ENABLED": "👀 Preview Enabled"
-        }
-        
-        for feature in guild.features:
-            if feature in feature_map:
-                features.append(feature_map[feature])
-        
-        if features:
-            embed.add_field(
-                name="Features",
-                value="\n".join(features[:10]),
-                inline=False
+        if guild is None:
+            await interaction.response.send_message(
+                "This command can only be used in a server.",
+                ephemeral=True,
             )
-        
+            return
+
+        members = list(guild.members)
+        total_members = guild.member_count or len(members)
+        online_members = sum(
+            member.status is not discord.Status.offline
+            for member in members
+        )
+        members_in_voice = sum(
+            not member.bot
+            and member.voice is not None
+            and member.voice.channel is not None
+            for member in members
+        )
+        channel_count = len(guild.channels)
+        owner = guild.owner.mention if guild.owner else f"<@{guild.owner_id}>"
+        possessive_name = (
+            f"{guild.name}' server"
+            if guild.name.casefold().endswith("s")
+            else f"{guild.name}'s server"
+        )
+
+        embed = discord.Embed(title=possessive_name, color=Colors.ACCENT)
+        embed.add_field(name="Server ID", value=f"**{guild.id}**", inline=True)
+        embed.add_field(name="Owned By", value=owner, inline=True)
+        embed.add_field(
+            name="Server Age",
+            value=f"**<t:{int(guild.created_at.timestamp())}:R>**",
+            inline=True,
+        )
+        embed.add_field(
+            name=f"Members ({total_members:,})",
+            value=f"Online: **{online_members:,}**",
+            inline=True,
+        )
+        embed.add_field(
+            name=f"Channels ({channel_count:,})",
+            value=(
+                f"Text: **{len(guild.text_channels):,}**\n"
+                f"Voice: **{len(guild.voice_channels):,}**\n"
+                f"Categories: **{len(guild.categories):,}**"
+            ),
+            inline=True,
+        )
+        embed.add_field(name="Roles", value=f"**{len(guild.roles):,}**", inline=True)
+        embed.add_field(
+            name="Boosts",
+            value=f"**{guild.premium_subscription_count or 0:,}**",
+            inline=True,
+        )
+        embed.add_field(
+            name="Members In Voice Channels",
+            value=f"**{members_in_voice:,}** excl. bots",
+            inline=True,
+        )
+
         await interaction.response.send_message(embed=embed)
     
     # ==================== RULE34 SEARCH ====================

@@ -461,19 +461,6 @@ class PrefixCommands(commands.Cog):
         embed.add_field(name="Roles", value=len(member.roles) - 1)
         await ctx.send(embed=embed)
 
-    @commands.command(name="serverinfo", aliases=["si", "guildinfo"])
-    async def serverinfo_cmd(self, ctx):
-        """Get server info"""
-        g = ctx.guild
-        embed = discord.Embed(title=g.name, color=Colors.INFO)
-        embed.set_thumbnail(url=g.icon.url if g.icon else None)
-        embed.add_field(name="Owner", value=g.owner)
-        embed.add_field(name="Members", value=g.member_count)
-        embed.add_field(name="Channels", value=len(g.channels))
-        embed.add_field(name="Roles", value=len(g.roles))
-        embed.add_field(name="Created", value=g.created_at.strftime("%Y-%m-%d"))
-        await ctx.send(embed=embed)
-
     @commands.command(name="avatar", aliases=["av", "pfp"])
     async def avatar_cmd(self, ctx, member: discord.Member = None):
         """Get a user's avatar"""

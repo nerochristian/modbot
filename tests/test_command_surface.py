@@ -94,3 +94,11 @@ def test_dashboard_is_a_top_level_slash_command() -> None:
     assert isinstance(command, app_commands.Command)
     assert command.name == "dashboard"
     assert command.parameters == []
+
+
+def test_server_is_a_top_level_slash_command() -> None:
+    command = Utility.server
+    assert isinstance(command, app_commands.Command)
+    assert command.name == "server"
+    assert command.parameters == []
+    assert "server" not in {command.name for command in Utility.utility_group.commands}
