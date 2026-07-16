@@ -82,6 +82,12 @@ def test_success_path_returns_content():
     assert session.calls == 1
 
 
+def test_custom_gateway_chat_path_is_used():
+    client, session, _ = _make_client([_FakeResp(200, _OK)])
+    assert _post(client, chat_path="/chat/completions/json") == "HELLO"
+    assert session.calls == 1
+
+
 def test_retries_transient_5xx_then_succeeds():
     client, session, _ = _make_client([_FakeResp(500, {"error": "boom"}), _FakeResp(200, _OK)])
     assert _post(client, max_retries=2) == "HELLO"

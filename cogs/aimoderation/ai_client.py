@@ -1,8 +1,8 @@
 """
 AI Client — provider-agnostic AI interface with rate limiting, web search, and memory.
 
-Uses DeepSeek Web as the default provider (browser-based, no API key). 
-Falls back to DigitalOcean inference API if configured.
+Uses DeepSeek Web as the default provider and a configurable DeepSeek HTTP
+gateway for the fast/reasoning fallback path.
 """
 from __future__ import annotations
 
@@ -42,6 +42,7 @@ _DO_BASE_URL: Final[str] = os.getenv("DO_INFERENCE_BASE_URL", "https://inference
 _DEEPSEEK_API_KEY: Final[str] = os.getenv("DEEPSEEK_API_KEY", "").strip()
 _DEEPSEEK_BASE_URL: Final[str] = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").strip().rstrip("/")
 _DEEPSEEK_API_MODEL: Final[str] = os.getenv("DEEPSEEK_MODEL", "deepseek-chat").strip()
+_DEEPSEEK_CHAT_PATH: Final[str] = "/" + os.getenv("DEEPSEEK_CHAT_PATH", "chat/completions").strip().strip("/")
 
 
 def _credential_is_configured(value: str) -> bool:
@@ -356,6 +357,7 @@ class AIClient:
             json_mode=json_mode,
             allow_multimodal=allow_multimodal,
             provider_label="DeepSeek API",
+            chat_path=_DEEPSEEK_CHAT_PATH,
         )
 
     async def _post_chat_completion(
@@ -370,6 +372,7 @@ class AIClient:
         json_mode: bool = False,
         allow_multimodal: bool = False,
         provider_label: str,
+        chat_path: str = "/chat/completions",
         max_retries: int = 2,
     ) -> Optional[str]:
         """Shared OpenAI-compatible chat-completions POST with bounded retries.
@@ -395,7 +398,7 @@ class AIClient:
             session, owned_session = self._get_http_session(timeout=60)
             try:
                 async with session.post(
-                    f"{base_url}/chat/completions",
+                    f"{base_url}{chat_path}",
                     headers={
                         "Authorization": f"Bearer {api_key}",
                         "Content-Type": "application/json",
