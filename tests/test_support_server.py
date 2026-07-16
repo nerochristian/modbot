@@ -1,6 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
+from unittest.mock import patch
 
 import discord
 
@@ -12,6 +13,7 @@ from cogs.support_server import (
     build_status_view,
     build_welcome_view,
 )
+from bot import SUPPORTBOT_EXTENSIONS, SupportBot, _get_supportbot_token
 
 
 def _container_text(view: discord.ui.LayoutView) -> str:
@@ -91,6 +93,35 @@ class SupportServerViewTests(unittest.TestCase):
         self.assertIn("## 🟢 All systems operational", text)
         self.assertIn("Gateway latency: **42 ms**", text)
         self.assertIn("Version: **3.4.0**", text)
+
+
+class SupportBotRuntimeTests(unittest.IsolatedAsyncioTestCase):
+    def test_support_token_has_no_main_bot_fallback(self) -> None:
+        with patch.dict(
+            "os.environ",
+            {
+                "SUPPORTBOT_DISCORD_TOKEN": "support-token",
+                "DISCORD_TOKEN": "main-token",
+            },
+        ):
+            self.assertEqual(_get_supportbot_token(), "support-token")
+
+        with patch.dict(
+            "os.environ",
+            {"SUPPORTBOT_DISCORD_TOKEN": "", "DISCORD_TOKEN": "main-token"},
+        ):
+            self.assertIsNone(_get_supportbot_token())
+
+    async def test_support_bot_uses_minimal_intents_and_only_support_cogs(self) -> None:
+        bot = SupportBot()
+        try:
+            self.assertEqual(SUPPORTBOT_EXTENSIONS, ("cogs.tickets", "cogs.support_server"))
+            self.assertFalse(bot.intents.message_content)
+            self.assertFalse(bot.intents.members)
+            self.assertFalse(bot.intents.presences)
+            self.assertEqual(bot.version, "3.4.0-support")
+        finally:
+            await bot.close()
 
 
 if __name__ == "__main__":

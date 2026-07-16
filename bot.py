@@ -89,7 +89,8 @@ def _get_groupbot_token() -> Optional[str]:
 
 def _get_supportbot_token() -> Optional[str]:
     """Resolve the dedicated support bot token."""
-    return os.getenv("SUPPORTBOT_DISCORD_TOKEN")
+    value = (os.getenv("SUPPORTBOT_DISCORD_TOKEN") or "").strip()
+    return value or None
 
 
 def validate_environment() -> None:
