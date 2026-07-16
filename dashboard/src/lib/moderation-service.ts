@@ -349,7 +349,7 @@ export async function executeModerationReversal(input: {
   idempotencyKey: string
 }): Promise<void> {
   await ensureDashboardBackendSchema()
-  const reversalAction = input.originalAction === 'ban'
+  const reversalAction = ['ban', 'tempban'].includes(input.originalAction)
     ? 'unban'
     : ['mute', 'timeout'].includes(input.originalAction) ? 'clear_timeout' : null
   if (!reversalAction) return
