@@ -22,16 +22,18 @@ export default async function AppealPage({ params }: { params: Promise<{ token: 
       <div className="relative mx-auto w-full max-w-xl">
         <div className="mb-8 flex justify-center"><Logo /></div>
         {result.kind === 'ok' ? (
-          <AppealForm token={token} moderationCase={result.case} />
+          <AppealForm token={token} moderationCase={result.case} questions={result.questions} />
         ) : (
           <Card>
             <CardContent className="py-10 text-center">
               <h1 className="font-display text-2xl font-semibold text-foreground">
-                {result.kind === 'expired' ? 'Appeal link expired' : 'Appeal already submitted'}
+                {result.kind === 'expired' ? 'Appeal link expired' : result.kind === 'closed' ? 'Appeals are closed' : 'Appeal already submitted'}
               </h1>
               <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted">
                 {result.kind === 'expired'
                   ? 'This case can no longer be appealed with this link. Contact the server moderation team if you still need help.'
+                  : result.kind === 'closed'
+                    ? 'This server is not accepting new appeal submissions right now. Your link remains private and cannot be used while submissions are closed.'
                   : 'This one-time link has already been used. The moderation team has the submitted appeal.'}
               </p>
             </CardContent>
