@@ -398,6 +398,32 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
         )
         return channel
 
+    @staticmethod
+    async def _ensure_voice_channel(
+        guild: discord.Guild,
+        *,
+        category: discord.CategoryChannel,
+        name: str,
+        overwrites: dict[discord.abc.Snowflake, discord.PermissionOverwrite],
+    ) -> discord.VoiceChannel:
+        channel = discord.utils.find(
+            lambda item: isinstance(item, discord.VoiceChannel) and item.name.casefold() == name.casefold(),
+            guild.channels,
+        )
+        if channel is None:
+            return await guild.create_voice_channel(
+                name,
+                category=category,
+                overwrites=overwrites,
+                reason="Docket support server setup",
+            )
+        await channel.edit(
+            category=category,
+            overwrites=overwrites,
+            reason="Repair Docket support voice channel",
+        )
+        return channel
+
     async def _upsert_panel(
         self,
         channel: discord.TextChannel,
@@ -507,6 +533,24 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
             support_team: discord.PermissionOverwrite(manage_messages=True),
             docket_team: discord.PermissionOverwrite(manage_messages=True),
         }
+        public_voice = {
+            guild.default_role: discord.PermissionOverwrite(
+                view_channel=True,
+                connect=True,
+                speak=True,
+                use_voice_activation=True,
+            ),
+            bot_member: discord.PermissionOverwrite(
+                view_channel=True,
+                connect=True,
+                speak=True,
+                move_members=True,
+                mute_members=True,
+            ),
+            moderator: discord.PermissionOverwrite(move_members=True, mute_members=True),
+            support_team: discord.PermissionOverwrite(move_members=True, mute_members=True),
+            docket_team: discord.PermissionOverwrite(move_members=True, mute_members=True),
+        }
         staff_only = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             bot_member: bot_access,
@@ -558,6 +602,12 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
                 topic=topic,
                 overwrites=overwrites,
             )
+        waiting_room = await self._ensure_voice_channel(
+            guild,
+            category=support,
+            name="Support Waiting Room",
+            overwrites=public_voice,
+        )
 
         settings = await self.bot.db.get_settings(guild.id)
         await self.bot.db.update_settings(
@@ -572,7 +622,8 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
                     _ticket_option_for_storage(option) for option in SUPPORT_TICKET_OPTIONS
                 ],
                 "support_server_channels": {
-                    key: channel.id for key, channel in channels.items()
+                    **{key: channel.id for key, channel in channels.items()},
+                    "support_waiting_room": waiting_room.id,
                 },
             },
         )
@@ -623,6 +674,7 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
         return {
             "roles": (docket_team, support_team, moderator),
             "channels": channels,
+            "voice_channel": waiting_room,
             "ticket_category": open_tickets,
         }
 
@@ -657,7 +709,7 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
             raise
 
         await interaction.followup.send(
-            f"Support server ready: **{len(result['channels'])} channels**, "
+            f"Support server ready: **{len(result['channels']) + 1} channels**, "
             f"**{len(result['roles'])} staff roles**, and **3 ticket workflows** configured.",
             ephemeral=True,
         )
