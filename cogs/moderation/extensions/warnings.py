@@ -47,10 +47,19 @@ class WarningCommands:
             description=f"**Reason:** {reason}\n**Total Warnings:** {len(warnings)}",
             color=Colors.WARNING
         )
-        await self.dm_user(user, dm_embed)
+        settings = await self.bot.db.get_settings(source.guild.id)
+        if settings.get("moderation_dm_users", True):
+            await self.send_punishment_notice(
+                guild=source.guild,
+                user=user,
+                action="Warn",
+                reason=reason,
+                case_number=case_num,
+                settings=settings,
+                fallback_embed=dm_embed,
+            )
 
         # Apply only the highest escalation whose threshold this warning crossed.
-        settings = await self.bot.db.get_settings(source.guild.id)
         auto_action = None
 
         async def create_escalation_case(action: str, action_reason: str, duration_seconds: Optional[int]):

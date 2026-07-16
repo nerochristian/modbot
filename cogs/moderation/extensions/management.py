@@ -136,14 +136,13 @@ class ManagementCommands:
         settings = await self.bot.db.get_settings(guild.id)
         
         dm_embed = discord.Embed(title=f"👢 Kicked from {guild.name}", description=f"**Reason:** {reason}", color=Colors.ERROR)
-        if moderation_bool(settings, "moderation_dm_users", True):
-            await self.dm_user(user, dm_embed)
-        
         try:
             await user.kick(reason=f"{moderator}: {reason}")
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not kick: {e}"), ephemeral=True)
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Kick", reason)
+        if moderation_bool(settings, "moderation_dm_users", True):
+            await self.send_punishment_notice(guild=guild, user=user, action="Kick", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed)
             
         embed = await self.create_mod_embed(title="👢 User Kicked", user=user, moderator=moderator, reason=reason, color=Colors.ERROR, case_num=case_num)
         response = render_moderation_response(
@@ -176,9 +175,6 @@ class ManagementCommands:
         settings = await self.bot.db.get_settings(guild.id)
         
         dm_embed = discord.Embed(title=f"🔨 Banned from {guild.name}", description=f"**Reason:** {reason}\n\nYou have been permanently banned.", color=Colors.DARK_RED)
-        if moderation_bool(settings, "moderation_dm_users", True):
-            await self.dm_user(user, dm_embed)
-
         preserve_messages = moderation_bool(
             settings,
             "moderation_preserve_ban_messages",
@@ -193,6 +189,8 @@ class ManagementCommands:
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not ban: {e}"), ephemeral=True)
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Ban", reason)
+        if moderation_bool(settings, "moderation_dm_users", True):
+            await self.send_punishment_notice(guild=guild, user=user, action="Ban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed)
             
         embed = await self.create_mod_embed(title="🔨 User Banned", user=user, moderator=moderator, reason=reason, color=Colors.DARK_RED, case_num=case_num)
         response = render_moderation_response(
@@ -261,15 +259,14 @@ class ManagementCommands:
         settings = await self.bot.db.get_settings(guild.id)
         
         dm_embed = discord.Embed(title=f"🧹 Softbanned from {guild.name}", description=f"**Reason:** {reason}\n\nYou can rejoin the server.", color=Colors.ERROR)
-        if moderation_bool(settings, "moderation_dm_users", True):
-            await self.dm_user(user, dm_embed)
-        
         try:
             await user.ban(reason=f"[SOFTBAN] {reason}", delete_message_days=7)
             await guild.unban(user, reason="Softban - immediate unban")
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not softban: {e}"), ephemeral=True)
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Softban", reason)
+        if moderation_bool(settings, "moderation_dm_users", True):
+            await self.send_punishment_notice(guild=guild, user=user, action="Softban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed)
             
         embed = await self.create_mod_embed(title="🧹 User Softbanned", user=user, moderator=moderator, reason=reason, color=Colors.ERROR, case_num=case_num)
         embed.set_footer(text=f"Case #{case_num} | 7 days of messages deleted")
@@ -310,9 +307,6 @@ class ManagementCommands:
         settings = await self.bot.db.get_settings(guild.id)
         
         dm_embed = discord.Embed(title=f"⏰ Temporarily Banned from {guild.name}", description=f"**Reason:** {reason}\n**Duration:** {human_duration}\n**Expires:** <t:{int(expires_at.timestamp())}:F>", color=Colors.DARK_RED)
-        if moderation_bool(settings, "moderation_dm_users", True):
-            await self.dm_user(user, dm_embed)
-
         preserve_messages = moderation_bool(
             settings,
             "moderation_preserve_ban_messages",
@@ -326,6 +320,8 @@ class ManagementCommands:
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not tempban: {e}"), ephemeral=True)
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Tempban", reason, human_duration)
+        if moderation_bool(settings, "moderation_dm_users", True):
+            await self.send_punishment_notice(guild=guild, user=user, action="Tempban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, duration=human_duration)
         await self.bot.db.add_tempban(guild.id, user.id, moderator.id, reason, expires_at)
             
         embed = await self.create_mod_embed(title="⏰ User Temporarily Banned", user=user, moderator=moderator, reason=reason, color=Colors.DARK_RED, case_num=case_num, extra_fields={"Duration": human_duration, "Expires": f"<t:{int(expires_at.timestamp())}:R>"})
@@ -417,7 +413,7 @@ class ManagementCommands:
         
         dm_embed = discord.Embed(title=f"🔇 Muted in {guild.name}", description=f"**Reason:** {reason}\n**Duration:** {human_duration}", color=Colors.ERROR)
         if moderation_bool(settings, "moderation_dm_users", True):
-            await self.dm_user(user, dm_embed)
+            await self.send_punishment_notice(guild=guild, user=user, action="Mute", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, duration=human_duration)
 
     async def _unmute_logic(self, source, user: discord.Member, reason: str):
         guild = source.guild
