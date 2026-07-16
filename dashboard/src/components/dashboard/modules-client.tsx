@@ -714,6 +714,7 @@ const FIELD_HELP: Record<Module['special'] & string, string> = {
   moderation: 'Set the action policy, staff access, public responses, and warning escalation in one place.',
   aimod: 'Control how Docket interprets requests, gathers context, and confirms high-impact actions.',
   antiraid: 'Define the join signal, automatic response, quarantine path, and incident routing.',
+  appeals: 'Open a secure case-bound form, choose the staff review route, and shape the questions members answer.',
   verification: 'Build the member verification path, including its roles, panel channel, logs, and voice gate.',
   whitelist: 'Choose rejection behavior and maintain the exact member allowlist enforced on join.',
   tickets: 'Route private support channels to the right category, staff role, and transcript log.',
