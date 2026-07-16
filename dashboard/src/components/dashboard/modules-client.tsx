@@ -1726,6 +1726,15 @@ function TicketOptionsEditor({
   )
 }
 
+function verificationIsConfigured(mod: Module): boolean {
+  return (
+    isDiscordSnowflake(mod.values.verified_role)
+    && isDiscordSnowflake(mod.values.unverified_role)
+    && mod.values.verified_role !== mod.values.unverified_role
+    && isDiscordSnowflake(mod.values.verify_channel)
+  )
+}
+
 function FieldsSheet({
   mod,
   canWrite,
