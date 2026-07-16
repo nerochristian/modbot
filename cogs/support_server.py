@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from pathlib import Path
 from typing import Any, Optional
 
@@ -15,11 +16,14 @@ from config import Config
 
 
 SUPPORT_BANNER = Path(__file__).resolve().parents[1] / "assets" / "started.png"
+SUPPORT_ASSETS_VERSION = 2
 SUPPORT_TICKET_BANNERS = {
     "general": Path(__file__).resolve().parents[1] / "assets" / "support-help-desk.png",
     "bug": Path(__file__).resolve().parents[1] / "assets" / "support-bug-reports.png",
     "feature": Path(__file__).resolve().parents[1] / "assets" / "support-feature-requests.png",
 }
+
+logger = logging.getLogger("ModBot.SupportServer")
 
 SUPPORT_TICKET_OPTIONS: tuple[dict[str, Any], ...] = (
     {
@@ -328,6 +332,7 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self._startup_repaired = False
 
     async def cog_load(self) -> None:
         tickets_cog = self.bot.get_cog("Tickets")
@@ -346,6 +351,23 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
 
     def cog_unload(self) -> None:
         self.status_refresh.cancel()
+
+    @commands.Cog.listener()
+    async def on_ready(self) -> None:
+        if self._startup_repaired:
+            return
+        self._startup_repaired = True
+        for guild in tuple(self.bot.guilds):
+            try:
+                settings = await self.bot.db.get_settings(guild.id)
+                if (
+                    settings.get("support_server_enabled")
+                    and int(settings.get("support_server_assets_version", 0) or 0)
+                    < SUPPORT_ASSETS_VERSION
+                ):
+                    await self._provision(guild)
+            except Exception:
+                logger.exception("Failed startup repair for support server guild %s", guild.id)
 
     @staticmethod
     async def _ensure_role(
@@ -468,15 +490,15 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
 
         if message is not None and self.bot.user is not None and message.author.id == self.bot.user.id:
             if attachment is not None and attachment.is_file():
-                await message.edit(
-                    view=view,
-                    attachments=[
-                        discord.File(attachment, filename=attachment_name or attachment.name)
-                    ],
-                )
+                expected_name = attachment_name or attachment.name
+                if any(existing.filename == expected_name for existing in message.attachments):
+                    await message.edit(view=view)
+                    return message.id
+                await message.delete()
+                message = None
             else:
                 await message.edit(view=view)
-            return message.id
+                return message.id
 
         kwargs: dict[str, Any] = {
             "view": view,
@@ -715,7 +737,10 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
 
         await self.bot.db.update_settings(
             guild.id,
-            {"support_server_messages": message_ids},
+            {
+                "support_server_messages": message_ids,
+                "support_server_assets_version": SUPPORT_ASSETS_VERSION,
+            },
         )
         return {
             "roles": (docket_team, support_team, moderator),
@@ -767,6 +792,9 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
                 settings = await self.bot.db.get_settings(guild.id)
                 if not settings.get("support_server_enabled"):
                     continue
+                if int(settings.get("support_server_assets_version", 0) or 0) < SUPPORT_ASSETS_VERSION:
+                    await self._provision(guild)
+                    continue
                 channels = settings.get("support_server_channels") or {}
                 messages = settings.get("support_server_messages") or {}
                 channel_id = int(channels.get("status") or 0)
@@ -779,6 +807,7 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
             except (discord.NotFound, discord.Forbidden):
                 continue
             except Exception:
+                logger.exception("Failed to refresh support server panels in guild %s", guild.id)
                 continue
 
     @status_refresh.before_loop
