@@ -113,9 +113,10 @@ export async function issueAppealToken(input: {
 }) {
   await ensureDashboardBackendSchema()
   const settings = await getBotGuildSettings(input.guildId)
+  if (!APPEALABLE_ACTIONS.has(input.action.toLowerCase())) return { eligible: false as const }
   const enabled = settings.appeals_enabled === true
   const open = settings.appeals_open !== false
-  const eligible = enabled && open && /^https?:\/\//.test(input.publicBaseUrl) && APPEALABLE_ACTIONS.has(input.action.toLowerCase())
+  const eligible = enabled && open && /^https?:\/\//.test(input.publicBaseUrl)
   if (!eligible) {
     await sendPunishmentDm({ userId: input.targetUserId, caseNumber: input.caseNumber, action: input.action, reason: input.reason, duration: input.duration })
     return { eligible: false as const, deliveryStatus: 'sent' as const }

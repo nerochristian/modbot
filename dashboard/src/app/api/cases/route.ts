@@ -181,6 +181,8 @@ export async function POST(request: Request) {
           caseNumber: result.row.case_number,
           targetUserId: data.memberId,
           action: data.type,
+          reason: data.reason,
+          duration: durationHours ? `${durationHours} hour(s)` : null,
           publicBaseUrl: dashboardBaseUrl(request.url),
         }).catch((error) => ({
           eligible: true as const,
