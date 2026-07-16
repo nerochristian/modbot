@@ -522,11 +522,11 @@ class Help(commands.Cog):
         return f"{base}/commands?q={quote_plus(command)}"
 
     @classmethod
-    def _support_url(cls) -> str:
-        return (
-            os.getenv("SUPPORT_SERVER_URL")
-            or f"{cls._public_base_url()}/commands#support"
-        ).strip()
+    def _support_url(cls) -> Optional[str]:
+        value = (os.getenv("SUPPORT_SERVER_URL") or "").strip()
+        if value.startswith(("https://", "http://")):
+            return value
+        return None
 
     @staticmethod
     def _help_row(
@@ -538,7 +538,7 @@ class Help(commands.Cog):
         url: str,
     ) -> discord.ui.Section:
         return discord.ui.Section(
-            discord.ui.TextDisplay(f"{icon} **{title}**\n{description}"),
+            discord.ui.TextDisplay(f"## {icon} {title}\n-# {description}"),
             accessory=discord.ui.Button(label=button_label, url=url),
         )
 
@@ -548,7 +548,7 @@ class Help(commands.Cog):
             if not command
             else f"Open the directory with **{command}** ready to search."
         )
-        container = discord.ui.Container(
+        children: list[discord.ui.Item] = [
             self._help_row(
                 icon="📖",
                 title="Commands",
@@ -564,16 +564,22 @@ class Help(commands.Cog):
                 button_label="Go to Dashboard",
                 url=f"{self._public_base_url()}/dashboard",
             ),
-            discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
-            self._help_row(
-                icon="❓",
-                title="Need Help?",
-                description="Open setup help and troubleshooting.",
-                button_label="Support Server",
-                url=self._support_url(),
-            ),
-            accent_color=Config.COLOR_BRAND,
-        )
+        ]
+        support_url = self._support_url()
+        if support_url:
+            children.extend(
+                [
+                    discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+                    self._help_row(
+                        icon="❓",
+                        title="Need Help?",
+                        description="Open setup help and troubleshooting.",
+                        button_label="Support Server",
+                        url=support_url,
+                    ),
+                ]
+            )
+        container = discord.ui.Container(*children, accent_color=Config.COLOR_BRAND)
         view = discord.ui.LayoutView(timeout=300)
         view.add_item(container)
         return ensure_layout_view_action_rows(view)

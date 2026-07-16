@@ -60,11 +60,11 @@ def _dashboard_public_url() -> str:
     return "https://docketbot.xyz"
 
 
-def _support_public_url() -> str:
+def _support_public_url() -> Optional[str]:
     value = (os.getenv("SUPPORT_SERVER_URL") or "").strip()
     if value.startswith(("https://", "http://")):
         return value
-    return f"{_dashboard_public_url()}/commands#support"
+    return None
 
 
 GUILD_ONBOARDING_BANNER = Path(__file__).resolve().parent / "assets" / "started.png"
@@ -426,6 +426,97 @@ class CommandConfigCheckFailure(commands.CheckFailure):
     def __init__(self, message: str):
         super().__init__(message)
         self.message = message
+
+
+class OnboardingLanguageSelect(discord.ui.Select):
+    """Show the languages Docket actually supports."""
+
+    def __init__(self, guild_id: int):
+        self.guild_id = guild_id
+        super().__init__(
+            custom_id=f"docket:onboarding:language:{guild_id}",
+            placeholder="Available languages",
+            min_values=1,
+            max_values=1,
+            options=[
+                discord.SelectOption(
+                    label="English",
+                    value="en",
+                    description="Docket's currently supported language",
+                    emoji="🇺🇸",
+                )
+            ],
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if interaction.guild_id != self.guild_id:
+            await interaction.response.send_message(
+                "This language menu belongs to a different server.",
+                ephemeral=True,
+            )
+            return
+        await interaction.response.send_message(
+            "English is currently Docket's available language.",
+            ephemeral=True,
+        )
+
+
+class OnboardingPrefixSelect(discord.ui.Select):
+    """Persist a guild prefix directly from the onboarding card."""
+
+    PREFIXES = (",", "!", ".", "?", "$")
+
+    def __init__(self, bot: commands.Bot, guild_id: int):
+        self.bot = bot
+        self.guild_id = guild_id
+        super().__init__(
+            custom_id=f"docket:onboarding:prefix:{guild_id}",
+            placeholder="Select a prefix…",
+            min_values=1,
+            max_values=1,
+            options=[
+                discord.SelectOption(
+                    label=f"{prefix} prefix",
+                    value=prefix,
+                    description=f"Commands look like {prefix}help",
+                )
+                for prefix in self.PREFIXES
+            ],
+        )
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        if interaction.guild_id != self.guild_id:
+            await interaction.response.send_message(
+                "This prefix menu belongs to a different server.",
+                ephemeral=True,
+            )
+            return
+
+        permissions = getattr(interaction.user, "guild_permissions", None)
+        if permissions is None or not permissions.manage_guild:
+            await interaction.response.send_message(
+                "You need **Manage Server** to change Docket's prefix.",
+                ephemeral=True,
+            )
+            return
+
+        prefix = self.values[0]
+        try:
+            await interaction.response.defer(ephemeral=True, thinking=True)
+            await self.bot.db.update_settings(self.guild_id, {"prefix": prefix})
+            await self.bot.prefix_cache.invalidate(self.guild_id)
+        except Exception:
+            logger.exception("Failed to update onboarding prefix for guild %s", self.guild_id)
+            await interaction.followup.send(
+                "Docket couldn't update the prefix. Try again from the dashboard.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.followup.send(
+            f"Prefix updated to `{prefix}`. Try `{prefix}help`.",
+            ephemeral=True,
+        )
 
 
 # ==================== BOT CLASS ====================
@@ -1949,6 +2040,7 @@ class ModBot(commands.Bot):
         include_banner: bool = True,
     ) -> discord.ui.LayoutView:
         base_url = _dashboard_public_url()
+        support_url = _support_public_url()
         children: list[discord.ui.Item] = []
         if include_banner:
             children.append(
@@ -1960,45 +2052,45 @@ class ModBot(commands.Bot):
         children.extend(
             [
                 discord.ui.TextDisplay(
-                    f"## Docket is ready\n"
-                    f"Thanks for adding Docket to **{guild.name}**. Your private moderation log channels are ready."
+                    f"### Thanks for adding Docket to {guild.name}! Let’s get you set up:"
                 ),
-                discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
                 discord.ui.Section(
                     discord.ui.TextDisplay(
-                        "⚡ **Quick setup**\n"
-                        "Choose modules, staff roles, and logging channels. Run `/setup` for the recommended server structure."
+                        "## ⚡ Quick Setup\n"
+                        "-# Manage all settings, modules, and permissions."
                     ),
                     accessory=discord.ui.Button(label="Dashboard", url=f"{base_url}/servers"),
                 ),
                 discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
                 discord.ui.Section(
                     discord.ui.TextDisplay(
-                        "📖 **Command directory**\n"
-                        "Browse moderation, reports, tickets, utilities, and every AutoMod command."
+                        "## 📖 Commands List\n"
+                        "-# Explore everything Docket can do."
                     ),
                     accessory=discord.ui.Button(label="View commands", url=f"{base_url}/commands"),
                 ),
                 discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
-                discord.ui.Section(
-                    discord.ui.TextDisplay(
-                        "🛡️ **Protection center**\n"
-                        "Turn on AutoMod rules and tune how Docket handles violations."
-                    ),
-                    accessory=discord.ui.Button(label="Configure AutoMod", url=f"{base_url}/dashboard/automod"),
+                discord.ui.TextDisplay(
+                    "## 🌐 Language & Prefix\n"
+                    "-# Customize how Docket responds in your server."
                 ),
-                discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
-                discord.ui.Section(
-                    discord.ui.TextDisplay(
-                        "❓ **Need help?**\n"
-                        "Open support for setup help and troubleshooting."
-                    ),
-                    accessory=discord.ui.Button(label="Support server", url=_support_public_url()),
+                discord.ui.ActionRow(
+                    OnboardingLanguageSelect(guild.id),
+                ),
+                discord.ui.ActionRow(
+                    OnboardingPrefixSelect(self, guild.id),
                 ),
             ]
         )
+        if support_url:
+            children.append(
+                discord.ui.TextDisplay(
+                    "❓ **Support**: Need help or have questions? "
+                    f"Our **[Support Server]({support_url})** is here for you."
+                )
+            )
         container = discord.ui.Container(*children, accent_color=Config.COLOR_BRAND)
-        view = discord.ui.LayoutView(timeout=900)
+        view = discord.ui.LayoutView(timeout=3600)
         view.add_item(container)
         return ensure_layout_view_action_rows(view)
 
