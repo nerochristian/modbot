@@ -10,7 +10,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import discord
-from discord import app_commands
 from discord.ext import commands
 
 logger = logging.getLogger("ModBot.Appeals")
@@ -54,34 +53,38 @@ def _questions(value: object) -> list[dict[str, Any]]:
 
 
 class Appeals(commands.Cog):
-    appeals = app_commands.Group(name="appeals", description="Configure and inspect punishment appeals")
-
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @appeals.command(name="setup", description="Configure the private staff channel used for appeal reviews")
-    @app_commands.describe(channel="Private staff channel for new appeals", accepting="Whether unused appeal links may be submitted")
-    @app_commands.checks.has_permissions(manage_guild=True)
-    async def setup_appeals(self, interaction: discord.Interaction, channel: discord.TextChannel, accepting: bool = True) -> None:
-        settings = await self.bot.db.get_settings(interaction.guild_id)
+    @commands.group(name="appeals", invoke_without_command=True)
+    @commands.guild_only()
+    @commands.has_guild_permissions(manage_guild=True)
+    async def appeals_command(self, ctx: commands.Context) -> None:
+        """Configure punishment appeals (dashboard setup is recommended)."""
+        await ctx.send("Use `.appeals setup #staff-channel [open|closed]` or `.appeals status`. Full questions are configured in Dashboard → Modules → Appeals.")
+
+    @appeals_command.command(name="setup")
+    @commands.has_guild_permissions(manage_guild=True)
+    async def setup_appeals(self, ctx: commands.Context, channel: discord.TextChannel, accepting: str = "open") -> None:
+        settings = await self.bot.db.get_settings(ctx.guild.id)
+        is_open = accepting.strip().lower() not in {"closed", "close", "off", "false", "no"}
         changes = dict(settings)
         changes.update({
             "appeals_enabled": True,
-            "appeals_open": accepting,
+            "appeals_open": is_open,
             "appeal_staff_channel": str(channel.id),
             "appeal_expiry_days": max(1, min(30, int(settings.get("appeal_expiry_days") or 7))),
             "appeal_questions": _questions(settings.get("appeal_questions")),
         })
-        await self.bot.db.update_settings(interaction.guild_id, changes)
-        await interaction.response.send_message(
-            f"Appeals are **enabled** and {'open' if accepting else 'closed'} for submissions. New appeals will be sent to {channel.mention}. Configure questions and link lifetime in the dashboard's **Appeals** module.",
-            ephemeral=True,
+        await self.bot.db.update_settings(ctx.guild.id, changes)
+        await ctx.send(
+            f"Appeals are **enabled** and {'open' if is_open else 'closed'} for submissions. New appeals will be sent to {channel.mention}. Configure questions and link lifetime in the dashboard's **Appeals** module.",
         )
 
-    @appeals.command(name="status", description="Show the current appeal workflow configuration")
-    @app_commands.checks.has_permissions(manage_guild=True)
-    async def appeals_status(self, interaction: discord.Interaction) -> None:
-        settings = await self.bot.db.get_settings(interaction.guild_id)
+    @appeals_command.command(name="status")
+    @commands.has_guild_permissions(manage_guild=True)
+    async def appeals_status(self, ctx: commands.Context) -> None:
+        settings = await self.bot.db.get_settings(ctx.guild.id)
         channel_id = str(settings.get("appeal_staff_channel") or "")
         questions = _questions(settings.get("appeal_questions"))
         embed = discord.Embed(title="Appeals workflow", color=0x5865F2)
@@ -90,7 +93,7 @@ class Appeals(commands.Cog):
         embed.add_field(name="Link lifetime", value=f"{max(1, min(30, int(settings.get('appeal_expiry_days') or 7)))} days", inline=True)
         embed.add_field(name="Staff channel", value=f"<#{channel_id}>" if channel_id.isdigit() else "Not configured", inline=False)
         embed.add_field(name="Questions", value="\n".join(f"{index}. {question['label']}" for index, question in enumerate(questions, 1)), inline=False)
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await ctx.send(embed=embed)
 
     async def notify_punishment(
         self,
