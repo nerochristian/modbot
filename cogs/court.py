@@ -12,6 +12,7 @@ from html import escape
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_mod, is_admin, is_bot_owner_id
 from utils.logging import send_log_embed
+from utils.transcript import EphemeralTranscriptView, generate_html_transcript
 import asyncio
 import io
 import json
@@ -814,8 +815,15 @@ class Court(commands.Cog):
         await interaction.response.defer()
         
         try:
-            # Generate Discord-style transcript
-            transcript = await self.generate_discord_transcript(interaction.channel, session, summary)
+            messages = [
+                message
+                async for message in interaction.channel.history(limit=None, oldest_first=True)
+            ]
+            transcript = generate_html_transcript(
+                interaction.guild,
+                interaction.channel,
+                messages,
+            )
             
             # Save to DB
             await self.bot.db.close_court_session(session.channel_id, session.verdict or "no_verdict")
@@ -841,19 +849,21 @@ class Court(commands.Cog):
                     defendant = interaction.guild.get_member(session.defendant_id)
                     judge = interaction.guild.get_member(session.judge_id)
                     
-                    # Create log embed
+                    verdict = session.verdict.replace('_', ' ').title() if session.verdict else 'No verdict'
                     log_embed = discord.Embed(
-                        title="⚖️ Court Case Transcript",
+                        title="Court case closed",
+                        description=(
+                            f"**Case:** {session.case_type}\n"
+                            f"**Verdict:** {verdict}\n"
+                            f"**Plaintiff:** {plaintiff.mention if plaintiff else 'Unknown'}\n"
+                            f"**Defendant:** {defendant.mention if defendant else 'Unknown'}\n"
+                            f"**Judge:** {judge.mention if judge else 'Unknown'}"
+                        ),
                         color=0xED4245 if session.verdict == "guilty" else 0x57F287 if session.verdict == "not_guilty" else 0x5865F2,
                         timestamp=datetime.now(timezone.utc)
                     )
-                    log_embed.add_field(name="📋 Case Type", value=session.case_type, inline=True)
-                    log_embed.add_field(name="⚖️ Verdict", value=session.verdict.replace('_', ' ').title() if session.verdict else 'No verdict', inline=True)
-                    log_embed.add_field(name="⏱️ Duration", value=f"<t:{int(session.started_at.timestamp())}:R>", inline=True)
-                    
-                    log_embed.add_field(name="👤 Plaintiff", value=plaintiff.mention if plaintiff else 'Unknown', inline=True)
-                    log_embed.add_field(name="👤 Defendant", value=defendant.mention if defendant else 'Unknown', inline=True)
-                    log_embed.add_field(name="⚖️ Judge", value=judge.mention if judge else 'Unknown', inline=True)
+                    log_embed.add_field(name="Opened", value=f"<t:{int(session.started_at.timestamp())}:R>", inline=True)
+                    log_embed.add_field(name="Messages", value=str(len(messages)), inline=True)
                     
                     if session.jury:
                         jury_text = ", ".join([f"<@{uid}>" for uid in session.jury[:5]])
@@ -866,13 +876,13 @@ class Court(commands.Cog):
                     
                     log_embed.set_footer(text=f"Case closed by {interaction.user}")
                     
-                    # Send to logs
-                    file = discord.File(
-                        io.BytesIO(transcript.encode('utf-8')),
-                        filename=filename
+                    transcript_view = EphemeralTranscriptView(transcript, filename=filename)
+                    await send_log_embed(
+                        log_channel,
+                        log_embed,
+                        bot=self.bot,
+                        view=transcript_view,
                     )
-                    
-                    await send_log_embed(log_channel, log_embed, bot=self.bot, file=file)
                     transcript_sent = True
             
             # Send closure message to case channel

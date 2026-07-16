@@ -15,6 +15,11 @@ from config import Config
 
 
 SUPPORT_BANNER = Path(__file__).resolve().parents[1] / "assets" / "started.png"
+SUPPORT_TICKET_BANNERS = {
+    "general": Path(__file__).resolve().parents[1] / "assets" / "support-help-desk.png",
+    "bug": Path(__file__).resolve().parents[1] / "assets" / "support-bug-reports.png",
+    "feature": Path(__file__).resolve().parents[1] / "assets" / "support-feature-requests.png",
+}
 
 SUPPORT_TICKET_OPTIONS: tuple[dict[str, Any], ...] = (
     {
@@ -259,7 +264,13 @@ def build_status_view(bot: commands.Bot) -> discord.ui.LayoutView:
 class SupportRequestPanelView(discord.ui.LayoutView):
     """A dedicated V2 ticket panel backed by Docket's existing ticket engine."""
 
-    def __init__(self, tickets_cog: commands.Cog, option: dict[str, Any]):
+    def __init__(
+        self,
+        tickets_cog: commands.Cog,
+        option: dict[str, Any],
+        *,
+        banner_name: Optional[str] = None,
+    ):
         super().__init__(timeout=None)
         self.tickets_cog = tickets_cog
         self.option = option
@@ -285,7 +296,12 @@ class SupportRequestPanelView(discord.ui.LayoutView):
             )
 
         select.callback = select_callback
-        container = discord.ui.Container(
+        panel_items: list[Any] = []
+        if banner_name:
+            panel_items.append(
+                discord.ui.MediaGallery(discord.MediaGalleryItem(f"attachment://{banner_name}"))
+            )
+        panel_items.extend((
             discord.ui.TextDisplay(
                 f"## {option['emoji']} {option['heading']}\n"
                 f"-# {option['summary']}"
@@ -299,6 +315,9 @@ class SupportRequestPanelView(discord.ui.LayoutView):
             discord.ui.TextDisplay(
                 "-# Closing a ticket generates a transcript for support records. Please open one ticket per issue."
             ),
+        ))
+        container = discord.ui.Container(
+            *panel_items,
             accent_color=Config.COLOR_BRAND,
         )
         self.add_item(container)
@@ -314,7 +333,14 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
         tickets_cog = self.bot.get_cog("Tickets")
         if tickets_cog is not None:
             for option in SUPPORT_TICKET_OPTIONS:
-                self.bot.add_view(SupportRequestPanelView(tickets_cog, option))
+                banner = SUPPORT_TICKET_BANNERS.get(str(option["id"]))
+                self.bot.add_view(
+                    SupportRequestPanelView(
+                        tickets_cog,
+                        option,
+                        banner_name=banner.name if banner else None,
+                    )
+                )
         if not self.status_refresh.is_running():
             self.status_refresh.start()
 
@@ -431,6 +457,7 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
         message_id: Any,
         view: discord.ui.LayoutView,
         attachment: Optional[Path] = None,
+        attachment_name: Optional[str] = None,
     ) -> int:
         message: Optional[discord.Message] = None
         try:
@@ -440,7 +467,15 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
             message = None
 
         if message is not None and self.bot.user is not None and message.author.id == self.bot.user.id:
-            await message.edit(view=view)
+            if attachment is not None and attachment.is_file():
+                await message.edit(
+                    view=view,
+                    attachments=[
+                        discord.File(attachment, filename=attachment_name or attachment.name)
+                    ],
+                )
+            else:
+                await message.edit(view=view)
             return message.id
 
         kwargs: dict[str, Any] = {
@@ -448,7 +483,10 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
             "allowed_mentions": discord.AllowedMentions.none(),
         }
         if attachment is not None and attachment.is_file():
-            kwargs["file"] = discord.File(attachment, filename="started.png")
+            kwargs["file"] = discord.File(
+                attachment,
+                filename=attachment_name or attachment.name,
+            )
         message = await channel.send(**kwargs)
         return message.id
 
@@ -638,6 +676,7 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
             message_id=message_ids.get("welcome"),
             view=build_welcome_view(guild.name, include_banner=SUPPORT_BANNER.is_file()),
             attachment=SUPPORT_BANNER,
+            attachment_name="started.png",
         )
         message_ids["rules"] = await self._upsert_panel(
             channels["rules"],
@@ -661,10 +700,17 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
             ("feature_requests", SUPPORT_TICKET_OPTIONS[2]),
         )
         for key, option in panel_targets:
+            banner = SUPPORT_TICKET_BANNERS.get(str(option["id"]))
             message_ids[key] = await self._upsert_panel(
                 channels[key],
                 message_id=message_ids.get(key),
-                view=SupportRequestPanelView(tickets_cog, option),
+                view=SupportRequestPanelView(
+                    tickets_cog,
+                    option,
+                    banner_name=banner.name if banner and banner.is_file() else None,
+                ),
+                attachment=banner,
+                attachment_name=banner.name if banner else None,
             )
 
         await self.bot.db.update_settings(
