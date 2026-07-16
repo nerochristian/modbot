@@ -35,7 +35,7 @@ from dotenv import load_dotenv
 from config import Config
 from utils.embeds import ModEmbed
 from utils.moderation_settings import moderation_bool
-from utils.components_v2 import branded_panel_container, ensure_layout_view_action_rows
+from utils.components_v2 import ensure_layout_view_action_rows
 from utils.server_setup import ensure_private_moderation_logs
 from utils.status_emojis import (
     apply_status_emoji_overrides,
@@ -58,6 +58,16 @@ def _dashboard_public_url() -> str:
         if value.startswith(("https://", "http://")):
             return value
     return "https://docketbot.xyz"
+
+
+def _support_public_url() -> str:
+    value = (os.getenv("SUPPORT_SERVER_URL") or "").strip()
+    if value.startswith(("https://", "http://")):
+        return value
+    return f"{_dashboard_public_url()}/commands#support"
+
+
+GUILD_ONBOARDING_BANNER = Path(__file__).resolve().parent / "assets" / "started.png"
 
 
 def _env_enabled(var_name: str, default: bool = False) -> bool:
@@ -1932,24 +1942,64 @@ class ModBot(commands.Bot):
             logger.warning("Private log setup for %s: %s", guild.name, "; ".join(result["errors"][:5]))
         return result
 
-    def _guild_onboarding_view(self, guild: discord.Guild) -> discord.ui.LayoutView:
+    def _guild_onboarding_view(
+        self,
+        guild: discord.Guild,
+        *,
+        include_banner: bool = True,
+    ) -> discord.ui.LayoutView:
         base_url = _dashboard_public_url()
-        container = branded_panel_container(
-            title="Docket is ready",
-            description=(
-                f"Thanks for adding Docket to **{guild.name}**. Your private moderation log channels are ready.\n\n"
-                "**Next steps**\n"
-                "â€¢ Open the dashboard to choose modules and staff roles.\n"
-                "â€¢ Review the command directory for moderation, reports, tickets, and AutoMod.\n"
-                "â€¢ Run `/setup` if you want Docket to create the full recommended server structure."
-            ),
-            logo_url=str(self.user.display_avatar.url) if self.user else None,
-            accent_color=Config.COLOR_BRAND,
+        children: list[discord.ui.Item] = []
+        if include_banner:
+            children.append(
+                discord.ui.MediaGallery(
+                    discord.MediaGalleryItem("attachment://started.png")
+                )
+            )
+
+        children.extend(
+            [
+                discord.ui.TextDisplay(
+                    f"## Docket is ready\n"
+                    f"Thanks for adding Docket to **{guild.name}**. Your private moderation log channels are ready."
+                ),
+                discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+                discord.ui.Section(
+                    discord.ui.TextDisplay(
+                        "⚡ **Quick setup**\n"
+                        "Choose modules, staff roles, and logging channels. Run `/setup` for the recommended server structure."
+                    ),
+                    accessory=discord.ui.Button(label="Dashboard", url=f"{base_url}/servers"),
+                ),
+                discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+                discord.ui.Section(
+                    discord.ui.TextDisplay(
+                        "📖 **Command directory**\n"
+                        "Browse moderation, reports, tickets, utilities, and every AutoMod command."
+                    ),
+                    accessory=discord.ui.Button(label="View commands", url=f"{base_url}/commands"),
+                ),
+                discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+                discord.ui.Section(
+                    discord.ui.TextDisplay(
+                        "🛡️ **Protection center**\n"
+                        "Turn on AutoMod rules and tune how Docket handles violations."
+                    ),
+                    accessory=discord.ui.Button(label="Configure AutoMod", url=f"{base_url}/dashboard/automod"),
+                ),
+                discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+                discord.ui.Section(
+                    discord.ui.TextDisplay(
+                        "❓ **Need help?**\n"
+                        "Open support for setup help and troubleshooting."
+                    ),
+                    accessory=discord.ui.Button(label="Support server", url=_support_public_url()),
+                ),
+            ]
         )
-        view = discord.ui.LayoutView(timeout=None)
+        container = discord.ui.Container(*children, accent_color=Config.COLOR_BRAND)
+        view = discord.ui.LayoutView(timeout=900)
         view.add_item(container)
-        view.add_item(discord.ui.Button(label="Open dashboard", url=f"{base_url}/servers"))
-        view.add_item(discord.ui.Button(label="View commands", url=f"{base_url}/commands"))
         return ensure_layout_view_action_rows(view)
 
     async def _send_guild_onboarding(self, guild: discord.Guild) -> None:
@@ -1964,7 +2014,16 @@ class ModBot(commands.Bot):
             None,
         )
         if target is not None:
-            await target.send(view=self._guild_onboarding_view(guild))
+            include_banner = GUILD_ONBOARDING_BANNER.is_file()
+            view = self._guild_onboarding_view(guild, include_banner=include_banner)
+            if include_banner:
+                await target.send(
+                    file=discord.File(GUILD_ONBOARDING_BANNER, filename="started.png"),
+                    view=view,
+                )
+            else:
+                logger.warning("Guild onboarding banner is missing: %s", GUILD_ONBOARDING_BANNER)
+                await target.send(view=view)
 
     async def on_guild_join(self, guild: discord.Guild):
         """Handle joining a new guild."""
