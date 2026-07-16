@@ -87,6 +87,11 @@ def _get_groupbot_token() -> Optional[str]:
     return os.getenv("GROUPBOT_DISCORD_TOKEN") or os.getenv("GC_DISCORD_TOKEN")
 
 
+def _get_supportbot_token() -> Optional[str]:
+    """Resolve the dedicated support bot token."""
+    return os.getenv("SUPPORTBOT_DISCORD_TOKEN")
+
+
 def validate_environment() -> None:
     """Validate required environment variables."""
     optional_warnings = ["OWNER_IDS"]
@@ -1763,7 +1768,6 @@ class ModBot(commands.Bot):
             "cogs.settings",
             "cogs.polls",
             "cogs.tickets",
-            "cogs.support_server",
             "cogs.utility",
             "cogs.admin",
             "cogs.staff",
@@ -2507,6 +2511,78 @@ class ModBot(commands.Bot):
         await super().close()
         logger.info("[OK] Bot shutdown complete")
 
+
+SUPPORTBOT_EXTENSIONS = ("cogs.tickets", "cogs.support_server")
+
+
+class SupportBot(commands.Bot):
+    """Dedicated support identity running inside the main service process."""
+
+    def __init__(self):
+        intents = discord.Intents.default()
+        intents.message_content = False
+        intents.members = False
+        intents.presences = False
+        super().__init__(
+            command_prefix=commands.when_mentioned,
+            intents=intents,
+            help_command=None,
+            owner_ids=ModBot._load_owner_ids(),
+        )
+        self.db: Database = Database()
+        self.start_time = datetime.now(timezone.utc)
+        self.version = "3.4.0-support"
+
+    async def setup_hook(self) -> None:
+        await self.db.init_pool()
+        loaded: list[str] = []
+        for extension in SUPPORTBOT_EXTENSIONS:
+            await self.load_extension(extension)
+            loaded.append(extension)
+            logger.info("  [OK] SupportBot loaded: %s", extension)
+
+        sync_guild_id = os.getenv("SUPPORTBOT_SYNC_GUILD_ID")
+        if sync_guild_id and sync_guild_id.isdigit():
+            guild_object = discord.Object(id=int(sync_guild_id))
+            self.tree.copy_global_to(guild=guild_object)
+            synced = await self.tree.sync(guild=guild_object)
+            logger.info("[CMD] SupportBot synced %d guild commands", len(synced))
+        else:
+            synced = await self.tree.sync()
+            logger.info("[CMD] SupportBot synced %d global commands", len(synced))
+
+        logger.info(
+            "[COG] SupportBot ready: %d cogs, %d slash commands",
+            len(loaded),
+            len(self.tree.get_commands()),
+        )
+
+    async def on_ready(self) -> None:
+        await self.change_presence(
+            activity=discord.Activity(
+                type=discord.ActivityType.watching,
+                name="support tickets | /supportserver setup",
+            ),
+            status=discord.Status.online,
+        )
+        logger.info(
+            "[SUPPORT] Online: %s (ID: %s) | Guilds: %d",
+            self.user,
+            self.user.id if self.user else "unknown",
+            len(self.guilds),
+        )
+
+    async def on_guild_join(self, guild: discord.Guild) -> None:
+        await self.db.init_guild(guild.id)
+        logger.info("[SUPPORT] Joined guild: %s (ID: %s)", guild.name, guild.id)
+
+    async def close(self) -> None:
+        try:
+            await self.db.close()
+        finally:
+            await super().close()
+        logger.info("[OK] SupportBot shutdown complete")
+
 # ==================== MAIN ENTRY POINT ====================
 async def _run_modbot(bot: ModBot, token: str) -> int:
     try:
@@ -2605,6 +2681,28 @@ async def _run_groupbot() -> int:
     return 0
 
 
+async def _run_supportbot(bot: SupportBot, token: str) -> int:
+    try:
+        async with bot:
+            logger.info("[NET] Connecting SupportBot to Discord...")
+            await bot.start(token)
+    except KeyboardInterrupt:
+        logger.info("[BYE] SupportBot received keyboard interrupt")
+    except discord.LoginFailure:
+        logger.critical("[FATAL] Invalid SupportBot token!")
+        return 1
+    except discord.PrivilegedIntentsRequired:
+        logger.critical("[FATAL] SupportBot requested unavailable privileged intents.")
+        return 1
+    except Exception as exc:
+        logger.critical("[FATAL] SupportBot crashed: %s", exc, exc_info=True)
+        return 1
+    finally:
+        if not bot.is_closed():
+            await bot.close()
+    return 0
+
+
 async def main() -> int:
     """Main entry point with Render-optimized startup."""
     validate_environment()
@@ -2631,12 +2729,22 @@ async def main() -> int:
         logger.critical("=" * 60)
         return 1
 
+    supportbot_token = _get_supportbot_token()
+    if not supportbot_token:
+        logger.critical("=" * 60)
+        logger.critical("[FATAL] SupportBot token not found.")
+        logger.critical("  Set SUPPORTBOT_DISCORD_TOKEN.")
+        logger.critical("=" * 60)
+        return 1
+
 
 
     modbot = ModBot()
+    supportbot = SupportBot()
     tasks = {
         asyncio.create_task(_run_modbot(modbot, modbot_token), name="modbot"),
         asyncio.create_task(_run_groupbot(), name="groupbot"),
+        asyncio.create_task(_run_supportbot(supportbot, supportbot_token), name="supportbot"),
     }
 
     try:
