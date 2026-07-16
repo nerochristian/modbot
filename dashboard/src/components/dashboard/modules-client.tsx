@@ -1910,7 +1910,7 @@ function FieldsSheet({
 
 function validateModuleForm(
   mod: Module,
-  form: Record<string, string | boolean | string[] | TicketOption[]>,
+  form: Record<string, string | boolean | string[] | TicketOption[] | TicketQuestion[]>,
 ): Record<string, string> {
   const errors: Record<string, string> = {}
   for (const field of mod.fields) {
