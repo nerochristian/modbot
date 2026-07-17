@@ -938,20 +938,6 @@ class Tickets(commands.Cog):
             ephemeral=True,
         )
 
-    @app_commands.command(name="ticketpanel", description="Post the ticket panel (legacy alias)")
-    @is_mod()
-    async def ticketpanel_alias(self, interaction: discord.Interaction) -> None:
-        if not interaction.guild or not isinstance(interaction.channel, discord.TextChannel):
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Unavailable", "This command can only be used in a text channel."),
-                ephemeral=True,
-            )
-        await self._send_ticket_panel_to_channel(interaction.channel, interaction.guild)
-        await interaction.response.send_message(
-            embed=ModEmbed.success("Panel Created", "Ticket panel has been created."),
-            ephemeral=True,
-        )
-
     @commands.group(name="ticket", aliases=["tickets"], invoke_without_command=True)
     @commands.guild_only()
     async def ticket_prefix(self, ctx: commands.Context) -> None:

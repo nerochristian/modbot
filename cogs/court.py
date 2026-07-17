@@ -213,6 +213,11 @@ class VerdictVoteView(discord.ui.LayoutView):
 
 class Court(commands.Cog):
     """Advanced court system with Discord-style transcripts and logging"""
+
+    court_group = app_commands.Group(
+        name="court",
+        description="File, manage, and close court cases",
+    )
     
     def __init__(self, bot):
         self.bot = bot
@@ -420,7 +425,7 @@ class Court(commands.Cog):
 
         await self._load_open_sessions()
     
-    @app_commands.command(name="court-setup-logs", description="⚙️ Configure court transcript logs channel")
+    @court_group.command(name="setup-logs", description="⚙️ Configure the court transcript log channel")
     @app_commands.describe(channel="The channel to send court transcripts to")
     @is_admin()
     async def court_setup_logs(self, interaction: discord.Interaction, channel: discord.TextChannel):
@@ -454,7 +459,7 @@ class Court(commands.Cog):
                 ephemeral=True
             )
     
-    @app_commands.command(name="court-file", description="⚖️ File a court case")
+    @court_group.command(name="file", description="⚖️ File a court case")
     @app_commands.describe(
         defendant="The person being sued/charged",
         case_type="Type of case",
@@ -533,11 +538,11 @@ class Court(commands.Cog):
             )
             embed.add_field(name="📋 Case Reason", value=reason, inline=False)
             embed.add_field(name="🔧 Available Commands", value=(
-                "`/court-evidence` - Submit evidence\n"
-                "`/court-jury add @user` - Add jury members\n"
-                "`/court-verdict` - Start deliberation\n"
-                "`/court-view-evidence` - View all evidence\n"
-                "`/court-close [summary]` - Close the case"
+                "`/court evidence` - Submit evidence\n"
+                "`/court jury add @user` - Add jury members\n"
+                "`/court verdict` - Start deliberation\n"
+                "`/court view-evidence` - View all evidence\n"
+                "`/court close [summary]` - Close the case"
             ), inline=False)
             embed.set_footer(text="Present your case and evidence")
             
@@ -569,7 +574,7 @@ class Court(commands.Cog):
                 ephemeral=True
             )
     
-    @app_commands.command(name="court-evidence", description="📎 Submit evidence to the court")
+    @court_group.command(name="evidence", description="📎 Submit evidence to the court")
     async def court_evidence(self, interaction: discord.Interaction):
         session = await self._get_session_by_channel(interaction.channel_id)
         
@@ -593,7 +598,7 @@ class Court(commands.Cog):
         modal = CourtEvidence(self, session)
         await interaction.response.send_modal(modal)
     
-    @app_commands.command(name="court-jury", description="👥 Manage jury members")
+    @court_group.command(name="jury", description="👥 Manage jury members")
     @app_commands.describe(action="Add, remove, or list jury", member="The member")
     @is_mod()
     async def court_jury(
@@ -689,7 +694,7 @@ class Court(commands.Cog):
             )
             await interaction.response.send_message(embed=embed)
     
-    @app_commands.command(name="court-verdict", description="⚖️ Start verdict deliberation")
+    @court_group.command(name="verdict", description="⚖️ Start verdict deliberation")
     @is_mod()
     async def court_verdict(self, interaction: discord.Interaction):
         session = await self._get_session_by_channel(interaction.channel_id)
@@ -759,13 +764,13 @@ class Court(commands.Cog):
             )
             embed.add_field(name="⚖️ Guilty Votes", value=f"`{guilty_votes}`", inline=True)
             embed.add_field(name="✅ Not Guilty Votes", value=f"`{not_guilty_votes}`", inline=True)
-            embed.set_footer(text="Case can now be closed by the judge with /court-close")
+            embed.set_footer(text="Case can now be closed by the judge with /court close")
             
             await channel.send(f"<@{session.plaintiff_id}> <@{session.defendant_id}>", embed=embed)
             
             session.status = "verdict_reached"
     
-    @app_commands.command(name="court-view-evidence", description="📋 View all submitted evidence")
+    @court_group.command(name="view-evidence", description="📋 View all submitted evidence")
     async def court_view_evidence(self, interaction: discord.Interaction):
         session = await self._get_session_by_channel(interaction.channel_id)
         
@@ -800,7 +805,7 @@ class Court(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
     
-    @app_commands.command(name="court-close", description="🔒 Close the court case")
+    @court_group.command(name="close", description="🔒 Close the court case")
     @app_commands.describe(summary="Optional final case summary")
     @is_mod()
     async def court_close(self, interaction: discord.Interaction, summary: Optional[str] = None):
@@ -899,7 +904,7 @@ class Court(commands.Cog):
             if transcript_sent and log_channel_id:
                 embed.add_field(name="📂 Transcript", value=f"Saved to <#{log_channel_id}>", inline=False)
             else:
-                embed.add_field(name="⚠️ Transcript", value="No log channel configured. Use `/court-setup-logs` to set one up.", inline=False)
+                embed.add_field(name="⚠️ Transcript", value="No log channel configured. Use `/court setup-logs` to set one up.", inline=False)
             
             embed.set_footer(text="This channel will be deleted in 10 seconds")
             

@@ -57,6 +57,21 @@ class Moderation(
             self.bot.tree.add_command(command)
             return command
 
+        def grouped(name: str, desc: str, entries):
+            group = app_commands.Group(name=name, description=desc)
+            for command_name, command_desc, callback, access in entries:
+                command = app_commands.Command(
+                    name=command_name,
+                    description=command_desc,
+                    callback=callback,
+                )
+                if access:
+                    command.add_check(checks[access])
+                group.add_command(command)
+            self._slash_commands.append(group)
+            self.bot.tree.add_command(group)
+            return group
+
         # Chat Moderation
         cmd("lock", "Lock a channel", self.lock_slash, "mod")
         cmd("unlock", "Unlock a channel", self.unlock_slash, "mod")
@@ -127,16 +142,22 @@ class Moderation(
         cmd("notes", "View notes", self.notes_slash, "mod")
         cmd("modstats", "View mod statistics", self.modstats_slash, "mod")
 
+        # Welcome tools share one root command to preserve Discord command slots.
+        grouped("welcome", "Configure and preview welcome cards", (
+            ("background", "Set the custom welcome background image", self.setwelcomebg, None),
+            ("preview", "Preview the welcome card", self.testwelcome, None),
+            ("everyone", "Send a welcome card for every member", self.welcomeall, None),
+        ))
+
         # Misc
-        cmd("setwelcomebg", "Set custom welcome background image", self.setwelcomebg)
-        cmd("testwelcome", "Preview welcome card", self.testwelcome)
-        cmd("welcomeall", "Welcome all members", self.welcomeall)
         cmd("ownerinfo", "View owner info", self.ownerinfo)
 
-        # Emoji
-        cmd("emojitutorial", "Show emoji submission tutorial", self.emoji_tutorial_slash)
-        cmd("addemoji", "Request a new emoji", self.emoji_add_slash)
-        cmd("stealemoji", "Request emojis from pasted custom emojis", self.emoji_steal_slash)
+        # Emoji tools are grouped for the same reason.
+        grouped("emoji", "Create and import server emoji", (
+            ("tutorial", "Show the emoji submission tutorial", self.emoji_tutorial_slash, None),
+            ("add", "Request a new emoji", self.emoji_add_slash, None),
+            ("steal", "Import emojis from pasted custom emojis", self.emoji_steal_slash, None),
+        ))
 
         # Helper
         cmd("modguide", "Show the simplified moderation guide", self.guide_slash)
