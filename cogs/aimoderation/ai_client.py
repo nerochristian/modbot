@@ -34,6 +34,11 @@ from .prompts import (
 
 logger = logging.getLogger("ModBot.AIModeration.Client")
 
+_RESEARCH_UNAVAILABLE = (
+    "Live search is unavailable right now because no verifiable source links "
+    "were returned. I won't invent a current-events answer. Please try again shortly."
+)
+
 _DO_API_KEY: Final[str] = os.getenv("DO_API_KEY", "").strip()
 _DO_BASE_URL: Final[str] = os.getenv("DO_INFERENCE_BASE_URL", "https://inference.do-ai.run/v1").strip().rstrip("/")
 
@@ -231,6 +236,50 @@ class AIClient:
             or self._serpapi_api_key
             or self._deepseek_web.enabled
         )
+
+    @property
+    def has_external_web_search(self) -> bool:
+        return bool(
+            self._brave_search_api_key
+            or self._tavily_api_key
+            or self._serpapi_api_key
+        )
+
+    @staticmethod
+    def _finalize_research_response(
+        content: str,
+        source_urls: Optional[List[str]] = None,
+    ) -> Optional[str]:
+        """Return research only when it carries verifiable source URLs."""
+        text = (content or "").strip()
+        low = text.lower()
+        if not text or (
+            "search is unavailable in expert mode" in low
+            or "please use instant mode" in low
+        ):
+            return None
+
+        urls: List[str] = []
+        for url in source_urls or []:
+            clean = str(url or "").strip().rstrip(".,;)")
+            if clean.startswith(("https://", "http://")) and clean not in urls:
+                urls.append(clean)
+        for url in re.findall(r"https?://[^\s<>]+", text):
+            clean = url.rstrip(".,;)")
+            if clean not in urls:
+                urls.append(clean)
+
+        marker = "__BOT_SOURCES__"
+        if marker in text:
+            _, sources = text.split(marker, 1)
+            if re.search(r"https?://", sources):
+                return text
+            text = text.split(marker, 1)[0].rstrip()
+
+        if not urls:
+            return None
+        sources = "\n".join(f"- <{url}>" for url in urls[:8])
+        return f"{text}\n\n{marker}\n{sources}"
 
     async def close(self) -> None:
         await self._deepseek_web.close()
@@ -957,17 +1006,10 @@ class AIClient:
                 channel_context += f" | Topic: {topic[:500]}"
 
         web_context = ""
-        uses_native_search = (
-            signals.mode == ConversationMode.RESEARCH
-            and (
-                self._deepseek_web.enabled
-                or (self.prefers_deepseek_http and _deepseek_api_enabled())
-            )
-        )
+        research_source_urls: List[str] = []
         if (
             signals.mode == ConversationMode.RESEARCH
-            and not uses_native_search
-            and self.has_web_search
+            and self.has_external_web_search
         ):
             try:
                 queries = await self._generate_search_queries(user_content, num_queries=3)
@@ -983,8 +1025,23 @@ class AIClient:
                         break
                 if results:
                     web_context = self._format_web_results(results[:8])
+                    research_source_urls = [result.url for result in results[:8]]
             except Exception:
                 logger.warning("External web search failed", exc_info=True)
+
+        # Galaxy exposes plain chat-completions, not a documented search flag.
+        # Use authenticated browser search when no provider results exist.
+        uses_native_search = bool(
+            signals.mode == ConversationMode.RESEARCH
+            and not web_context
+            and self._deepseek_web.enabled
+        )
+        if (
+            signals.mode == ConversationMode.RESEARCH
+            and not web_context
+            and not uses_native_search
+        ):
+            return _RESEARCH_UNAVAILABLE
 
         plan = self._build_conversation_plan(
             signals=signals,
@@ -1028,6 +1085,10 @@ class AIClient:
                 self.prefers_deepseek_http
                 and _deepseek_api_enabled()
                 and not image_context
+                and not (
+                    signals.mode == ConversationMode.RESEARCH
+                    and uses_native_search
+                )
             ):
                 http_primary_attempted = True
                 try:
@@ -1044,6 +1105,13 @@ class AIClient:
                     )
                     if content:
                         content = self._postprocess_chat_response(content)
+                        if signals.mode == ConversationMode.RESEARCH:
+                            content = self._finalize_research_response(
+                                content,
+                                research_source_urls,
+                            )
+                            if not content:
+                                return _RESEARCH_UNAVAILABLE
                         asyncio.create_task(
                             self._update_memory_smart(
                                 author.id,
@@ -1110,15 +1178,24 @@ class AIClient:
                         session_key=session_key,
                         session_name=session_name,
                         continue_session=is_continuation,
-                        search=True,
+                        search=signals.mode == ConversationMode.RESEARCH,
                         long_answer=signals.asks_for_long_answer,
-                        deepthink=uses_native_search,
+                        # DeepSeek Search and Expert/DeepThink cannot be active
+                        # together. Research must keep real search enabled.
+                        deepthink=False,
                     ),
                     timeout=_deepseek_web_primary_timeout(),
                 )
             if not content:
                 return None
             content = self._postprocess_chat_response(content)
+            if signals.mode == ConversationMode.RESEARCH:
+                content = self._finalize_research_response(
+                    content,
+                    research_source_urls,
+                )
+                if not content:
+                    return _RESEARCH_UNAVAILABLE
 
             # Fire-and-forget memory update with summarization
             asyncio.create_task(
@@ -1127,6 +1204,8 @@ class AIClient:
             return content
         except DeepSeekWebAuthError as exc:
             logger.warning("DeepSeek browser session needs renewal: %s", exc)
+            if signals.mode == ConversationMode.RESEARCH:
+                return _RESEARCH_UNAVAILABLE
             try:
                 content = await self._conversation_via_http(
                     prompt,
@@ -1144,6 +1223,8 @@ class AIClient:
             return "DeepSeek needs a human session renewal and the configured fallback providers are unavailable right now."
         except (DeepSeekWebError, asyncio.TimeoutError) as exc:
             logger.warning("DeepSeek browser request failed: %s", exc)
+            if signals.mode == ConversationMode.RESEARCH:
+                return _RESEARCH_UNAVAILABLE
             try:
                 content = await self._conversation_via_http(
                     prompt,
