@@ -187,7 +187,7 @@ class AIClient:
     @property
     def prefers_deepseek_http(self) -> bool:
         provider = str(getattr(self, "provider", "") or "").strip().lower()
-        return provider in {"deepseek", "deepseek-api", "deepseek-http", "galaxy", "glxy"}
+        return provider in {"deepseek", "deepseek-api", "deepseek-http", "galaxy", "glxy", "deepsea"}
 
     def availability_message(self) -> str:
         provider = str(getattr(self, "provider", "") or "").strip().lower()
