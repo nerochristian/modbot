@@ -98,6 +98,43 @@ _EMOJI_META = {
     },
 }
 
+_SEMANTIC_KIND_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("unlock", ("unlocked", "lockdown lifted")),
+    ("success", ("unbanned", "unmuted", "timeout removed", "quarantine lifted")),
+    ("ban", ("ban list", "banned", "softban", "tempban", "ban member", "user ban")),
+    ("kick", ("kicked", "kick member", "user kick")),
+    ("mute", ("muted", "timed out", "timeout member", "user timeout")),
+    ("warn", ("warned", "warning", "warn member", "automod")),
+    ("lock", ("locked", "lockdown", "channel lock")),
+    (
+        "error",
+        (
+            "failed",
+            "error",
+            "denied",
+            "deleted",
+            "removed",
+            "blocked",
+            "revoked",
+            "rejected",
+        ),
+    ),
+    (
+        "success",
+        (
+            "created",
+            "added",
+            "joined",
+            "restored",
+            "enabled",
+            "approved",
+            "complete",
+            "succeeded",
+        ),
+    ),
+    ("warning", ("left", "expired", "disabled", "updated risk", "suspicious")),
+)
+
 _emoji_cache: dict[tuple[int, str, str], str] = {}
 _emoji_locks: dict[tuple[int, str, str], asyncio.Lock] = {}
 _emoji_locks_guard = asyncio.Lock()
@@ -128,6 +165,31 @@ async def _get_lock(key: tuple[int, str, str]) -> asyncio.Lock:
 def _looks_custom_emoji(value: str) -> bool:
     text = (value or "").strip()
     return text.startswith("<:") or text.startswith("<a:")
+
+
+def _starts_with_custom_emoji(value: str) -> bool:
+    return bool(re.match(r"^<a?:[A-Za-z0-9_]{2,32}:\d+>(?:\s|$)", str(value or "").strip()))
+
+
+def _semantic_status_kind(title: str) -> str:
+    normalized = re.sub(r"[*_`~]", "", str(title or "")).casefold()
+    for kind, markers in _SEMANTIC_KIND_RULES:
+        if any(marker in normalized for marker in markers):
+            return kind
+    return "info"
+
+
+def _strip_leading_status_icon(title: str) -> str:
+    cleaned = str(title or "").strip()
+    for meta in _EMOJI_META.values():
+        candidates = {
+            str(meta.get("default_icon") or "").strip(),
+            str(getattr(Config, meta["config_icon"], "") or "").strip(),
+        }
+        for candidate in candidates:
+            if candidate and not _looks_custom_emoji(candidate) and cleaned.startswith(candidate):
+                return cleaned[len(candidate):].lstrip()
+    return cleaned
 
 
 def _normalize_emoji_name(value: str) -> str:
@@ -751,6 +813,24 @@ async def apply_status_emoji_overrides(
             if replacement:
                 updated_title = updated_title.replace(prefix, f"{replacement} ", 1)
                 changed = True
+
+    # Most log/action embeds use plain semantic titles (for example,
+    # "Message Deleted" or "Member Banned"). Give those the matching custom
+    # application emoji too, rather than requiring every caller to hard-code a
+    # Unicode prefix before this shared formatter can recognize it.
+    if updated_title and not _starts_with_custom_emoji(updated_title):
+        semantic_kind = _semantic_status_kind(updated_title)
+        semantic_meta = _EMOJI_META[semantic_kind]
+        mention = _cached_application_mention(semantic_kind, semantic_meta)
+        if mention is None:
+            try:
+                mention = await _ensure_custom_status_emoji(guild, semantic_kind)
+            except Exception:
+                mention = None
+        if mention:
+            clean_title = _strip_leading_status_icon(updated_title)
+            updated_title = f"{mention} {clean_title}" if clean_title else mention
+            changed = True
 
     if changed:
         if updated_description is not None:

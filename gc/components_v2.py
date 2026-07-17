@@ -304,12 +304,44 @@ def _normalize_v2_payload(
     return args, kwargs
 
 
+def _target_guild(target: Any) -> Optional[discord.Guild]:
+    guild = getattr(target, "guild", None)
+    if guild is not None:
+        return guild
+    parent = getattr(target, "_parent", None)
+    return getattr(parent, "guild", None)
+
+
+async def _apply_shared_status_emojis(target: Any, kwargs: dict[str, Any]) -> None:
+    guild = _target_guild(target)
+    if guild is None:
+        return
+    try:
+        from utils.status_emojis import apply_status_emoji_overrides
+    except Exception:
+        return
+
+    embed = kwargs.get("embed", MISSING)
+    if isinstance(embed, discord.Embed):
+        kwargs["embed"] = await apply_status_emoji_overrides(embed, guild)
+
+    embeds = kwargs.get("embeds", MISSING)
+    if isinstance(embeds, (list, tuple)):
+        formatted: list[Any] = []
+        for candidate in embeds:
+            if isinstance(candidate, discord.Embed):
+                candidate = await apply_status_emoji_overrides(candidate, guild)
+            formatted.append(candidate)
+        kwargs["embeds"] = formatted
+
+
 def _patch_async_method(owner: Any, name: str, key: str, *, edit: bool = False) -> None:
     original = getattr(owner, name, None)
     if original is None or getattr(original, "_universal_components_v2", False):
         return
 
     async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        await _apply_shared_status_emojis(self, kwargs)
         normalized_args, normalized_kwargs = _normalize_v2_payload(args, kwargs, edit=edit)
         return await original(self, *normalized_args, **normalized_kwargs)
 
