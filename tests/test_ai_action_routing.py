@@ -957,6 +957,103 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             "PRIVATE MEMORY",
         )
 
+    async def test_galaxy_research_uses_sourced_browser_search_not_plain_http(self) -> None:
+        client = object.__new__(AIClient)
+        client.provider = "deepseek"
+        client.config = AIConfig(provider="deepseek")
+        client._block_until = None
+        client._block_reason = None
+        client._brave_search_api_key = None
+        client._tavily_api_key = None
+        client._serpapi_api_key = None
+        client._rate_limiter = SimpleNamespace(
+            is_rate_limited=AsyncMock(return_value=(False, 0)),
+            record_call=AsyncMock(),
+        )
+        client._deepseek_web = SimpleNamespace(
+            enabled=True,
+            chat=AsyncMock(
+                return_value=(
+                    "verified news\n\n__BOT_SOURCES__\n"
+                    "- <https://example.com/news>"
+                )
+            ),
+        )
+        client._call_deepseek_api = AsyncMock(return_value="unsourced API answer")
+        client._collect_image_context = AsyncMock(return_value=[])
+        client._update_memory_smart = AsyncMock()
+        client.bot = SimpleNamespace(
+            user=SimpleNamespace(id=999),
+            db=SimpleNamespace(
+                get_ai_memory=AsyncMock(return_value=""),
+                get_guild_memory=AsyncMock(return_value=""),
+            ),
+        )
+
+        with patch(
+            "cogs.aimoderation.ai_client._deepseek_api_enabled",
+            return_value=True,
+        ):
+            response = await client.converse(
+                user_content="research world news",
+                guild=SimpleNamespace(id=1, name="Guild", member_count=10),
+                author=SimpleNamespace(id=2, name="User"),
+                recent_messages=[],
+                signals=ConversationSignals(
+                    mode=ConversationMode.RESEARCH,
+                    confidence=1.0,
+                    show_research_indicator=True,
+                ),
+            )
+
+        self.assertIn("https://example.com/news", response)
+        client._call_deepseek_api.assert_not_awaited()
+        client._deepseek_web.chat.assert_awaited_once()
+        self.assertTrue(client._deepseek_web.chat.await_args.kwargs["search"])
+        self.assertFalse(client._deepseek_web.chat.await_args.kwargs["deepthink"])
+
+    async def test_unsourced_research_is_rejected(self) -> None:
+        client = object.__new__(AIClient)
+        client.provider = "deepseek-web"
+        client.config = AIConfig()
+        client._block_until = None
+        client._block_reason = None
+        client._brave_search_api_key = None
+        client._tavily_api_key = None
+        client._serpapi_api_key = None
+        client._rate_limiter = SimpleNamespace(
+            is_rate_limited=AsyncMock(return_value=(False, 0)),
+            record_call=AsyncMock(),
+        )
+        client._deepseek_web = SimpleNamespace(
+            enabled=True,
+            chat=AsyncMock(return_value="plausible but unsourced news"),
+        )
+        client._collect_image_context = AsyncMock(return_value=[])
+        client._update_memory_smart = AsyncMock()
+        client.bot = SimpleNamespace(
+            user=SimpleNamespace(id=999),
+            db=SimpleNamespace(
+                get_ai_memory=AsyncMock(return_value=""),
+                get_guild_memory=AsyncMock(return_value=""),
+            ),
+        )
+
+        response = await client.converse(
+            user_content="research world news",
+            guild=SimpleNamespace(id=1, name="Guild", member_count=10),
+            author=SimpleNamespace(id=2, name="User"),
+            recent_messages=[],
+            signals=ConversationSignals(
+                mode=ConversationMode.RESEARCH,
+                confidence=1.0,
+                show_research_indicator=True,
+            ),
+        )
+
+        self.assertIn("no verifiable source links", response)
+        client._update_memory_smart.assert_not_called()
+
     async def test_conversation_falls_back_to_digitalocean_when_deepseek_web_fails(self) -> None:
         client = object.__new__(AIClient)
         client.provider = "deepseek-web"

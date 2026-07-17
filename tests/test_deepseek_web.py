@@ -431,6 +431,18 @@ class DeepSeekWebChatModeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(call.kwargs["reuse_existing"])
         self.assertEqual(call.kwargs["session_name"], "Soul -> General")
 
+    async def test_research_uses_search_without_incompatible_deepthink(self) -> None:
+        client = DeepSeekWebClient()
+        client._run = AsyncMock(return_value="verified research")
+
+        result = await client.research("What happened today?")
+
+        self.assertEqual(result, "verified research")
+        call = client._run.await_args
+        self.assertEqual(call.kwargs["ui_mode"], "Instant")
+        self.assertTrue(call.kwargs["search"])
+        self.assertFalse(call.kwargs["deepthink"])
+
     async def test_non_search_long_answer_allows_requested_structure(self) -> None:
         client = DeepSeekWebClient()
         client._run = AsyncMock(return_value="long profile")
