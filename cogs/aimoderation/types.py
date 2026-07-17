@@ -138,10 +138,14 @@ class AIConfig:
     temperature_routing: float = 0.2
     temperature_chat: float = 0.85
     max_tokens_routing: int = 1500
-    max_tokens_chat: int = 1800
-    memory_window: int = 50
-    memory_max_chars: int = 32_000
-    context_messages: int = 30
+    max_tokens_chat: int = 3_000
+    memory_window: int = 200
+    memory_max_chars: int = 96_000
+    context_messages: int = 100
+    context_char_budget: int = 96_000
+    routing_context_messages: int = 80
+    user_memory_context_chars: int = 16_000
+    guild_memory_context_chars: int = 20_000
     rate_limit_calls: int = 30
     rate_limit_window: int = 60
     timeout_max_seconds: int = 259_200    # 3 days
@@ -160,7 +164,7 @@ class GuildSettings:
     enabled: bool = False
     chat_enabled: bool = False
     model: Optional[str] = None
-    context_messages: int = 30
+    context_messages: int = 100
     confirm_enabled: bool = True
     confirm_timeout_seconds: int = 25
     confirm_actions: Set[str] = field(
@@ -255,7 +259,12 @@ class GuildSettings:
             enabled=cls._coerce_bool(data.get("aimod_enabled", False), False),
             chat_enabled=cls._coerce_bool(data.get("aimod_chat_enabled", False), False),
             model=data.get("aimod_model"),
-            context_messages=cls._coerce_int(data.get("aimod_context_messages", 30), 30, minimum=1, maximum=50),
+            context_messages=cls._coerce_int(
+                data.get("aimod_context_messages", 100),
+                100,
+                minimum=1,
+                maximum=200,
+            ),
             confirm_enabled=cls._coerce_bool(
                 data.get("aimod_confirm_enabled", True), True
             ),
@@ -373,6 +382,7 @@ class ConversationPlan:
     temperature: float
     max_tokens: int
     show_research_indicator: bool
+    context_prompt: str = ""
 
     @property
     def show_indicator(self) -> bool:

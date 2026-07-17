@@ -312,7 +312,7 @@ export const MODULE_DEFINITIONS: readonly ModuleDefinition[] = [
           { label: 'Generated Python', value: 'execute_python' },
         ],
       },
-      { key: 'aimod_context_messages', label: 'Context window', type: 'number', min: 1, max: 50, fallback: 30, hint: 'Recent messages supplied to the AI for each decision.' },
+      { key: 'aimod_context_messages', label: 'Context window', type: 'number', min: 1, max: 200, fallback: 100, hint: 'Recent messages available to Galaxy. Newest messages are kept within a bounded input budget.' },
       { key: 'aimod_location_context', label: 'Server location context', type: 'text', maxLength: 120, placeholder: 'Global community, English speaking', hint: 'Optional regional or community context for better interpretation.' },
       { key: 'aimod_model', label: 'Model override', type: 'text', maxLength: 120, placeholder: 'Use provider default', hint: 'Advanced provider model ID. Leave blank to follow the server default.' },
     ],

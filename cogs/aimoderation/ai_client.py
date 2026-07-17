@@ -801,7 +801,7 @@ class AIClient:
             reply_suffix = f" {reply_tag}" if reply_tag else ""
             return f"[{label}] {m.author} ({m.author.id}): {content}{reply_suffix}"
 
-        history_window = max(1, int(self.config.memory_window))
+        history_window = max(1, int(self.config.routing_context_messages))
         history = "\n".join(
             _format_line(m) for m in recent_messages[-history_window:]
         ) or "None"
@@ -943,6 +943,19 @@ class AIClient:
             )
             thread_context = self._format_conversation_history(recent_messages)
 
+        channel_context = ""
+        source_channel = getattr(source_message, "channel", None)
+        if source_channel is not None:
+            channel_name = str(getattr(source_channel, "name", "") or "").strip()
+            channel_id = getattr(source_channel, "id", None)
+            topic = str(getattr(source_channel, "topic", "") or "").strip()
+            if channel_name:
+                channel_context = f"#{channel_name}"
+            if channel_id is not None:
+                channel_context += f" (ID {channel_id})"
+            if topic:
+                channel_context += f" | Topic: {topic[:500]}"
+
         web_context = ""
         uses_native_search = (
             signals.mode == ConversationMode.RESEARCH
@@ -983,6 +996,7 @@ class AIClient:
             thread_context=thread_context,
             is_continuation=is_continuation,
             location_context=location_context,
+            channel_context=channel_context,
             web_context=web_context,
             uses_native_search=uses_native_search,
         )
@@ -993,7 +1007,19 @@ class AIClient:
             recent_messages,
             source_message=source_message,
         )
-        prompt = f"{plan.system_prompt}\n\n### USER MESSAGE ###\n{plan.user_prompt}"
+        turn_prompt = "\n\n".join(
+            part
+            for part in (
+                plan.context_prompt.strip(),
+                f"### CURRENT USER MESSAGE ###\n{plan.user_prompt}",
+            )
+            if part
+        )
+        prompt = f"{plan.system_prompt}\n\n{turn_prompt}".strip()
+        api_messages = [
+            {"role": "system", "content": plan.system_prompt},
+            {"role": "user", "content": turn_prompt},
+        ]
 
         try:
             await self._rate_limiter.record_call(author.id)
@@ -1006,13 +1032,13 @@ class AIClient:
                 http_primary_attempted = True
                 try:
                     max_tokens = (
-                        max(self.config.max_tokens_chat, 2400)
+                        max(plan.max_tokens, 4_800)
                         if signals.asks_for_long_answer
-                        else self.config.max_tokens_chat
+                        else plan.max_tokens
                     )
                     content = await self._call_deepseek_api(
-                        [{"role": "user", "content": prompt}],
-                        temperature=self.config.temperature_chat,
+                        api_messages,
+                        temperature=plan.temperature,
                         max_tokens=max_tokens,
                         model=model,
                     )
@@ -1172,13 +1198,17 @@ class AIClient:
             return "No recent messages"
 
         lines: List[str] = []
+        used_chars = 0
+        omitted_count = 0
+        char_budget = max(4_000, int(self.config.context_char_budget))
         bot_id = self.bot.user.id if self.bot.user else None
         def record_field(record: Any, name: str, default: Any = None) -> Any:
             if isinstance(record, dict):
                 return record.get(name, default)
             return getattr(record, name, default)
 
-        for m in recent_messages[-self.config.memory_window:]:
+        candidates = recent_messages[-self.config.memory_window:]
+        for index, m in enumerate(reversed(candidates)):
             if bot_id and m.author.id == bot_id:
                 author_label = "assistant"
             elif m.author.bot:
@@ -1226,9 +1256,47 @@ class AIClient:
 
             reply_context = self._get_reply_context(m, bot_id, recent_messages) if bot_id else None
             reply_prefix = f"{reply_context} " if reply_context else ""
-            lines.append(f"[{author_label}] {name}: {reply_prefix}{display}")
+            line = f"[{author_label}] {name}: {reply_prefix}{display}"
+            projected = used_chars + len(line) + (1 if lines else 0)
+            if lines and projected > char_budget:
+                omitted_count = len(candidates) - index
+                break
+            if not lines and len(line) > char_budget:
+                line = line[-char_budget:]
+            lines.append(line)
+            used_chars += len(line) + (1 if len(lines) > 1 else 0)
 
+        lines.reverse()
+        if omitted_count:
+            lines.insert(0, f"[... {omitted_count} earlier message(s) omitted to fit the context budget ...]")
         return "\n".join(lines)
+
+    @staticmethod
+    def _format_server_map(guild: discord.Guild) -> str:
+        channels: List[str] = []
+        for channel in list(getattr(guild, "channels", []) or [])[:80]:
+            name = str(getattr(channel, "name", "") or "").strip()
+            if not name:
+                continue
+            channel_type = str(getattr(channel, "type", "channel"))
+            category = getattr(getattr(channel, "category", None), "name", None)
+            category_suffix = f" in {category}" if category else ""
+            channels.append(f"- {name} ({channel_type}, ID {channel.id}){category_suffix}")
+
+        roles: List[str] = []
+        guild_roles = list(getattr(guild, "roles", []) or [])
+        for role in reversed(guild_roles[-50:]):
+            is_default = getattr(role, "is_default", None)
+            if callable(is_default) and is_default():
+                continue
+            roles.append(f"- {role.name} (ID {role.id})")
+
+        sections: List[str] = []
+        if channels:
+            sections.append("Channels:\n" + "\n".join(channels))
+        if roles:
+            sections.append("Roles (highest first):\n" + "\n".join(roles))
+        return "\n\n".join(sections)
 
     def _is_conversation_continuation(
         self,
@@ -1310,6 +1378,8 @@ class AIClient:
         messages: List[Dict[str, Any]] = [
             {"role": "system", "content": plan.system_prompt},
         ]
+        if plan.context_prompt.strip():
+            messages.append({"role": "user", "content": plan.context_prompt.strip()})
 
         bot_id = self.bot.user.id if self.bot.user else None
         if bot_id and recent_messages:
@@ -1713,6 +1783,7 @@ class AIClient:
         thread_context: str = "",
         is_continuation: bool = False,
         location_context: str = "",
+        channel_context: str = "",
         web_context: str = "",
         uses_native_search: bool = False,
     ) -> ConversationPlan:
@@ -1733,6 +1804,8 @@ class AIClient:
             context_parts.append("Context: This is a continuation of an active conversation.")
         if location_context.strip():
             context_parts.append(f"Server location context: {location_context.strip()}")
+        if channel_context.strip():
+            context_parts.append(f"Current channel: {channel_context.strip()}")
         
         full_context = "### CURRENT STATE & CONTEXT ###\n"
         full_context += "\n".join(context_parts) + "\n\n"
@@ -1744,6 +1817,14 @@ class AIClient:
             "Treat Cherry warmly and respectfully, while staying natural and truthful. "
             "Do not insult or demean Cherry, but do not grovel, worship, or start arguments on their behalf.\n\n"
         )
+
+        server_map = self._format_server_map(guild)
+        if server_map:
+            full_context += (
+                "### SERVER MAP ###\n"
+                "This is a compact snapshot of current channels and roles. Use it for local server questions and exact action targets.\n"
+                f"{server_map}\n\n"
+            )
 
         if thread_context and thread_context != "No recent messages":
             full_context += (
@@ -1757,15 +1838,16 @@ class AIClient:
         if web_context:
             full_context += f"### WEB SEARCH RESULTS ###\n{web_context}\n\n"
         elif uses_native_search:
-            full_context += "### LIVE SEARCH ###\nDeepSeek web search is enabled for this request. Use current search results and include source URLs when available.\n\n"
+            full_context += "### LIVE SEARCH ###\nThe configured provider's live search capability is enabled for this request. Use current search results and include source URLs when available.\n\n"
         
         # Memory section — a distilled profile of durable facts about the user.
         if past_memory.strip():
             # Memory is now a concise curated profile, so we can afford the full
             # thing (capped to a sane upper bound for safety).
             trimmed = past_memory.strip()
-            if len(trimmed) > 6000:
-                trimmed = trimmed[:6000].rsplit("\n", 1)[0] or trimmed[:6000]
+            memory_limit = max(1_000, int(self.config.user_memory_context_chars))
+            if len(trimmed) > memory_limit:
+                trimmed = trimmed[:memory_limit].rsplit("\n", 1)[0] or trimmed[:memory_limit]
             full_context += (
                 "### MEMORY OF THIS USER ###\n"
                 "These are durable facts you've learned about this person across past "
@@ -1779,8 +1861,9 @@ class AIClient:
 
         if guild_memory.strip():
             trimmed = guild_memory.strip()
-            if len(trimmed) > 5000:
-                trimmed = trimmed[:5000].rsplit("\n", 1)[0] or trimmed[:5000]
+            memory_limit = max(1_000, int(self.config.guild_memory_context_chars))
+            if len(trimmed) > memory_limit:
+                trimmed = trimmed[:memory_limit].rsplit("\n", 1)[0] or trimmed[:memory_limit]
             full_context += (
                 "### MEMORY OF THIS SERVER ###\n"
                 "These are durable facts learned from recent server activity. Use them "
@@ -1792,61 +1875,61 @@ class AIClient:
 
         # --- RESEARCH MODE ---
         if signals.mode == ConversationMode.RESEARCH:
-            sys_prompt = ""
-            if not is_continuation:
-                sys_prompt = f"{DEEP_RESEARCH_SYSTEM_PROMPT}\n\n"
-            sys_prompt += f"{full_context}"
-            if not is_continuation:
-                sys_prompt += "Instructions:\n"
-                if web_context:
-                    sys_prompt += (
-                        "- Answer using the WEB SEARCH RESULTS above.\n"
-                        "- Cite result numbers like [1] next to factual claims from search.\n"
-                        "- If the search results do not support a claim, say the search results do not confirm it.\n"
-                    )
-                elif uses_native_search:
-                    sys_prompt += (
-                        "- Use DeepSeek's live web search before answering.\n"
-                        "- Include plain source URLs only when available. Do not output raw citation tokens.\n"
-                        "- If native search does not verify a claim, say it was not confirmed.\n"
-                    )
-                sys_prompt += "- Provide a brief, direct answer.\n- If there are key points, use a short bulleted list. Do not use markdown tables.\n- Keep it extremely concise.\n"
-                if signals.asks_for_current_info:
-                    sys_prompt += (
-                        "- The user is asking for current/latest information. Use only the web search results for current claims.\n"
-                    )
-                if signals.asks_for_sources:
-                    sys_prompt += "- The user asked for sources. Include the result numbers and URLs where useful.\n"
-                if signals.asks_for_long_answer:
-                    sys_prompt += "- Provide a slightly more detailed answer, but STILL limit to 250-500 words.\n"
-                if signals.focus_entities:
-                    sys_prompt += f"- Focus on these entities: {', '.join(signals.focus_entities)}\n"
+            turn_instructions = "### TURN INSTRUCTIONS ###\n"
+            if web_context:
+                turn_instructions += (
+                    "- Answer using the WEB SEARCH RESULTS above.\n"
+                    "- Cite result numbers like [1] next to factual claims from search.\n"
+                    "- If the search results do not support a claim, say the search results do not confirm it.\n"
+                )
+            elif uses_native_search:
+                turn_instructions += (
+                    "- Use the provider's live search capability before answering.\n"
+                    "- Include plain source URLs only when available. Do not output raw citation tokens.\n"
+                    "- If search does not verify a claim, say it was not confirmed.\n"
+                )
+            turn_instructions += (
+                "- Provide a brief, direct answer.\n"
+                "- If there are key points, use a short bulleted list. Do not use markdown tables.\n"
+                "- Keep it extremely concise.\n"
+            )
+            if signals.asks_for_current_info:
+                turn_instructions += (
+                    "- The user is asking for current/latest information. Use only verified search results for current claims.\n"
+                )
+            if signals.asks_for_sources:
+                turn_instructions += "- The user asked for sources. Include result numbers and URLs where useful.\n"
+            if signals.asks_for_long_answer:
+                turn_instructions += "- Provide a more detailed answer, usually 500-1,000 words when the subject earns it.\n"
+            if signals.focus_entities:
+                turn_instructions += f"- Focus on these entities: {', '.join(signals.focus_entities)}\n"
 
             return ConversationPlan(
-                system_prompt=sys_prompt,
+                system_prompt=DEEP_RESEARCH_SYSTEM_PROMPT,
                 user_prompt=user_content,
                 temperature=0.35,
-                max_tokens=max(self.config.max_tokens_chat, 2048),
+                max_tokens=max(self.config.max_tokens_chat, 4_000),
                 show_research_indicator=signals.show_research_indicator,
+                context_prompt=f"{full_context}{turn_instructions}",
             )
 
         # --- MOD GUIDANCE MODE ---
         if signals.mode == ConversationMode.MOD_GUIDANCE:
             bot_mention = self.bot.user.mention if self.bot.user else "@bot"
-            sys_prompt = ""
-            if not is_continuation:
-                sys_prompt = f"{MOD_GUIDANCE_SYSTEM_PROMPT}\n\n"
-            sys_prompt += f"{full_context}"
-            sys_prompt += "Provide practical moderation guidance.\n"
-            sys_prompt += f"Use `{bot_mention}` in command examples so they can copy-paste.\n"
-            sys_prompt += "If the user is missing info (target, reason, duration), ask ONE question.\n"
-            
+            turn_instructions = (
+                "### TURN INSTRUCTIONS ###\n"
+                "Provide practical moderation guidance.\n"
+                f"Use `{bot_mention}` in command examples so they can copy-paste.\n"
+                "If the user is missing info (target, reason, duration), ask ONE question.\n"
+            )
+
             return ConversationPlan(
-                system_prompt=sys_prompt,
+                system_prompt=MOD_GUIDANCE_SYSTEM_PROMPT,
                 user_prompt=user_content,
                 temperature=0.5,
                 max_tokens=self.config.max_tokens_chat,
                 show_research_indicator=False,
+                context_prompt=f"{full_context}{turn_instructions}",
             )
 
         # --- STANDARD CONVERSATION ---
@@ -1871,17 +1954,13 @@ class AIClient:
             "Hyphens inside compound words are fine."
         )
 
-        sys_prompt = ""
-        if not is_continuation:
-            sys_prompt = f"{CONVERSATION_SYSTEM_PROMPT}\n\n"
-        sys_prompt += f"{full_context}### INSTRUCTIONS ###\n{task_instruction}"
-        
         return ConversationPlan(
-            system_prompt=sys_prompt,
+            system_prompt=CONVERSATION_SYSTEM_PROMPT,
             user_prompt=user_content,
             temperature=self.config.temperature_chat,
             max_tokens=self.config.max_tokens_chat,
             show_research_indicator=False,
+            context_prompt=f"{full_context}### TURN INSTRUCTIONS ###\n{task_instruction}",
         )
 
     @staticmethod

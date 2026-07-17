@@ -134,6 +134,13 @@ class AIActionRoutingTests(unittest.TestCase):
             ["ban_member", "purge_messages"],
         )
 
+    def test_context_window_uses_api_sized_defaults_and_clamp(self) -> None:
+        self.assertEqual(GuildSettings.from_dict({}).context_messages, 100)
+        self.assertEqual(
+            GuildSettings.from_dict({"aimod_context_messages": 999}).context_messages,
+            200,
+        )
+
     def test_casual_conditional_question_is_conversation(self) -> None:
         content = "if someone is gay, are they gay?"
 
@@ -857,6 +864,42 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response, "galaxy answer")
         client._call_deepseek_api.assert_awaited_once()
         client._deepseek_web.chat.assert_not_awaited()
+        messages = client._call_deepseek_api.await_args.args[0]
+        self.assertEqual(messages[0]["role"], "system")
+        self.assertGreater(len(messages[0]["content"]), 1_024)
+        self.assertEqual(messages[1]["role"], "user")
+        self.assertIn("### CURRENT USER MESSAGE ###", messages[1]["content"])
+        self.assertIn("hello there", messages[1]["content"])
+
+    def test_conversation_history_budget_keeps_the_newest_messages(self) -> None:
+        client = object.__new__(AIClient)
+        client.config = AIConfig(memory_window=200, context_char_budget=4_000)
+        client.bot = SimpleNamespace(user=SimpleNamespace(id=999))
+
+        messages = []
+        for index in range(10):
+            author = SimpleNamespace(
+                id=index + 1,
+                bot=False,
+                display_name=f"User {index}",
+            )
+            messages.append(
+                SimpleNamespace(
+                    author=author,
+                    content=f"marker-{index} " + ("x" * 900),
+                    attachments=[],
+                    embeds=[],
+                    stickers=[],
+                    message_snapshots=[],
+                    reference=None,
+                )
+            )
+
+        history = client._format_conversation_history(messages)
+
+        self.assertIn("marker-9", history)
+        self.assertNotIn("marker-0", history)
+        self.assertIn("earlier message(s) omitted", history)
 
     async def test_research_does_not_feed_saved_memory_or_continue_chat(self) -> None:
         client = object.__new__(AIClient)

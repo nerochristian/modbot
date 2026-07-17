@@ -986,7 +986,7 @@ class AIModeration(commands.Cog):
             return None
 
         target = targets[0]
-        limit = max(int(getattr(settings, "context_messages", 30) or 30), 300)
+        limit = max(int(getattr(settings, "context_messages", 100) or 100), 300)
         try:
             history = [m async for m in message.channel.history(limit=limit)]
         except discord.HTTPException:
@@ -2973,7 +2973,7 @@ class AIModeration(commands.Cog):
         interaction: discord.Interaction,
         enabled: bool = True,
         talking: bool = True,
-        context_messages: app_commands.Range[int, 1, 50] = 30,
+        context_messages: app_commands.Range[int, 1, 200] = 100,
         proactive_percent: app_commands.Range[int, 0, 100] = 0,
     ) -> None:
         """Apply simple AI moderation defaults."""
