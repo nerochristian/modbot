@@ -748,7 +748,10 @@ class AIModeration(commands.Cog):
         current_hint = bool(re.search(
             r"\b(latest|current(?:ly)?|right\s+now|today|tonight|yesterday|tomorrow|"
             r"recent(?:ly)?|newest|upcoming|this\s+(?:week|month|year|season)|"
-            r"version|patch|update|release|price|weather|forecast|news|schedule)\b",
+            r"version|patch|update|release|price|weather|forecast|news|schedule|"
+            r"president|prime\s+minister|governor|mayor|ceo|owner|officeholder|"
+            r"law|legal|regulation|policy|stock|crypto|exchange\s+rate|"
+            r"available|availability|recommend(?:ed|ation|ations)?)\b",
             low,
         ))
         casual_followup = bool(re.fullmatch(

@@ -199,6 +199,21 @@ class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(signals.mode, ConversationMode.STANDARD)
         self.assertFalse(signals.use_deepthink)
 
+    async def test_current_role_question_falls_back_to_fast_search_when_classifier_fails(self) -> None:
+        cog = object.__new__(AIModeration)
+        cog.ai = SimpleNamespace(
+            has_web_search=True,
+            classify_research_route=AsyncMock(return_value=None),
+        )
+
+        signals = await cog._build_conversation_signals(
+            "who is the current CEO of Discord?"
+        )
+
+        self.assertEqual(signals.mode, ConversationMode.RESEARCH)
+        self.assertTrue(signals.asks_for_current_info)
+        self.assertFalse(signals.use_deepthink)
+
     async def test_explicit_research_request_builds_a_complete_plan(self) -> None:
         cog = object.__new__(AIModeration)
         classifier = AsyncMock(

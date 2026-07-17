@@ -658,12 +658,31 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             "gemini-3-5-flash",
         )
 
+    async def test_galaxy_loose_json_classifier_is_recovered(self) -> None:
+        client = object.__new__(AIClient)
+        client.provider = "deepseek"
+        client.config = AIConfig(provider="deepseek")
+        client._call_deepseek_api = AsyncMock(
+            return_value="{ route: search, confidence: 0.9, current_info: true }"
+        )
+
+        with patch(
+            "cogs.aimoderation.ai_client._deepseek_api_enabled",
+            return_value=True,
+        ):
+            decision = await client.classify_research_route(
+                "latest genshin update?"
+            )
+
+        self.assertEqual(decision["route"], "search")
+        self.assertTrue(decision["current_info"])
+
     async def test_galaxy_invalid_json_classifier_falls_back_quietly(self) -> None:
         client = object.__new__(AIClient)
         client.provider = "deepseek"
         client.config = AIConfig(provider="deepseek")
         client._call_deepseek_api = AsyncMock(
-            return_value="{ route: search, confidence: 0.9 }"
+            return_value="{ confidence: 0.9, current_info: maybe }"
         )
 
         with patch(
@@ -675,6 +694,28 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertIsNone(decision)
+
+    async def test_galaxy_string_current_info_counts_as_current_for_search_route(self) -> None:
+        client = object.__new__(AIClient)
+        client.provider = "deepseek"
+        client.config = AIConfig(provider="deepseek")
+        client._call_deepseek_api = AsyncMock(
+            return_value=(
+                '```json\n{"route":"search","confidence":0.91,'
+                '"current_info":"latest patch lookup","reason":"fresh info"}\n```'
+            )
+        )
+
+        with patch(
+            "cogs.aimoderation.ai_client._deepseek_api_enabled",
+            return_value=True,
+        ):
+            decision = await client.classify_research_route(
+                "latest genshin update?"
+            )
+
+        self.assertEqual(decision["route"], "search")
+        self.assertTrue(decision["current_info"])
 
     async def test_disabled_ai_mod_hard_gates_explicit_owner_request(self) -> None:
         cog = object.__new__(AIModeration)

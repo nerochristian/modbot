@@ -993,20 +993,20 @@ class AIClient:
             return None
 
         system_prompt = (
-            "You route Discord assistant requests. Return one JSON object only with "
-            "keys route, confidence, current_info, and reason. route must be exactly "
-            "normal_chat, search, or search_deepthink. Use normal_chat for casual "
-            "conversation, creative writing, timeless explanations, local Discord "
-            "context, and moderation commands. Use search when a concise answer needs "
-            "fresh or externally verified facts, including current/latest/recent/today "
-            "questions, game versions and patches, prices, schedules, releases, news, "
-            "weather, laws, officeholders, product availability, or recommendations. "
-            "Use search_deepthink only when live evidence also needs substantial "
-            "analysis: broad world briefs, investigations, comparisons across sources, "
-            "conflicting reports, technical deep dives, or an explicitly requested "
+            "You are a strict routing classifier for a Discord assistant. Output exactly "
+            "one minified JSON object and nothing else. No markdown. No explanation outside "
+            "JSON. Schema: {\"route\":\"normal_chat|search|search_deepthink\","
+            "\"confidence\":0.0,\"current_info\":false,\"reason\":\"short\"}. "
+            "Use normal_chat for casual conversation, creative writing, timeless "
+            "explanations, local Discord context, and moderation commands. Use search "
+            "when a concise answer needs fresh or externally verified facts, including "
+            "current/latest/recent/today questions, game versions and patches, prices, "
+            "schedules, releases, news, weather, laws, officeholders, product availability, "
+            "or recommendations. Use search_deepthink only when live evidence also needs "
+            "substantial analysis: broad world briefs, investigations, comparisons across "
+            "sources, conflicting reports, technical deep dives, or an explicitly requested "
             "detailed breakdown. Do not choose deepthink merely because a fact is current. "
-            "current_info must be a boolean. confidence must be from 0 to 1. reason must "
-            "be a short string."
+            "current_info must be true or false only."
         )
         user_prompt = (
             f"Current UTC time: {_now().isoformat()}\n"
@@ -1030,32 +1030,74 @@ class AIClient:
                 ),
                 timeout=min(10.0, max(1.0, timeout)),
             )
-            try:
-                data = json.loads(self._extract_json(raw or ""))
-            except json.JSONDecodeError:
-                logger.debug("Galaxy research-route classifier returned invalid JSON: %r", (raw or "")[:500])
+            data = self._parse_research_route_payload(raw or "")
+            if not data:
                 return None
-            if not isinstance(data, dict):
-                return None
-            route = str(data.get("route") or "").strip().lower()
-            if route not in {"normal_chat", "search", "search_deepthink"}:
-                return None
-            try:
-                confidence = float(data.get("confidence", 0.0))
-            except (TypeError, ValueError):
-                confidence = 0.0
-            return {
-                "route": route,
-                "confidence": min(1.0, max(0.0, confidence)),
-                "current_info": bool(data.get("current_info", False)),
-                "reason": str(data.get("reason") or "")[:200],
-            }
+            return data
         except asyncio.TimeoutError:
             logger.warning("Galaxy research-route classification timed out")
             return None
         except Exception:
             logger.warning("Galaxy research-route classification failed", exc_info=True)
             return None
+
+    def _parse_research_route_payload(self, raw: str) -> Optional[Dict[str, Any]]:
+        """Parse Gemini's route JSON, with a narrow recovery path for loose output."""
+        payload = self._extract_json(raw or "")
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            data = self._parse_loose_research_route_payload(payload)
+        if not isinstance(data, dict):
+            logger.debug("Galaxy research-route classifier returned invalid JSON: %r", (raw or "")[:500])
+            return None
+
+        route = str(data.get("route") or "").strip().lower()
+        if route not in {"normal_chat", "search", "search_deepthink"}:
+            return None
+        try:
+            confidence = float(data.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            confidence = 0.0
+        current_raw = data.get("current_info", False)
+        if isinstance(current_raw, bool):
+            current_info = current_raw
+        elif isinstance(current_raw, (int, float)):
+            current_info = bool(current_raw)
+        else:
+            current_info = str(current_raw or "").strip().lower() in {"true", "yes", "1"} or route in {
+                "search",
+                "search_deepthink",
+            }
+        return {
+            "route": route,
+            "confidence": min(1.0, max(0.0, confidence)),
+            "current_info": current_info,
+            "reason": str(data.get("reason") or "")[:200],
+        }
+
+    @staticmethod
+    def _parse_loose_research_route_payload(payload: str) -> Optional[Dict[str, Any]]:
+        route_match = re.search(
+            r'["\']?route["\']?\s*:\s*["\']?(normal_chat|search_deepthink|search)["\']?',
+            payload or "",
+            re.IGNORECASE,
+        )
+        if not route_match:
+            return None
+        confidence_match = re.search(r'["\']?confidence["\']?\s*:\s*([01](?:\.\d+)?)', payload or "", re.IGNORECASE)
+        current_match = re.search(
+            r'["\']?current_info["\']?\s*:\s*(true|false|yes|no|1|0)',
+            payload or "",
+            re.IGNORECASE,
+        )
+        reason_match = re.search(r'["\']?reason["\']?\s*:\s*["\']([^"\']{0,200})', payload or "", re.IGNORECASE)
+        return {
+            "route": route_match.group(1).lower(),
+            "confidence": float(confidence_match.group(1)) if confidence_match else 0.0,
+            "current_info": current_match.group(1).lower() in {"true", "yes", "1"} if current_match else False,
+            "reason": reason_match.group(1) if reason_match else "loose classifier output",
+        }
 
     async def converse(
         self,
