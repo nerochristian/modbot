@@ -196,7 +196,12 @@ export function ModulesClient() {
       const response = await fetch('/api/modules/verification/setup', { method: 'POST' })
       const body = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(body.error || 'Automatic verification setup failed')
-      toast.success('Verification is ready', `${body.restrictedChannels ?? 0} channels were protected and the verification panel is live.`)
+      const protectedChannels = Number(body.restrictedChannels ?? 0)
+      const queuedMembers = Number(body.existingMembersAssigned ?? 0)
+      toast.success(
+        'Verification is ready',
+        `${protectedChannels} channels protected · ${queuedMembers} existing member${queuedMembers === 1 ? '' : 's'} queued · V2 panel posted.`,
+      )
       setPendingVerification(null)
       await refetch()
     } catch (error) {
