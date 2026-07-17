@@ -44,9 +44,16 @@ _DO_BASE_URL: Final[str] = os.getenv("DO_INFERENCE_BASE_URL", "https://inference
 
 # Optional DeepSeek HTTP API (OpenAI-compatible). The authenticated web session
 # remains primary whenever it is enabled.
-_DEEPSEEK_API_KEY: Final[str] = os.getenv("DEEPSEEK_API_KEY", "").strip()
-_DEEPSEEK_BASE_URL: Final[str] = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").strip().rstrip("/")
-_DEEPSEEK_API_MODEL: Final[str] = os.getenv("DEEPSEEK_MODEL", "gemini-3-5-flash").strip()
+_DEEPSEEK_API_KEY: Final[str] = (os.getenv("DEEPSEEK_API_KEY") or os.getenv("DEEPSEA_API_KEY") or "").strip()
+
+_deepsea_url = (os.getenv("DEEPSEA_API_URL") or "").strip().rstrip("/")
+if _deepsea_url.endswith("/chat/completions/cline"):
+    _deepsea_url = _deepsea_url[:-23]
+elif _deepsea_url.endswith("/chat/completions"):
+    _deepsea_url = _deepsea_url[:-17]
+
+_DEEPSEEK_BASE_URL: Final[str] = (os.getenv("DEEPSEEK_BASE_URL") or os.getenv("DEEPSEA_BASE_URL") or _deepsea_url or "https://llm.galaxyfounded.nl/v1").strip().rstrip("/")
+_DEEPSEEK_API_MODEL: Final[str] = (os.getenv("DEEPSEEK_MODEL") or os.getenv("DEEPSEA_MODEL") or "gemini-3-5-flash").strip()
 _DEEPSEEK_CHAT_PATH: Final[str] = "/" + os.getenv("DEEPSEEK_CHAT_PATH", "chat/completions").strip().strip("/")
 
 
