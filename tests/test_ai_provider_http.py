@@ -9,11 +9,13 @@ constructing AIClient via __new__ and injecting a fake aiohttp session.
 
 import asyncio
 import types
+from unittest.mock import AsyncMock
 
 import pytest
 
 import cogs.aimoderation.ai_client as ai_client_module
 from cogs.aimoderation.ai_client import AIClient
+from cogs.aimoderation.types import AIConfig
 
 
 class _FakeResp:
@@ -122,3 +124,55 @@ def test_deepseek_api_enabled_reflects_key(monkeypatch):
 def test_deepseek_api_placeholders_are_disabled(monkeypatch, placeholder):
     monkeypatch.setattr(ai_client_module, "_DEEPSEEK_API_KEY", placeholder)
     assert ai_client_module._deepseek_api_enabled() is False
+
+
+def test_deepseek_provider_routes_to_galaxy_before_browser(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client.provider = "deepseek"
+    client.config = AIConfig(provider="deepseek")
+    client._deepseek_web = types.SimpleNamespace(
+        enabled=True,
+        chat=AsyncMock(return_value="browser"),
+    )
+    client._call_deepseek_api = AsyncMock(return_value="galaxy")
+    client._call_digitalocean = AsyncMock(return_value="digitalocean")
+    monkeypatch.setattr(ai_client_module, "_DEEPSEEK_API_KEY", "api-key")
+
+    result = asyncio.run(
+        client._call(
+            [{"role": "user", "content": "route this"}],
+            temperature=0.0,
+            max_tokens=32,
+        )
+    )
+
+    assert result == "galaxy"
+    client._call_deepseek_api.assert_awaited_once()
+    client._deepseek_web.chat.assert_not_awaited()
+    client._call_digitalocean.assert_not_awaited()
+
+
+def test_deepseek_provider_falls_back_to_browser_before_digitalocean(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client.provider = "deepseek"
+    client.config = AIConfig(provider="deepseek")
+    client._deepseek_web = types.SimpleNamespace(
+        enabled=True,
+        chat=AsyncMock(return_value="browser"),
+    )
+    client._call_deepseek_api = AsyncMock(side_effect=RuntimeError("gateway down"))
+    client._call_digitalocean = AsyncMock(return_value="digitalocean")
+    monkeypatch.setattr(ai_client_module, "_DEEPSEEK_API_KEY", "api-key")
+
+    result = asyncio.run(
+        client._call(
+            [{"role": "user", "content": "route this"}],
+            temperature=0.0,
+            max_tokens=32,
+        )
+    )
+
+    assert result == "browser"
+    client._call_deepseek_api.assert_awaited_once()
+    client._deepseek_web.chat.assert_awaited_once()
+    client._call_digitalocean.assert_not_awaited()

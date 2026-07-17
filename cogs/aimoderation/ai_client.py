@@ -167,12 +167,26 @@ class AIClient:
             or _DO_API_KEY
         )
 
+    @property
+    def prefers_deepseek_http(self) -> bool:
+        provider = str(getattr(self, "provider", "") or "").strip().lower()
+        return provider in {"deepseek", "deepseek-api", "deepseek-http", "galaxy", "glxy"}
+
     def availability_message(self) -> str:
         provider = str(getattr(self, "provider", "") or "").strip().lower()
         if provider == "digitalocean":
             return "DigitalOcean inference is configured." if _DO_API_KEY else "DigitalOcean inference is missing DO_API_KEY."
         deepseek_web = getattr(self, "_deepseek_web", None)
         http_enabled = _deepseek_api_enabled()
+        if self.prefers_deepseek_http and http_enabled:
+            fallbacks = []
+            if getattr(deepseek_web, "enabled", False):
+                fallbacks.append("DeepSeek web")
+            if _DO_API_KEY:
+                fallbacks.append("DigitalOcean inference")
+            if fallbacks:
+                return f"DeepSeek HTTP is primary with {' and '.join(fallbacks)} fallback configured."
+            return "DeepSeek HTTP is configured as the primary provider."
         if getattr(deepseek_web, "enabled", False):
             fallbacks = []
             if http_enabled:
@@ -265,8 +279,28 @@ class AIClient:
         session_name: Optional[str] = None,
         long_answer: bool = False,
     ) -> Optional[str]:
-        # Use the authenticated browser session first. This keeps moderation
-        # operational without a paid API key and preserves DeepSeek web search.
+        http_attempted = False
+        if self.prefers_deepseek_http and _deepseek_api_enabled():
+            http_attempted = True
+            try:
+                result = await self._call_deepseek_api(
+                    messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    model=model,
+                    json_mode=json_mode,
+                    allow_multimodal=allow_multimodal,
+                )
+                if result is not None:
+                    return result
+            except Exception:
+                logger.warning(
+                    "Primary DeepSeek HTTP call failed; trying DeepSeek web.",
+                    exc_info=True,
+                )
+
+        # The authenticated browser lane preserves native search and provides
+        # a separate fallback when the configured HTTP gateway is unavailable.
         if self._deepseek_web.enabled:
             prompt_parts: List[str] = []
             for message in messages:
@@ -291,7 +325,7 @@ class AIClient:
             except (DeepSeekWebError, asyncio.TimeoutError):
                 logger.warning("DeepSeek web call failed; trying HTTP fallbacks.", exc_info=True)
 
-        if _deepseek_api_enabled():
+        if _deepseek_api_enabled() and not http_attempted:
             try:
                 result = await self._call_deepseek_api(
                     messages,
@@ -912,7 +946,10 @@ class AIClient:
         web_context = ""
         uses_native_search = (
             signals.mode == ConversationMode.RESEARCH
-            and self._deepseek_web.enabled
+            and (
+                self._deepseek_web.enabled
+                or (self.prefers_deepseek_http and _deepseek_api_enabled())
+            )
         )
         if (
             signals.mode == ConversationMode.RESEARCH
@@ -960,13 +997,58 @@ class AIClient:
 
         try:
             await self._rate_limiter.record_call(author.id)
+            http_primary_attempted = False
+            if (
+                self.prefers_deepseek_http
+                and _deepseek_api_enabled()
+                and not image_context
+            ):
+                http_primary_attempted = True
+                try:
+                    max_tokens = (
+                        max(self.config.max_tokens_chat, 2400)
+                        if signals.asks_for_long_answer
+                        else self.config.max_tokens_chat
+                    )
+                    content = await self._call_deepseek_api(
+                        [{"role": "user", "content": prompt}],
+                        temperature=self.config.temperature_chat,
+                        max_tokens=max_tokens,
+                        model=model,
+                    )
+                    if content:
+                        content = self._postprocess_chat_response(content)
+                        asyncio.create_task(
+                            self._update_memory_smart(
+                                author.id,
+                                user_content,
+                                content,
+                                stored_memory,
+                            )
+                        )
+                        return content
+                except Exception:
+                    logger.warning(
+                        "Primary DeepSeek HTTP conversation failed; trying browser fallback.",
+                        exc_info=True,
+                    )
+
             if not self._deepseek_web.enabled:
                 # Browser scraper off — use the HTTP conversation path (DeepSeek
                 # API, then DigitalOcean). Image uploads need the browser client,
                 # so vision is unavailable here; the text answer still goes through.
-                content = await self._conversation_via_http(
-                    prompt, model=model, long_answer=signals.asks_for_long_answer
-                )
+                if http_primary_attempted:
+                    content = await self._call_digitalocean_conversation(
+                        prompt,
+                        model=model,
+                        long_answer=signals.asks_for_long_answer,
+                    )
+                else:
+                    content = await self._conversation_via_http(
+                        prompt,
+                        model=model,
+                        long_answer=signals.asks_for_long_answer,
+                    )
                 if not content:
                     return None
                 content = self._postprocess_chat_response(content)

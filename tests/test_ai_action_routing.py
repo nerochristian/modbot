@@ -37,6 +37,19 @@ class AIActionRoutingTests(unittest.TestCase):
 
         self.assertEqual(client.provider, "digitalocean")
 
+    def test_default_galaxy_model_uses_configured_deepseek_model(self) -> None:
+        from cogs.aimoderation.types import _default_ai_model
+
+        with patch.dict(
+            "os.environ",
+            {
+                "AI_PROVIDER": "deepseek",
+                "AI_MODEL": "",
+                "DEEPSEEK_MODEL": "deepseek-v4-pro",
+            },
+        ):
+            self.assertEqual(_default_ai_model(), "deepseek-v4-pro")
+
     def test_purge_is_a_targeted_tool(self) -> None:
         from cogs.aimoderation.types import TARGETED_TOOLS
 
@@ -547,7 +560,10 @@ class AIActionRoutingTests(unittest.TestCase):
             "",
         ):
             self.assertTrue(client.is_available)
-            self.assertEqual(client.availability_message(), "DeepSeek HTTP is configured.")
+            self.assertEqual(
+                client.availability_message(),
+                "DeepSeek HTTP is configured as the primary provider.",
+            )
             self.assertIn("DeepSeek HTTP configured: yes", client.diagnostic_lines())
 
     def test_recent_target_cache_is_scoped_to_the_guild(self) -> None:
@@ -794,6 +810,53 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("### MEMORY OF THIS SERVER ###", prompt)
         self.assertIn("Server likes Python help", prompt)
         db.get_guild_memory.assert_awaited_once_with(1)
+
+    async def test_conversation_uses_galaxy_before_browser_when_configured(self) -> None:
+        client = object.__new__(AIClient)
+        client.provider = "deepseek"
+        client.config = AIConfig(provider="deepseek")
+        client._block_until = None
+        client._block_reason = None
+        client._brave_search_api_key = None
+        client._tavily_api_key = None
+        client._serpapi_api_key = None
+        client._rate_limiter = SimpleNamespace(
+            is_rate_limited=AsyncMock(return_value=(False, 0)),
+            record_call=AsyncMock(),
+        )
+        client._deepseek_web = SimpleNamespace(
+            enabled=True,
+            chat=AsyncMock(return_value="browser answer"),
+        )
+        client._call_deepseek_api = AsyncMock(return_value="galaxy answer")
+        client._collect_image_context = AsyncMock(return_value=[])
+        client._update_memory_smart = AsyncMock()
+        client.bot = SimpleNamespace(
+            user=SimpleNamespace(id=999),
+            db=SimpleNamespace(
+                get_ai_memory=AsyncMock(return_value=""),
+                get_guild_memory=AsyncMock(return_value=""),
+            ),
+        )
+
+        with patch(
+            "cogs.aimoderation.ai_client._deepseek_api_enabled",
+            return_value=True,
+        ):
+            response = await client.converse(
+                user_content="hello there",
+                guild=SimpleNamespace(id=1, name="Guild", member_count=10),
+                author=SimpleNamespace(id=2, name="User"),
+                recent_messages=[],
+                signals=ConversationSignals(
+                    mode=ConversationMode.STANDARD,
+                    confidence=1.0,
+                ),
+            )
+
+        self.assertEqual(response, "galaxy answer")
+        client._call_deepseek_api.assert_awaited_once()
+        client._deepseek_web.chat.assert_not_awaited()
 
     async def test_research_does_not_feed_saved_memory_or_continue_chat(self) -> None:
         client = object.__new__(AIClient)

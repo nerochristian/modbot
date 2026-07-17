@@ -117,13 +117,16 @@ def _default_ai_model() -> str:
     explicit = (os.getenv("AI_MODEL") or "").strip()
     if explicit:
         return explicit
-    if _default_ai_provider() == "digitalocean":
+    provider = _default_ai_provider()
+    if provider == "digitalocean":
         return (
             os.getenv("DO_AIMOD_MODEL")
             or os.getenv("DO_CHAT_MODEL")
             or os.getenv("DO_AUTOMOD_MODEL")
             or "deepseek-4-flash"
         ).strip()
+    if provider in {"deepseek", "deepseek-api", "deepseek-http", "galaxy", "glxy"}:
+        return (os.getenv("DEEPSEEK_MODEL") or "deepseek-v4-pro").strip()
     return "deepseek-web"
 
 
