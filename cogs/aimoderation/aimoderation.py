@@ -383,7 +383,7 @@ class AIModeration(commands.Cog):
         self.bot = bot
         self.config = AIConfig()
         self.ai = AIClient(bot, self.config)
-        self._target_cache: Dict[int, Tuple[int, datetime]] = {}
+        self._target_cache: Dict[Tuple[int, int], Tuple[int, datetime]] = {}
         self._active_chat_channels: Dict[int, datetime] = {}
         self._prewarm_task: Optional[asyncio.Task[None]] = None
 
@@ -1008,17 +1008,18 @@ class AIModeration(commands.Cog):
     # Target-memory cache
     # ------------------------------------------------------------------
 
-    def _remember_target(self, actor_id: int, target_id: int) -> None:
+    def _remember_target(self, guild_id: int, actor_id: int, target_id: int) -> None:
         expiry = _now() + timedelta(minutes=self.config.target_cache_ttl_minutes)
-        self._target_cache[actor_id] = (target_id, expiry)
+        self._target_cache[(guild_id, actor_id)] = (target_id, expiry)
 
-    def _get_recent_target(self, actor_id: int) -> Optional[int]:
-        entry = self._target_cache.get(actor_id)
+    def _get_recent_target(self, guild_id: int, actor_id: int) -> Optional[int]:
+        cache_key = (guild_id, actor_id)
+        entry = self._target_cache.get(cache_key)
         if not entry:
             return None
         target_id, expiry = entry
         if _now() >= expiry:
-            del self._target_cache[actor_id]
+            del self._target_cache[cache_key]
             return None
         return target_id
 
@@ -1772,7 +1773,7 @@ class AIModeration(commands.Cog):
                 if m := re.search(r'\b(\d{17,20})\b', search_text):
                     return int(m.group(1))
 
-        if cached := self._get_recent_target(message.author.id):
+        if cached := self._get_recent_target(guild.id, message.author.id):
             return cached
 
         for recent_msg in recent:
@@ -2220,7 +2221,7 @@ class AIModeration(commands.Cog):
         )
         if result.success and (target_id := decision.arguments.get("target_user_id")):
             try:
-                self._remember_target(message.author.id, int(target_id))
+                self._remember_target(message.guild.id, message.author.id, int(target_id))
             except (TypeError, ValueError):
                 pass
         if send_result:

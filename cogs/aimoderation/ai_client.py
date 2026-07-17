@@ -161,23 +161,38 @@ class AIClient:
         if provider == "digitalocean":
             return bool(_DO_API_KEY)
         deepseek_web = getattr(self, "_deepseek_web", None)
-        return bool(getattr(deepseek_web, "enabled", False) or _DO_API_KEY)
+        return bool(
+            getattr(deepseek_web, "enabled", False)
+            or _deepseek_api_enabled()
+            or _DO_API_KEY
+        )
 
     def availability_message(self) -> str:
         provider = str(getattr(self, "provider", "") or "").strip().lower()
         if provider == "digitalocean":
             return "DigitalOcean inference is configured." if _DO_API_KEY else "DigitalOcean inference is missing DO_API_KEY."
         deepseek_web = getattr(self, "_deepseek_web", None)
+        http_enabled = _deepseek_api_enabled()
         if getattr(deepseek_web, "enabled", False):
+            fallbacks = []
+            if http_enabled:
+                fallbacks.append("DeepSeek HTTP")
             if _DO_API_KEY:
-                return "DeepSeek web is enabled with DigitalOcean fallback configured."
+                fallbacks.append("DigitalOcean inference")
+            if fallbacks:
+                return f"DeepSeek web is enabled with {' and '.join(fallbacks)} fallback configured."
             return "DeepSeek web is enabled. If requests still fail, refresh the saved browser session."
+        if http_enabled and _DO_API_KEY:
+            return "DeepSeek HTTP is configured with DigitalOcean inference fallback."
+        if http_enabled:
+            return "DeepSeek HTTP is configured."
         if _DO_API_KEY:
             return "`DEEPSEEK_WEB_ENABLED` is off; using DigitalOcean inference fallback."
-        return "`DEEPSEEK_WEB_ENABLED` is off, so DeepSeek web requests are disabled."
+        return "No AI provider is configured. Enable DeepSeek web or configure an HTTP provider key."
 
     def diagnostic_lines(self) -> List[str]:
-        lines = ["Provider: `deepseek-web`"]
+        provider = str(getattr(self, "provider", "") or "deepseek").strip().lower()
+        lines = [f"Provider preference: `{provider}`"]
         storage_path = getattr(self._deepseek_web, "storage_state_path", None)
         session_index = getattr(self._deepseek_web, "session_index_path", None)
         lines.extend(
@@ -186,6 +201,8 @@ class AIClient:
                 f"Storage state: `{storage_path}`" if storage_path else "Storage state: `unknown`",
                 f"Session index: `{session_index}`" if session_index else "Session index: `unknown`",
                 f"Timeout: `{getattr(self._deepseek_web, 'timeout_seconds', 'unknown')}s`",
+                f"DeepSeek HTTP configured: {'yes' if _deepseek_api_enabled() else 'no'}",
+                f"DigitalOcean fallback configured: {'yes' if bool(_DO_API_KEY) else 'no'}",
             ]
         )
         lines.append(f"Available now: {'yes' if self.is_available else 'no'}")
