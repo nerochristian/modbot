@@ -154,7 +154,7 @@ class ManagementCommands:
         )
         await self._respond(
             source,
-            content=response,
+            embed=ModEmbed.moderation_response("kick", response),
             allowed_mentions=discord.AllowedMentions.none(),
             delete_command_message=True,
         )
@@ -202,7 +202,7 @@ class ManagementCommands:
         )
         await self._respond(
             source,
-            content=response,
+            embed=ModEmbed.moderation_response("ban", response),
             allowed_mentions=discord.AllowedMentions.none(),
             delete_command_message=True,
         )
@@ -238,7 +238,7 @@ class ManagementCommands:
         )
         await self._respond(
             source,
-            content=response,
+            embed=ModEmbed.moderation_response("unban", response),
             allowed_mentions=discord.AllowedMentions.none(),
             delete_command_message=True,
         )
@@ -279,7 +279,7 @@ class ManagementCommands:
         )
         await self._respond(
             source,
-            content=response,
+            embed=ModEmbed.moderation_response("softban", response),
             allowed_mentions=discord.AllowedMentions.none(),
             delete_command_message=True,
         )
@@ -405,7 +405,7 @@ class ManagementCommands:
         )
         await self._respond(
             source,
-            content=response,
+            embed=ModEmbed.moderation_response("mute", response),
             allowed_mentions=discord.AllowedMentions.none(),
             delete_command_message=True,
         )
@@ -464,7 +464,7 @@ class ManagementCommands:
         )
         await self._respond(
             source,
-            content=response,
+            embed=ModEmbed.moderation_response("unmute", response),
             allowed_mentions=discord.AllowedMentions.none(),
             delete_command_message=True,
         )

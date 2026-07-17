@@ -277,6 +277,26 @@ class ModEmbed:
         )
 
     @staticmethod
+    def moderation_response(action: str, content: str) -> discord.Embed:
+        """Render a configured moderation confirmation as a branded status embed."""
+        normalized = str(action or "").strip().casefold()
+        presentation = {
+            "ban": ("EMOJI_BAN", "\U0001f528", Colors.DARK_RED),
+            "softban": ("EMOJI_BAN", "\U0001f528", Colors.DARK_RED),
+            "kick": ("EMOJI_KICK", "\U0001f462", Colors.ERROR),
+            "mute": ("EMOJI_MUTE", "\U0001f507", Colors.ERROR),
+            "unban": ("EMOJI_UNLOCK", "\U0001f513", Colors.SUCCESS),
+            "unmute": ("EMOJI_UNLOCK", "\U0001f513", Colors.SUCCESS),
+        }
+        config_attr, fallback, color = presentation.get(
+            normalized,
+            ("EMOJI_SUCCESS", "\u2705", Colors.SUCCESS),
+        )
+        icon = ModEmbed._emoji(config_attr, fallback)
+        body = str(content or "Action completed.").strip()
+        return discord.Embed(description=f"{icon} {body}", color=color)
+
+    @staticmethod
     def case(case_number: int, action: str, user, moderator, reason: str) -> discord.Embed:
         """Case embed for mod logs"""
         embed = discord.Embed(
