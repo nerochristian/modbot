@@ -72,6 +72,11 @@ def _deepseek_api_enabled() -> bool:
     return _credential_is_configured(_DEEPSEEK_API_KEY)
 
 
+def _galaxy_multimodal_enabled() -> bool:
+    """Enable Galaxy's documented multimodal SSE endpoint only after live verification."""
+    return (os.getenv("GALAXY_MULTIMODAL_ENABLED") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -1205,6 +1210,7 @@ class AIClient:
             if (
                 self.prefers_deepseek_http
                 and _deepseek_api_enabled()
+                and (not image_context or _galaxy_multimodal_enabled())
                 and not (
                     signals.mode == ConversationMode.RESEARCH
                     and uses_native_search
