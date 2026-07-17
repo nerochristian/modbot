@@ -323,14 +323,20 @@ async def _apply_shared_status_emojis(target: Any, kwargs: dict[str, Any]) -> No
 
     embed = kwargs.get("embed", MISSING)
     if isinstance(embed, discord.Embed):
-        kwargs["embed"] = await apply_status_emoji_overrides(embed, guild)
+        try:
+            kwargs["embed"] = await apply_status_emoji_overrides(embed, guild)
+        except Exception:
+            pass
 
     embeds = kwargs.get("embeds", MISSING)
     if isinstance(embeds, (list, tuple)):
         formatted: list[Any] = []
         for candidate in embeds:
             if isinstance(candidate, discord.Embed):
-                candidate = await apply_status_emoji_overrides(candidate, guild)
+                try:
+                    candidate = await apply_status_emoji_overrides(candidate, guild)
+                except Exception:
+                    pass
             formatted.append(candidate)
         kwargs["embeds"] = formatted
 
