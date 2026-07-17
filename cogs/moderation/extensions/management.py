@@ -181,6 +181,7 @@ class ManagementCommands:
             True,
         )
         effective_delete_days = 0 if preserve_messages else max(0, min(7, delete_days))
+        self._suppress_duplicate_member_action_log(guild.id, user.id, "ban")
         try:
             await user.ban(
                 reason=f"{moderator}: {reason}",
@@ -217,6 +218,7 @@ class ManagementCommands:
         except Exception:
              return await self._respond(source, embed=ModEmbed.error("Invalid User", "User not found."), ephemeral=True)
 
+        self._suppress_duplicate_member_action_log(guild.id, user.id, "unban")
         try:
             await guild.unban(user, reason=f"{moderator}: {reason}")
         except discord.NotFound:
@@ -259,6 +261,8 @@ class ManagementCommands:
         settings = await self.bot.db.get_settings(guild.id)
         
         dm_embed = discord.Embed(title=f"🧹 Softbanned from {guild.name}", description=f"**Reason:** {reason}\n\nYou can rejoin the server.", color=Colors.ERROR)
+        self._suppress_duplicate_member_action_log(guild.id, user.id, "ban")
+        self._suppress_duplicate_member_action_log(guild.id, user.id, "unban")
         try:
             await user.ban(reason=f"[SOFTBAN] {reason}", delete_message_days=7)
             await guild.unban(user, reason="Softban - immediate unban")
@@ -312,6 +316,7 @@ class ManagementCommands:
             "moderation_preserve_ban_messages",
             True,
         )
+        self._suppress_duplicate_member_action_log(guild.id, user.id, "ban")
         try:
             await user.ban(
                 reason=f"[TEMPBAN] {moderator}: {reason} ({human_duration})",
@@ -541,6 +546,7 @@ class ManagementCommands:
                         user_str = f"User {user_id}"
                         ban_target = discord.Object(id=user_id)
 
+                self._suppress_duplicate_member_action_log(source.guild.id, user_id, "ban")
                 await source.guild.ban(
                     ban_target,
                     reason=f"[MASSBAN] {moderator}: {reason}",
@@ -651,6 +657,7 @@ class ManagementCommands:
                 failed += 1
                 continue
             try:
+                self._suppress_duplicate_member_action_log(source.guild.id, member.id, "ban")
                 await member.ban(
                     reason=f"Mass ban by {moderator}: {reason}",
                     delete_message_days=0 if preserve_messages else 1,
