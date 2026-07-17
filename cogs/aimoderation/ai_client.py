@@ -951,7 +951,6 @@ class AIClient:
         )
 
         # --- Build message chain with multi-turn context ---
-        is_image_question = _looks_like_image_question_text(user_content)
         image_context: List[ImageContext] = []
         image_context = await self._collect_image_context(
             recent_messages,
@@ -1021,7 +1020,7 @@ class AIClient:
         except DeepSeekWebAuthError as exc:
             logger.warning("DeepSeek browser session needs renewal: %s", exc)
             try:
-                content = await self._call_digitalocean_conversation(
+                content = await self._conversation_via_http(
                     prompt,
                     model=model,
                     long_answer=signals.asks_for_long_answer,
@@ -1033,12 +1032,12 @@ class AIClient:
                     )
                     return content
             except Exception:
-                logger.warning("DigitalOcean fallback after DeepSeek auth failure failed", exc_info=True)
-            return "DeepSeek needs a human session renewal and the fallback model is unavailable right now."
+                logger.warning("HTTP fallback after DeepSeek auth failure failed", exc_info=True)
+            return "DeepSeek needs a human session renewal and the configured fallback providers are unavailable right now."
         except (DeepSeekWebError, asyncio.TimeoutError) as exc:
             logger.warning("DeepSeek browser request failed: %s", exc)
             try:
-                content = await self._call_digitalocean_conversation(
+                content = await self._conversation_via_http(
                     prompt,
                     model=model,
                     long_answer=signals.asks_for_long_answer,
@@ -1050,8 +1049,8 @@ class AIClient:
                     )
                     return content
             except Exception:
-                logger.warning("DigitalOcean fallback after DeepSeek browser failure failed", exc_info=True)
-            return "DeepSeek is temporarily unavailable and the fallback model is unavailable right now."
+                logger.warning("HTTP fallback after DeepSeek browser failure failed", exc_info=True)
+            return "DeepSeek is temporarily unavailable and the configured fallback providers are unavailable right now."
         except Exception:
             block_msg = self._get_block_message()
             if block_msg:

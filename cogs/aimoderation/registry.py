@@ -165,10 +165,39 @@ class ToolRegistry:
 
         try:
             return await handler(ctx)
-        except discord.Forbidden as e:
-            return ToolResult.fail(f"Missing Discord permissions: {e}")
+        except discord.Forbidden:
+            logger.warning(
+                "Discord denied tool %s for guild %s",
+                tool.value,
+                message.guild.id,
+                exc_info=True,
+            )
+            return ToolResult.fail(
+                "Discord denied that action. Check my role position and channel permissions."
+            )
+        except discord.NotFound:
+            logger.info(
+                "Discord target disappeared while executing tool %s",
+                tool.value,
+                exc_info=True,
+            )
+            if tool == ToolType.UNBAN:
+                return ToolResult.fail("That user is not currently banned.")
+            if tool in {ToolType.PIN_MESSAGE, ToolType.UNPIN_MESSAGE}:
+                return ToolResult.fail(
+                    "That message no longer exists or I cannot access it in this channel."
+                )
+            return ToolResult.fail("The target no longer exists or is no longer available.")
         except discord.HTTPException as e:
-            return ToolResult.fail(f"Discord error ({e.status}): {e.text}")
+            logger.warning(
+                "Discord rejected tool %s with HTTP %s: %s",
+                tool.value,
+                e.status,
+                e.text,
+            )
+            return ToolResult.fail(
+                f"Discord rejected that action (HTTP {e.status}). Check the target and try again."
+            )
         except Exception as e:
             logger.exception("Unhandled error in tool %s", tool.value)
             return ToolResult.fail(f"Unexpected error: {type(e).__name__}")

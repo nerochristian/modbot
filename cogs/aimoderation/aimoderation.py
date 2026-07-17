@@ -1866,6 +1866,10 @@ class AIModeration(commands.Cog):
             except (TypeError, ValueError):
                 args["amount"] = 500 if args.get("target_user_id") or args.get("lookback_seconds") else 10
 
+        if tool in {ToolType.LOCK_CHANNEL, ToolType.UNLOCK_CHANNEL, ToolType.EDIT_CHANNEL}:
+            if not args.get("channel_id") and message.channel_mentions:
+                args["channel_id"] = message.channel_mentions[-1].id
+
         if tool == ToolType.BAN:
             try:
                 args["delete_message_days"] = max(0, min(int(args.get("delete_message_days", 0)), 7))

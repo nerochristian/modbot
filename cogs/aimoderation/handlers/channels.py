@@ -12,6 +12,23 @@ from ..registry import ToolRegistry
 from ..types import ToolType
 
 
+def _resolve_channel(ctx: ToolContext) -> discord.abc.GuildChannel | discord.Thread | None:
+    raw_channel = ctx.arg("channel_id") or ctx.arg("channel_name")
+    if raw_channel is None:
+        channel = ctx.message.channel
+        return channel if isinstance(channel, (discord.abc.GuildChannel, discord.Thread)) else None
+
+    query = str(raw_channel).strip().strip("<#>")
+    if query.isdigit():
+        channel = ctx.guild.get_channel_or_thread(int(query))
+        if channel is not None:
+            return channel
+    return discord.utils.find(
+        lambda candidate: candidate.name.lower() == query.lower(),
+        ctx.guild.channels,
+    )
+
+
 @ToolRegistry.register(
     ToolType.CREATE_CHANNEL,
     display_name="Create Channel",
@@ -138,14 +155,16 @@ async def handle_edit_channel(ctx: ToolContext) -> ToolResult:
     category="channels",
 )
 async def handle_lock_channel(ctx: ToolContext) -> ToolResult:
-    channel = ctx.message.channel
+    channel = _resolve_channel(ctx)
+    if channel is None:
+        return ToolResult.fail("Target channel not found.")
     if not hasattr(channel, "set_permissions"):
         return ToolResult.fail("Cannot lock this channel type.")
     await channel.set_permissions(  # type: ignore[union-attr]
         ctx.guild.default_role, send_messages=False,
         reason=f"Lock by {ctx.actor}",
     )
-    return ToolResult.ok("Channel locked.")
+    return ToolResult.ok(f"{channel.mention} locked.")
 
 
 @ToolRegistry.register(
@@ -157,14 +176,16 @@ async def handle_lock_channel(ctx: ToolContext) -> ToolResult:
     category="channels",
 )
 async def handle_unlock_channel(ctx: ToolContext) -> ToolResult:
-    channel = ctx.message.channel
+    channel = _resolve_channel(ctx)
+    if channel is None:
+        return ToolResult.fail("Target channel not found.")
     if not hasattr(channel, "set_permissions"):
         return ToolResult.fail("Cannot unlock this channel type.")
     await channel.set_permissions(  # type: ignore[union-attr]
         ctx.guild.default_role, send_messages=None,
         reason=f"Unlock by {ctx.actor}",
     )
-    return ToolResult.ok("Channel unlocked.")
+    return ToolResult.ok(f"{channel.mention} unlocked.")
 
 
 @ToolRegistry.register(
