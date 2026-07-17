@@ -72,6 +72,56 @@ class VerificationRoleRepairTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(ready)
         member.add_roles.assert_not_awaited()
 
+    def test_existing_regular_member_is_selected_for_verification(self) -> None:
+        waiting_role = SimpleNamespace(id=456)
+        verified_role = SimpleNamespace(id=789)
+        regular_role = SimpleNamespace(id=111)
+        permissions = SimpleNamespace(
+            administrator=False,
+            manage_guild=False,
+            manage_channels=False,
+            moderate_members=False,
+        )
+        member = SimpleNamespace(
+            id=222,
+            bot=False,
+            roles=[regular_role],
+            guild_permissions=permissions,
+        )
+
+        self.assertTrue(Verification._member_needs_waiting_role(
+            member,
+            owner_id=999,
+            unverified_role=waiting_role,
+            verified_role=verified_role,
+            staff_role_ids=set(),
+        ))
+
+    def test_existing_staff_member_is_not_selected_for_verification(self) -> None:
+        waiting_role = SimpleNamespace(id=456)
+        verified_role = SimpleNamespace(id=789)
+        staff_role = SimpleNamespace(id=111)
+        permissions = SimpleNamespace(
+            administrator=False,
+            manage_guild=False,
+            manage_channels=False,
+            moderate_members=True,
+        )
+        member = SimpleNamespace(
+            id=222,
+            bot=False,
+            roles=[staff_role],
+            guild_permissions=permissions,
+        )
+
+        self.assertFalse(Verification._member_needs_waiting_role(
+            member,
+            owner_id=999,
+            unverified_role=waiting_role,
+            verified_role=verified_role,
+            staff_role_ids={staff_role.id},
+        ))
+
 
 if __name__ == "__main__":
     unittest.main()

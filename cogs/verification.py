@@ -342,6 +342,20 @@ class Verification(commands.Cog):
                 settings = await self._get_settings(guild.id)
                 if not module_enabled(settings, "verification", False):
                     continue
+                unverified_role, verified_role = await self._get_roles(guild)
+                if unverified_role is not None and verified_role is not None:
+                    assigned = await self._queue_existing_members(
+                        guild,
+                        settings,
+                        unverified_role,
+                        verified_role,
+                    )
+                    if assigned:
+                        logger.info(
+                            "Queued %s existing member(s) for verification in guild %s",
+                            assigned,
+                            guild.id,
+                        )
                 channel_id = int(settings.get("verify_channel", 0) or 0)
                 message_id = int(settings.get("verification_panel_message_id", 0) or 0)
                 channel = guild.get_channel(channel_id)
@@ -401,6 +415,68 @@ class Verification(commands.Cog):
         except (discord.Forbidden, discord.HTTPException):
             return False
         return True
+
+    @staticmethod
+    def _member_needs_waiting_role(
+        member: discord.Member,
+        *,
+        owner_id: int,
+        unverified_role: discord.Role,
+        verified_role: discord.Role,
+        staff_role_ids: set[int],
+    ) -> bool:
+        if member.bot or member.id == owner_id:
+            return False
+        if unverified_role in member.roles or verified_role in member.roles:
+            return False
+        if any(role.id in staff_role_ids for role in member.roles):
+            return False
+        permissions = member.guild_permissions
+        return not (
+            permissions.administrator
+            or permissions.manage_guild
+            or permissions.manage_channels
+            or permissions.moderate_members
+        )
+
+    async def _queue_existing_members(
+        self,
+        guild: discord.Guild,
+        settings: dict,
+        unverified_role: discord.Role,
+        verified_role: discord.Role,
+    ) -> int:
+        staff_role_ids: set[int] = set()
+        for key in (
+            "owner_role",
+            "manager_role",
+            "admin_role",
+            "supervisor_role",
+            "senior_mod_role",
+            "mod_role",
+            "trial_mod_role",
+            "staff_role",
+        ):
+            try:
+                role_id = int(settings.get(key, 0) or 0)
+            except (TypeError, ValueError):
+                role_id = 0
+            if role_id:
+                staff_role_ids.add(role_id)
+
+        assigned = 0
+        for member in guild.members:
+            if not self._member_needs_waiting_role(
+                member,
+                owner_id=guild.owner_id,
+                unverified_role=unverified_role,
+                verified_role=verified_role,
+                staff_role_ids=staff_role_ids,
+            ):
+                continue
+            if await self._ensure_waiting_role(member, unverified_role):
+                assigned += 1
+        return assigned
 
     async def _get_settings(self, guild_id: int) -> dict:
         settings = await self.bot.db.get_settings(guild_id)
