@@ -59,6 +59,13 @@ def _has_protected_role(ctx: ToolContext, target: discord.Member, settings: dict
     return bool(protected.intersection(role.id for role in target.roles))
 
 
+def _suppress_duplicate_member_action_log(ctx: ToolContext, user_id: int, action: str) -> None:
+    logging_cog = ctx.cog.bot.get_cog("Logging")
+    suppress = getattr(logging_cog, "suppress_member_action_log", None)
+    if callable(suppress):
+        suppress(ctx.guild.id, user_id, action)
+
+
 async def _dm_moderation_action(
     target: discord.Member,
     *,
@@ -634,6 +641,7 @@ async def handle_ban(ctx: ToolContext) -> ToolResult:
             action="Banned",
             reason=reason,
         )
+    _suppress_duplicate_member_action_log(ctx, target.id, "ban")
     await target.ban(reason=f"AI Mod ({ctx.actor}): {reason}", delete_message_days=delete_days)
 
     embed = action_embed(
@@ -679,6 +687,7 @@ async def handle_unban(ctx: ToolContext) -> ToolResult:
 
     settings = await _guild_moderation_settings(ctx)
     reason = ctx.str_arg("reason", "Unbanned.")
+    _suppress_duplicate_member_action_log(ctx, target_id, "unban")
     await ctx.guild.unban(discord.Object(id=target_id), reason=f"AI Mod ({ctx.actor}): {reason}")
 
     embed = discord.Embed(title="User Unbanned", color=discord.Color.green(), timestamp=datetime.now(timezone.utc))
