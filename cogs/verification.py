@@ -238,25 +238,20 @@ class VerificationPanelLayout(discord.ui.LayoutView):
 
         logo_url, banner_url = get_guild_brand_assets(guild)
         container = branded_panel_container(
-            title="Server Verification",
+            title=f"🔐 {guild.name} access" if guild else "🔐 Member verification",
             description=(
-                "To access the server you must verify.\n\n"
-                "**How it works**\n"
-                "1) Press **Start Verification**\n"
-                "2) Complete the private human check\n"
-                "3) Receive the **verified** role\n\n"
-                "Need help? Press **Tutorial**."
+                "Complete one private check to unlock the server."
             ),
             banner_url=banner_url,
             logo_url=logo_url,
-            accent_color=getattr(Config, "COLOR_BRAND", 0x5865F2),
+            accent_color=0x2B7FFF,
             banner_separated=True,
         )
 
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.large))
 
         start_button = discord.ui.Button(
-            label="Start Verification",
+            label="Verify me",
             style=discord.ButtonStyle.success,
             emoji=resolve_guild_component_emoji(
                 guild,
@@ -275,14 +270,14 @@ class VerificationPanelLayout(discord.ui.LayoutView):
         start_button.callback = _start
 
         tutorial_button = discord.ui.Button(
-            label="Tutorial",
+            label="How it works",
             style=discord.ButtonStyle.secondary,
             emoji=resolve_guild_component_emoji(
                 guild,
                 "tutorial",
                 "info",
                 "help",
-                fallback="ℹ️",
+                fallback="❔",
             ),
             custom_id="verification:tutorial",
         )
@@ -294,15 +289,25 @@ class VerificationPanelLayout(discord.ui.LayoutView):
 
         container.add_item(
             discord.ui.Section(
-                discord.ui.TextDisplay("**Start Verification**\nBegin the captcha verification."),
+                discord.ui.TextDisplay(
+                    "### Start your check\n"
+                    "Press **Verify me**. Docket handles the rest privately and grants access when you pass."
+                ),
                 accessory=start_button,
             )
         )
         container.add_item(
             discord.ui.Section(
-                discord.ui.TextDisplay("**Tutorial**\nWatch a short guide (ephemeral)."),
+                discord.ui.TextDisplay(
+                    "### Need a hand?\n"
+                    "Open the short walkthrough without leaving Discord."
+                ),
                 accessory=tutorial_button,
             )
+        )
+        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.large))
+        container.add_item(
+            discord.ui.TextDisplay("-# 🔒 Private • One-time • Usually under a minute")
         )
 
         self.add_item(container)
@@ -341,6 +346,23 @@ class Verification(commands.Cog):
         unverified = guild.get_role(unverified_id) if unverified_id else None
         verified = guild.get_role(verified_id) if verified_id else None
         return unverified, verified
+
+    @staticmethod
+    async def _ensure_waiting_role(
+        member: discord.Member,
+        unverified_role: discord.Role,
+    ) -> bool:
+        """Repair setup gaps for members who joined before verification was enabled."""
+        if unverified_role in member.roles:
+            return True
+        try:
+            await member.add_roles(
+                unverified_role,
+                reason="Verification started - assign waiting role",
+            )
+        except (discord.Forbidden, discord.HTTPException):
+            return False
+        return True
 
     async def _get_settings(self, guild_id: int) -> dict:
         settings = await self.bot.db.get_settings(guild_id)
@@ -749,14 +771,17 @@ class Verification(commands.Cog):
                 return
 
             if unverified_role not in member.roles:
-                await interaction.response.send_message(
-                    embed=ModEmbed.error(
-                        "No Unverified Role",
-                        "You don't have the `unverified` role. Ask a staff member to run `/setup` again.",
-                    ),
-                    ephemeral=ephemeral,
-                )
-                return
+                waiting_role_ready = await self._ensure_waiting_role(member, unverified_role)
+                if not waiting_role_ready:
+                    await interaction.response.send_message(
+                        embed=ModEmbed.error(
+                            "Verification Role Unavailable",
+                            "Docket could not assign your waiting role. A server admin must move "
+                            "Docket's role above **Unverified**, then you can press **Verify me** again.",
+                        ),
+                        ephemeral=ephemeral,
+                    )
+                    return
 
             website_url = await self._website_verification_url(guild.id, member.id)
             if website_url:
