@@ -159,9 +159,6 @@ class Moderation(
             ("steal", "Import emojis from pasted custom emojis", self.emoji_steal_slash, None),
         ))
 
-        # Helper
-        cmd("modguide", "Show the simplified moderation guide", self.guide_slash)
-
     def _unregister_top_level_commands(self):
         """Clean up commands when cog is unloaded"""
         for command in self._slash_commands:

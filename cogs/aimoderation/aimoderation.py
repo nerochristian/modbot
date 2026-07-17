@@ -2992,7 +2992,7 @@ class AIModeration(commands.Cog):
                     ("Talking", "On" if talking else "Off"),
                     ("Context", f"{int(context_messages)} messages"),
                     ("Proactive Replies", f"{int(proactive_percent)}%"),
-                    ("Try It", "Mention the bot: `timeout @User 1h for spam` or use `/aihelp`."),
+                    ("Try It", "Mention the bot: `timeout @User 1h for spam` or use `/ai help`."),
                 ]
             ),
             color=discord.Color.blurple(),
@@ -3174,7 +3174,7 @@ class AIModeration(commands.Cog):
         else:
             await interaction.followup.send(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="aihelp")
+    @ai_group.command(name="help", description="Show AI moderation help")
     async def aihelp(self, interaction: discord.Interaction) -> None:
         """Show AI moderation help."""
         await interaction.response.send_message(

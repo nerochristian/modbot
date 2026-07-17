@@ -8,9 +8,12 @@ from discord import app_commands
 from discord.ext import commands
 
 from cogs.moderation import Moderation
+from cogs.admin import Admin
+from cogs.aimoderation.aimoderation import AIModeration
 from cogs.court import Court
 from cogs.roles import Roles
 from cogs.tickets import Tickets
+from cogs.setup import Setup
 from cogs.utility import Utility
 
 
@@ -81,6 +84,23 @@ def test_low_frequency_features_use_groups_instead_of_root_command_slots() -> No
     assert "ticket" in ticket_commands
     assert "ticketpanel" not in ticket_commands
     assert "panel" in {command.name for command in ticket_commands["ticket"].commands}
+
+
+def test_removed_admin_and_spam_commands_are_not_slash_commands() -> None:
+    removed = {"neutralize", "modrole", "adminrole", "ignore", "announce", "reset", "spam", "stopspam"}
+    assert not removed & {command.name for command in Admin.__cog_app_commands__}
+
+
+def test_guides_are_grouped_without_legacy_roots() -> None:
+    ai_commands = {command.name: command for command in AIModeration.__cog_app_commands__}
+    assert "aihelp" not in ai_commands
+    assert "help" in {command.name for command in ai_commands["ai"].commands}
+
+    setup_commands = {command.name: command for command in Setup.__cog_app_commands__}
+    assert "staffupdates" not in setup_commands
+    assert {command.name for command in setup_commands["guide"].commands} == {
+        "moderation", "staff", "updates",
+    }
 
 
 def test_modmail_is_not_exposed_by_bot_or_cogs() -> None:

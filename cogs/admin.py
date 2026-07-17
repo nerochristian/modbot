@@ -647,14 +647,6 @@ class Admin(commands.Cog):
 
     # Settings command removed: moved to cogs.settings
 
-    @app_commands.command(name="neutralize", description="🛡️ Send a threat neutralized embed to the channel")
-    @app_commands.describe(
-        user="The user that was neutralized",
-        reason="Reason for neutralization",
-        action="Action taken",
-        case_id="Case ID (optional)"
-    )
-    @is_admin()
     async def neutralize(self, interaction: discord.Interaction, user: discord.Member, reason: str, action: str, case_id: Optional[int] = None):
         if not case_id:
             import random
@@ -674,9 +666,6 @@ class Admin(commands.Cog):
         
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="modrole", description="🏷️ Add or remove a moderator role")
-    @app_commands.describe(action="Add or remove", role="The role")
-    @is_admin()
     async def modrole(self, interaction: discord. Interaction,
                       action: Literal['add', 'remove'], role: discord.Role):
         settings = await self.bot.db.get_settings(interaction.guild_id)
@@ -701,9 +690,6 @@ class Admin(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="adminrole", description="🏷️ Add or remove an admin role")
-    @app_commands.describe(action="Add or remove", role="The role")
-    @is_admin()
     async def adminrole(self, interaction: discord.Interaction,
                         action: Literal['add', 'remove'], role: discord.Role):
         settings = await self.bot.db.get_settings(interaction.guild_id)
@@ -728,13 +714,6 @@ class Admin(commands.Cog):
 
         await interaction. response.send_message(embed=embed)
 
-    @app_commands.command(name="ignore", description="🚫 Add or remove ignored channels/roles for AutoMod")
-    @app_commands.describe(
-        action="Add or remove",
-        channel="Channel to ignore",
-        role="Role to ignore"
-    )
-    @is_admin()
     async def ignore(self, interaction: discord.Interaction, action: Literal['add', 'remove'],
                      channel: Optional[discord.TextChannel] = None, role: Optional[discord.Role] = None):
         if not channel and not role:
@@ -780,13 +759,6 @@ class Admin(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="announce", description="📢 Send an announcement to a chosen channel")
-    @app_commands.describe(
-        channel="Channel to send the announcement in",
-        message="Announcement message",
-        embed="Send as an embed (true/false)",
-    )
-    @is_admin()
     async def announce(
         self,
         interaction: discord.Interaction,
@@ -855,8 +827,6 @@ class Admin(commands.Cog):
             ephemeral=True,
         )
 
-    @app_commands.command(name="reset", description="🔄 Reset all bot settings for this server")
-    @is_admin()
     async def reset(self, interaction: discord.Interaction):
         embed = discord.Embed(
             title="⚠️ Confirm Reset",
@@ -1195,13 +1165,6 @@ class Admin(commands.Cog):
 
 
 
-    @app_commands.command(name="spam", description="⚠️ Send a message repeatedly (use /stopspam to stop)")
-    @app_commands.describe(
-        message="The message to send",
-        interval="Seconds between messages",
-        duration="Duration (e.g. 10s, 5m, 1h). Default: until stopped."
-    )
-    @is_admin()
     async def spam(self, interaction: discord.Interaction, message: str, interval: float, duration: str = None):
         target_channel_id = interaction.channel.id
         
@@ -1264,8 +1227,6 @@ class Admin(commands.Cog):
         task = asyncio.create_task(spam_loop())
         self.spam_tasks[target_channel_id] = task
 
-    @app_commands.command(name="stopspam", description="🛑 Stop the running spam task in this channel")
-    @is_admin()
     async def stopspam(self, interaction: discord.Interaction):
         task = self.spam_tasks.get(interaction.channel.id)
         if not task:
