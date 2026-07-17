@@ -138,6 +138,16 @@ def test_dashboard_is_a_top_level_slash_command() -> None:
     assert command.parameters == []
 
 
+def test_server_info_uses_compact_v1_embed() -> None:
+    source = (COGS / "utility.py").read_text(encoding="utf-8-sig")
+    function = source[source.index("    async def server("):source.index("    # ==================== RULE34 SEARCH")]
+
+    assert "embed.set_author(" in function
+    assert "name=guild.name" in function
+    assert "use_v2=False" in function
+    assert "possessive_name" not in function
+
+
 def test_server_is_a_top_level_slash_command() -> None:
     command = Utility.server
     assert isinstance(command, app_commands.Command)

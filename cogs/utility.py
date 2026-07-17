@@ -695,13 +695,11 @@ class Utility(commands.Cog):
         )
         channel_count = len(guild.channels)
         owner = guild.owner.mention if guild.owner else f"<@{guild.owner_id}>"
-        possessive_name = (
-            f"{guild.name}' server"
-            if guild.name.casefold().endswith("s")
-            else f"{guild.name}'s server"
+        embed = discord.Embed(color=Colors.ACCENT)
+        embed.set_author(
+            name=guild.name,
+            icon_url=guild.icon.url if guild.icon else None,
         )
-
-        embed = discord.Embed(title=possessive_name, color=Colors.ACCENT)
         embed.add_field(name="Server ID", value=f"**{guild.id}**", inline=True)
         embed.add_field(name="Owned By", value=owner, inline=True)
         embed.add_field(
@@ -735,7 +733,7 @@ class Utility(commands.Cog):
             inline=True,
         )
 
-        await interaction.response.send_message(embed=embed)
+        await interaction.response.send_message(embed=embed, use_v2=False)
     
     # ==================== RULE34 SEARCH ====================
     
