@@ -2728,6 +2728,7 @@ class AIModeration(commands.Cog):
                 "web search is not configured",
                 "search provider failed",
                 "did not find usable results",
+                "live search is unavailable",
             )
         )
 
@@ -2805,7 +2806,14 @@ class AIModeration(commands.Cog):
         is_research = signals.mode == ConversationMode.RESEARCH
 
         if is_research and not sources_text:
-            sources_text = "No source URLs were returned for this research response."
+            await self.reply(
+                message,
+                embed=self._build_ai_status_embed(
+                    "Live search is unavailable right now because the response "
+                    "did not include verifiable source links."
+                ),
+            )
+            return
 
         view = self._SourcesView(sources_text) if sources_text and is_research else None
 

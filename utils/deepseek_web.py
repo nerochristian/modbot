@@ -985,7 +985,8 @@ class DeepSeekWebClient:
             request,
             lane="research",
             ui_mode="Instant",
-            deepthink=True,
+            # Search is unavailable while Expert/DeepThink is active.
+            deepthink=False,
             search=True,
         )
 

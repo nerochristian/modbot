@@ -1146,6 +1146,13 @@ class AIClient:
                 if not content:
                     return None
                 content = self._postprocess_chat_response(content)
+                if signals.mode == ConversationMode.RESEARCH:
+                    content = self._finalize_research_response(
+                        content,
+                        research_source_urls,
+                    )
+                    if not content:
+                        return _RESEARCH_UNAVAILABLE
                 asyncio.create_task(
                     self._update_memory_smart(author.id, user_content, content, stored_memory)
                 )

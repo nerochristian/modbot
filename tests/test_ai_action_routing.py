@@ -916,7 +916,12 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         )
         client._deepseek_web = SimpleNamespace(
             enabled=True,
-            chat=AsyncMock(return_value="researched answer"),
+            chat=AsyncMock(
+                return_value=(
+                    "researched answer\n\n__BOT_SOURCES__\n"
+                    "- <https://example.com/source>"
+                )
+            ),
         )
         client._update_memory_smart = AsyncMock()
         db = SimpleNamespace(get_ai_memory=AsyncMock(return_value="PRIVATE MEMORY"))
@@ -937,15 +942,18 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             signals=signals,
         )
 
-        self.assertEqual(response, "researched answer")
+        self.assertIn("researched answer", response)
+        self.assertIn("https://example.com/source", response)
         prompt = client._deepseek_web.chat.await_args.args[0]
         self.assertNotIn("PRIVATE MEMORY", prompt)
         self.assertNotIn("### MEMORY OF THIS SERVER ###", prompt)
         self.assertFalse(client._deepseek_web.chat.await_args.kwargs["continue_session"])
+        self.assertTrue(client._deepseek_web.chat.await_args.kwargs["search"])
+        self.assertFalse(client._deepseek_web.chat.await_args.kwargs["deepthink"])
         client._update_memory_smart.assert_called_once_with(
             author.id,
             "research this",
-            "researched answer",
+            response,
             "PRIVATE MEMORY",
         )
 
