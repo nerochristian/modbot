@@ -12,11 +12,10 @@ from ..registry import ToolRegistry
 from ..types import ToolType
 
 
-def _resolve_channel(ctx: ToolContext) -> discord.abc.GuildChannel | discord.Thread | None:
+def _resolve_channel(ctx: ToolContext) -> Any:
     raw_channel = ctx.arg("channel_id") or ctx.arg("channel_name")
     if raw_channel is None:
-        channel = ctx.message.channel
-        return channel if isinstance(channel, (discord.abc.GuildChannel, discord.Thread)) else None
+        return ctx.message.channel
 
     query = str(raw_channel).strip().strip("<#>")
     if query.isdigit():
@@ -164,7 +163,8 @@ async def handle_lock_channel(ctx: ToolContext) -> ToolResult:
         ctx.guild.default_role, send_messages=False,
         reason=f"Lock by {ctx.actor}",
     )
-    return ToolResult.ok(f"{channel.mention} locked.")
+    channel_label = getattr(channel, "mention", "Channel")
+    return ToolResult.ok(f"{channel_label} locked.")
 
 
 @ToolRegistry.register(
@@ -185,7 +185,8 @@ async def handle_unlock_channel(ctx: ToolContext) -> ToolResult:
         ctx.guild.default_role, send_messages=None,
         reason=f"Unlock by {ctx.actor}",
     )
-    return ToolResult.ok(f"{channel.mention} unlocked.")
+    channel_label = getattr(channel, "mention", "Channel")
+    return ToolResult.ok(f"{channel_label} unlocked.")
 
 
 @ToolRegistry.register(
