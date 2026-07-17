@@ -15,6 +15,17 @@ from utils.moderation_settings import moderation_bool, moderation_id_set
 logger = logging.getLogger(__name__)
 
 class HelperCommands:
+    def _suppress_duplicate_member_action_log(
+        self,
+        guild_id: int,
+        user_id: int,
+        action: str,
+    ) -> None:
+        logging_cog = self.bot.get_cog("Logging")
+        suppress = getattr(logging_cog, "suppress_member_action_log", None)
+        if callable(suppress):
+            suppress(guild_id, user_id, action)
+
     @staticmethod
     def _classify_log_type_from_title(embed: discord.Embed, default: str = "mod") -> str:
         title = (getattr(embed, "title", "") or "").strip().lower()

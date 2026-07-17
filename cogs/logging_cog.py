@@ -2295,9 +2295,9 @@ class Logging(commands.Cog):
     
     @commands.Cog.listener()
     async def on_member_ban(self, guild: discord.Guild, user: discord.User):
+        """Log bans — moderation action, goes to mod logs."""
         if self._consume_member_action_log_suppression(guild.id, user.id, "ban"):
             return
-        """Log bans — moderation action, goes to mod logs"""
         channel = await self.get_log_channel(guild, 'mod')
         if not channel:
             return
@@ -2336,9 +2336,9 @@ class Logging(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_unban(self, guild: discord.Guild, user: discord.User):
+        """Log unbans — moderation action, goes to mod logs."""
         if self._consume_member_action_log_suppression(guild.id, user.id, "unban"):
             return
-        """Log unbans — moderation action, goes to mod logs"""
         channel = await self.get_log_channel(guild, 'mod')
         if not channel:
             return
