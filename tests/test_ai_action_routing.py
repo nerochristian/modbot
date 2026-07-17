@@ -45,10 +45,10 @@ class AIActionRoutingTests(unittest.TestCase):
             {
                 "AI_PROVIDER": "deepseek",
                 "AI_MODEL": "",
-                "DEEPSEEK_MODEL": "deepseek-v4-pro",
+                "DEEPSEEK_MODEL": "gemini-3-5-flash",
             },
         ):
-            self.assertEqual(_default_ai_model(), "deepseek-v4-pro")
+            self.assertEqual(_default_ai_model(), "gemini-3-5-flash")
 
     def test_purge_is_a_targeted_tool(self) -> None:
         from cogs.aimoderation.types import TARGETED_TOOLS
@@ -629,6 +629,53 @@ class AIActionRoutingTests(unittest.TestCase):
 
 
 class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
+    async def test_galaxy_classifies_search_depth_with_strict_route(self) -> None:
+        client = object.__new__(AIClient)
+        client.provider = "deepseek"
+        client.config = AIConfig(provider="deepseek")
+        client._call_deepseek_api = AsyncMock(
+            return_value=(
+                '{"route":"search","confidence":0.96,'
+                '"current_info":true,"reason":"current game patch"}'
+            )
+        )
+
+        with patch(
+            "cogs.aimoderation.ai_client._deepseek_api_enabled",
+            return_value=True,
+        ):
+            decision = await client.classify_research_route(
+                "latest genshin update?"
+            )
+
+        self.assertEqual(decision["route"], "search")
+        self.assertTrue(decision["current_info"])
+        messages = client._call_deepseek_api.await_args.args[0]
+        self.assertIn("search_deepthink", messages[0]["content"])
+        self.assertIn("latest genshin update", messages[1]["content"])
+        self.assertEqual(
+            client._call_deepseek_api.await_args.kwargs["model"],
+            "gemini-3-5-flash",
+        )
+
+    async def test_galaxy_invalid_json_classifier_falls_back_quietly(self) -> None:
+        client = object.__new__(AIClient)
+        client.provider = "deepseek"
+        client.config = AIConfig(provider="deepseek")
+        client._call_deepseek_api = AsyncMock(
+            return_value="{ route: search, confidence: 0.9 }"
+        )
+
+        with patch(
+            "cogs.aimoderation.ai_client._deepseek_api_enabled",
+            return_value=True,
+        ):
+            decision = await client.classify_research_route(
+                "latest genshin update?"
+            )
+
+        self.assertIsNone(decision)
+
     async def test_disabled_ai_mod_hard_gates_explicit_owner_request(self) -> None:
         cog = object.__new__(AIModeration)
         bot_user = SimpleNamespace(id=999)
@@ -935,6 +982,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             mode=ConversationMode.RESEARCH,
             confidence=1.0,
             show_research_indicator=True,
+            use_deepthink=True,
         )
 
         response = await client.converse(
@@ -1016,6 +1064,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
                     mode=ConversationMode.RESEARCH,
                     confidence=1.0,
                     show_research_indicator=True,
+                    use_deepthink=True,
                 ),
             )
 
@@ -1028,6 +1077,58 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(search_call.kwargs["deepthink"])
         self.assertFalse(deepthink_call.kwargs["search"])
         self.assertTrue(deepthink_call.kwargs["deepthink"])
+
+    async def test_search_only_research_skips_deepthink_pass(self) -> None:
+        client = object.__new__(AIClient)
+        client.provider = "deepseek"
+        client.config = AIConfig(provider="deepseek")
+        client._block_until = None
+        client._block_reason = None
+        client._brave_search_api_key = None
+        client._tavily_api_key = None
+        client._serpapi_api_key = None
+        client._rate_limiter = SimpleNamespace(
+            is_rate_limited=AsyncMock(return_value=(False, 0)),
+            record_call=AsyncMock(),
+        )
+        client._deepseek_web = SimpleNamespace(
+            enabled=True,
+            chat=AsyncMock(
+                return_value=(
+                    "Version 6.7 is current.\n\n__BOT_SOURCES__\n"
+                    "- <https://example.com/genshin>"
+                )
+            ),
+        )
+        client._collect_image_context = AsyncMock(return_value=[])
+        client._update_memory_smart = AsyncMock()
+        client.bot = SimpleNamespace(
+            user=SimpleNamespace(id=999),
+            db=SimpleNamespace(
+                get_ai_memory=AsyncMock(return_value=""),
+                get_guild_memory=AsyncMock(return_value=""),
+            ),
+        )
+
+        response = await client.converse(
+            user_content="latest genshin update?",
+            guild=SimpleNamespace(id=1, name="Guild", member_count=10),
+            author=SimpleNamespace(id=2, name="User"),
+            recent_messages=[],
+            signals=ConversationSignals(
+                mode=ConversationMode.RESEARCH,
+                confidence=1.0,
+                show_research_indicator=True,
+                asks_for_current_info=True,
+                use_deepthink=False,
+            ),
+        )
+
+        self.assertIn("Version 6.7", response)
+        client._deepseek_web.chat.assert_awaited_once()
+        call = client._deepseek_web.chat.await_args
+        self.assertTrue(call.kwargs["search"])
+        self.assertFalse(call.kwargs["deepthink"])
 
     async def test_unsourced_research_is_rejected(self) -> None:
         client = object.__new__(AIClient)

@@ -735,21 +735,67 @@ class AIModeration(commands.Cog):
 
     async def _build_conversation_signals(self, content: str) -> ConversationSignals:
         low = self._normalize_chat_text(content)
-        
-        # Only trigger research when explicitly asked
-        explicit_research = bool(re.search(r"\b(research|fact[\s-]?check|verify|look\s*up|search|investigate|deep dive|full breakdown|details?)\b", low))
-        
+
+        explicit_search = bool(re.search(
+            r"\b(research|fact[\s-]?check|verify|look\s*up|search|investigate|deep dive|full breakdown|details?)\b",
+            low,
+        ))
+        deep_request = bool(re.search(
+            r"\b(deep\s*(?:dive|research|analysis|think)|investigate|full\s+breakdown|"
+            r"comprehensive|in[-\s]?depth|detailed\s+analysis|compare\s+(?:sources|reports))\b",
+            low,
+        ))
+        current_hint = bool(re.search(
+            r"\b(latest|current(?:ly)?|right\s+now|today|tonight|yesterday|tomorrow|"
+            r"recent(?:ly)?|newest|upcoming|this\s+(?:week|month|year|season)|"
+            r"version|patch|update|release|price|weather|forecast|news|schedule)\b",
+            low,
+        ))
         casual_followup = bool(re.fullmatch(
             r"(?:what'?s new|what is new|what'?s up|what is the ai thingy|what'?s the ai thingy|what do you mean|what is that|what's that|huh|wdym|hi|hey|hello|yo)\??",
             low,
         ))
+        mentions_moderation = self._looks_like_mod_request(content)
+        factual_candidate = bool(
+            explicit_search
+            or current_hint
+            or "?" in content
+            or re.match(
+                r"^(?:what|who|when|where|which|how|is|are|was|were|does|do|did|"
+                r"can|could|should|will|tell\s+me|explain|give\s+me)\b",
+                low,
+            )
+        )
 
         mode = ConversationMode.STANDARD
         confidence = 0.0
+        route = "normal_chat"
+        current_info = current_hint
 
-        if not casual_followup and explicit_research:
+        classifier = getattr(self.ai, "classify_research_route", None)
+        if (
+            not casual_followup
+            and not mentions_moderation
+            and factual_candidate
+            and callable(classifier)
+        ):
+            decision = await classifier(content)
+            if isinstance(decision, dict):
+                route = str(decision.get("route") or "normal_chat")
+                confidence = float(decision.get("confidence") or 0.0)
+                current_info = bool(decision.get("current_info", current_info))
+
+        if route == "normal_chat" and not casual_followup:
+            if deep_request:
+                route = "search_deepthink"
+                confidence = max(confidence, 0.9)
+            elif explicit_search or current_hint:
+                route = "search"
+                confidence = max(confidence, 0.85)
+
+        use_deepthink = route == "search_deepthink"
+        if route in {"search", "search_deepthink"}:
             mode = ConversationMode.RESEARCH
-            confidence = 1.0
 
         show_indicator = getattr(self.ai, "has_web_search", True) and mode == ConversationMode.RESEARCH
 
@@ -757,10 +803,11 @@ class AIModeration(commands.Cog):
             mode=mode,
             confidence=confidence,
             show_research_indicator=show_indicator,
-            asks_for_current_info=False,
-            asks_for_sources=False,
-            asks_for_long_answer=mode == ConversationMode.RESEARCH,
-            mentions_moderation=False,
+            asks_for_current_info=current_info,
+            asks_for_sources=bool(re.search(r"\b(sources?|citations?|proof|links?)\b", low)),
+            asks_for_long_answer=use_deepthink,
+            mentions_moderation=mentions_moderation,
+            use_deepthink=use_deepthink,
         )
 
     def _friendly_error_reply(self, content: str, reason: str) -> str:

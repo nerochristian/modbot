@@ -155,9 +155,63 @@ class ResearchFormattingTests(unittest.TestCase):
 
 
 class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
+    async def test_latest_game_update_routes_to_search_without_deepthink(self) -> None:
+        classifier = AsyncMock(
+            return_value={
+                "route": "search",
+                "confidence": 0.98,
+                "current_info": True,
+            }
+        )
+        cog = object.__new__(AIModeration)
+        cog.ai = SimpleNamespace(
+            has_web_search=True,
+            classify_research_route=classifier,
+        )
+
+        signals = await cog._build_conversation_signals(
+            "latest genshin update?"
+        )
+
+        self.assertEqual(signals.mode, ConversationMode.RESEARCH)
+        self.assertTrue(signals.asks_for_current_info)
+        self.assertFalse(signals.use_deepthink)
+        self.assertFalse(signals.asks_for_long_answer)
+        classifier.assert_awaited_once_with("latest genshin update?")
+
+    async def test_timeless_question_stays_normal_when_galaxy_says_chat(self) -> None:
+        cog = object.__new__(AIModeration)
+        cog.ai = SimpleNamespace(
+            has_web_search=True,
+            classify_research_route=AsyncMock(
+                return_value={
+                    "route": "normal_chat",
+                    "confidence": 0.94,
+                    "current_info": False,
+                }
+            ),
+        )
+
+        signals = await cog._build_conversation_signals(
+            "what is a Python list?"
+        )
+
+        self.assertEqual(signals.mode, ConversationMode.STANDARD)
+        self.assertFalse(signals.use_deepthink)
+
     async def test_explicit_research_request_builds_a_complete_plan(self) -> None:
         cog = object.__new__(AIModeration)
-        cog.ai = SimpleNamespace(has_web_search=True)
+        classifier = AsyncMock(
+            return_value={
+                "route": "search_deepthink",
+                "confidence": 0.97,
+                "current_info": True,
+            }
+        )
+        cog.ai = SimpleNamespace(
+            has_web_search=True,
+            classify_research_route=classifier,
+        )
 
         signals = await cog._build_conversation_signals(
             "research all the conversion rates from different currencies to JMD"
@@ -166,7 +220,9 @@ class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(signals.mode, ConversationMode.RESEARCH)
         self.assertTrue(signals.show_research_indicator)
         self.assertTrue(signals.asks_for_long_answer)
+        self.assertTrue(signals.use_deepthink)
         self.assertEqual(signals.focus_entities, ())
+        classifier.assert_awaited_once()
 
         client = object.__new__(AIClient)
         client.config = SimpleNamespace(max_tokens_chat=1200)

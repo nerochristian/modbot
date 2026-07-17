@@ -46,7 +46,7 @@ _DO_BASE_URL: Final[str] = os.getenv("DO_INFERENCE_BASE_URL", "https://inference
 # remains primary whenever it is enabled.
 _DEEPSEEK_API_KEY: Final[str] = os.getenv("DEEPSEEK_API_KEY", "").strip()
 _DEEPSEEK_BASE_URL: Final[str] = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1").strip().rstrip("/")
-_DEEPSEEK_API_MODEL: Final[str] = os.getenv("DEEPSEEK_MODEL", "deepseek-chat").strip()
+_DEEPSEEK_API_MODEL: Final[str] = os.getenv("DEEPSEEK_MODEL", "gemini-3-5-flash").strip()
 _DEEPSEEK_CHAT_PATH: Final[str] = "/" + os.getenv("DEEPSEEK_CHAT_PATH", "chat/completions").strip().strip("/")
 
 
@@ -455,6 +455,8 @@ class AIClient:
         if selected_model.lower() in {"", "deepseek-web", "digitalocean"} or selected_model.startswith("deepseek-4"):
             selected_model = _DEEPSEEK_API_MODEL
 
+        request_chat_path = "/chat/completions/cline" if allow_multimodal else _DEEPSEEK_CHAT_PATH
+
         return await self._post_chat_completion(
             messages,
             base_url=_DEEPSEEK_BASE_URL,
@@ -465,7 +467,7 @@ class AIClient:
             json_mode=json_mode,
             allow_multimodal=allow_multimodal,
             provider_label="DeepSeek API",
-            chat_path=_DEEPSEEK_CHAT_PATH,
+            chat_path=request_chat_path,
         )
 
     async def _post_chat_completion(
@@ -513,9 +515,13 @@ class AIClient:
                     },
                     json=payload,
                 ) as resp:
-                    data = await resp.json(content_type=None)
+                    raw_body = await resp.text()
+                    try:
+                        data = json.loads(raw_body)
+                    except json.JSONDecodeError:
+                        data = None
                     if resp.status >= 400:
-                        detail = data.get("error", data) if isinstance(data, dict) else data
+                        detail = data.get("error", data) if isinstance(data, dict) else raw_body[:500]
                         if resp.status in {401, 403}:
                             self._set_block(seconds=900, reason=f"{provider_label} authentication or access failed.")
                             raise RuntimeError(f"{provider_label} HTTP {resp.status}: {str(detail)[:500]}")
@@ -526,7 +532,9 @@ class AIClient:
                             raise RuntimeError(f"{provider_label} HTTP {resp.status}: {str(detail)[:500]}")
                         last_error = RuntimeError(f"{provider_label} HTTP {resp.status}: {str(detail)[:500]}")
                     else:
-                        return self._extract_completion_content(data)
+                        if isinstance(data, dict):
+                            return self._extract_completion_content(data)
+                        return self._extract_sse_completion_content(raw_body)
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 last_error = exc
                 logger.warning("%s network error (attempt %d/%d): %s", provider_label, attempt + 1, max_retries + 1, exc)
@@ -540,6 +548,30 @@ class AIClient:
         if last_error:
             raise last_error
         return None
+
+    @staticmethod
+    def _extract_sse_completion_content(raw_body: str) -> Optional[str]:
+        """Extract assistant text from Galaxy/OpenAI-compatible SSE chunks."""
+        chunks: List[str] = []
+        for line in (raw_body or "").splitlines():
+            line = line.strip()
+            if not line.startswith("data:"):
+                continue
+            payload = line[5:].strip()
+            if not payload or payload == "[DONE]":
+                continue
+            try:
+                data = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            choices = data.get("choices") if isinstance(data, dict) else None
+            if not choices:
+                continue
+            delta = (choices[0] or {}).get("delta") or {}
+            content = delta.get("content")
+            if isinstance(content, str):
+                chunks.append(content)
+        return "".join(chunks).strip() or None
 
     @staticmethod
     def _extract_completion_content(data: Any) -> Optional[str]:
@@ -949,6 +981,77 @@ class AIClient:
             logger.exception("Unexpected error in choose_action")
             return Decision.error("AI encountered an unexpected error.")
 
+    async def classify_research_route(self, user_content: str) -> Optional[Dict[str, Any]]:
+        """Ask Galaxy whether a turn needs chat, search, or search plus DeepThink."""
+        text = re.sub(r"\s+", " ", user_content or "").strip()
+        if not text or not self.prefers_deepseek_http or not _deepseek_api_enabled():
+            return None
+
+        system_prompt = (
+            "You route Discord assistant requests. Return one JSON object only with "
+            "keys route, confidence, current_info, and reason. route must be exactly "
+            "normal_chat, search, or search_deepthink. Use normal_chat for casual "
+            "conversation, creative writing, timeless explanations, local Discord "
+            "context, and moderation commands. Use search when a concise answer needs "
+            "fresh or externally verified facts, including current/latest/recent/today "
+            "questions, game versions and patches, prices, schedules, releases, news, "
+            "weather, laws, officeholders, product availability, or recommendations. "
+            "Use search_deepthink only when live evidence also needs substantial "
+            "analysis: broad world briefs, investigations, comparisons across sources, "
+            "conflicting reports, technical deep dives, or an explicitly requested "
+            "detailed breakdown. Do not choose deepthink merely because a fact is current. "
+            "current_info must be a boolean. confidence must be from 0 to 1. reason must "
+            "be a short string."
+        )
+        user_prompt = (
+            f"Current UTC time: {_now().isoformat()}\n"
+            f"Classify this request:\n{_sanitize_untrusted_text(text, limit=4_000)}"
+        )
+        try:
+            try:
+                timeout = float(os.getenv("GALAXY_ROUTER_TIMEOUT", "5").strip())
+            except ValueError:
+                timeout = 5.0
+            raw = await asyncio.wait_for(
+                self._call_deepseek_api(
+                    [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    temperature=0.0,
+                    max_tokens=220,
+                    model=os.getenv("GALAXY_ROUTER_MODEL", "gemini-3-5-flash").strip(),
+                    json_mode=True,
+                ),
+                timeout=min(10.0, max(1.0, timeout)),
+            )
+            try:
+                data = json.loads(self._extract_json(raw or ""))
+            except json.JSONDecodeError:
+                logger.debug("Galaxy research-route classifier returned invalid JSON: %r", (raw or "")[:500])
+                return None
+            if not isinstance(data, dict):
+                return None
+            route = str(data.get("route") or "").strip().lower()
+            if route not in {"normal_chat", "search", "search_deepthink"}:
+                return None
+            try:
+                confidence = float(data.get("confidence", 0.0))
+            except (TypeError, ValueError):
+                confidence = 0.0
+            return {
+                "route": route,
+                "confidence": min(1.0, max(0.0, confidence)),
+                "current_info": bool(data.get("current_info", False)),
+                "reason": str(data.get("reason") or "")[:200],
+            }
+        except asyncio.TimeoutError:
+            logger.warning("Galaxy research-route classification timed out")
+            return None
+        except Exception:
+            logger.warning("Galaxy research-route classification failed", exc_info=True)
+            return None
+
     async def converse(
         self,
         *,
@@ -1085,6 +1188,16 @@ class AIClient:
             {"role": "system", "content": plan.system_prompt},
             {"role": "user", "content": turn_prompt},
         ]
+        multimodal_api_messages = (
+            self._build_conversation_messages(
+                plan,
+                recent_messages,
+                author,
+                image_context=image_context,
+            )
+            if image_context
+            else api_messages
+        )
 
         try:
             await self._rate_limiter.record_call(author.id)
@@ -1092,7 +1205,6 @@ class AIClient:
             if (
                 self.prefers_deepseek_http
                 and _deepseek_api_enabled()
-                and not image_context
                 and not (
                     signals.mode == ConversationMode.RESEARCH
                     and uses_native_search
@@ -1106,10 +1218,11 @@ class AIClient:
                         else plan.max_tokens
                     )
                     content = await self._call_deepseek_api(
-                        api_messages,
+                        multimodal_api_messages,
                         temperature=plan.temperature,
                         max_tokens=max_tokens,
                         model=model,
+                        allow_multimodal=bool(image_context),
                     )
                     if content:
                         content = self._postprocess_chat_response(content)
@@ -1211,7 +1324,7 @@ class AIClient:
                 )
                 if not content:
                     return _RESEARCH_UNAVAILABLE
-                if uses_native_search:
+                if uses_native_search and signals.use_deepthink:
                     source_urls = self._research_source_urls(content)
                     searched_answer = content.split("__BOT_SOURCES__", 1)[0].strip()
                     current_utc = _now().isoformat()

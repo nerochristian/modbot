@@ -126,7 +126,7 @@ def _default_ai_model() -> str:
             or "deepseek-4-flash"
         ).strip()
     if provider in {"deepseek", "deepseek-api", "deepseek-http", "galaxy", "glxy"}:
-        return (os.getenv("DEEPSEEK_MODEL") or "deepseek-v4-pro").strip()
+        return (os.getenv("DEEPSEEK_MODEL") or "gemini-3-5-flash").strip()
     return "deepseek-web"
 
 
@@ -357,6 +357,7 @@ class ConversationSignals:
     asks_for_long_answer: bool = False
     mentions_moderation: bool = False
     focus_entities: Tuple[str, ...] = ()
+    use_deepthink: bool = False
 
     @property
     def research(self) -> bool:

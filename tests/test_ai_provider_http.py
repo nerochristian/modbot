@@ -29,8 +29,12 @@ class _FakeResp:
     async def __aexit__(self, *exc):
         return False
 
-    async def json(self, content_type=None):
-        return self._payload
+    async def text(self):
+        if isinstance(self._payload, str):
+            return self._payload
+        import json
+
+        return json.dumps(self._payload)
 
 
 class _FakeSession:
@@ -84,10 +88,49 @@ def test_success_path_returns_content():
     assert session.calls == 1
 
 
+def test_sse_success_path_returns_content():
+    body = (
+        'data: {"choices":[{"delta":{"content":"HE"}}]}\n\n'
+        'data: {"choices":[{"delta":{"content":"LLO"}}]}\n\n'
+        "data: [DONE]\n\n"
+    )
+    client, session, _ = _make_client([_FakeResp(200, body)])
+    assert _post(client, chat_path="/chat/completions/cline") == "HELLO"
+    assert session.calls == 1
+
+
 def test_custom_gateway_chat_path_is_used():
     client, session, _ = _make_client([_FakeResp(200, _OK)])
     assert _post(client, chat_path="/chat/completions/json") == "HELLO"
     assert session.calls == 1
+
+
+def test_multimodal_deepseek_api_uses_cline_endpoint(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client._post_chat_completion = AsyncMock(return_value="vision")
+    monkeypatch.setattr(ai_client_module, "_DEEPSEEK_API_KEY", "api-key")
+    monkeypatch.setattr(ai_client_module, "_DEEPSEEK_API_MODEL", "gemini-3-5-flash")
+
+    result = asyncio.run(
+        client._call_deepseek_api(
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": "describe"},
+                        {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
+                    ],
+                }
+            ],
+            temperature=0.0,
+            max_tokens=32,
+            allow_multimodal=True,
+        )
+    )
+
+    assert result == "vision"
+    assert client._post_chat_completion.await_args.kwargs["chat_path"] == "/chat/completions/cline"
+    assert client._post_chat_completion.await_args.kwargs["allow_multimodal"] is True
 
 
 def test_retries_transient_5xx_then_succeeds():
