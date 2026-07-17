@@ -169,6 +169,7 @@ class Logging(commands.Cog):
         self._message_snapshots: dict[int, discord.Message] = {}
         self._snapshot_lock = asyncio.Lock()
         self._logging_state_cache: dict[int, tuple[float, bool]] = {}
+        self._suppressed_member_action_logs: dict[tuple[int, int, str], datetime] = {}
 
     async def _logging_enabled(self, guild_id: int) -> bool:
         now = time.monotonic()
@@ -295,6 +296,32 @@ class Logging(commands.Cog):
             self._suppress_timeout_change_until.pop(key, None)
             return False
         return True
+
+    def suppress_member_action_log(
+        self,
+        guild_id: int,
+        user_id: int,
+        action: str,
+        seconds: int = 12,
+    ) -> None:
+        """Suppress the duplicate gateway log for a bot-issued ban or unban."""
+        normalized_action = str(action or "").strip().casefold()
+        if normalized_action not in {"ban", "unban"}:
+            raise ValueError(f"Unsupported member action suppression: {action!r}")
+        key = (int(guild_id), int(user_id), normalized_action)
+        self._suppressed_member_action_logs[key] = (
+            datetime.now(timezone.utc) + timedelta(seconds=max(1, seconds))
+        )
+
+    def _consume_member_action_log_suppression(
+        self,
+        guild_id: int,
+        user_id: int,
+        action: str,
+    ) -> bool:
+        key = (int(guild_id), int(user_id), str(action).strip().casefold())
+        until = self._suppressed_member_action_logs.pop(key, None)
+        return bool(until and datetime.now(timezone.utc) < until)
 
     def _remember_webhook_entry(self, entry_id: int) -> bool:
         now = datetime.now(timezone.utc)
@@ -2268,6 +2295,8 @@ class Logging(commands.Cog):
     
     @commands.Cog.listener()
     async def on_member_ban(self, guild: discord.Guild, user: discord.User):
+        if self._consume_member_action_log_suppression(guild.id, user.id, "ban"):
+            return
         """Log bans — moderation action, goes to mod logs"""
         channel = await self.get_log_channel(guild, 'mod')
         if not channel:
@@ -2307,6 +2336,8 @@ class Logging(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_unban(self, guild: discord.Guild, user: discord.User):
+        if self._consume_member_action_log_suppression(guild.id, user.id, "unban"):
+            return
         """Log unbans — moderation action, goes to mod logs"""
         channel = await self.get_log_channel(guild, 'mod')
         if not channel:
