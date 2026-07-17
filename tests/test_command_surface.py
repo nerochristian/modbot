@@ -8,7 +8,9 @@ from discord import app_commands
 from discord.ext import commands
 
 from cogs.moderation import Moderation
+from cogs.court import Court
 from cogs.roles import Roles
+from cogs.tickets import Tickets
 from cogs.utility import Utility
 
 
@@ -53,12 +55,32 @@ def test_moderation_registers_required_slash_commands() -> None:
             "images",
             "links",
         }
+        assert {command.name for command in bot.tree.get_command("welcome").commands} == {
+            "background", "preview", "everyone",
+        }
+        assert {command.name for command in bot.tree.get_command("emoji").commands} == {
+            "tutorial", "add", "steal",
+        }
+        assert not {"setwelcomebg", "testwelcome", "welcomeall", "emojitutorial", "addemoji", "stealemoji"} & registered
         assert all(
             isinstance(command, app_commands.Group) or callable(command.callback)
             for command in cog._slash_commands
         )
     finally:
         asyncio.run(bot.close())
+
+
+def test_low_frequency_features_use_groups_instead_of_root_command_slots() -> None:
+    court_commands = {command.name: command for command in Court.__cog_app_commands__}
+    assert set(court_commands) == {"court"}
+    assert {command.name for command in court_commands["court"].commands} == {
+        "setup-logs", "file", "evidence", "jury", "verdict", "view-evidence", "close",
+    }
+
+    ticket_commands = {command.name: command for command in Tickets.__cog_app_commands__}
+    assert "ticket" in ticket_commands
+    assert "ticketpanel" not in ticket_commands
+    assert "panel" in {command.name for command in ticket_commands["ticket"].commands}
 
 
 def test_modmail_is_not_exposed_by_bot_or_cogs() -> None:
