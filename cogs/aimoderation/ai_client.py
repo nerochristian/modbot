@@ -73,8 +73,8 @@ def _deepseek_api_enabled() -> bool:
 
 
 def _galaxy_multimodal_enabled() -> bool:
-    """Enable Galaxy's documented multimodal SSE endpoint only after live verification."""
-    return (os.getenv("GALAXY_MULTIMODAL_ENABLED") or "").strip().lower() in {"1", "true", "yes", "on"}
+    """Enable Galaxy's documented multimodal SSE endpoint."""
+    return (os.getenv("GALAXY_MULTIMODAL_ENABLED") or "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _now() -> datetime:
