@@ -34,6 +34,17 @@ const SNOWFLAKE_SETTING_KEYS = [
   'audit_log_channel',
   'message_log_channel',
   'voice_log_channel',
+  'log_channel_mod',
+  'mod_log_channel',
+  'log_channel_audit',
+  'log_channel_message',
+  'log_channel_voice',
+  'log_channel_automod',
+  'log_channel_report',
+  'log_channel_ticket',
+  'audit_log_channel',
+  'message_log_channel',
+  'voice_log_channel',
   'automod_log_channel',
   'report_log_channel',
   'welcome_channel',
@@ -42,47 +53,46 @@ const SNOWFLAKE_SETTING_KEYS = [
 
 export async function getBotGuildSettings(guildId: string): Promise<Record<string, unknown>> {
   const rows = await botQuery<{ settings: string | Record<string, unknown> }>(
-    `SELECT COALESCE(
-       jsonb_object_agg(
-         entry.key,
-         CASE
-           WHEN entry.key = ANY($2::text[]) AND jsonb_typeof(entry.value) = 'number'
-             THEN to_jsonb(entry.value #>> '{}')
-           ELSE entry.value
-         END
-       ) FILTER (WHERE entry.key IS NOT NULL),
-       '{}'::jsonb
-     )::text AS settings
-     FROM guild_settings AS guild
-     LEFT JOIN LATERAL jsonb_each(COALESCE(NULLIF(guild.settings, ''), '{}')::jsonb) AS entry ON TRUE
-     WHERE guild.guild_id = $1::bigint
-     GROUP BY guild.guild_id`,
-    [guildId, SNOWFLAKE_SETTING_KEYS],
+    `SELECT settings FROM guild_settings WHERE guild_id = $1::bigint`,
+    [guildId],
   )
   const value = rows[0]?.settings
   if (!value) return {}
-  if (typeof value === 'object') return value
-  try {
-    const parsed = JSON.parse(value)
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
-  } catch {
-    return {}
+  
+  let parsed: any = typeof value === 'string' ? {} : value
+  if (typeof value === 'string') {
+    try {
+      parsed = JSON.parse(value)
+    } catch {
+      return {}
+    }
   }
+  
+  if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+    for (const key of SNOWFLAKE_SETTING_KEYS) {
+      if (typeof parsed[key] === 'number') {
+        parsed[key] = String(parsed[key])
+      }
+    }
+    return parsed
+  }
+  return {}
 }
 
 export async function patchBotGuildSettings(
   guildId: string,
   changes: Record<string, unknown>,
 ): Promise<Record<string, unknown>> {
+  const current = await getBotGuildSettings(guildId)
+  const updated = { ...current, ...changes }
+  
   await botQuery<{ guild_id: string }>(
     `INSERT INTO guild_settings (guild_id, settings)
-     VALUES ($1::bigint, $2::jsonb::text)
+     VALUES ($1::bigint, $2)
      ON CONFLICT (guild_id) DO UPDATE
-     SET settings = (
-       COALESCE(NULLIF(guild_settings.settings, ''), '{}')::jsonb || EXCLUDED.settings::jsonb
-     )::text
+     SET settings = $2
      RETURNING guild_id`,
-    [guildId, JSON.stringify(changes)],
+    [guildId, JSON.stringify(updated)],
   )
-  return getBotGuildSettings(guildId)
+  return updated
 }

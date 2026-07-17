@@ -8,7 +8,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build && node -e \"const fs=require('fs'); if(fs.existsSync('public')) fs.cpSync('public', '.next/standalone/public', {recursive:true}); if(fs.existsSync('.next/static')) fs.cpSync('.next/static', '.next/standalone/.next/static', {recursive:true});\"",
     "start": "next start",
     "test": "tsx --test tests/backend-regressions.test.ts",
     "lint": "eslint",
