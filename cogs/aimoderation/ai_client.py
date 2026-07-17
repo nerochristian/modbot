@@ -1339,7 +1339,31 @@ class AIClient:
                 research=signals.mode == ConversationMode.RESEARCH,
                 vision=bool(image_context),
             )
-            if image_context:
+            if image_context and self.prefers_deepseek_http:
+                # Galaxy is the configured provider: image scanning must stay on
+                # Gemini 3.5 Flash's multimodal endpoint (/chat/completions/cline),
+                # never DeepSeek web vision. If the Galaxy multimodal primary above
+                # was already attempted (and returned nothing) or Galaxy multimodal
+                # is disabled, degrade to a text-only answer rather than browser vision.
+                if _galaxy_multimodal_enabled() and not http_primary_attempted:
+                    content = await self._call_deepseek_api(
+                        multimodal_api_messages,
+                        temperature=plan.temperature,
+                        max_tokens=(
+                            max(plan.max_tokens, 4_800)
+                            if signals.asks_for_long_answer
+                            else plan.max_tokens
+                        ),
+                        model=model,
+                        allow_multimodal=True,
+                    )
+                else:
+                    content = await self._conversation_via_http(
+                        prompt,
+                        model=model,
+                        long_answer=signals.asks_for_long_answer,
+                    )
+            elif image_context:
                 uploads = [
                     (image.filename, image.mime_type, image.data)
                     for image in image_context
