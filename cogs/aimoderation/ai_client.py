@@ -1716,42 +1716,43 @@ class AIClient:
 
         images = image_context or []
         if images:
-            parts: List[Dict[str, Any]] = [
-                {
-                    "type": "text",
-                    "text": (
-                        "Recent Discord image attachments are included below. "
-                        "Use the actual visual contents when answering image questions. "
-                        "Do not guess from nearby text if the image shows otherwise.\n\n"
-                        + "\n".join(
-                            f"Image {i}: {image.label} ({image.filename})"
-                            for i, image in enumerate(images, start=1)
-                        )
-                    ),
-                }
-            ]
+            text_prompt = (
+                "Recent Discord image attachments are included below. "
+                "Use the actual visual contents when answering image questions. "
+                "Do not guess from nearby text if the image shows otherwise.\n\n"
+                + "\n".join(
+                    f"Image {i}: {image.label} ({image.filename})"
+                    for i, image in enumerate(images, start=1)
+                )
+            )
+            if image_summary.strip():
+                text_prompt += "\n\nVisual analysis pass. Use this as the source of truth for the image contents:\n" + image_summary.strip()
+            
+            text_prompt += "\n\n" + user_prompt
+            
+            parts: List[Dict[str, Any]] = [{"type": "text", "text": text_prompt}]
+            
             for image in images:
                 parts.append(
                     {
                         "type": "image_url",
-                        "image_url": {"url": image.data_url, "detail": "auto"},
+                        "image_url": {"url": image.data_url},
                     }
                 )
             messages.append({"role": "user", "content": parts})
-
-        if image_summary.strip():
-            messages.append(
-                {
-                    "role": "user",
-                    "content": (
-                        "Visual analysis pass. Use this as the source of truth "
-                        "for the image contents when answering the user's image question:\n"
-                        f"{image_summary.strip()}"
-                    ),
-                }
-            )
-
-        messages.append({"role": "user", "content": user_prompt})
+        else:
+            if image_summary.strip():
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": (
+                            "Visual analysis pass. Use this as the source of truth "
+                            "for the image contents when answering the user's image question:\n"
+                            f"{image_summary.strip()}"
+                        ),
+                    }
+                )
+            messages.append({"role": "user", "content": user_prompt})
         return messages
 
 
