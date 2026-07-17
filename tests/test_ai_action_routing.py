@@ -959,6 +959,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(deepthink_call.kwargs["search"])
         self.assertTrue(deepthink_call.kwargs["deepthink"])
         self.assertIn("VERIFIED SEARCH MATERIAL", deepthink_call.args[0])
+        self.assertIn("current UTC time", deepthink_call.args[0])
         client._update_memory_smart.assert_called_once_with(
             author.id,
             "research this",

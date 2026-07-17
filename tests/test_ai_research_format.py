@@ -60,6 +60,21 @@ class ResearchFormattingTests(unittest.TestCase):
             "• Checking patients.",
         )
 
+    def test_long_research_uses_multiple_embeds_without_truncation(self) -> None:
+        response = "# Global Brief\n\n" + "\n\n".join(
+            f"## Section {index}\nmarker-{index} " + (chr(96 + index) * 1_500)
+            for index in range(1, 5)
+        )
+
+        embeds = AIModeration._build_research_embeds(response, "world news")
+        combined = "\n".join(embed.description or "" for embed in embeds)
+
+        self.assertGreater(len(embeds), 1)
+        self.assertTrue(all(len(embed.description or "") <= 3_900 for embed in embeds))
+        for index in range(1, 5):
+            self.assertIn(f"marker-{index}", combined)
+        self.assertIn("(1/", embeds[0].title)
+
     def test_research_spacing_preserves_fenced_code(self) -> None:
         response = "Intro.\n\n```py\nfirst = 1\n\nsecond = 2\n```\n\nDone."
 

@@ -2750,6 +2750,10 @@ class AIModeration(commands.Cog):
         return "".join(sections).strip()
 
     def _build_research_embed(self, response: str, query: str) -> discord.Embed:
+        return AIModeration._build_research_embeds(response, query)[0]
+
+    @staticmethod
+    def _build_research_embeds(response: str, query: str) -> List[discord.Embed]:
         heading = re.match(r"^\s*#{1,3}\s+(.+?)(?:\n|$)", response)
         if heading:
             title = heading.group(1).strip()
@@ -2760,13 +2764,25 @@ class AIModeration(commands.Cog):
         response = AIModeration._compact_research_spacing(response)
         if len(title) > 256:
             title = title[:253].rstrip() + "..."
-        if len(response) > 4096:
-            response = response[:4093].rstrip() + "..."
-        return discord.Embed(
-            title=title,
-            description=response or "No research summary was returned.",
-            color=discord.Color.from_rgb(88, 101, 242),
+        chunks = AIModeration._split_response(
+            response or "No research summary was returned.",
+            max_len=3_900,
         )
+        embeds: List[discord.Embed] = []
+        total = len(chunks)
+        for index, chunk in enumerate(chunks, start=1):
+            page_title = title
+            if total > 1:
+                suffix = f" ({index}/{total})"
+                page_title = f"{title[: max(1, 256 - len(suffix))].rstrip()}{suffix}"
+            embeds.append(
+                discord.Embed(
+                    title=page_title,
+                    description=chunk,
+                    color=discord.Color.from_rgb(88, 101, 242),
+                )
+            )
+        return embeds
 
     @staticmethod
     def _split_research_sources(response: str) -> Tuple[str, Optional[str]]:
@@ -2818,8 +2834,12 @@ class AIModeration(commands.Cog):
         view = self._SourcesView(sources_text) if sources_text and is_research else None
 
         if is_research:
-            embed = self._build_research_embed(response, message.content or "")
-            await self.reply(message, embed=embed, view=view)
+            embeds = self._build_research_embeds(response, message.content or "")
+            for index, embed in enumerate(embeds):
+                current_view = view if index == len(embeds) - 1 else None
+                sent = await self.reply(message, embed=embed, view=current_view)
+                if not sent:
+                    break
             return
 
         # Short responses: plain text
