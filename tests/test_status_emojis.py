@@ -5,6 +5,7 @@ import discord
 
 from config import Config
 from utils import status_emojis
+from utils.embeds import ModEmbed
 from utils.status_emojis import apply_status_emoji_overrides
 
 
@@ -52,6 +53,32 @@ class StatusEmojiTests(unittest.IsolatedAsyncioTestCase):
             )
         finally:
             Config.EMOJI_WARN = original
+
+    async def test_plain_moderation_log_title_gets_semantic_application_emoji(self) -> None:
+        status_emojis._application_kind_cache["ban"] = "<a:mod_ban:1521191582424895740>"
+        embed = discord.Embed(title="Member Banned")
+        guild = SimpleNamespace()
+
+        updated = await apply_status_emoji_overrides(embed, guild)
+
+        self.assertEqual(updated.title, "<a:mod_ban:1521191582424895740> Member Banned")
+
+    async def test_plain_generic_log_title_gets_info_application_emoji(self) -> None:
+        status_emojis._application_kind_cache["info"] = "<a:mod_info:1521191582424895741>"
+        embed = discord.Embed(title="Channel Permissions Changed")
+        guild = SimpleNamespace()
+
+        updated = await apply_status_emoji_overrides(embed, guild)
+
+        self.assertEqual(updated.title, "<a:mod_info:1521191582424895741> Channel Permissions Changed")
+
+    def test_moderation_confirmation_is_an_embed(self) -> None:
+        status_emojis._application_kind_cache["ban"] = "<a:mod_ban:1521191582424895740>"
+
+        embed = ModEmbed.moderation_response("ban", "***<@123> was banned***\n**Reason:** spam")
+
+        self.assertTrue(embed.description.startswith("<a:mod_ban:1521191582424895740> "))
+        self.assertIn("<@123> was banned", embed.description)
 
 
 if __name__ == "__main__":

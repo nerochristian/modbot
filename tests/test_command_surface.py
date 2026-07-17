@@ -155,6 +155,7 @@ def test_universal_v2_shim_consumes_explicit_v1_override() -> None:
     assert 'kwargs.pop("use_v2", None)' in function
     assert "use_v2 is False" in function
     assert "return args, kwargs" in function
+    assert "await _apply_shared_status_emojis(self, kwargs)" in source
 
 
 def test_server_is_a_top_level_slash_command() -> None:
