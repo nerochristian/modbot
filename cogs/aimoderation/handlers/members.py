@@ -531,6 +531,10 @@ async def handle_untimeout(ctx: ToolContext) -> ToolResult:
     if not bot_member or not ctx.cog.can_moderate(bot_member, target):
         return ToolResult.fail(f"Cannot moderate {target.display_name}; their role is above mine.")
 
+    is_timed_out = getattr(target, "is_timed_out", None)
+    if callable(is_timed_out) and not is_timed_out():
+        return ToolResult.fail(f"{target.mention} is not currently timed out.")
+
     settings = await _guild_moderation_settings(ctx)
     reason = ctx.str_arg("reason", "Timeout removed.")
     await target.timeout(None, reason=reason)
@@ -687,20 +691,26 @@ async def handle_unban(ctx: ToolContext) -> ToolResult:
 
     settings = await _guild_moderation_settings(ctx)
     reason = ctx.str_arg("reason", "Unbanned.")
+    target = discord.Object(id=target_id)
+    try:
+        ban_entry = await ctx.guild.fetch_ban(target)
+    except discord.NotFound:
+        return ToolResult.fail(f"<@{target_id}> is not currently banned.")
+
     _suppress_duplicate_member_action_log(ctx, target_id, "unban")
-    await ctx.guild.unban(discord.Object(id=target_id), reason=f"AI Mod ({ctx.actor}): {reason}")
+    await ctx.guild.unban(target, reason=f"AI Mod ({ctx.actor}): {reason}")
 
     embed = discord.Embed(title="User Unbanned", color=discord.Color.green(), timestamp=datetime.now(timezone.utc))
     rows: list[tuple[str, object]] = [("Moderator", ctx.actor.mention), ("Reason", reason)]
     embed.set_footer(text=f"User ID: {target_id}")
     response_user: object = f"<@{target_id}>"
-    try:
-        user = await ctx.cog.bot.fetch_user(target_id)
+    user = getattr(ban_entry, "user", None)
+    if user is not None:
         response_user = user
         embed.set_author(name=user.name, icon_url=user.display_avatar.url)
         rows.insert(0, ("User", f"{user.mention} (`{user.name}`)"))
         embed.set_thumbnail(url=user.display_avatar.url)
-    except discord.HTTPException:
+    else:
         rows.insert(0, ("User", f"<@{target_id}> (ID: `{target_id}`)"))
     embed.description = compact_kv_lines(rows)
 

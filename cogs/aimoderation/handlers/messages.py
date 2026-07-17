@@ -81,6 +81,8 @@ async def handle_pin_message(ctx: ToolContext) -> ToolResult:
     except (TypeError, ValueError):
         return ToolResult.fail("Message ID must be a number.")
     msg = await fetch_message(msg_id)
+    if msg.pinned:
+        return ToolResult.fail("That message is already pinned.")
     await msg.pin(reason=f"AI Mod ({ctx.actor})")
     return ToolResult.ok("Message pinned.")
 
@@ -105,6 +107,8 @@ async def handle_unpin_message(ctx: ToolContext) -> ToolResult:
     except (TypeError, ValueError):
         return ToolResult.fail("Message ID must be a number.")
     msg = await fetch_message(msg_id)
+    if not msg.pinned:
+        return ToolResult.fail("That message is not pinned.")
     await msg.unpin(reason=f"AI Mod ({ctx.actor})")
     return ToolResult.ok("Message unpinned.")
 

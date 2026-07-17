@@ -41,6 +41,9 @@ async def handle_add_role(ctx: ToolContext) -> ToolResult:
     if not bot_member or not ctx.cog.can_manage_role(bot_member, role):
         return ToolResult.fail(f"Cannot assign `{role.name}` - it's above my top role.")
 
+    if role in target.roles:
+        return ToolResult.fail(f"{target.mention} already has {role.mention}.")
+
     reason = ctx.str_arg("reason")
     await target.add_roles(role, reason=f"AI Mod ({ctx.actor}): {reason}")
 
@@ -76,6 +79,9 @@ async def handle_remove_role(ctx: ToolContext) -> ToolResult:
         return ToolResult.fail(f"Cannot remove `{role.name}` - it's above your top role.")
     if not bot_member or not ctx.cog.can_manage_role(bot_member, role):
         return ToolResult.fail(f"Cannot remove `{role.name}` - it's above my top role.")
+
+    if role not in target.roles:
+        return ToolResult.fail(f"{target.mention} does not have {role.mention}.")
 
     reason = ctx.str_arg("reason")
     await target.remove_roles(role, reason=f"AI Mod ({ctx.actor}): {reason}")

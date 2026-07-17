@@ -214,7 +214,12 @@ class GuildSettings:
         if isinstance(raw, (int, float)):
             return bool(raw)
         if isinstance(raw, str):
-            return raw.strip().lower() in {"1", "true", "yes", "on", "enabled"}
+            normalized = raw.strip().lower()
+            if normalized in {"1", "true", "yes", "on", "enable", "enabled"}:
+                return True
+            if normalized in {"0", "false", "no", "off", "disable", "disabled"}:
+                return False
+            return default
         return default
 
     @staticmethod
