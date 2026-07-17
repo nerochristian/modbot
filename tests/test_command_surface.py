@@ -148,6 +148,15 @@ def test_server_info_uses_compact_v1_embed() -> None:
     assert "possessive_name" not in function
 
 
+def test_universal_v2_shim_consumes_explicit_v1_override() -> None:
+    source = (ROOT / "gc" / "components_v2.py").read_text(encoding="utf-8-sig")
+    function = source[source.index("def _normalize_v2_payload("):source.index("\ndef _patch_async_method(")]
+
+    assert 'kwargs.pop("use_v2", None)' in function
+    assert "use_v2 is False" in function
+    assert "return args, kwargs" in function
+
+
 def test_server_is_a_top_level_slash_command() -> None:
     command = Utility.server
     assert isinstance(command, app_commands.Command)

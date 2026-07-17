@@ -24,6 +24,7 @@ How to use:
 5. Raw `discord.Embed` objects become V2 containers. Existing buttons/selects
    are moved into V2 action rows so they stay with the converted embed.
 6. Sends with only plain text are left alone.
+7. Pass ``use_v2=False`` to preserve a classic embed for a specific send/edit.
 
 This file is standalone. It does not depend on any other project file.
 """
@@ -260,6 +261,13 @@ def _normalize_v2_payload(
     *,
     edit: bool = False,
 ) -> tuple[tuple[Any, ...], dict[str, Any]]:
+    use_v2 = kwargs.pop("use_v2", None)
+    if use_v2 is False or (
+        isinstance(use_v2, str)
+        and use_v2.strip().lower() in {"0", "false", "no", "off"}
+    ):
+        return args, kwargs
+
     embeds = _extract_embeds(kwargs)
     view = kwargs.get("view", MISSING)
 
