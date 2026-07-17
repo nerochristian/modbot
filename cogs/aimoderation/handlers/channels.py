@@ -13,7 +13,10 @@ from ..types import ToolType
 
 
 def _resolve_channel(ctx: ToolContext) -> Any:
-    raw_channel = ctx.arg("channel_id") or ctx.arg("channel_name")
+    get_arg = getattr(ctx, "arg", None)
+    raw_channel = None
+    if callable(get_arg):
+        raw_channel = get_arg("channel_id") or get_arg("channel_name")
     if raw_channel is None:
         return ctx.message.channel
 

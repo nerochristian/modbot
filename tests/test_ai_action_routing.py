@@ -524,9 +524,40 @@ class AIActionRoutingTests(unittest.TestCase):
             timeout_seconds=150,
         )
 
-        self.assertIn("DEEPSEEK_WEB_ENABLED", client.availability_message())
-        self.assertIn("Available now: yes", client.diagnostic_lines())
-        self.assertIn("DigitalOcean inference fallback", client.availability_message())
+        with patch("cogs.aimoderation.ai_client._deepseek_api_enabled", return_value=False), patch(
+            "cogs.aimoderation.ai_client._DO_API_KEY",
+            "do-key",
+        ):
+            self.assertIn("DEEPSEEK_WEB_ENABLED", client.availability_message())
+            self.assertIn("Available now: yes", client.diagnostic_lines())
+            self.assertIn("DigitalOcean inference fallback", client.availability_message())
+
+    def test_deepseek_http_is_a_real_availability_path(self) -> None:
+        client = object.__new__(AIClient)
+        client.provider = "deepseek"
+        client._deepseek_web = SimpleNamespace(
+            enabled=False,
+            storage_state_path=None,
+            session_index_path=None,
+            timeout_seconds=150,
+        )
+
+        with patch("cogs.aimoderation.ai_client._deepseek_api_enabled", return_value=True), patch(
+            "cogs.aimoderation.ai_client._DO_API_KEY",
+            "",
+        ):
+            self.assertTrue(client.is_available)
+            self.assertEqual(client.availability_message(), "DeepSeek HTTP is configured.")
+            self.assertIn("DeepSeek HTTP configured: yes", client.diagnostic_lines())
+
+    def test_recent_target_cache_is_scoped_to_the_guild(self) -> None:
+        self.cog.config = AIConfig(target_cache_ttl_minutes=5)
+        self.cog._target_cache = {}
+
+        self.cog._remember_target(100, 10, 20)
+
+        self.assertEqual(self.cog._get_recent_target(100, 10), 20)
+        self.assertIsNone(self.cog._get_recent_target(200, 10))
 
     def test_tool_access_uses_registry_metadata_object(self) -> None:
         actor = SimpleNamespace(id=123)
@@ -829,7 +860,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             enabled=True,
             chat=AsyncMock(side_effect=DeepSeekWebError("browser failed")),
         )
-        client._call_digitalocean_conversation = AsyncMock(return_value="fallback answer")
+        client._conversation_via_http = AsyncMock(return_value="fallback answer")
         client._collect_image_context = AsyncMock(return_value=[])
         client._update_memory_smart = AsyncMock()
         db = SimpleNamespace(get_ai_memory=AsyncMock(return_value=""))
@@ -844,7 +875,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertEqual(response, "fallback answer")
-        client._call_digitalocean_conversation.assert_awaited_once()
+        client._conversation_via_http.assert_awaited_once()
         client._update_memory_smart.assert_called_once()
 
     async def test_database_guild_memory_crud_and_channel_batch_query(self) -> None:
@@ -936,7 +967,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             enabled=True,
             chat=AsyncMock(side_effect=stalled_chat),
         )
-        client._call_digitalocean_conversation = AsyncMock(return_value="fallback answer")
+        client._conversation_via_http = AsyncMock(return_value="fallback answer")
         client._collect_image_context = AsyncMock(return_value=[])
         client._update_memory_smart = AsyncMock()
         db = SimpleNamespace(get_ai_memory=AsyncMock(return_value=""))
@@ -952,7 +983,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertEqual(response, "fallback answer")
-        client._call_digitalocean_conversation.assert_awaited_once()
+        client._conversation_via_http.assert_awaited_once()
         client._update_memory_smart.assert_called_once()
 
     async def test_reason_is_rewritten_once_and_cleaned(self) -> None:

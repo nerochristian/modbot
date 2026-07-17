@@ -9,7 +9,7 @@ from cogs.aimoderation import ToolRegistry, ToolType
 from cogs.aimoderation.handlers.admin import _raw_api_safety_error
 from cogs.aimoderation.handlers.channels import handle_unlock_channel
 from cogs.aimoderation.handlers.messages import handle_purge
-from cogs.aimoderation.handlers.members import handle_warn
+from cogs.aimoderation.handlers.members import handle_unban, handle_warn
 from cogs.aimoderation.bridge import warn_member
 from cogs.aimoderation.handlers.query_handlers import (
     handle_find_inactive,
@@ -38,6 +38,31 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
             send_messages=None,
             reason="Unlock by Moderator",
         )
+
+    async def test_unban_reports_not_banned_without_calling_unban(self) -> None:
+        response = SimpleNamespace(status=404, reason="Not Found")
+        unknown_ban = discord.NotFound(
+            response,
+            {"code": 10026, "message": "Unknown Ban"},
+        )
+        guild = SimpleNamespace(
+            id=1,
+            fetch_ban=AsyncMock(side_effect=unknown_ban),
+            unban=AsyncMock(),
+        )
+        ctx = SimpleNamespace(
+            args={"target_user_id": 20},
+            guild=guild,
+            actor="Moderator",
+            cog=SimpleNamespace(bot=SimpleNamespace()),
+            str_arg=lambda key, default="No reason provided": default,
+        )
+
+        result = await handle_unban(ctx)
+
+        self.assertFalse(result.success)
+        self.assertIn("not currently banned", result.message)
+        guild.unban.assert_not_awaited()
 
     async def test_warn_handler_records_requested_warning_count_atomically(self) -> None:
         target = SimpleNamespace(
