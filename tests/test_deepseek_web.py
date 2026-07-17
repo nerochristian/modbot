@@ -431,17 +431,29 @@ class DeepSeekWebChatModeTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(call.kwargs["reuse_existing"])
         self.assertEqual(call.kwargs["session_name"], "Soul -> General")
 
-    async def test_research_uses_search_without_incompatible_deepthink(self) -> None:
+    async def test_research_searches_then_runs_deepthink_over_sources(self) -> None:
         client = DeepSeekWebClient()
-        client._run = AsyncMock(return_value="verified research")
+        client._run = AsyncMock(
+            side_effect=[
+                (
+                    "verified search material\n\n__BOT_SOURCES__\n"
+                    "- <https://example.com/source>"
+                ),
+                "deepthink research",
+            ]
+        )
 
         result = await client.research("What happened today?")
 
-        self.assertEqual(result, "verified research")
-        call = client._run.await_args
-        self.assertEqual(call.kwargs["ui_mode"], "Instant")
-        self.assertTrue(call.kwargs["search"])
-        self.assertFalse(call.kwargs["deepthink"])
+        self.assertIn("deepthink research", result)
+        self.assertIn("https://example.com/source", result)
+        self.assertEqual(client._run.await_count, 2)
+        search_call, deepthink_call = client._run.await_args_list
+        self.assertTrue(search_call.kwargs["search"])
+        self.assertFalse(search_call.kwargs["deepthink"])
+        self.assertFalse(deepthink_call.kwargs["search"])
+        self.assertTrue(deepthink_call.kwargs["deepthink"])
+        self.assertTrue(deepthink_call.kwargs["reuse_existing"])
 
     async def test_non_search_long_answer_allows_requested_structure(self) -> None:
         client = DeepSeekWebClient()

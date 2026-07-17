@@ -917,10 +917,13 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         client._deepseek_web = SimpleNamespace(
             enabled=True,
             chat=AsyncMock(
-                return_value=(
-                    "researched answer\n\n__BOT_SOURCES__\n"
-                    "- <https://example.com/source>"
-                )
+                side_effect=[
+                    (
+                        "searched material\n\n__BOT_SOURCES__\n"
+                        "- <https://example.com/source>"
+                    ),
+                    "deepthink researched answer",
+                ]
             ),
         )
         client._update_memory_smart = AsyncMock()
@@ -944,12 +947,18 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("researched answer", response)
         self.assertIn("https://example.com/source", response)
-        prompt = client._deepseek_web.chat.await_args.args[0]
+        self.assertEqual(client._deepseek_web.chat.await_count, 2)
+        search_call, deepthink_call = client._deepseek_web.chat.await_args_list
+        prompt = search_call.args[0]
         self.assertNotIn("PRIVATE MEMORY", prompt)
         self.assertNotIn("### MEMORY OF THIS SERVER ###", prompt)
-        self.assertFalse(client._deepseek_web.chat.await_args.kwargs["continue_session"])
-        self.assertTrue(client._deepseek_web.chat.await_args.kwargs["search"])
-        self.assertFalse(client._deepseek_web.chat.await_args.kwargs["deepthink"])
+        self.assertFalse(search_call.kwargs["continue_session"])
+        self.assertTrue(search_call.kwargs["search"])
+        self.assertFalse(search_call.kwargs["deepthink"])
+        self.assertTrue(deepthink_call.kwargs["continue_session"])
+        self.assertFalse(deepthink_call.kwargs["search"])
+        self.assertTrue(deepthink_call.kwargs["deepthink"])
+        self.assertIn("VERIFIED SEARCH MATERIAL", deepthink_call.args[0])
         client._update_memory_smart.assert_called_once_with(
             author.id,
             "research this",
@@ -973,10 +982,13 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         client._deepseek_web = SimpleNamespace(
             enabled=True,
             chat=AsyncMock(
-                return_value=(
-                    "verified news\n\n__BOT_SOURCES__\n"
-                    "- <https://example.com/news>"
-                )
+                side_effect=[
+                    (
+                        "verified news\n\n__BOT_SOURCES__\n"
+                        "- <https://example.com/news>"
+                    ),
+                    "deepthink final news",
+                ]
             ),
         )
         client._call_deepseek_api = AsyncMock(return_value="unsourced API answer")
@@ -1007,10 +1019,14 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             )
 
         self.assertIn("https://example.com/news", response)
+        self.assertIn("deepthink final news", response)
         client._call_deepseek_api.assert_not_awaited()
-        client._deepseek_web.chat.assert_awaited_once()
-        self.assertTrue(client._deepseek_web.chat.await_args.kwargs["search"])
-        self.assertFalse(client._deepseek_web.chat.await_args.kwargs["deepthink"])
+        self.assertEqual(client._deepseek_web.chat.await_count, 2)
+        search_call, deepthink_call = client._deepseek_web.chat.await_args_list
+        self.assertTrue(search_call.kwargs["search"])
+        self.assertFalse(search_call.kwargs["deepthink"])
+        self.assertFalse(deepthink_call.kwargs["search"])
+        self.assertTrue(deepthink_call.kwargs["deepthink"])
 
     async def test_unsourced_research_is_rejected(self) -> None:
         client = object.__new__(AIClient)
