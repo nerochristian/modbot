@@ -16,6 +16,7 @@ import hashlib
 import hmac
 import io
 import json
+import logging
 import os
 import random
 import secrets
@@ -49,6 +50,7 @@ CAPTCHA_TTL_SECONDS = 5 * 60
 CAPTCHA_COOLDOWN_SECONDS = 15
 DEFAULT_SESSION_TTL_SECONDS = 30 * 60  # 30 minutes
 CaptchaPurpose = Literal["server", "voice"]
+logger = logging.getLogger("ModBot.Verification")
 
 
 @dataclass(frozen=True)
@@ -328,6 +330,42 @@ class Verification(commands.Cog):
         self._voice_sessions: dict[tuple[int, int], SessionEntry] = {}
         # Persistent components (so old panels keep working after restarts)
         self.bot.add_view(VerificationPanelLayout(self))
+        self._panels_refreshed = False
+
+    async def _refresh_configured_panels(self) -> None:
+        if self._panels_refreshed:
+            return
+        self._panels_refreshed = True
+
+        for guild in self.bot.guilds:
+            try:
+                settings = await self._get_settings(guild.id)
+                if not module_enabled(settings, "verification", False):
+                    continue
+                channel_id = int(settings.get("verify_channel", 0) or 0)
+                message_id = int(settings.get("verification_panel_message_id", 0) or 0)
+                channel = guild.get_channel(channel_id)
+                if not isinstance(channel, discord.TextChannel):
+                    continue
+
+                panel_view = VerificationPanelLayout(self, guild=guild)
+                panel_message: Optional[discord.Message] = None
+                if message_id:
+                    try:
+                        panel_message = await channel.fetch_message(message_id)
+                    except discord.NotFound:
+                        panel_message = None
+
+                if panel_message is None:
+                    panel_message = await channel.send(view=panel_view)
+                    await self.bot.db.update_settings(
+                        guild.id,
+                        {"verification_panel_message_id": panel_message.id},
+                    )
+                else:
+                    await panel_message.edit(content=None, embeds=[], view=panel_view)
+            except (TypeError, ValueError, discord.Forbidden, discord.HTTPException) as exc:
+                logger.warning("Could not refresh verification panel for guild %s: %s", guild.id, exc)
 
     # ─────────────────────────────────────────────────────────────────────────
     # Settings Helpers
@@ -1290,6 +1328,7 @@ class Verification(commands.Cog):
         if not getattr(self, "_cleanup_task_started", False):
             setattr(self, "_cleanup_task_started", True)
             self.bot.loop.create_task(_cleanup_loop())
+        await self._refresh_configured_panels()
 
     @commands.Cog.listener()
     async def on_voice_state_update(
