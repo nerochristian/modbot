@@ -346,7 +346,7 @@ class WebsiteVerificationLayout(discord.ui.LayoutView):
             discord.ui.Section(
                 discord.ui.TextDisplay(
                     "### Continue on the secure page\n"
-                    "Complete Cloudflare's human check, then return to Discord. Your roles update automatically."
+                    "Complete the quick human check, then return to Discord. Your roles update automatically."
                 ),
                 accessory=discord.ui.Button(
                     label="Open checkpoint",
