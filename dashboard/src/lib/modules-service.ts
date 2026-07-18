@@ -398,9 +398,9 @@ export async function updateModuleSettings(
     }
   }
   if (def.id === 'verification' && mergedSettings.verification_method === 'website' && (
-    !process.env.TURNSTILE_SITE_KEY?.trim() || !process.env.TURNSTILE_SECRET_KEY?.trim()
+    !process.env.HCAPTCHA_SITE_KEY?.trim() || !process.env.HCAPTCHA_SECRET_KEY?.trim()
   )) {
-    throw new ModuleValidationError('Website verification needs TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY on the dashboard server')
+    throw new ModuleValidationError('Website verification needs HCAPTCHA_SITE_KEY and HCAPTCHA_SECRET_KEY on the dashboard server')
   }
   if (
     def.id === 'verification'
