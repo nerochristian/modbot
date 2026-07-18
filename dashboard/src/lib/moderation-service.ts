@@ -294,6 +294,9 @@ export async function createModerationCase(input: CreateModerationInput): Promis
         action: input.action,
         reason: input.reason,
         duration: input.durationHours ? `${input.durationHours} hour(s)` : null,
+        punishmentExpiresAt: input.durationHours
+          ? new Date(Date.now() + input.durationHours * 60 * 60 * 1000)
+          : null,
         publicBaseUrl: input.publicBaseUrl,
         dmChannelId,
       }).catch((error) => ({

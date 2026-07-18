@@ -125,6 +125,7 @@ async function sendPunishmentDm(input: {
   action: string
   reason: string
   duration?: string | null
+  punishmentExpiresAt?: Date | null
   appealUrl?: string | null
   expiresAt?: Date | null
   dmChannelId?: string | null
@@ -157,12 +158,15 @@ async function sendPunishmentDm(input: {
     statusEmoji('info'),
   ])
   const title = escapeDiscordMarkdown(profile?.global_name || profile?.username || 'Member').slice(0, 80)
-  const actionLine = `${actionEmoji.mention} ${actionText}${input.duration ? ` for **${input.duration}**` : ''}`
+  const actionLine = `${actionEmoji.mention} ${actionText}${input.duration && !input.punishmentExpiresAt ? ` for **${input.duration}**` : ''}`
   const guildIcon = guild?.icon
     ? `https://cdn.discordapp.com/icons/${input.guildId}/${guild.icon}.${guild.icon.startsWith('a_') ? 'gif' : 'png'}?size=256`
     : undefined
-  const header = `## ${title} !!\n${actionLine}`
-  const details = `**Reason**\n> ${(input.reason || 'No reason provided').slice(0, 700)}\n\n-# ${infoEmoji.mention} \`CASE-${String(input.caseNumber).padStart(4, '0')} • ${input.userId} • ${new Date().toISOString().slice(0, 10)}\``
+  const punishmentTimestamp = input.punishmentExpiresAt
+    ? Math.floor(input.punishmentExpiresAt.getTime() / 1000)
+    : null
+  const header = `## ${title} !! 🥢\n${actionLine}${punishmentTimestamp ? `\nuntil <t:${punishmentTimestamp}:R>` : ''}`
+  const details = `**Reason :**\n> ${(input.reason || 'No reason provided').slice(0, 700)}\n-# ${infoEmoji.mention} \`user:${input.userId} date:${new Date().toISOString().slice(0, 10)}\`${punishmentTimestamp ? `\n-# Available again <t:${punishmentTimestamp}:R>` : ''}`
   const headerComponent = guildIcon
     ? { type: 9, components: [{ type: 10, content: header }], accessory: { type: 11, media: { url: guildIcon } } }
     : { type: 10, content: header }
@@ -171,12 +175,10 @@ async function sendPunishmentDm(input: {
     accent_color: ['ban', 'tempban', 'softban'].includes(action) ? 0xed4245 : 0xf0b232,
     components: [
       headerComponent,
-      { type: 14, divider: true, spacing: 1 },
       { type: 10, content: details },
     ],
   }]
-  if (input.appealUrl && input.expiresAt) {
-    components.push({ type: 10, content: `Appeal available for <t:${Math.floor(input.expiresAt.getTime() / 1000)}:R>` })
+  if (input.appealUrl) {
     components.push({
       type: 1,
       components: [{ type: 2, style: 5, label: 'Appeal here', url: input.appealUrl, emoji: infoEmoji.component }],
@@ -197,6 +199,7 @@ export async function issueAppealToken(input: {
   action: string
   reason: string
   duration?: string | null
+  punishmentExpiresAt?: Date | null
   publicBaseUrl: string
   dmChannelId?: string | null
 }) {
@@ -208,7 +211,7 @@ export async function issueAppealToken(input: {
   const eligible = enabled && open && /^https?:\/\//.test(input.publicBaseUrl)
   if (!eligible) {
     try {
-      await sendPunishmentDm({ guildId: input.guildId, userId: input.targetUserId, caseNumber: input.caseNumber, action: input.action, reason: input.reason, duration: input.duration, dmChannelId: input.dmChannelId })
+      await sendPunishmentDm({ guildId: input.guildId, userId: input.targetUserId, caseNumber: input.caseNumber, action: input.action, reason: input.reason, duration: input.duration, punishmentExpiresAt: input.punishmentExpiresAt, dmChannelId: input.dmChannelId })
       return { eligible: false as const, deliveryStatus: 'sent' as const }
     } catch (error) {
       return { eligible: false as const, deliveryStatus: 'failed' as const, deliveryError: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500) }
