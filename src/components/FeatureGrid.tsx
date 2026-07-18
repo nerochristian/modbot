@@ -1,10 +1,10 @@
-import React, { useState } from "react";
-import { ShieldAlert, RefreshCw, AlertOctagon, Laugh, Ticket, UserCheck, Code, UserMinus, FileClock, BarChart, SlidersHorizontal, Sparkles, Cpu, Lock } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ShieldAlert, RefreshCw, AlertOctagon, Laugh, Ticket, UserCheck, Code, UserMinus, FileClock, BarChart, Sparkles } from "lucide-react";
 
 interface FeatureCardProps {
   title: string;
   description: string;
-  icon: React.ReactNode;
+  icon: ReactNode;
   category: "defense" | "utility" | "automation";
   badge?: string;
 }
@@ -158,9 +158,9 @@ export default function FeatureGrid() {
 
         {/* Features Bento Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-          {filteredFeatures.map((feat, idx) => (
+          {filteredFeatures.map((feat) => (
             <FeatureCard
-              key={idx}
+              key={feat.title}
               title={feat.title}
               description={feat.description}
               icon={feat.icon}
