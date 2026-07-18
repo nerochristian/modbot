@@ -327,7 +327,7 @@ class ManagementCommands:
         self._suppress_duplicate_member_action_log(guild.id, user.id, "ban")
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Tempban", reason, human_duration)
         if notify_user:
-            await self.send_punishment_notice(guild=guild, user=user, action="Tempban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, duration=human_duration, delivery_channel=dm_channel)
+            await self.send_punishment_notice(guild=guild, user=user, action="Tempban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, duration=human_duration, punishment_expires_at=expires_at, delivery_channel=dm_channel)
         try:
             await user.ban(
                 reason=f"[TEMPBAN] {moderator}: {reason} ({human_duration})",
@@ -377,13 +377,14 @@ class ManagementCommands:
         delta, human_duration = parsed
         if delta.total_seconds() > 28 * 24 * 60 * 60:
             return await self._respond(source, embed=ModEmbed.error("Duration Too Long", "Max 28 days."), ephemeral=True)
+        expires_at = datetime.now(timezone.utc) + delta
 
         notify_user = moderation_bool(settings, "moderation_dm_users", True)
         dm_channel = await self.prepare_dm_channel(user) if notify_user else None
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Mute", reason, human_duration)
         dm_embed = discord.Embed(title=f"🔇 Muted in {guild.name}", description=f"**Reason:** {reason}\n**Duration:** {human_duration}", color=Colors.ERROR)
         if notify_user:
-            await self.send_punishment_notice(guild=guild, user=user, action="Mute", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, duration=human_duration, delivery_channel=dm_channel)
+            await self.send_punishment_notice(guild=guild, user=user, action="Mute", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, duration=human_duration, punishment_expires_at=expires_at, delivery_channel=dm_channel)
 
         logging_cog = self.bot.get_cog("Logging")
         if logging_cog and hasattr(logging_cog, "suppress_timeout_change_log"):
@@ -1004,6 +1005,7 @@ class ManagementCommands:
                 settings=settings,
                 fallback_embed=dm_embed,
                 duration=human_duration,
+                punishment_expires_at=expires_at,
                 delivery_channel=dm_channel,
             )
 

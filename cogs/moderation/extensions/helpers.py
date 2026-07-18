@@ -300,6 +300,7 @@ class HelperCommands:
         settings: dict,
         fallback_embed: discord.Embed,
         duration: Optional[str] = None,
+        punishment_expires_at: Optional[datetime] = None,
         delivery_channel: Optional[discord.abc.Messageable] = None,
     ) -> bool:
         """Send the case-bound appeal DM, falling back to the legacy notice."""
@@ -313,6 +314,7 @@ class HelperCommands:
                     reason=reason,
                     case_number=case_number,
                     duration=duration,
+                    punishment_expires_at=punishment_expires_at,
                     settings=settings,
                     delivery_channel=delivery_channel,
                 )

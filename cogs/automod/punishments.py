@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
 
 import discord
@@ -68,7 +69,16 @@ class PunishmentManager:
                 return PunishmentResult(threshold_result or action, case_number=case_number or warning_id, notification_sent=notification_sent)
             if action is Action.TIMEOUT:
                 case_number = await self._create_case(guild.id, member.id, "Mute", reason_text, compact_duration(duration))
-                notification_sent = await self._notify_appeal(guild, member, "Mute", reason_text, case_number, settings, compact_duration(duration))
+                notification_sent = await self._notify_appeal(
+                    guild,
+                    member,
+                    "Mute",
+                    reason_text,
+                    case_number,
+                    settings,
+                    compact_duration(duration),
+                    punishment_expires_at=datetime.now(timezone.utc) + timedelta(seconds=duration),
+                )
                 await member.timeout(timeout_delta(duration), reason=reason_text)
                 return PunishmentResult(action, case_number=case_number, notification_sent=notification_sent)
             if action is Action.KICK:
@@ -116,6 +126,7 @@ class PunishmentManager:
         case_number: Optional[int],
         settings: dict[str, Any],
         duration: Optional[str] = None,
+        punishment_expires_at: Optional[datetime] = None,
         delivery_channel: Optional[discord.abc.Messageable] = None,
     ) -> bool:
         if not case_number or settings.get("automod_notify_users", True) is False:
@@ -131,6 +142,7 @@ class PunishmentManager:
                 reason=reason,
                 case_number=case_number,
                 duration=duration,
+                punishment_expires_at=punishment_expires_at,
                 settings=settings,
                 delivery_channel=delivery_channel,
             )
