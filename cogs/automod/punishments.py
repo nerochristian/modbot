@@ -12,10 +12,18 @@ from utils.warning_escalation import apply_warning_escalation
 
 
 class PunishmentResult:
-    def __init__(self, action: Action, *, case_number: Optional[int] = None, error: Optional[str] = None) -> None:
+    def __init__(
+        self,
+        action: Action,
+        *,
+        case_number: Optional[int] = None,
+        error: Optional[str] = None,
+        notification_sent: bool = False,
+    ) -> None:
         self.action = action
         self.case_number = case_number
         self.error = error
+        self.notification_sent = notification_sent
 
     @property
     def ok(self) -> bool:
@@ -49,19 +57,19 @@ class PunishmentManager:
             if action is Action.WARN:
                 warning_id, total = await self._add_warning(guild.id, member.id, reason_text)
                 case_number = await self._create_case(guild.id, member.id, "Warn", reason_text)
-                await self._notify_appeal(guild, member, "Warn", reason_text, case_number, settings)
+                notification_sent = await self._notify_appeal(guild, member, "Warn", reason_text, case_number, settings)
                 threshold_result = await self._apply_warning_thresholds(guild, member, total, settings)
-                return PunishmentResult(threshold_result or action, case_number=case_number or warning_id)
+                return PunishmentResult(threshold_result or action, case_number=case_number or warning_id, notification_sent=notification_sent)
             if action is Action.TIMEOUT:
                 await member.timeout(timeout_delta(duration), reason=reason_text)
                 case_number = await self._create_case(guild.id, member.id, "Mute", reason_text, compact_duration(duration))
-                await self._notify_appeal(guild, member, "Mute", reason_text, case_number, settings, compact_duration(duration))
-                return PunishmentResult(action, case_number=case_number)
+                notification_sent = await self._notify_appeal(guild, member, "Mute", reason_text, case_number, settings, compact_duration(duration))
+                return PunishmentResult(action, case_number=case_number, notification_sent=notification_sent)
             if action is Action.KICK:
                 await member.kick(reason=reason_text)
                 case_number = await self._create_case(guild.id, member.id, "Kick", reason_text)
-                await self._notify_appeal(guild, member, "Kick", reason_text, case_number, settings)
-                return PunishmentResult(action, case_number=case_number)
+                notification_sent = await self._notify_appeal(guild, member, "Kick", reason_text, case_number, settings)
+                return PunishmentResult(action, case_number=case_number, notification_sent=notification_sent)
             if action is Action.BAN:
                 delete_days = 0 if settings.get(
                     "moderation_preserve_ban_messages",
@@ -69,8 +77,8 @@ class PunishmentManager:
                 ) else max(0, min(7, int(settings.get("automod_ban_delete_days", 1))))
                 await guild.ban(member, reason=reason_text, delete_message_days=delete_days)
                 case_number = await self._create_case(guild.id, member.id, "Ban", reason_text)
-                await self._notify_appeal(guild, member, "Ban", reason_text, case_number, settings)
-                return PunishmentResult(action, case_number=case_number)
+                notification_sent = await self._notify_appeal(guild, member, "Ban", reason_text, case_number, settings)
+                return PunishmentResult(action, case_number=case_number, notification_sent=notification_sent)
         except discord.Forbidden:
             return PunishmentResult(action, error="Discord denied the action. Check bot role position and permissions.")
         except discord.HTTPException as exc:
@@ -86,14 +94,14 @@ class PunishmentManager:
         case_number: Optional[int],
         settings: dict[str, Any],
         duration: Optional[str] = None,
-    ) -> None:
+    ) -> bool:
         if not case_number or settings.get("automod_notify_users", True) is False:
-            return
+            return False
         appeals = self.bot.get_cog("Appeals")
         if appeals is None or not hasattr(appeals, "notify_punishment"):
-            return
+            return False
         try:
-            await appeals.notify_punishment(
+            return await appeals.notify_punishment(
                 guild=guild,
                 user=member,
                 action=action,
@@ -103,7 +111,26 @@ class PunishmentManager:
                 settings=settings,
             )
         except Exception:
-            return
+            return False
+
+    async def create_automod_case(
+        self,
+        guild: discord.Guild,
+        member: discord.Member,
+        match: RuleMatch,
+        settings: dict[str, Any],
+    ) -> tuple[Optional[int], bool]:
+        reason = f"AutoMod {match.rule}: {match.reason}"
+        case_number = await self._create_case(guild.id, member.id, "AutoMod", reason)
+        notification_sent = await self._notify_appeal(
+            guild,
+            member,
+            "AutoMod",
+            reason,
+            case_number,
+            settings,
+        )
+        return case_number, notification_sent
 
     async def _add_warning(self, guild_id: int, user_id: int, reason: str) -> tuple[int, int]:
         db = getattr(self.bot, "db", None)

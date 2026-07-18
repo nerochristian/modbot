@@ -201,10 +201,15 @@ class Appeals(commands.Cog):
             duration=duration,
             appeal_expires_at=expires_at if appeal_url else None,
         )
-        embed.set_footer(text="Docket · Moderation records desk")
         view = discord.ui.View(timeout=None)
         if appeal_url:
-            view.add_item(discord.ui.Button(label="Appeal here", url=appeal_url))
+            view.add_item(
+                discord.ui.Button(
+                    label="Appeal here",
+                    url=appeal_url,
+                    emoji=get_app_emoji("info") or None,
+                )
+            )
         delivery_status = "sent"
         delivery_error: Optional[str] = None
         try:

@@ -187,6 +187,16 @@ class AutoMod(commands.Cog):
                 )
                 action = result.action
 
+        case_number = result.case_number if result else None
+        notification_sent = bool(result and result.notification_sent)
+        if apply_action and deleted and not case_number and isinstance(message.author, discord.Member):
+            case_number, notification_sent = await self.punishments.create_automod_case(
+                message.guild,
+                message.author,
+                match,
+                settings,
+            )
+
         self.engine.record_action(message, match, action)
         try:
             await self.bot.db.record_automod_event(
@@ -210,7 +220,7 @@ class AutoMod(commands.Cog):
                     match,
                     action,
                     deleted=deleted,
-                    case_number=result.case_number if result else None,
+                    case_number=case_number,
                     error=deletion_error or action_error,
                     offense_count=offense_count,
                 )
@@ -221,14 +231,14 @@ class AutoMod(commands.Cog):
                     getattr(message.channel, "id", None),
                     getattr(message, "id", None),
                 )
-        if apply_action:
+        if apply_action and not notification_sent:
             await self._notify_user(
                 message,
                 match,
                 action,
                 settings,
                 deleted=deleted,
-                case_number=result.case_number if result else None,
+                case_number=case_number,
             )
         if apply_action and settings.get("automod_public_feedback", False) and deleted:
             try:
