@@ -39,8 +39,14 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
       window.grecaptcha.ready(() => {
         window.grecaptcha!
           .execute(siteKey, { action: RECAPTCHA_ACTION })
-          .then(resolve)
-          .catch(() => reject(new Error('The human check could not be completed. Refresh the page and try again.')))
+          .then((tok) => {
+            console.error('[verify-diag] execute token length:', tok ? tok.length : 'EMPTY')
+            resolve(tok)
+          })
+          .catch((err) => {
+            console.error('[verify-diag] execute failed:', err)
+            reject(new Error('The human check could not be completed. Refresh the page and try again.'))
+          })
       })
     })
   }, [siteKey])
