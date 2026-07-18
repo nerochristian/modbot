@@ -16,7 +16,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ token: 
     if (!settings.verification_enabled || settings.verification_method !== 'website') {
       throw new Error('Website verification is not active for this server')
     }
-    siteKey = process.env.TURNSTILE_SITE_KEY?.trim() || ''
+    siteKey = process.env.HCAPTCHA_SITE_KEY?.trim() || ''
     if (!siteKey) throw new Error('The server owner has not finished configuring the website check')
   } catch (reason) {
     error = reason instanceof Error ? reason.message : 'This verification link is invalid'
