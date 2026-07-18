@@ -53,6 +53,12 @@ class PunishmentManager:
 
         reason_text = f"AutoMod {match.rule}: {match.reason}"
         duration = int(duration_override or settings.get("automod_mute_duration", 3600))
+        delivery_channel: Optional[discord.DMChannel] = None
+        if action in {Action.KICK, Action.BAN} and settings.get("automod_notify_users", True) is not False:
+            try:
+                delivery_channel = await member.create_dm()
+            except (discord.Forbidden, discord.HTTPException):
+                delivery_channel = None
         try:
             if action is Action.WARN:
                 warning_id, total = await self._add_warning(guild.id, member.id, reason_text)
@@ -68,7 +74,15 @@ class PunishmentManager:
             if action is Action.KICK:
                 await member.kick(reason=reason_text)
                 case_number = await self._create_case(guild.id, member.id, "Kick", reason_text)
-                notification_sent = await self._notify_appeal(guild, member, "Kick", reason_text, case_number, settings)
+                notification_sent = await self._notify_appeal(
+                    guild,
+                    member,
+                    "Kick",
+                    reason_text,
+                    case_number,
+                    settings,
+                    delivery_channel=delivery_channel,
+                )
                 return PunishmentResult(action, case_number=case_number, notification_sent=notification_sent)
             if action is Action.BAN:
                 delete_days = 0 if settings.get(
@@ -77,7 +91,15 @@ class PunishmentManager:
                 ) else max(0, min(7, int(settings.get("automod_ban_delete_days", 1))))
                 await guild.ban(member, reason=reason_text, delete_message_days=delete_days)
                 case_number = await self._create_case(guild.id, member.id, "Ban", reason_text)
-                notification_sent = await self._notify_appeal(guild, member, "Ban", reason_text, case_number, settings)
+                notification_sent = await self._notify_appeal(
+                    guild,
+                    member,
+                    "Ban",
+                    reason_text,
+                    case_number,
+                    settings,
+                    delivery_channel=delivery_channel,
+                )
                 return PunishmentResult(action, case_number=case_number, notification_sent=notification_sent)
         except discord.Forbidden:
             return PunishmentResult(action, error="Discord denied the action. Check bot role position and permissions.")
@@ -94,6 +116,7 @@ class PunishmentManager:
         case_number: Optional[int],
         settings: dict[str, Any],
         duration: Optional[str] = None,
+        delivery_channel: Optional[discord.abc.Messageable] = None,
     ) -> bool:
         if not case_number or settings.get("automod_notify_users", True) is False:
             return False
@@ -109,6 +132,7 @@ class PunishmentManager:
                 case_number=case_number,
                 duration=duration,
                 settings=settings,
+                delivery_channel=delivery_channel,
             )
         except Exception:
             return False
