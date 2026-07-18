@@ -1316,6 +1316,37 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
                 finally:
                     await db.close()
 
+    async def test_notification_migration_enables_existing_servers_without_resetting_settings(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with patch.dict("os.environ", {"DB_MODE": "sqlite", "DATABASE_URL": ""}):
+                db = Database()
+                db.db_path = str(Path(tmpdir) / "notification-migration.db")
+                db._supabase_mirror.enabled = False
+
+                try:
+                    await db.init_guild(456)
+                    async with db.get_connection() as conn:
+                        await conn.execute(
+                            "UPDATE guild_settings SET settings = ? WHERE guild_id = ?",
+                            ('{"prefix":"!","moderation_dm_users":false,"automod_notify_users":false}', 456),
+                        )
+                        await conn.execute(
+                            "DELETE FROM dashboard_schema_migrations WHERE key = ?",
+                            ("20260718_punishment_notifications_on",),
+                        )
+                        await conn.commit()
+                        await db._migrate_schema(conn)
+                        await conn.commit()
+
+                    settings = await db.get_settings(456)
+                    self.assertEqual(settings["prefix"], "!")
+                    self.assertIs(settings["moderation_dm_users"], True)
+                    self.assertIs(settings["automod_notify_users"], True)
+                    self.assertIs(settings["appeals_enabled"], True)
+                    self.assertIs(settings["appeals_open"], True)
+                finally:
+                    await db.close()
+
     async def test_conversation_falls_back_to_digitalocean_when_deepseek_web_stalls(self) -> None:
         async def stalled_chat(*args, **kwargs):
             await asyncio.sleep(1)
