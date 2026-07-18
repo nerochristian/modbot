@@ -164,7 +164,7 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
   return (
     <>
       <Script
-        src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__docketTurnstileReady&render=explicit"
+        src="https://js.hcaptcha.com/1/api.js?onload=__docketHcaptchaReady&render=explicit"
         strategy="afterInteractive"
         onReady={renderWidget}
       />
@@ -189,7 +189,7 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
                 <Loader2 className="size-4 animate-spin text-[#6ca2ff]" /> {state === 'retrying' ? 'Reconnecting secure check…' : 'Loading secure check…'}
               </div>
             )}
-            <div ref={widgetHost} className="min-h-[56px]" aria-label="Cloudflare human verification" />
+            <div ref={widgetHost} className="min-h-[56px]" aria-label="hCaptcha human verification" />
           </div>
 
           {state === 'error' && (
