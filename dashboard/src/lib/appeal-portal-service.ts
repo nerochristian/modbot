@@ -8,7 +8,7 @@ import { getBotGuildSettings } from '@/lib/bot-settings'
 import { DEFAULT_APPEAL_QUESTIONS, type TicketQuestion } from '@/lib/modules-contract'
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/
-const APPEALABLE_ACTIONS = new Set(['warn', 'mute', 'timeout', 'kick', 'ban', 'tempban', 'softban'])
+const APPEALABLE_ACTIONS = new Set(['automod', 'warn', 'mute', 'timeout', 'kick', 'ban', 'tempban', 'softban'])
 
 function tokenHash(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex')
@@ -76,25 +76,35 @@ async function sendPunishmentDm(input: {
   appealUrl?: string | null
   expiresAt?: Date | null
 }): Promise<void> {
-  const details = [
-    { name: 'Action', value: input.action.toUpperCase(), inline: true },
-    { name: 'Case', value: `CASE-${String(input.caseNumber).padStart(4, '0')}`, inline: true },
-    ...(input.duration ? [{ name: 'Duration', value: input.duration, inline: true }] : []),
-    { name: 'Reason', value: input.reason.slice(0, 1024), inline: false },
-  ]
+  const action = input.action.toLowerCase()
+  const title = ({
+    automod: 'Message removed',
+    warn: 'You received a warning',
+    mute: 'You were muted',
+    timeout: 'You were timed out',
+    kick: 'You were kicked',
+    ban: 'You were banned',
+    tempban: 'You were temporarily banned',
+    softban: 'You were softbanned',
+  } as Record<string, string>)[action] ?? 'Moderation action'
+  const description = [
+    `**Reason**\n> ${(input.reason || 'No reason provided').slice(0, 700)}`,
+    ...(input.duration ? [`**Duration:** ${input.duration}`] : []),
+    ...(input.appealUrl && input.expiresAt
+      ? [`Appeal available until <t:${Math.floor(input.expiresAt.getTime() / 1000)}:R>`]
+      : []),
+  ].join('\n\n')
   const components = input.appealUrl ? [{
     type: 1,
     components: [{ type: 2, style: 5, label: 'Appeal here', url: input.appealUrl }],
   }] : []
   await discordMessage(await dmChannel(input.userId), {
     embeds: [{
-      title: 'Moderation action recorded',
-      description: input.appealUrl
-        ? `You can ask the server's staff team to review this case until <t:${Math.floor((input.expiresAt?.getTime() ?? 0) / 1000)}:F>.`
-        : 'This moderation action has been recorded by the server staff team.',
-      color: 0x5865f2,
-      fields: details,
-      footer: { text: 'Docket · Moderation records desk' },
+      title,
+      description,
+      color: ['ban', 'tempban', 'softban'].includes(action) ? 0xed4245 : 0xf0b232,
+      footer: { text: `CASE-${String(input.caseNumber).padStart(4, '0')} | Docket` },
+      timestamp: new Date().toISOString(),
     }],
     components,
     allowed_mentions: { parse: [] },
