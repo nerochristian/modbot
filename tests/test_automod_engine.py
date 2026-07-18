@@ -5,6 +5,8 @@ from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
+import discord
+
 from cogs.automod import (
     PANEL_PAGES,
     AutoMod,
