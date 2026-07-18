@@ -8,7 +8,10 @@ import { verifyVerificationCapability } from '@/lib/web-verification'
 const DISCORD_API = 'https://discord.com/api/v10'
 const attempts = new Map<string, { count: number; resetAt: number }>()
 
-type HcaptchaResponse = { success: boolean; hostname?: string; 'error-codes'?: string[] }
+type RecaptchaResponse = { success: boolean; score?: number; action?: string; hostname?: string; 'error-codes'?: string[] }
+
+const RECAPTCHA_ACTION = 'verify'
+const RECAPTCHA_MIN_SCORE = 0.5
 type DiscordMember = { user: { id: string; bot?: boolean }; joined_at?: string }
 
 function clientAddress(request: Request): string {
@@ -53,24 +56,26 @@ export async function POST(request: Request, context: { params: Promise<{ token:
     if (!settings.verification_enabled || settings.verification_method !== 'website') {
       return apiError('Website verification is not active for this server.', 409)
     }
-    const secret = process.env.HCAPTCHA_SECRET_KEY?.trim()
-    const sitekey = process.env.HCAPTCHA_SITE_KEY?.trim()
+    const secret = process.env.RECAPTCHA_SECRET_KEY?.trim()
     if (!secret) return apiError('Website verification is not configured.', 503)
     const form = new URLSearchParams({
       secret,
       response: body.challenge,
       remoteip: clientAddress(request),
     })
-    if (sitekey) form.set('sitekey', sitekey)
-    const hcaptchaResponse = await fetch('https://api.hcaptcha.com/siteverify', {
+    const recaptchaResponse = await fetch('https://www.google.com/recaptcha/api/siteverify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form,
       cache: 'no-store',
     })
-    const hcaptcha = await hcaptchaResponse.json() as HcaptchaResponse
+    const recaptcha = await recaptchaResponse.json() as RecaptchaResponse
     const expectedHostname = new URL(dashboardBaseUrl(request.url)).hostname
-    if (!hcaptcha.success || (hcaptcha.hostname && hcaptcha.hostname !== expectedHostname)) {
+    // v3: require success, our own action, a passing score, and a matching host.
+    const scoreOk = typeof recaptcha.score === 'number' && recaptcha.score >= RECAPTCHA_MIN_SCORE
+    const actionOk = recaptcha.action === RECAPTCHA_ACTION
+    const hostOk = !recaptcha.hostname || recaptcha.hostname === expectedHostname
+    if (!recaptcha.success || !actionOk || !scoreOk || !hostOk) {
       return apiError('The human check was not accepted. Refresh the page and try again.', 400)
     }
 
