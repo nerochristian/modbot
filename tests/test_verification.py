@@ -29,25 +29,28 @@ class VerificationPanelTests(unittest.TestCase):
 
         self.assertIsNone(view.timeout)
         self.assertIsInstance(container, discord.ui.Container)
-        sections = [
+        action_rows = [
             child for child in container.children
-            if isinstance(child, discord.ui.Section)
+            if isinstance(child, discord.ui.ActionRow)
         ]
-        self.assertEqual(len(sections), 2)
+        self.assertEqual(len(action_rows), 1)
+        buttons = action_rows[0].children
         self.assertEqual(
-            [section.accessory.label for section in sections],
-            ["Start verification", "View guide"],
+            [button.label for button in buttons],
+            ["Start verification", "How it works"],
         )
         self.assertEqual(
-            [section.accessory.custom_id for section in sections],
+            [button.custom_id for button in buttons],
             ["verification:start", "verification:tutorial"],
         )
 
         text = _panel_text(view)
-        self.assertIn("🔐 Member verification", text)
-        self.assertIn("### Ready when you are", text)
-        self.assertIn("### What happens next", text)
-        self.assertIn("Private • 🔑 Single-use • ⚡ Instant access", text)
+        self.assertIn("Verification required", text)
+        self.assertIn("### Welcome to this server", text)
+        self.assertIn("Unlock your access", text)
+        self.assertIn("No password", text)
+        self.assertIn("Automatic access", text)
+        self.assertIn("Single-use link", text)
 
 
 class VerificationRoleRepairTests(unittest.IsolatedAsyncioTestCase):
