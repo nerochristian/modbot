@@ -84,6 +84,24 @@ def _galaxy_multimodal_enabled() -> bool:
     return (os.getenv("GALAXY_MULTIMODAL_ENABLED") or "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _galaxy_image_encoded_budget() -> int:
+    """Max base64-encoded image bytes per multimodal request for the Galaxy gateway.
+
+    The Galaxy HTTP gateway rejects request bodies larger than ~100 KB (it
+    misreports the overflow as an ``invalid_messages`` 400). Real Discord images
+    are multiple megabytes, so images must be downscaled before sending. This
+    budget is the total encoded image payload; the remainder of the ~100 KB is
+    left for the system/context text and JSON overhead. Env-tunable so it can be
+    raised without a redeploy if the gateway limit changes.
+    """
+    raw = (os.getenv("GALAXY_IMAGE_ENCODED_BUDGET") or "48000").strip()
+    try:
+        value = int(raw)
+    except ValueError:
+        value = 48_000
+    return min(90_000, max(4_000, value))
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -1798,6 +1816,10 @@ class AIClient:
     ) -> List[ImageContext]:
         """Download recent Discord image attachments for multimodal model calls."""
         images: List[ImageContext] = []
+        # The Galaxy HTTP gateway caps request bodies at ~100 KB, so images bound
+        # for it must be downscaled/compressed to fit. DeepSeek-web (browser)
+        # uploads are unaffected and keep full resolution.
+        compress_for_galaxy = self.prefers_deepseek_http and _galaxy_multimodal_enabled()
 
         async def add_image(
             *,
@@ -1809,6 +1831,24 @@ class AIClient:
         ) -> bool:
             if not data or len(data) > max_bytes_each:
                 return False
+            if compress_for_galaxy:
+                compressed = await asyncio.to_thread(
+                    self._compress_image_for_galaxy,
+                    data,
+                    _galaxy_image_encoded_budget(),
+                )
+                if compressed is None:
+                    logger.warning(
+                        "Dropping image %s: could not compress under the Galaxy "
+                        "gateway payload limit.",
+                        filename,
+                    )
+                    return len(images) >= max_images
+                data, mime_type, filename = (
+                    compressed,
+                    "image/jpeg",
+                    (filename.rsplit(".", 1)[0] if filename else "image") + ".jpg",
+                )
             author_name = getattr(msg.author, "display_name", None) or str(msg.author)
             timestamp = msg.created_at.astimezone().strftime("%Y-%m-%d %H:%M")
             images.append(
