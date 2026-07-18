@@ -358,7 +358,7 @@ class WebsiteVerificationLayout(discord.ui.LayoutView):
         )
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         container.add_item(
-            discord.ui.TextDisplay("-# ⏳ Expires in 10 minutes • 🔑 Works once • 🛡️ Protected by Turnstile")
+            discord.ui.TextDisplay("-# ⏳ Expires in 10 minutes • 🔑 Works once • 🛡️ Protected by hCaptcha")
         )
 
         self.add_item(container)
