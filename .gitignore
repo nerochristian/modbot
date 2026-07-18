@@ -6,3 +6,6 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Runtime bot PID lockfile — must never be tracked (dirties tree, blocks auto-deploy)
+.modbot.lock
