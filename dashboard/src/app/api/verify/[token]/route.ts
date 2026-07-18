@@ -12,6 +12,8 @@ type RecaptchaResponse = { success: boolean; score?: number; action?: string; ho
 
 const RECAPTCHA_ACTION = 'verify'
 const RECAPTCHA_MIN_SCORE = 0.5
+const MAX_RECAPTCHA_TOKEN_LENGTH = 8_192
+const MAX_REQUEST_BYTES = 16_384
 type DiscordMember = { user: { id: string; bot?: boolean }; joined_at?: string }
 
 function clientAddress(request: Request): string {
@@ -42,13 +44,17 @@ export async function POST(request: Request, context: { params: Promise<{ token:
     if (rateLimit(request)) return apiError('Too many verification attempts. Wait a few minutes and try again.', 429)
     const expectedOrigin = new URL(dashboardBaseUrl(request.url)).origin
     if (request.headers.get('origin') !== expectedOrigin) return apiError('Verification request rejected.', 403)
-    if (Number(request.headers.get('content-length') || 0) > 8_192) return apiError('Request is too large.', 413)
+    if (Number(request.headers.get('content-length') || 0) > MAX_REQUEST_BYTES) return apiError('Request is too large.', 413)
 
     const { token } = await context.params
     const capability = verifyVerificationCapability(token)
     nonce = capability.n
     const body = await request.json() as { challenge?: unknown }
-    if (typeof body.challenge !== 'string' || body.challenge.length < 10 || body.challenge.length > 2048) {
+    if (
+      typeof body.challenge !== 'string'
+      || body.challenge.length < 10
+      || body.challenge.length > MAX_RECAPTCHA_TOKEN_LENGTH
+    ) {
       return apiError('Complete the human check before continuing.', 400)
     }
 
