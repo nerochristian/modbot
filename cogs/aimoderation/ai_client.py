@@ -1357,31 +1357,7 @@ class AIClient:
                 research=signals.mode == ConversationMode.RESEARCH,
                 vision=bool(image_context),
             )
-            if image_context and self.prefers_deepseek_http:
-                # Galaxy is the configured provider: image scanning must stay on
-                # Gemini 3.5 Flash's multimodal endpoint (/chat/completions/cline),
-                # never DeepSeek web vision. If the Galaxy multimodal primary above
-                # was already attempted (and returned nothing) or Galaxy multimodal
-                # is disabled, degrade to a text-only answer rather than browser vision.
-                if _galaxy_multimodal_enabled() and not http_primary_attempted:
-                    content = await self._call_deepseek_api(
-                        multimodal_api_messages,
-                        temperature=plan.temperature,
-                        max_tokens=(
-                            max(plan.max_tokens, 4_800)
-                            if signals.asks_for_long_answer
-                            else plan.max_tokens
-                        ),
-                        model=model,
-                        allow_multimodal=True,
-                    )
-                else:
-                    content = await self._conversation_via_http(
-                        prompt,
-                        model=model,
-                        long_answer=signals.asks_for_long_answer,
-                    )
-            elif image_context:
+            if image_context:
                 uploads = [
                     (image.filename, image.mime_type, image.data)
                     for image in image_context
@@ -1816,10 +1792,6 @@ class AIClient:
     ) -> List[ImageContext]:
         """Download recent Discord image attachments for multimodal model calls."""
         images: List[ImageContext] = []
-        # The Galaxy HTTP gateway caps request bodies at ~100 KB, so images bound
-        # for it must be downscaled/compressed to fit. DeepSeek-web (browser)
-        # uploads are unaffected and keep full resolution.
-        compress_for_galaxy = self.prefers_deepseek_http and _galaxy_multimodal_enabled()
 
         async def add_image(
             *,
@@ -1831,24 +1803,6 @@ class AIClient:
         ) -> bool:
             if not data or len(data) > max_bytes_each:
                 return False
-            if compress_for_galaxy:
-                compressed = await asyncio.to_thread(
-                    self._compress_image_for_galaxy,
-                    data,
-                    _galaxy_image_encoded_budget(),
-                )
-                if compressed is None:
-                    logger.warning(
-                        "Dropping image %s: could not compress under the Galaxy "
-                        "gateway payload limit.",
-                        filename,
-                    )
-                    return len(images) >= max_images
-                data, mime_type, filename = (
-                    compressed,
-                    "image/jpeg",
-                    (filename.rsplit(".", 1)[0] if filename else "image") + ".jpg",
-                )
             author_name = getattr(msg.author, "display_name", None) or str(msg.author)
             timestamp = msg.created_at.astimezone().strftime("%Y-%m-%d %H:%M")
             images.append(
