@@ -55,14 +55,11 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
   const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const renderWidget = useCallback(() => {
-    if (!widgetHost.current || !window.turnstile || widgetId.current) return
-    widgetId.current = window.turnstile.render(widgetHost.current, {
+    if (!widgetHost.current || !window.hcaptcha || widgetId.current) return
+    widgetId.current = window.hcaptcha.render(widgetHost.current, {
       sitekey: siteKey,
-      action: 'docket-verification',
       theme: 'dark',
-      size: 'flexible',
-      retry: 'auto',
-      'retry-interval': 4_000,
+      size: 'normal',
       callback: (value) => {
         retries.current = 0
         setChallenge(value)
@@ -76,40 +73,40 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
         setState('error')
         setMessage('The human check expired. Complete it again to continue.')
       },
-      'timeout-callback': () => {
+      'chalexpired-callback': () => {
         setChallenge('')
         setState('retrying')
         setMessage('The human check timed out. Restarting it now.')
-        if (window.turnstile && widgetId.current) window.turnstile.reset(widgetId.current)
+        if (window.hcaptcha && widgetId.current) window.hcaptcha.reset(widgetId.current)
       },
       'error-callback': (code) => {
         setChallenge('')
-        const transient = !code || TRANSIENT_ERROR_PREFIXES.some((prefix) => code.startsWith(prefix))
+        const transient = !code || TRANSIENT_ERRORS.has(code)
         if (transient && retries.current < MAX_WIDGET_RETRIES) {
           retries.current += 1
           setCanReset(true)
           setState('retrying')
-          setMessage(describeTurnstileError(code))
+          setMessage(describeHcaptchaError(code))
           retryTimer.current = setTimeout(() => {
-            if (window.turnstile && widgetId.current) window.turnstile.reset(widgetId.current)
+            if (window.hcaptcha && widgetId.current) window.hcaptcha.reset(widgetId.current)
           }, 1_500)
           return
         }
-        setCanReset(code !== '110200' && !code?.startsWith('110'))
+        setCanReset(code !== 'invalid-sitekey' && code !== 'invalid-data')
         setState('error')
-        setMessage(describeTurnstileError(code))
+        setMessage(describeHcaptchaError(code))
       },
     })
   }, [siteKey])
 
   useEffect(() => {
-    window.__docketTurnstileReady = renderWidget
-    if (window.turnstile) renderWidget()
+    window.__docketHcaptchaReady = renderWidget
+    if (window.hcaptcha) renderWidget()
     return () => {
       if (retryTimer.current) clearTimeout(retryTimer.current)
-      if (widgetId.current && window.turnstile) window.turnstile.remove(widgetId.current)
+      if (widgetId.current && window.hcaptcha) window.hcaptcha.remove(widgetId.current)
       widgetId.current = null
-      delete window.__docketTurnstileReady
+      delete window.__docketHcaptchaReady
     }
   }, [renderWidget])
 
@@ -119,7 +116,7 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
     setCanReset(true)
     setState('idle')
     setMessage('')
-    if (widgetId.current && window.turnstile) window.turnstile.reset(widgetId.current)
+    if (widgetId.current && window.hcaptcha) window.hcaptcha.reset(widgetId.current)
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -146,7 +143,7 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
       setCanReset(true)
       setMessage(error instanceof Error ? error.message : 'Verification could not be completed')
       setChallenge('')
-      if (widgetId.current && window.turnstile) window.turnstile.reset(widgetId.current)
+      if (widgetId.current && window.hcaptcha) window.hcaptcha.reset(widgetId.current)
     }
   }
 
