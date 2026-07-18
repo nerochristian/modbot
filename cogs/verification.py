@@ -239,15 +239,29 @@ class VerificationPanelLayout(discord.ui.LayoutView):
         self._cog = cog
 
         logo_url, banner_url = get_guild_brand_assets(guild)
+        guild_name = guild.name if guild else "this server"
         container = branded_panel_container(
-            title=f"🔐 {guild.name} access" if guild else "🔐 Member verification",
+            title=f"Welcome to {guild_name}",
             description=(
-                "Complete one private check to unlock the server."
+                f"Members-only from here. Verify once to prove you're human and "
+                f"unlock the rest of **{guild_name}** — it takes less than a minute."
             ),
             banner_url=banner_url,
             logo_url=logo_url,
             accent_color=0x2B7FFF,
             banner_separated=True,
+        )
+
+        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.large))
+
+        # What to expect — a tight, scannable list instead of repeated prose.
+        container.add_item(
+            discord.ui.TextDisplay(
+                "**How verification works**\n"
+                "> ✅  Press **Verify me** below\n"
+                "> 🧩  Pass one quick human check — done privately, just for you\n"
+                "> 🚪  Access unlocks the moment you're through"
+            )
         )
 
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.large))
@@ -289,27 +303,12 @@ class VerificationPanelLayout(discord.ui.LayoutView):
 
         tutorial_button.callback = _tutorial
 
+        # Both actions grouped on one row — primary action first.
+        container.add_item(discord.ui.ActionRow(start_button, tutorial_button))
+
+        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         container.add_item(
-            discord.ui.Section(
-                discord.ui.TextDisplay(
-                    "### Start your check\n"
-                    "Press **Verify me**. Docket handles the rest privately and grants access when you pass."
-                ),
-                accessory=start_button,
-            )
-        )
-        container.add_item(
-            discord.ui.Section(
-                discord.ui.TextDisplay(
-                    "### Need a hand?\n"
-                    "Open the short walkthrough without leaving Discord."
-                ),
-                accessory=tutorial_button,
-            )
-        )
-        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.large))
-        container.add_item(
-            discord.ui.TextDisplay("-# 🔒 Private • One-time • Usually under a minute")
+            discord.ui.TextDisplay("-# 🔒 Private  •  🎯 One-time  •  ⚡ Under a minute")
         )
 
         self.add_item(container)
