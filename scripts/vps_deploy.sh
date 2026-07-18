@@ -58,9 +58,14 @@ install_dependencies() {
   if [[ -f "dashboard/package.json" ]] && command -v npm >/dev/null 2>&1; then
     (
       cd dashboard
-      npm ci
       mkdir -p data
-      export DATABASE_URL="${DASHBOARD_DATABASE_URL:-file:${APP_DIR}/dashboard/data/dashboard.db}"
+      # The dashboard connects through the libSQL adapter, so its Prisma URL must
+      # be a file:/libsql: URL — distinct from the bot's postgres DATABASE_URL.
+      # Export both before npm ci so Prisma's postinstall generate can resolve it
+      # (there is no dashboard/.env to fall back on).
+      export DASHBOARD_DATABASE_URL="${DASHBOARD_DATABASE_URL:-file:${APP_DIR}/dashboard/data/dashboard.db}"
+      export DATABASE_URL="${DASHBOARD_DATABASE_URL}"
+      npm ci
       if [[ "${DATABASE_URL}" == file:* ]]; then
         dashboard_db_path="${DATABASE_URL#file:}"
         legacy_db="${APP_DIR}/dashboard/.next/standalone/dev.db"
@@ -93,6 +98,9 @@ install_dependencies() {
         npx prisma migrate resolve --applied 20260712160000_baseline
       fi
       npx prisma migrate deploy
+      # Explicit generate guards against a skipped/failed postinstall — without a
+      # client the TypeScript build fails and the dashboard 502s.
+      npx prisma generate
       npm run build
       rm -f .next/standalone/.env .next/standalone/.env.local \
         .next/standalone/.env.production .next/standalone/.env.production.local
