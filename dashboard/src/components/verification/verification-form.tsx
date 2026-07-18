@@ -143,10 +143,15 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
 
   if (state === 'success') {
     return (
-      <div className="rounded-xl border border-success/35 bg-success-soft p-6 text-center">
-        <CheckCircle2 className="mx-auto size-10 text-success" />
-        <h2 className="mt-3 font-display text-xl font-semibold text-foreground">Access granted</h2>
+      <div className="rounded-2xl border border-success/35 bg-success-soft p-7 text-center">
+        <span className="mx-auto grid size-14 place-items-center rounded-full border border-success/30 bg-success/10 text-success">
+          <CheckCircle2 className="size-8" />
+        </span>
+        <h2 className="mt-4 font-display text-xl font-semibold text-foreground">Access granted</h2>
         <p className="mt-2 text-sm leading-6 text-muted">{message}</p>
+        <p className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-border bg-surface-2/60 px-3 py-1 text-xs font-medium text-muted-2">
+          You can close this tab
+        </p>
       </div>
     )
   }
