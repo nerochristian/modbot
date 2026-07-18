@@ -405,9 +405,11 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
             icon=SimpleNamespace(url="https://example.com/guild.png"),
         )
         expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+        user = SimpleNamespace(id=55, display_name="Kayrozaa")
 
         embed = build_punishment_notice(
             guild=guild,
+            user=user,
             action="Ban",
             reason="Repeated scam links",
             case_number=12,
@@ -415,14 +417,16 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
             appeal_expires_at=expires_at,
         )
 
-        self.assertTrue(embed.title.endswith("You were banned"))
+        self.assertEqual(embed.title, "Kayrozaa !!")
         self.assertEqual(embed.author.name, "The Supreme People")
         self.assertEqual(embed.thumbnail.url, "https://example.com/guild.png")
         self.assertEqual(embed.fields, [])
+        self.assertIn("**You have been banned** for **7 days**", embed.description)
         self.assertIn("**Reason**\n> Repeated scam links", embed.description)
-        self.assertIn("**Duration:** 7 days", embed.description)
-        self.assertIn("Appeal available until", embed.description)
-        self.assertEqual(embed.footer.text, "CASE-0012 | Docket")
+        self.assertIn("Appeal available for", embed.description)
+        self.assertIn("`user:55 case:CASE-0012 date:", embed.description)
+        self.assertIsNone(embed.footer.text)
+        self.assertIsNone(embed.timestamp)
 
     async def test_appeal_expiry_is_stored_as_naive_utc_for_postgres(self) -> None:
         source = datetime(2026, 7, 18, 16, 30, tzinfo=timezone(timedelta(hours=-5)))
