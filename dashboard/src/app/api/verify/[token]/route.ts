@@ -48,7 +48,6 @@ export async function POST(request: Request, context: { params: Promise<{ token:
     const capability = verifyVerificationCapability(token)
     nonce = capability.n
     const body = await request.json() as { challenge?: unknown }
-    console.error('[verify-diag] challenge type=%s len=%s', typeof body.challenge, typeof body.challenge === 'string' ? body.challenge.length : 'n/a')
     if (typeof body.challenge !== 'string' || body.challenge.length < 10 || body.challenge.length > 2048) {
       return apiError('Complete the human check before continuing.', 400)
     }
@@ -71,7 +70,6 @@ export async function POST(request: Request, context: { params: Promise<{ token:
       cache: 'no-store',
     })
     const recaptcha = await recaptchaResponse.json() as RecaptchaResponse
-    console.error('[verify-diag] siteverify response: %s', JSON.stringify(recaptcha))
     const expectedHostname = new URL(dashboardBaseUrl(request.url)).hostname
     // v3: require success, our own action, a passing score, and a matching host.
     const scoreOk = typeof recaptcha.score === 'number' && recaptcha.score >= RECAPTCHA_MIN_SCORE

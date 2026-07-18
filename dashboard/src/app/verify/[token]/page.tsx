@@ -30,11 +30,11 @@ export default async function VerifyPage({ params }: { params: Promise<{ token: 
   }
 
   return (
-    <main className="relative min-h-[100svh] overflow-hidden bg-[#050814] px-4 py-5 text-[#f5f8ff] sm:grid sm:place-items-center sm:px-6 sm:py-10">
+    <main className="relative flex min-h-[100svh] items-center justify-center overflow-hidden bg-[#050814] px-4 py-5 text-[#f5f8ff] sm:px-6 sm:py-10">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_14%_8%,rgba(47,123,255,.20),transparent_30rem),radial-gradient(circle_at_92%_88%,rgba(35,211,238,.09),transparent_26rem)]" />
       <div className="pointer-events-none absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(118,143,184,.08)_1px,transparent_1px),linear-gradient(90deg,rgba(118,143,184,.08)_1px,transparent_1px)] [background-size:52px_52px] [mask-image:linear-gradient(to_bottom,black,transparent_86%)]" />
 
-      <section className="relative mx-auto w-full max-w-[620px] overflow-hidden rounded-[1.75rem] border border-[#1d2b45] bg-[#0a1020]/95 shadow-[0_32px_100px_-34px_rgba(0,63,190,.7)] backdrop-blur-xl">
+      <section className="relative w-full max-w-[640px] overflow-hidden rounded-[1.75rem] border border-[#1d2b45] bg-[#0a1020]/95 shadow-[0_32px_100px_-34px_rgba(0,63,190,.7)] backdrop-blur-xl">
         <div className="h-1 bg-gradient-to-r from-[#1f64ff] via-[#38bdf8] to-[#1f64ff]" />
 
         <header className="flex items-center justify-between border-b border-[#1d2b45] px-5 py-4 sm:px-7">

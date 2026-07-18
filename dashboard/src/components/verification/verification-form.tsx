@@ -12,9 +12,7 @@ type RecaptchaApi = {
 
 declare global {
   interface Window {
-    // reCAPTCHA Enterprise exposes grecaptcha.enterprise; the classic build
-    // exposes grecaptcha directly. We support whichever the loaded script provides.
-    grecaptcha?: RecaptchaApi & { enterprise?: RecaptchaApi }
+    grecaptcha?: RecaptchaApi
   }
 }
 
@@ -34,7 +32,7 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
   // expire after ~2 minutes, so we execute at submit time rather than on load.
   const runChallenge = useCallback((): Promise<string> => {
     return new Promise((resolve, reject) => {
-      const api = window.grecaptcha?.enterprise ?? window.grecaptcha
+      const api = window.grecaptcha
       if (!api) {
         reject(new Error('The human check could not load. Refresh the page and try again.'))
         return
@@ -43,11 +41,13 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
         api
           .execute(siteKey, { action: RECAPTCHA_ACTION })
           .then((tok) => {
-            console.error('[verify-diag] execute token length:', tok ? tok.length : 'EMPTY')
+            if (!tok || tok.length < 10) {
+              reject(new Error('The human check did not finish. Wait a moment and press verify again.'))
+              return
+            }
             resolve(tok)
           })
-          .catch((err) => {
-            console.error('[verify-diag] execute failed:', err)
+          .catch(() => {
             reject(new Error('The human check could not be completed. Refresh the page and try again.'))
           })
       })
@@ -93,9 +93,14 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
   return (
     <>
       <Script
-        src={`https://www.google.com/recaptcha/enterprise.js?render=${encodeURIComponent(siteKey)}`}
+        src={`https://www.google.com/recaptcha/api.js?render=${encodeURIComponent(siteKey)}`}
         strategy="afterInteractive"
         onReady={() => setScriptReady(true)}
+        onError={() => {
+          setScriptReady(false)
+          setState('error')
+          setMessage('The secure human check could not load. Refresh the page and try again.')
+        }}
       />
       <form onSubmit={submit} className="overflow-hidden rounded-2xl border border-[#1e3152] bg-[#0b1425]">
         <div className="flex items-center justify-between border-b border-[#1e3152] bg-[#0d192d] px-4 py-3 sm:px-5">
@@ -117,9 +122,9 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
               <ShieldCheck className="size-4" />
             </span>
             <div>
-              <p className="text-sm font-medium text-[#dce6f5]">No puzzles, no clicking</p>
+              <p className="text-sm font-medium text-[#dce6f5]">One secure tap</p>
               <p className="mt-1 text-xs leading-5 text-[#8291aa]">
-                We run a quick invisible check in the background. Just press the button below to confirm you&apos;re human.
+                Press verify and Docket will run a private human check before opening your server access.
               </p>
             </div>
           </div>
