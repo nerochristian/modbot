@@ -2,133 +2,56 @@
 
 import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import Script from 'next/script'
-import { ArrowRight, CheckCircle2, Loader2, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { ArrowRight, CheckCircle2, Loader2, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-type HcaptchaRenderOptions = {
-  sitekey: string
-  theme: 'dark'
-  size: 'normal'
-  callback: (token: string) => void
-  'expired-callback': () => void
-  'chalexpired-callback': () => void
-  'error-callback': (code?: string) => void
-}
-
-type HcaptchaApi = {
-  render: (target: HTMLElement, options: HcaptchaRenderOptions) => string
-  remove: (widgetId?: string) => void
-  reset: (widgetId?: string) => void
+type RecaptchaApi = {
+  ready: (cb: () => void) => void
+  execute: (siteKey: string, options: { action: string }) => Promise<string>
 }
 
 declare global {
   interface Window {
-    hcaptcha?: HcaptchaApi
-    __docketHcaptchaReady?: () => void
+    grecaptcha?: RecaptchaApi
   }
 }
 
-// hCaptcha reports errors by name. Only genuine connectivity/challenge failures
-// are worth auto-retrying — config problems (bad sitekey) loop forever otherwise.
-const TRANSIENT_ERRORS = new Set(['network-error', 'challenge-error', 'rate-limited'])
-const MAX_WIDGET_RETRIES = 3
-
-function describeHcaptchaError(code?: string): string {
-  if (!code) return 'The human check could not load. Refresh the page and try again.'
-  if (TRANSIENT_ERRORS.has(code)) {
-    return `The human check lost its connection (${code}). Retrying automatically.`
-  }
-  if (code === 'invalid-sitekey' || code === 'invalid-data') {
-    return `The human check is misconfigured (${code}). Let a server admin know.`
-  }
-  return `The human check reported an error (${code}). Refresh the page and try again.`
-}
+const RECAPTCHA_ACTION = 'verify'
 
 export function VerificationForm({ token, siteKey }: { token: string; siteKey: string }) {
-  const [state, setState] = useState<'idle' | 'ready' | 'retrying' | 'submitting' | 'success' | 'error'>('idle')
+  const [state, setState] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
   const [message, setMessage] = useState('')
-  const [challenge, setChallenge] = useState('')
-  const [canReset, setCanReset] = useState(true)
-  const widgetHost = useRef<HTMLDivElement>(null)
-  const widgetId = useRef<string | null>(null)
-  const retries = useRef(0)
-  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [scriptReady, setScriptReady] = useState(false)
+  const readyRef = useRef(false)
 
-  const renderWidget = useCallback(() => {
-    if (!widgetHost.current || !window.hcaptcha || widgetId.current) return
-    widgetId.current = window.hcaptcha.render(widgetHost.current, {
-      sitekey: siteKey,
-      theme: 'dark',
-      size: 'normal',
-      callback: (value) => {
-        retries.current = 0
-        setChallenge(value)
-        setCanReset(true)
-        setState('ready')
-        setMessage('')
-      },
-      'expired-callback': () => {
-        setChallenge('')
-        setCanReset(true)
-        setState('error')
-        setMessage('The human check expired. Complete it again to continue.')
-      },
-      'chalexpired-callback': () => {
-        setChallenge('')
-        setState('retrying')
-        setMessage('The human check timed out. Restarting it now.')
-        if (window.hcaptcha && widgetId.current) window.hcaptcha.reset(widgetId.current)
-      },
-      'error-callback': (code) => {
-        setChallenge('')
-        const transient = !code || TRANSIENT_ERRORS.has(code)
-        if (transient && retries.current < MAX_WIDGET_RETRIES) {
-          retries.current += 1
-          setCanReset(true)
-          setState('retrying')
-          setMessage(describeHcaptchaError(code))
-          retryTimer.current = setTimeout(() => {
-            if (window.hcaptcha && widgetId.current) window.hcaptcha.reset(widgetId.current)
-          }, 1_500)
-          return
-        }
-        setCanReset(code !== 'invalid-sitekey' && code !== 'invalid-data')
-        setState('error')
-        setMessage(describeHcaptchaError(code))
-      },
+  useEffect(() => {
+    readyRef.current = scriptReady
+  }, [scriptReady])
+
+  // Run the invisible reCAPTCHA v3 flow and return a fresh token. v3 tokens
+  // expire after ~2 minutes, so we execute at submit time rather than on load.
+  const runChallenge = useCallback((): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      if (!window.grecaptcha) {
+        reject(new Error('The human check could not load. Refresh the page and try again.'))
+        return
+      }
+      window.grecaptcha.ready(() => {
+        window.grecaptcha!
+          .execute(siteKey, { action: RECAPTCHA_ACTION })
+          .then(resolve)
+          .catch(() => reject(new Error('The human check could not be completed. Refresh the page and try again.')))
+      })
     })
   }, [siteKey])
 
-  useEffect(() => {
-    window.__docketHcaptchaReady = renderWidget
-    if (window.hcaptcha) renderWidget()
-    return () => {
-      if (retryTimer.current) clearTimeout(retryTimer.current)
-      if (widgetId.current && window.hcaptcha) window.hcaptcha.remove(widgetId.current)
-      widgetId.current = null
-      delete window.__docketHcaptchaReady
-    }
-  }, [renderWidget])
-
-  function resetChallenge() {
-    retries.current = 0
-    setChallenge('')
-    setCanReset(true)
-    setState('idle')
-    setMessage('')
-    if (widgetId.current && window.hcaptcha) window.hcaptcha.reset(widgetId.current)
-  }
-
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    if (!challenge) {
-      setState('error')
-      setMessage('Complete the human check before continuing.')
-      return
-    }
+    if (state === 'submitting') return
     setState('submitting')
     setMessage('')
     try {
+      const challenge = await runChallenge()
       const response = await fetch(`/api/verify/${encodeURIComponent(token)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -140,10 +63,7 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
       setMessage('Your server access is open. You can return to Discord now.')
     } catch (error) {
       setState('error')
-      setCanReset(true)
       setMessage(error instanceof Error ? error.message : 'Verification could not be completed')
-      setChallenge('')
-      if (widgetId.current && window.hcaptcha) window.hcaptcha.reset(widgetId.current)
     }
   }
 
@@ -164,9 +84,9 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
   return (
     <>
       <Script
-        src="https://js.hcaptcha.com/1/api.js?onload=__docketHcaptchaReady&render=explicit"
+        src={`https://www.google.com/recaptcha/api.js?render=${encodeURIComponent(siteKey)}`}
         strategy="afterInteractive"
-        onReady={renderWidget}
+        onReady={() => setScriptReady(true)}
       />
       <form onSubmit={submit} className="overflow-hidden rounded-2xl border border-[#1e3152] bg-[#0b1425]">
         <div className="flex items-center justify-between border-b border-[#1e3152] bg-[#0d192d] px-4 py-3 sm:px-5">
@@ -183,31 +103,21 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
         </div>
 
         <div className="space-y-4 p-3 sm:p-5">
-          <div className="relative min-h-[72px] overflow-hidden rounded-xl border border-[#243652] bg-[#070d18] p-2">
-            {(state === 'idle' || state === 'retrying') && !challenge && (
-              <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 text-xs text-[#7f91ad]">
-                <Loader2 className="size-4 animate-spin text-[#6ca2ff]" /> {state === 'retrying' ? 'Reconnecting secure check…' : 'Loading secure check…'}
-              </div>
-            )}
-            <div ref={widgetHost} className="min-h-[56px]" aria-label="hCaptcha human verification" />
+          <div className="flex items-start gap-3 rounded-xl border border-[#243652] bg-[#070d18] px-4 py-3.5">
+            <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border border-[#2856a1] bg-[#0b234c] text-[#72a7ff]">
+              <ShieldCheck className="size-4" />
+            </span>
+            <div>
+              <p className="text-sm font-medium text-[#dce6f5]">No puzzles, no clicking</p>
+              <p className="mt-1 text-xs leading-5 text-[#8291aa]">
+                We run a quick invisible check in the background. Just press the button below to confirm you&apos;re human.
+              </p>
+            </div>
           </div>
 
           {state === 'error' && (
-            <div className="flex items-start justify-between gap-3 rounded-xl border border-[#5a2832] bg-[#25131b] px-3.5 py-3 text-sm text-[#ff9baa]" role="alert">
-              <span className="flex items-start gap-2 leading-5">
-                <TriangleAlert className="mt-0.5 size-4 shrink-0" /> {message}
-              </span>
-              {canReset && (
-                <button type="button" onClick={resetChallenge} className="focus-ring shrink-0 rounded-md p-1 text-[#ff9baa] transition hover:bg-[#3a1b25]" aria-label="Reset human check">
-                  <RotateCcw className="size-4" />
-                </button>
-              )}
-            </div>
-          )}
-
-          {state === 'retrying' && (
-            <div className="flex items-start gap-2 rounded-xl border border-[#294066] bg-[#101d33] px-3.5 py-3 text-sm text-[#9db8e6]" role="status">
-              <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" /> <span className="leading-5">{message}</span>
+            <div className="flex items-start gap-2 rounded-xl border border-[#5a2832] bg-[#25131b] px-3.5 py-3 text-sm text-[#ff9baa]" role="alert">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0" /> <span className="leading-5">{message}</span>
             </div>
           )}
 
@@ -215,12 +125,20 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
             type="submit"
             size="lg"
             className="h-12 w-full rounded-xl bg-gradient-to-r from-[#2563eb] to-[#1684ee] font-semibold shadow-[0_18px_40px_-18px_rgba(37,99,235,.95)]"
-            disabled={state === 'submitting' || !challenge}
+            disabled={state === 'submitting' || !scriptReady}
           >
             {state === 'submitting' ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
-            {state === 'submitting' ? 'Opening access…' : 'Verify and open access'}
-            {state !== 'submitting' && <ArrowRight className="ml-auto size-4" />}
+            {state === 'submitting' ? 'Opening access…' : !scriptReady ? 'Loading secure check…' : 'Verify and open access'}
+            {state !== 'submitting' && scriptReady && <ArrowRight className="ml-auto size-4" />}
           </Button>
+
+          <p className="text-center text-[0.6875rem] leading-4 text-[#6680a8]">
+            Protected by reCAPTCHA. Google&apos;s{' '}
+            <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer" className="underline hover:text-[#8fb0e0]">Privacy Policy</a>{' '}
+            and{' '}
+            <a href="https://policies.google.com/terms" target="_blank" rel="noreferrer" className="underline hover:text-[#8fb0e0]">Terms</a>{' '}
+            apply.
+          </p>
         </div>
       </form>
     </>
