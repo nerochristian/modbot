@@ -138,13 +138,13 @@ class ManagementCommands:
         dm_channel = await self.prepare_dm_channel(user) if notify_user else None
         
         dm_embed = discord.Embed(title=f"👢 Kicked from {guild.name}", description=f"**Reason:** {reason}", color=Colors.ERROR)
+        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Kick", reason)
+        if notify_user:
+            await self.send_punishment_notice(guild=guild, user=user, action="Kick", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, delivery_channel=dm_channel)
         try:
             await user.kick(reason=f"{moderator}: {reason}")
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not kick: {e}"), ephemeral=True)
-        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Kick", reason)
-        if notify_user:
-            await self.send_punishment_notice(guild=guild, user=user, action="Kick", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, delivery_channel=dm_channel)
             
         embed = await self.create_mod_embed(title="👢 User Kicked", user=user, moderator=moderator, reason=reason, color=Colors.ERROR, case_num=case_num)
         response = render_moderation_response(
@@ -186,6 +186,9 @@ class ManagementCommands:
         )
         effective_delete_days = 0 if preserve_messages else max(0, min(7, delete_days))
         self._suppress_duplicate_member_action_log(guild.id, user.id, "ban")
+        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Ban", reason)
+        if notify_user:
+            await self.send_punishment_notice(guild=guild, user=user, action="Ban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, delivery_channel=dm_channel)
         try:
             await user.ban(
                 reason=f"{moderator}: {reason}",
@@ -193,9 +196,6 @@ class ManagementCommands:
             )
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not ban: {e}"), ephemeral=True)
-        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Ban", reason)
-        if notify_user:
-            await self.send_punishment_notice(guild=guild, user=user, action="Ban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, delivery_channel=dm_channel)
             
         embed = await self.create_mod_embed(title="🔨 User Banned", user=user, moderator=moderator, reason=reason, color=Colors.DARK_RED, case_num=case_num)
         response = render_moderation_response(
@@ -269,14 +269,14 @@ class ManagementCommands:
         dm_embed = discord.Embed(title=f"🧹 Softbanned from {guild.name}", description=f"**Reason:** {reason}\n\nYou can rejoin the server.", color=Colors.ERROR)
         self._suppress_duplicate_member_action_log(guild.id, user.id, "ban")
         self._suppress_duplicate_member_action_log(guild.id, user.id, "unban")
+        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Softban", reason)
+        if notify_user:
+            await self.send_punishment_notice(guild=guild, user=user, action="Softban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, delivery_channel=dm_channel)
         try:
             await user.ban(reason=f"[SOFTBAN] {reason}", delete_message_days=7)
             await guild.unban(user, reason="Softban - immediate unban")
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not softban: {e}"), ephemeral=True)
-        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Softban", reason)
-        if notify_user:
-            await self.send_punishment_notice(guild=guild, user=user, action="Softban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, delivery_channel=dm_channel)
             
         embed = await self.create_mod_embed(title="🧹 User Softbanned", user=user, moderator=moderator, reason=reason, color=Colors.ERROR, case_num=case_num)
         embed.set_footer(text=f"Case #{case_num} | 7 days of messages deleted")
@@ -325,6 +325,9 @@ class ManagementCommands:
             True,
         )
         self._suppress_duplicate_member_action_log(guild.id, user.id, "ban")
+        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Tempban", reason, human_duration)
+        if notify_user:
+            await self.send_punishment_notice(guild=guild, user=user, action="Tempban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, duration=human_duration, delivery_channel=dm_channel)
         try:
             await user.ban(
                 reason=f"[TEMPBAN] {moderator}: {reason} ({human_duration})",
@@ -332,9 +335,6 @@ class ManagementCommands:
             )
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not tempban: {e}"), ephemeral=True)
-        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Tempban", reason, human_duration)
-        if notify_user:
-            await self.send_punishment_notice(guild=guild, user=user, action="Tempban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, duration=human_duration, delivery_channel=dm_channel)
         await self.bot.db.add_tempban(guild.id, user.id, moderator.id, reason, expires_at)
             
         embed = await self.create_mod_embed(title="⏰ User Temporarily Banned", user=user, moderator=moderator, reason=reason, color=Colors.DARK_RED, case_num=case_num, extra_fields={"Duration": human_duration, "Expires": f"<t:{int(expires_at.timestamp())}:R>"})
@@ -378,6 +378,13 @@ class ManagementCommands:
         if delta.total_seconds() > 28 * 24 * 60 * 60:
             return await self._respond(source, embed=ModEmbed.error("Duration Too Long", "Max 28 days."), ephemeral=True)
 
+        notify_user = moderation_bool(settings, "moderation_dm_users", True)
+        dm_channel = await self.prepare_dm_channel(user) if notify_user else None
+        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Mute", reason, human_duration)
+        dm_embed = discord.Embed(title=f"🔇 Muted in {guild.name}", description=f"**Reason:** {reason}\n**Duration:** {human_duration}", color=Colors.ERROR)
+        if notify_user:
+            await self.send_punishment_notice(guild=guild, user=user, action="Mute", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, duration=human_duration, delivery_channel=dm_channel)
+
         logging_cog = self.bot.get_cog("Logging")
         if logging_cog and hasattr(logging_cog, "suppress_timeout_change_log"):
             logging_cog.suppress_timeout_change_log(guild.id, user.id)
@@ -396,8 +403,6 @@ class ManagementCommands:
             )
         except discord.HTTPException as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not timeout: {e}"), ephemeral=True)
-
-        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Mute", reason, human_duration)
 
         log_embed = await self.create_mod_embed(
             title=f"Mute {user.display_name}",
@@ -423,10 +428,6 @@ class ManagementCommands:
             delete_command_message=True,
         )
         await self.log_action(guild, log_embed)
-        
-        dm_embed = discord.Embed(title=f"🔇 Muted in {guild.name}", description=f"**Reason:** {reason}\n**Duration:** {human_duration}", color=Colors.ERROR)
-        if moderation_bool(settings, "moderation_dm_users", True):
-            await self.send_punishment_notice(guild=guild, user=user, action="Mute", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, duration=human_duration)
 
     async def _unmute_logic(self, source, user: discord.Member, reason: str):
         guild = source.guild
