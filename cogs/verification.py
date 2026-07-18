@@ -241,10 +241,10 @@ class VerificationPanelLayout(discord.ui.LayoutView):
         logo_url, banner_url = get_guild_brand_assets(guild)
         guild_name = guild.name if guild else "this server"
         container = branded_panel_container(
-            title=f"Welcome to {guild_name}",
+            title="🔐 Member verification",
             description=(
-                f"Members-only from here. Verify once to prove you're human and "
-                f"unlock the rest of **{guild_name}** — it takes less than a minute."
+                f"**{guild_name} uses a private entry check.**\n"
+                "Verify once and Docket unlocks the rest of the server automatically."
             ),
             banner_url=banner_url,
             logo_url=logo_url,
@@ -254,20 +254,8 @@ class VerificationPanelLayout(discord.ui.LayoutView):
 
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.large))
 
-        # What to expect — a tight, scannable list instead of repeated prose.
-        container.add_item(
-            discord.ui.TextDisplay(
-                "**How verification works**\n"
-                "> ✅  Press **Verify me** below\n"
-                "> 🧩  Pass one quick human check — done privately, just for you\n"
-                "> 🚪  Access unlocks the moment you're through"
-            )
-        )
-
-        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.large))
-
         start_button = discord.ui.Button(
-            label="Verify me",
+            label="Start verification",
             style=discord.ButtonStyle.success,
             emoji=resolve_guild_component_emoji(
                 guild,
@@ -286,7 +274,7 @@ class VerificationPanelLayout(discord.ui.LayoutView):
         start_button.callback = _start
 
         tutorial_button = discord.ui.Button(
-            label="How it works",
+            label="View guide",
             style=discord.ButtonStyle.secondary,
             emoji=resolve_guild_component_emoji(
                 guild,
@@ -303,12 +291,30 @@ class VerificationPanelLayout(discord.ui.LayoutView):
 
         tutorial_button.callback = _tutorial
 
-        # Both actions grouped on one row — primary action first.
-        container.add_item(discord.ui.ActionRow(start_button, tutorial_button))
+        container.add_item(
+            discord.ui.Section(
+                discord.ui.TextDisplay(
+                    "### Ready when you are\n"
+                    "Open a private check made only for you. Most members finish in under a minute."
+                ),
+                accessory=start_button,
+            )
+        )
 
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         container.add_item(
-            discord.ui.TextDisplay("-# 🔒 Private  •  🎯 One-time  •  ⚡ Under a minute")
+            discord.ui.Section(
+                discord.ui.TextDisplay(
+                    "### What happens next\n"
+                    "Docket validates the check, swaps your access roles, and opens the server instantly."
+                ),
+                accessory=tutorial_button,
+            )
+        )
+
+        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
+        container.add_item(
+            discord.ui.TextDisplay("-# 🔒 Private • 🔑 Single-use • ⚡ Instant access")
         )
 
         self.add_item(container)
@@ -324,11 +330,10 @@ class WebsiteVerificationLayout(discord.ui.LayoutView):
         logo_url, banner_url = get_guild_brand_assets(guild)
         guild_name = guild.name if guild else "this server"
         container = branded_panel_container(
-            title="🔐 Secure website verification",
+            title="🔐 Your private checkpoint is ready",
             description=(
-                f"You're one step from unlocking **{guild_name}**. "
-                "Open the protected page and complete a quick Cloudflare human check — "
-                "no password and no second login."
+                f"One quick check stands between you and **{guild_name}**. "
+                "Docket never asks for your password or another Discord login."
             ),
             banner_url=banner_url,
             logo_url=logo_url,
@@ -340,11 +345,11 @@ class WebsiteVerificationLayout(discord.ui.LayoutView):
         container.add_item(
             discord.ui.Section(
                 discord.ui.TextDisplay(
-                    "### Open your secure page\n"
-                    "Tap the button, pass the check, and hop back here — access unlocks automatically."
+                    "### Continue on the secure page\n"
+                    "Complete Cloudflare's human check, then return to Discord. Your roles update automatically."
                 ),
                 accessory=discord.ui.Button(
-                    label="Open secure verification",
+                    label="Open checkpoint",
                     style=discord.ButtonStyle.link,
                     url=url,
                     emoji="🔐",
@@ -353,7 +358,7 @@ class WebsiteVerificationLayout(discord.ui.LayoutView):
         )
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         container.add_item(
-            discord.ui.TextDisplay("-# ⏳ Link expires in 10 minutes • 🔑 Works once • 🛡️ Private")
+            discord.ui.TextDisplay("-# ⏳ Expires in 10 minutes • 🔑 Works once • 🛡️ Protected by Turnstile")
         )
 
         self.add_item(container)

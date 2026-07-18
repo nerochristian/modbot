@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { apiError, ok } from '@/lib/api'
 import { getBotGuildSettings } from '@/lib/bot-settings'
 import { botQuery } from '@/lib/bot-db'
