@@ -322,7 +322,7 @@ class VerificationPanelLayout(discord.ui.LayoutView):
 
 class WebsiteVerificationLayout(discord.ui.LayoutView):
     """Ephemeral Components v2 card handed to a member after they press Verify me
-    when the server uses website (Cloudflare) verification."""
+    when the server uses website (hCaptcha) verification."""
 
     def __init__(self, *, guild: Optional[discord.Guild], url: str):
         super().__init__(timeout=10 * 60)

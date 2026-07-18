@@ -36,7 +36,7 @@ class VerificationPanelTests(unittest.TestCase):
         self.assertEqual(len(sections), 2)
         self.assertEqual(
             [section.accessory.label for section in sections],
-            ["Verify me", "How it works"],
+            ["Start verification", "View guide"],
         )
         self.assertEqual(
             [section.accessory.custom_id for section in sections],
@@ -45,9 +45,9 @@ class VerificationPanelTests(unittest.TestCase):
 
         text = _panel_text(view)
         self.assertIn("🔐 Member verification", text)
-        self.assertIn("### Start your check", text)
-        self.assertIn("### Need a hand?", text)
-        self.assertIn("Private • One-time • Usually under a minute", text)
+        self.assertIn("### Ready when you are", text)
+        self.assertIn("### What happens next", text)
+        self.assertIn("Private • 🔑 Single-use • ⚡ Instant access", text)
 
 
 class VerificationRoleRepairTests(unittest.IsolatedAsyncioTestCase):

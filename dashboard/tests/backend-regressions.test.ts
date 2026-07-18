@@ -424,3 +424,16 @@ test('production SQL and standalone deployment match the bot runtime contracts',
   assert.doesNotMatch(serverGrid, /router\.push\('\/dashboard'\)[\s\S]{0,80}router\.refresh\(\)/)
   assert.match(toast, /createClientId\('toast'\)/)
 })
+
+test('public verification uses an explicit resilient Turnstile flow', () => {
+  const verificationPage = readFileSync(path.join(process.cwd(), 'src/app/verify/[token]/page.tsx'), 'utf8')
+  const verificationForm = readFileSync(path.join(process.cwd(), 'src/components/verification/verification-form.tsx'), 'utf8')
+
+  assert.match(verificationPage, /Prove you&amp;apos;re human|Prove you&apos;re human/)
+  assert.match(verificationPage, /docket-glyph\.png/)
+  assert.match(verificationForm, /api\.js\?render=explicit/)
+  assert.match(verificationForm, /window\.turnstile\.render/)
+  assert.match(verificationForm, /'expired-callback'/)
+  assert.match(verificationForm, /'error-callback'/)
+  assert.match(verificationForm, /window\.turnstile\.reset/)
+})
