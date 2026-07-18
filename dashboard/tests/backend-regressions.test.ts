@@ -78,7 +78,7 @@ test('member directory uses Discord identity and real moderation records without
   const userMenu = readFileSync(path.join(root, 'src/components/dashboard/user-menu.tsx'), 'utf8')
   const casesClient = readFileSync(path.join(root, 'src/components/dashboard/cases-client.tsx'), 'utf8')
   const schema = readFileSync(path.join(root, 'prisma/schema.prisma'), 'utf8')
-  const marketing = readFileSync(path.join(root, 'src/components/marketing/command-demo.tsx'), 'utf8')
+  const marketing = readFileSync(path.join(root, 'src/app/(marketing)/page.tsx'), 'utf8')
 
   assert.match(membersRoute, /discordMemberAvatarUrl\(guild\.id, member\)/)
   assert.match(memberRoute, /getBotGuildMemberRoles\(guild\.id\)/)
