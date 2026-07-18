@@ -398,9 +398,9 @@ export async function updateModuleSettings(
     }
   }
   if (def.id === 'verification' && mergedSettings.verification_method === 'website' && (
-    !process.env.HCAPTCHA_SITE_KEY?.trim() || !process.env.HCAPTCHA_SECRET_KEY?.trim()
+    !process.env.RECAPTCHA_SITE_KEY?.trim() || !process.env.RECAPTCHA_SECRET_KEY?.trim()
   )) {
-    throw new ModuleValidationError('Website verification needs HCAPTCHA_SITE_KEY and HCAPTCHA_SECRET_KEY on the dashboard server')
+    throw new ModuleValidationError('Website verification needs RECAPTCHA_SITE_KEY and RECAPTCHA_SECRET_KEY on the dashboard server')
   }
   if (
     def.id === 'verification'
