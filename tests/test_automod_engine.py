@@ -17,6 +17,7 @@ from cogs.automod import AutoModEngine, Category, domain_matches, normalize_doma
 from cogs.automod.logging import AutoModLogger
 from cogs.automod.models import Action, RuleMatch, Severity
 from cogs.automod.storage import AutoModStorage
+from cogs.appeals import build_punishment_notice
 
 
 class FakePermissions:
@@ -388,14 +389,40 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
             appeal_instructions="Open a ticket if you think this was a mistake.",
         )
 
-        self.assertEqual(embed.title, "AutoMod notice")
+        self.assertEqual(embed.title, "Message flagged")
         self.assertEqual(embed.author.name, "The Supreme People")
         self.assertIn("**The Supreme People**", embed.description)
-        self.assertEqual([field.name for field in embed.fields], ["What happened", "Your message", "Appeal or questions"])
-        self.assertIn("**Action:** Timed out", embed.fields[0].value)
-        self.assertEqual(embed.fields[1].value, "> @everyone")
-        self.assertEqual(embed.fields[2].value, "Open a ticket if you think this was a mistake.")
-        self.assertEqual(embed.footer.text, "This notice was sent automatically by Docket AutoMod.")
+        self.assertEqual([field.name for field in embed.fields], ["Reason", "Outcome", "Message", "Questions"])
+        self.assertEqual(embed.fields[0].value, "> Blocked word or phrase")
+        self.assertEqual(embed.fields[1].value, "Removed")
+        self.assertEqual(embed.fields[2].value, "> @everyone")
+        self.assertEqual(embed.fields[3].value, "Open a ticket if you think this was a mistake.")
+        self.assertEqual(embed.footer.text, "CASE-0063 | AutoMod")
+
+    async def test_case_notice_is_compact_and_keeps_the_case_visible(self) -> None:
+        guild = SimpleNamespace(
+            name="The Supreme People",
+            icon=SimpleNamespace(url="https://example.com/guild.png"),
+        )
+        expires_at = datetime.now(timezone.utc) + timedelta(days=7)
+
+        embed = build_punishment_notice(
+            guild=guild,
+            action="Ban",
+            reason="Repeated scam links",
+            case_number=12,
+            duration="7 days",
+            appeal_expires_at=expires_at,
+        )
+
+        self.assertTrue(embed.title.endswith("You were banned"))
+        self.assertEqual(embed.author.name, "The Supreme People")
+        self.assertEqual(embed.thumbnail.url, "https://example.com/guild.png")
+        self.assertEqual(embed.fields, [])
+        self.assertIn("**Reason**\n> Repeated scam links", embed.description)
+        self.assertIn("**Duration:** 7 days", embed.description)
+        self.assertIn("Appeal available until", embed.description)
+        self.assertEqual(embed.footer.text, "CASE-0012 | Docket")
 
 
 class AutoModPanelTests(unittest.IsolatedAsyncioTestCase):
