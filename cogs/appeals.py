@@ -12,9 +12,11 @@ from typing import Any, Optional
 import discord
 from discord.ext import commands
 
+from utils.status_emojis import get_app_emoji
+
 logger = logging.getLogger("ModBot.Appeals")
 
-APPEALABLE_ACTIONS = {"warn", "mute", "timeout", "kick", "ban", "tempban", "softban"}
+APPEALABLE_ACTIONS = {"automod", "warn", "mute", "timeout", "kick", "ban", "tempban", "softban"}
 DEFAULT_QUESTIONS = [
     {"id": "why", "label": "Why should this punishment be reviewed?", "placeholder": "Explain what happened and why staff should reconsider the case.", "style": "paragraph", "required": True},
     {"id": "context", "label": "Anything else staff should know?", "placeholder": "Add evidence, message links, or relevant context.", "style": "paragraph", "required": False},
@@ -50,6 +52,54 @@ def _questions(value: object) -> list[dict[str, Any]]:
             "required": raw.get("required") is not False,
         })
     return normalized or [dict(question) for question in DEFAULT_QUESTIONS]
+
+
+def _action_copy(action: str) -> tuple[str, str]:
+    normalized = action.strip().lower()
+    labels = {
+        "automod": ("warn", "Message removed"),
+        "warn": ("warn", "You received a warning"),
+        "mute": ("mute", "You were muted"),
+        "timeout": ("mute", "You were timed out"),
+        "kick": ("kick", "You were kicked"),
+        "ban": ("ban", "You were banned"),
+        "tempban": ("ban", "You were temporarily banned"),
+        "softban": ("ban", "You were softbanned"),
+    }
+    return labels.get(normalized, ("warning", "Moderation action"))
+
+
+def build_punishment_notice(
+    *,
+    guild: discord.Guild,
+    action: str,
+    reason: str,
+    case_number: int,
+    duration: Optional[str] = None,
+    appeal_expires_at: Optional[datetime] = None,
+) -> discord.Embed:
+    emoji_kind, title = _action_copy(action)
+    emoji = get_app_emoji(emoji_kind)
+    detail_lines = [f"**Reason**\n> {str(reason or 'No reason provided')[:700]}"]
+    if duration:
+        detail_lines.append(f"**Duration:** {duration}")
+    if appeal_expires_at:
+        detail_lines.append(f"Appeal available until <t:{int(appeal_expires_at.timestamp())}:R>")
+
+    embed = discord.Embed(
+        title=f"{emoji} {title}" if emoji else title,
+        description="\n\n".join(detail_lines),
+        color=0xED4245 if action.strip().lower() in {"ban", "tempban", "softban"} else 0xF0B232,
+        timestamp=datetime.now(timezone.utc),
+    )
+    guild_icon = getattr(getattr(guild, "icon", None), "url", None)
+    if guild_icon:
+        embed.set_author(name=guild.name, icon_url=guild_icon)
+        embed.set_thumbnail(url=guild_icon)
+    else:
+        embed.set_author(name=guild.name)
+    embed.set_footer(text=f"CASE-{case_number:04d} | Docket")
+    return embed
 
 
 class Appeals(commands.Cog):
@@ -143,19 +193,14 @@ class Appeals(commands.Cog):
                     token_row_id = int(row[0]) if row else None
                 appeal_url = f"{base_url}/appeal/{token}"
 
-        embed = discord.Embed(
-            title="Moderation action recorded",
-            description=(
-                f"You can ask **{guild.name}** staff to review this case until <t:{int(expires_at.timestamp())}:F>."
-                if appeal_url and expires_at else f"A moderation action was recorded in **{guild.name}**."
-            ),
-            color=0x5865F2,
+        embed = build_punishment_notice(
+            guild=guild,
+            action=action,
+            reason=reason,
+            case_number=case_number,
+            duration=duration,
+            appeal_expires_at=expires_at if appeal_url else None,
         )
-        embed.add_field(name="Action", value=action.upper(), inline=True)
-        embed.add_field(name="Case", value=f"CASE-{case_number:04d}", inline=True)
-        if duration:
-            embed.add_field(name="Duration", value=duration, inline=True)
-        embed.add_field(name="Reason", value=reason[:1024], inline=False)
         embed.set_footer(text="Docket · Moderation records desk")
         view = discord.ui.View(timeout=None)
         if appeal_url:
