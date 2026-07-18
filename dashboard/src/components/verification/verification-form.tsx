@@ -47,7 +47,7 @@ function describeTurnstileError(code?: string): string {
 }
 
 export function VerificationForm({ token, siteKey }: { token: string; siteKey: string }) {
-  const [state, setState] = useState<'idle' | 'ready' | 'submitting' | 'success' | 'error'>('idle')
+  const [state, setState] = useState<'idle' | 'ready' | 'submitting' | 'success' | 'error' | 'retrying'>('idle')
   const [message, setMessage] = useState('')
   const [challenge, setChallenge] = useState('')
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -85,6 +85,7 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
         const transient = !code || NETWORK_ERROR_PREFIXES.some((prefix) => code.startsWith(prefix))
         if (transient && retriesRef.current < MAX_WIDGET_RETRIES) {
           retriesRef.current += 1
+          setState('retrying')
           setMessage(describeTurnstileError(code))
           setTimeout(() => {
             if (window.turnstile && widgetIdRef.current !== null) window.turnstile.reset(widgetIdRef.current)
@@ -168,6 +169,11 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
         {state === 'error' && (
           <div className="flex items-start gap-2 text-sm text-danger" role="alert">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" /> {message}
+          </div>
+        )}
+        {state === 'retrying' && (
+          <div className="flex items-start gap-2 text-sm text-muted" role="status">
+            <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" /> {message}
           </div>
         )}
         <Button type="submit" className="w-full" disabled={state === 'submitting' || !challenge}>
