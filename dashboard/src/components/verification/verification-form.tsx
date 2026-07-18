@@ -157,29 +157,46 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
         src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__docketTurnstileReady&render=explicit"
         strategy="afterInteractive"
       />
-      <form onSubmit={submit} className="space-y-5">
-        <div className="flex items-start gap-3 rounded-xl border border-border bg-surface-2 p-4">
-          <ShieldCheck className="mt-0.5 size-5 shrink-0 text-accent" />
+      <form onSubmit={submit} className="space-y-4">
+        <div className="flex items-start gap-3 rounded-2xl border border-border bg-surface-2/60 p-4">
+          <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg border border-accent-line bg-accent-soft text-accent">
+            <ShieldCheck className="size-4" />
+          </span>
           <div>
             <p className="text-sm font-semibold text-foreground">Private human check</p>
-            <p className="mt-1 text-xs leading-5 text-muted">Docket uses Cloudflare Turnstile. Your challenge result is single-use and expires with this link.</p>
+            <p className="mt-1 text-xs leading-5 text-muted">Powered by Cloudflare Turnstile. Your result is single-use and expires with this link.</p>
           </div>
         </div>
-        <div ref={containerRef} className="min-h-[70px] overflow-hidden rounded-lg" />
+
+        <div className="relative min-h-[72px] overflow-hidden rounded-2xl border border-border bg-surface-2/40 p-2">
+          {(state === 'idle' || state === 'retrying') && !challenge && (
+            <div className="pointer-events-none absolute inset-2 grid place-items-center rounded-xl bg-surface-2/60">
+              <span className="inline-flex items-center gap-2 text-xs font-medium text-muted-2">
+                <Loader2 className="size-3.5 animate-spin" /> Loading secure check…
+              </span>
+            </div>
+          )}
+          <div ref={containerRef} className="relative grid min-h-[64px] place-items-center [&_iframe]:!rounded-lg" />
+        </div>
+
         {state === 'error' && (
-          <div className="flex items-start gap-2 text-sm text-danger" role="alert">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0" /> {message}
+          <div className="flex items-start gap-2 rounded-xl border border-danger/25 bg-danger-soft px-3 py-2.5 text-sm text-danger" role="alert">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0" /> <span className="leading-5">{message}</span>
           </div>
         )}
         {state === 'retrying' && (
-          <div className="flex items-start gap-2 text-sm text-muted" role="status">
-            <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" /> {message}
+          <div className="flex items-start gap-2 rounded-xl border border-border bg-surface-2/60 px-3 py-2.5 text-sm text-muted" role="status">
+            <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" /> <span className="leading-5">{message}</span>
           </div>
         )}
-        <Button type="submit" className="w-full" disabled={state === 'submitting' || !challenge}>
+
+        <Button type="submit" size="lg" className="w-full" disabled={state === 'submitting' || !challenge}>
           {state === 'submitting' ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
           {state === 'submitting' ? 'Verifying…' : 'Verify and unlock Discord'}
         </Button>
+        {!challenge && state !== 'submitting' && (
+          <p className="text-center text-xs text-muted-2">Complete the check above to enable this button.</p>
+        )}
       </form>
     </>
   )
