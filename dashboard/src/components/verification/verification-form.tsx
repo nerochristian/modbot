@@ -95,7 +95,15 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
       <Script
         src={`https://www.google.com/recaptcha/api.js?render=${encodeURIComponent(siteKey)}`}
         strategy="afterInteractive"
-        onReady={() => setScriptReady(true)}
+        onReady={() => {
+          const api = window.grecaptcha
+          if (!api) {
+            setState('error')
+            setMessage('The secure human check could not start. Refresh the page and try again.')
+            return
+          }
+          api.ready(() => setScriptReady(true))
+        }}
         onError={() => {
           setScriptReady(false)
           setState('error')
@@ -147,10 +155,10 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
           </Button>
 
           <p className="text-center text-[0.6875rem] leading-4 text-[#6680a8]">
-            Protected by reCAPTCHA. Google&apos;s{' '}
+            This site is protected by reCAPTCHA and the Google{' '}
             <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer" className="underline hover:text-[#8fb0e0]">Privacy Policy</a>{' '}
             and{' '}
-            <a href="https://policies.google.com/terms" target="_blank" rel="noreferrer" className="underline hover:text-[#8fb0e0]">Terms</a>{' '}
+            <a href="https://policies.google.com/terms" target="_blank" rel="noreferrer" className="underline hover:text-[#8fb0e0]">Terms of Service</a>{' '}
             apply.
           </p>
         </div>

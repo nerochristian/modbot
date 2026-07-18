@@ -429,6 +429,7 @@ test('public verification uses a submit-time reCAPTCHA v3 flow', () => {
   const verificationPage = readFileSync(path.join(process.cwd(), 'src/app/verify/[token]/page.tsx'), 'utf8')
   const verificationForm = readFileSync(path.join(process.cwd(), 'src/components/verification/verification-form.tsx'), 'utf8')
   const verificationRoute = readFileSync(path.join(process.cwd(), 'src/app/api/verify/[token]/route.ts'), 'utf8')
+  const globalCss = readFileSync(path.join(process.cwd(), 'src/app/globals.css'), 'utf8')
 
   assert.match(verificationPage, /Prove you&amp;apos;re human|Prove you&apos;re human/)
   assert.match(verificationPage, /docket-glyph\.png/)
@@ -438,8 +439,10 @@ test('public verification uses a submit-time reCAPTCHA v3 flow', () => {
   assert.match(verificationForm, /window\.grecaptcha/)
   assert.match(verificationForm, /execute\(siteKey, \{ action: RECAPTCHA_ACTION \}\)/)
   assert.match(verificationForm, /if \(!tok \|\| tok\.length < 10\)/)
+  assert.match(verificationForm, /This site is protected by reCAPTCHA and the Google/)
   assert.doesNotMatch(verificationForm, /verify-diag/)
   assert.match(verificationRoute, /recaptcha\/api\/siteverify/)
   assert.match(verificationRoute, /RECAPTCHA_MIN_SCORE/)
   assert.doesNotMatch(verificationRoute, /verify-diag/)
+  assert.match(globalCss, /\.grecaptcha-badge[\s\S]*visibility: hidden/)
 })

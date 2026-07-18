@@ -716,6 +716,12 @@ body {
   pointer-events: none;
 }
 
+/* Google permits hiding the fixed v3 badge when its required branding and
+   policy links remain visible in the verification flow. */
+.grecaptcha-badge {
+  visibility: hidden !important;
+}
+
 @media (prefers-reduced-motion: reduce) {
   /* Live Wire renders its settled end-state instantly. */
   .animate-wire-in,
