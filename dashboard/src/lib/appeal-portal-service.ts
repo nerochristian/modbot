@@ -10,6 +10,57 @@ import { DEFAULT_APPEAL_QUESTIONS, type TicketQuestion } from '@/lib/modules-con
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/
 const APPEALABLE_ACTIONS = new Set(['automod', 'warn', 'mute', 'timeout', 'kick', 'ban', 'tempban', 'softban', 'quarantine'])
 
+type DiscordUserProfile = { username?: string; global_name?: string | null }
+type DiscordGuildProfile = { name?: string; icon?: string | null }
+type DiscordApplicationEmoji = { id: string; name: string; animated?: boolean }
+
+let applicationEmojiCache: { expiresAt: number; items: DiscordApplicationEmoji[] } | null = null
+
+function discordBotToken(): string {
+  const token = process.env.DISCORD_TOKEN?.trim()
+  if (!token) throw new Error('DISCORD_TOKEN is not configured')
+  return token
+}
+
+async function discordGet<T>(path: string): Promise<T | null> {
+  try {
+    const response = await fetch(`https://discord.com/api/v10${path}`, {
+      headers: { Authorization: `Bot ${discordBotToken()}` },
+      cache: 'no-store',
+    })
+    return response.ok ? response.json() as Promise<T> : null
+  } catch {
+    return null
+  }
+}
+
+async function applicationEmojis(): Promise<DiscordApplicationEmoji[]> {
+  if (applicationEmojiCache && applicationEmojiCache.expiresAt > Date.now()) return applicationEmojiCache.items
+  const applicationId = process.env.DISCORD_CLIENT_ID?.trim()
+  if (!applicationId) return []
+  const payload = await discordGet<{ items?: DiscordApplicationEmoji[] }>(`/applications/${applicationId}/emojis`)
+  const items = Array.isArray(payload?.items) ? payload.items : []
+  applicationEmojiCache = { expiresAt: Date.now() + 10 * 60_000, items }
+  return items
+}
+
+async function statusEmoji(kind: 'ban' | 'kick' | 'mute' | 'warn' | 'lock' | 'info') {
+  const defaults = {
+    ban: ['STATUS_BAN_EMOJI_NAME', 'mod_ban', '🔨'],
+    kick: ['STATUS_KICK_EMOJI_NAME', 'mod_kick', '🥾'],
+    mute: ['STATUS_MUTE_EMOJI_NAME', 'mod_mute', '🔇'],
+    warn: ['STATUS_WARN_EMOJI_NAME', 'mod_warn', '⚠️'],
+    lock: ['STATUS_LOCK_EMOJI_NAME', 'mod_lock', '🔒'],
+    info: ['STATUS_INFO_EMOJI_NAME', 'mod_info', 'ℹ️'],
+  } as const
+  const [envName, defaultName, fallback] = defaults[kind]
+  const name = process.env[envName]?.trim() || defaultName
+  const emoji = (await applicationEmojis()).find((item) => item.name === name)
+  return emoji
+    ? { mention: `<${emoji.animated ? 'a' : ''}:${emoji.name}:${emoji.id}>`, component: { id: emoji.id, name: emoji.name, animated: Boolean(emoji.animated) } }
+    : { mention: fallback, component: { name: fallback } }
+}
+
 function tokenHash(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex')
 }
@@ -40,11 +91,9 @@ function parseQuestions(value: string | null | undefined): TicketQuestion[] {
 }
 
 async function discordMessage(channelId: string, payload: Record<string, unknown>): Promise<{ id: string }> {
-  const botToken = process.env.DISCORD_TOKEN?.trim()
-  if (!botToken) throw new Error('DISCORD_TOKEN is not configured')
   const response = await fetch(`https://discord.com/api/v10/channels/${channelId}/messages`, {
     method: 'POST',
-    headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bot ${discordBotToken()}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
     cache: 'no-store',
   })
@@ -53,11 +102,9 @@ async function discordMessage(channelId: string, payload: Record<string, unknown
 }
 
 async function dmChannel(userId: string): Promise<string> {
-  const botToken = process.env.DISCORD_TOKEN?.trim()
-  if (!botToken) throw new Error('DISCORD_TOKEN is not configured')
   const response = await fetch('https://discord.com/api/v10/users/@me/channels', {
     method: 'POST',
-    headers: { Authorization: `Bot ${botToken}`, 'Content-Type': 'application/json' },
+    headers: { Authorization: `Bot ${discordBotToken()}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ recipient_id: userId }),
     cache: 'no-store',
   })
@@ -68,6 +115,7 @@ async function dmChannel(userId: string): Promise<string> {
 }
 
 async function sendPunishmentDm(input: {
+  guildId: string
   userId: string
   caseNumber: number
   action: string
@@ -78,34 +126,56 @@ async function sendPunishmentDm(input: {
   dmChannelId?: string | null
 }): Promise<void> {
   const action = input.action.toLowerCase()
-  const title = ({
-    automod: 'Message removed',
+  const actionText = ({
+    automod: 'Your message was removed',
     warn: 'You received a warning',
-    mute: 'You were muted',
-    timeout: 'You were timed out',
-    kick: 'You were kicked',
-    ban: 'You were banned',
-    tempban: 'You were temporarily banned',
-    softban: 'You were softbanned',
+    mute: 'You have been muted',
+    timeout: 'You have been timed out',
+    kick: 'You have been kicked',
+    ban: 'You have been banned',
+    tempban: 'You have been temporarily banned',
+    softban: 'You have been softbanned',
+    quarantine: 'You have been quarantined',
   } as Record<string, string>)[action] ?? 'Moderation action'
+  const emojiKind = action === 'automod' || action === 'warn'
+    ? 'warn'
+    : action === 'mute' || action === 'timeout'
+      ? 'mute'
+      : action === 'kick'
+        ? 'kick'
+        : action === 'quarantine'
+          ? 'lock'
+          : 'ban'
+  const [profile, guild, actionEmoji, infoEmoji] = await Promise.all([
+    discordGet<DiscordUserProfile>(`/users/${input.userId}`),
+    discordGet<DiscordGuildProfile>(`/guilds/${input.guildId}`),
+    statusEmoji(emojiKind),
+    statusEmoji('info'),
+  ])
+  const title = `${profile?.global_name || profile?.username || 'Member'} !!`
+  const actionLine = `${actionEmoji.mention} **${actionText}**${input.duration ? ` for **${input.duration}**` : ''}`
   const description = [
+    actionLine,
     `**Reason**\n> ${(input.reason || 'No reason provided').slice(0, 700)}`,
-    ...(input.duration ? [`**Duration:** ${input.duration}`] : []),
     ...(input.appealUrl && input.expiresAt
-      ? [`Appeal available until <t:${Math.floor(input.expiresAt.getTime() / 1000)}:R>`]
+      ? [`Appeal available for <t:${Math.floor(input.expiresAt.getTime() / 1000)}:R>`]
       : []),
+    `${infoEmoji.mention} \`user:${input.userId} case:CASE-${String(input.caseNumber).padStart(4, '0')} date:${new Date().toISOString().slice(0, 10)}\``,
   ].join('\n\n')
   const components = input.appealUrl ? [{
     type: 1,
-    components: [{ type: 2, style: 5, label: 'Appeal here', url: input.appealUrl }],
+    components: [{ type: 2, style: 5, label: 'Appeal here', url: input.appealUrl, emoji: infoEmoji.component }],
   }] : []
+  const guildIcon = guild?.icon
+    ? `https://cdn.discordapp.com/icons/${input.guildId}/${guild.icon}.${guild.icon.startsWith('a_') ? 'gif' : 'png'}?size=256`
+    : undefined
   await discordMessage(input.dmChannelId || await dmChannel(input.userId), {
     embeds: [{
       title,
       description,
       color: ['ban', 'tempban', 'softban'].includes(action) ? 0xed4245 : 0xf0b232,
-      footer: { text: `CASE-${String(input.caseNumber).padStart(4, '0')} | Docket` },
-      timestamp: new Date().toISOString(),
+      author: { name: guild?.name || 'Docket' },
+      ...(guildIcon ? { thumbnail: { url: guildIcon } } : {}),
     }],
     components,
     allowed_mentions: { parse: [] },
@@ -130,8 +200,12 @@ export async function issueAppealToken(input: {
   const open = settings.appeals_open !== false
   const eligible = enabled && open && /^https?:\/\//.test(input.publicBaseUrl)
   if (!eligible) {
-    await sendPunishmentDm({ userId: input.targetUserId, caseNumber: input.caseNumber, action: input.action, reason: input.reason, duration: input.duration })
-    return { eligible: false as const, deliveryStatus: 'sent' as const }
+    try {
+      await sendPunishmentDm({ guildId: input.guildId, userId: input.targetUserId, caseNumber: input.caseNumber, action: input.action, reason: input.reason, duration: input.duration, dmChannelId: input.dmChannelId })
+      return { eligible: false as const, deliveryStatus: 'sent' as const }
+    } catch (error) {
+      return { eligible: false as const, deliveryStatus: 'failed' as const, deliveryError: error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500) }
+    }
   }
 
   const token = randomBytes(32).toString('base64url')
