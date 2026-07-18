@@ -34,7 +34,7 @@ from utils.checks import is_admin
 from utils.embeds import ModEmbed
 from utils.components_v2 import branded_panel_container
 from utils.guild_branding import get_guild_brand_assets, resolve_guild_component_emoji
-from utils.status_emojis import get_app_emoji
+from utils.status_emojis import get_app_emoji, sync_status_emojis_to_application
 from utils.server_setup import apply_verification_gate, module_enabled, sync_setup_aliases
 
 # Try to import Pillow for image captchas
@@ -299,7 +299,7 @@ class VerificationPanelLayout(discord.ui.LayoutView):
 
 class WebsiteVerificationLayout(discord.ui.LayoutView):
     """Ephemeral Components v2 card handed to a member after they press Verify me
-    when the server uses website (hCaptcha) verification."""
+    when the server uses website (reCAPTCHA) verification."""
 
     def __init__(self, *, guild: Optional[discord.Guild], url: str):
         super().__init__(timeout=10 * 60)
@@ -1420,6 +1420,10 @@ class Verification(commands.Cog):
         if not getattr(self, "_cleanup_task_started", False):
             setattr(self, "_cleanup_task_started", True)
             self.bot.loop.create_task(_cleanup_loop())
+        try:
+            await sync_status_emojis_to_application(self.bot)
+        except Exception as exc:
+            logger.warning("Could not prepare Docket emojis for verification panels: %s", exc)
         await self._refresh_configured_panels()
 
     @commands.Cog.listener()
