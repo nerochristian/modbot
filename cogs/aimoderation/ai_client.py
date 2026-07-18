@@ -84,24 +84,6 @@ def _galaxy_multimodal_enabled() -> bool:
     return (os.getenv("GALAXY_MULTIMODAL_ENABLED") or "1").strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _galaxy_image_encoded_budget() -> int:
-    """Max base64-encoded image bytes per multimodal request for the Galaxy gateway.
-
-    The Galaxy HTTP gateway rejects request bodies larger than ~100 KB (it
-    misreports the overflow as an ``invalid_messages`` 400). Real Discord images
-    are multiple megabytes, so images must be downscaled before sending. This
-    budget is the total encoded image payload; the remainder of the ~100 KB is
-    left for the system/context text and JSON overhead. Env-tunable so it can be
-    raised without a redeploy if the gateway limit changes.
-    """
-    raw = (os.getenv("GALAXY_IMAGE_ENCODED_BUDGET") or "48000").strip()
-    try:
-        value = int(raw)
-    except ValueError:
-        value = 48_000
-    return min(90_000, max(4_000, value))
-
-
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -1956,45 +1938,6 @@ class AIClient:
             if await collect_message(msg):
                 return list(reversed(images))
         return list(reversed(images))
-
-    @staticmethod
-    def _compress_image_for_galaxy(data: bytes, encoded_budget: int) -> Optional[bytes]:
-        """Downscale/re-encode an image so its base64 form fits the Galaxy gateway.
-
-        Returns JPEG bytes whose base64 length is <= ``encoded_budget``, or None
-        if the image cannot be shrunk that far (e.g. decode failure). Runs in a
-        worker thread via ``asyncio.to_thread`` since Pillow is blocking.
-
-        Base64 inflates by 4/3, so the raw JPEG must stay under ~3/4 of the
-        encoded budget. We step down resolution and quality until it fits.
-        """
-        try:
-            from PIL import Image
-        except Exception:
-            logger.warning("Pillow unavailable; cannot compress images for Galaxy.", exc_info=True)
-            return None
-
-        # Raw byte ceiling that yields an encoded payload within budget.
-        raw_ceiling = max(1_000, (encoded_budget * 3) // 4)
-        try:
-            import io
-
-            with Image.open(io.BytesIO(data)) as img:
-                img = img.convert("RGB")
-                # Progressively smaller longest-edge sizes, then quality passes.
-                for max_edge in (1024, 768, 512, 384, 256, 192, 128):
-                    scaled = img.copy()
-                    scaled.thumbnail((max_edge, max_edge), Image.LANCZOS)
-                    for quality in (80, 65, 50, 35, 25):
-                        buf = io.BytesIO()
-                        scaled.save(buf, format="JPEG", quality=quality, optimize=True)
-                        raw = buf.getvalue()
-                        if len(raw) <= raw_ceiling:
-                            return raw
-            return None
-        except Exception:
-            logger.warning("Failed to compress image for Galaxy multimodal request.", exc_info=True)
-            return None
 
     @staticmethod
     def _is_supported_image_attachment(attachment: Any) -> bool:
