@@ -1058,7 +1058,11 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
         if not await cursor.fetchone():
             cursor = await db.execute("SELECT guild_id, settings FROM guild_settings")
             for row in await cursor.fetchall():
-                raw_settings = _row_get(row, "settings")
+                if isinstance(row, (tuple, list)):
+                    guild_id, raw_settings = row[0], row[1]
+                else:
+                    guild_id = _row_get(row, "guild_id")
+                    raw_settings = _row_get(row, "settings")
                 try:
                     guild_settings = json.loads(raw_settings) if raw_settings else {}
                 except (TypeError, ValueError, json.JSONDecodeError):
@@ -1072,7 +1076,7 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
                 guild_settings = normalize_runtime_settings(guild_settings)
                 await db.execute(
                     "UPDATE guild_settings SET settings = ? WHERE guild_id = ?",
-                    (json.dumps(guild_settings), int(_row_get(row, "guild_id"))),
+                    (json.dumps(guild_settings), int(guild_id)),
                 )
             await db.execute(
                 "INSERT OR IGNORE INTO dashboard_schema_migrations (key) VALUES (?)",
