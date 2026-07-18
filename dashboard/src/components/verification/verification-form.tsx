@@ -12,7 +12,9 @@ type RecaptchaApi = {
 
 declare global {
   interface Window {
-    grecaptcha?: RecaptchaApi
+    // reCAPTCHA Enterprise exposes grecaptcha.enterprise; the classic build
+    // exposes grecaptcha directly. We support whichever the loaded script provides.
+    grecaptcha?: RecaptchaApi & { enterprise?: RecaptchaApi }
   }
 }
 
@@ -32,12 +34,13 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
   // expire after ~2 minutes, so we execute at submit time rather than on load.
   const runChallenge = useCallback((): Promise<string> => {
     return new Promise((resolve, reject) => {
-      if (!window.grecaptcha) {
+      const api = window.grecaptcha?.enterprise ?? window.grecaptcha
+      if (!api) {
         reject(new Error('The human check could not load. Refresh the page and try again.'))
         return
       }
-      window.grecaptcha.ready(() => {
-        window.grecaptcha!
+      api.ready(() => {
+        api
           .execute(siteKey, { action: RECAPTCHA_ACTION })
           .then((tok) => {
             console.error('[verify-diag] execute token length:', tok ? tok.length : 'EMPTY')
