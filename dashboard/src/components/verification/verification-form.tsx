@@ -5,47 +5,43 @@ import Script from 'next/script'
 import { ArrowRight, CheckCircle2, Loader2, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-type TurnstileRenderOptions = {
+type HcaptchaRenderOptions = {
   sitekey: string
-  action: string
   theme: 'dark'
-  size: 'flexible'
-  retry: 'auto'
-  'retry-interval': number
+  size: 'normal'
   callback: (token: string) => void
   'expired-callback': () => void
-  'timeout-callback': () => void
+  'chalexpired-callback': () => void
   'error-callback': (code?: string) => void
 }
 
-type TurnstileApi = {
-  render: (target: HTMLElement, options: TurnstileRenderOptions) => string
+type HcaptchaApi = {
+  render: (target: HTMLElement, options: HcaptchaRenderOptions) => string
   remove: (widgetId?: string) => void
   reset: (widgetId?: string) => void
 }
 
 declare global {
   interface Window {
-    turnstile?: TurnstileApi
-    __docketTurnstileReady?: () => void
+    hcaptcha?: HcaptchaApi
+    __docketHcaptchaReady?: () => void
   }
 }
 
-const TRANSIENT_ERROR_PREFIXES = ['300', '600']
+// hCaptcha reports errors by name. Only genuine connectivity/challenge failures
+// are worth auto-retrying — config problems (bad sitekey) loop forever otherwise.
+const TRANSIENT_ERRORS = new Set(['network-error', 'challenge-error', 'rate-limited'])
 const MAX_WIDGET_RETRIES = 3
 
-function describeTurnstileError(code?: string): string {
+function describeHcaptchaError(code?: string): string {
   if (!code) return 'The human check could not load. Refresh the page and try again.'
-  if (TRANSIENT_ERROR_PREFIXES.some((prefix) => code.startsWith(prefix))) {
-    return `The human check lost its connection (error ${code}). Retrying automatically.`
+  if (TRANSIENT_ERRORS.has(code)) {
+    return `The human check lost its connection (${code}). Retrying automatically.`
   }
-  if (code === '110200') {
-    return `This verification address is not approved in Cloudflare yet (error ${code}). A server admin must add this hostname to the Turnstile widget.`
+  if (code === 'invalid-sitekey' || code === 'invalid-data') {
+    return `The human check is misconfigured (${code}). Let a server admin know.`
   }
-  if (code.startsWith('110')) {
-    return `The human check is misconfigured (error ${code}). Let a server admin know.`
-  }
-  return `The human check reported error ${code}. Refresh the page and try again.`
+  return `The human check reported an error (${code}). Refresh the page and try again.`
 }
 
 export function VerificationForm({ token, siteKey }: { token: string; siteKey: string }) {
