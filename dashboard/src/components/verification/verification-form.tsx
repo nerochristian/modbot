@@ -31,10 +31,11 @@ declare global {
   }
 }
 
-// Cloudflare's "Unable to connect" surfaces as a 1100xx network error. These
-// are transient far more often than they are terminal, so we reset the widget
-// a few times before giving up and telling the visitor what actually failed.
-const NETWORK_ERROR_PREFIXES = ['1100', '1101', '1102', '600']
+// Genuinely transient Turnstile failures — challenge execution/timeout and
+// generic connectivity. These are worth resetting the widget for. Config errors
+// (bad sitekey, domain not allowed) are deliberately NOT here: retrying them
+// just loops forever on a problem only the server owner can fix.
+const NETWORK_ERROR_PREFIXES = ['300', '600']
 const MAX_WIDGET_RETRIES = 3
 
 function describeTurnstileError(code?: string): string {
@@ -42,7 +43,16 @@ function describeTurnstileError(code?: string): string {
   if (NETWORK_ERROR_PREFIXES.some((prefix) => code.startsWith(prefix))) {
     return `Could not reach the human check (error ${code}). This is usually a temporary network issue—retrying automatically.`
   }
-  if (code.startsWith('1100')) return `The human check failed to initialize (error ${code}).`
+  // 110200 = the widget's domain isn't authorized for this Turnstile sitekey.
+  // Permanent until the server owner adds the domain in Cloudflare, so say so
+  // plainly rather than pretending it will retry away.
+  if (code === '110200') {
+    return `This server's verification page isn't authorized yet (error ${code}). Let a server admin know — they need to add this site to the Cloudflare Turnstile allowlist.`
+  }
+  // Other 110xxx are sitekey/config problems the visitor also can't resolve.
+  if (code.startsWith('110')) {
+    return `The human check is misconfigured (error ${code}). Please let a server admin know.`
+  }
   return `The human check reported error ${code}. Refresh the page and try again.`
 }
 
