@@ -44,6 +44,16 @@ def test_primary_ban_path_suppresses_gateway_event_before_banning() -> None:
     assert function.index(suppression) < function.index("await user.ban(")
 
 
+def test_primary_ban_path_preopens_dm_before_removing_member() -> None:
+    source = (ROOT / "cogs" / "moderation" / "extensions" / "management.py").read_text(
+        encoding="utf-8-sig"
+    )
+    function = source[source.index("    async def _ban_logic("):source.index("    async def _unban_logic(")]
+
+    assert function.index("await self.prepare_dm_channel(user)") < function.index("await user.ban(")
+    assert "delivery_channel=dm_channel" in function
+
+
 def test_gateway_ban_listener_consumes_suppression_before_logging() -> None:
     source = (ROOT / "cogs" / "logging_cog.py").read_text(encoding="utf-8-sig")
     function = source[source.index("    async def on_member_ban("):source.index("    async def on_member_unban(")]
