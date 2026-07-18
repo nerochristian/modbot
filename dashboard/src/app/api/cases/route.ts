@@ -6,7 +6,6 @@ import {
   isValidIdempotencyKey,
   ProtectedModerationTargetError,
 } from '@/lib/moderation-service'
-import { issueAppealToken } from '@/lib/appeal-portal-service'
 import { dashboardBaseUrl } from '@/lib/discord'
 import { caseSchema } from '@/lib/validation'
 
@@ -158,6 +157,7 @@ export async function POST(request: Request) {
       severity: data.severity,
       durationHours,
       idempotencyKey,
+      publicBaseUrl: dashboardBaseUrl(request.url),
     })
     const response = present(result.row)
     if (result.row.execution_status === 'pending') {
@@ -173,24 +173,7 @@ export async function POST(request: Request) {
         { case: response },
       )
     }
-    const appeal = result.replayed
-      ? { eligible: false as const, replayed: true as const }
-      : await issueAppealToken({
-          guildId: guard.selectedGuildId!,
-          caseId: result.row.id,
-          caseNumber: result.row.case_number,
-          targetUserId: data.memberId,
-          action: data.type,
-          reason: data.reason,
-          duration: durationHours ? `${durationHours} hour(s)` : null,
-          publicBaseUrl: dashboardBaseUrl(request.url),
-          dmChannelId: result.dmChannelId,
-        }).catch((error) => ({
-          eligible: true as const,
-          deliveryStatus: 'failed',
-          error: error instanceof Error ? error.message : String(error),
-        }))
-    return created({ ...response, replayed: result.replayed, idempotencyKey, appeal })
+    return created({ ...response, replayed: result.replayed, idempotencyKey, appeal: result.appeal })
   } catch (error) {
     if (error instanceof ProtectedModerationTargetError) return apiError(error.message, 409)
     return handleError(error)

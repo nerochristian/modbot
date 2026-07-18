@@ -12,6 +12,7 @@ import {
   sendBotChannelMessage,
 } from '@/lib/discord'
 import { getBotGuildSettings } from '@/lib/bot-settings'
+import { issueAppealToken } from '@/lib/appeal-portal-service'
 
 export type ModerationActor = {
   id: string
@@ -29,6 +30,7 @@ export type CreateModerationInput = {
   channel?: string | null
   durationHours?: number | null
   idempotencyKey: string
+  publicBaseUrl: string
 }
 
 export class ProtectedModerationTargetError extends Error {
@@ -256,7 +258,7 @@ async function createPendingCase(input: CreateModerationInput): Promise<{ row: M
   })
 }
 
-export async function createModerationCase(input: CreateModerationInput): Promise<{ row: ModerationCaseRow; replayed: boolean; dmChannelId: string | null }> {
+export async function createModerationCase(input: CreateModerationInput): Promise<{ row: ModerationCaseRow; replayed: boolean; appeal: unknown }> {
   await ensureDashboardBackendSchema()
   const settings = await getBotGuildSettings(input.guildId)
   await assertTargetIsNotProtected(input, settings)
@@ -270,9 +272,9 @@ export async function createModerationCase(input: CreateModerationInput): Promis
         recoveredPendingCommand: true,
         executionStatus: 'succeeded',
       })
-      return { row: (await getModerationCase(input.guildId, pending.row.id)) ?? pending.row, replayed: true, dmChannelId: null }
+      return { row: (await getModerationCase(input.guildId, pending.row.id)) ?? pending.row, replayed: true, appeal: { eligible: false, replayed: true } }
     }
-    return { ...pending, dmChannelId: null }
+    return { ...pending, appeal: { eligible: false, replayed: true } }
   }
 
   const row = pending.row
@@ -283,6 +285,23 @@ export async function createModerationCase(input: CreateModerationInput): Promis
   const dmChannelId = shouldPrepareDm
     ? await openBotDirectMessageChannel(input.targetUserId).catch(() => null)
     : null
+  const appeal = shouldPrepareDm
+    ? await issueAppealToken({
+        guildId: input.guildId,
+        caseId: row.id,
+        caseNumber: row.case_number,
+        targetUserId: input.targetUserId,
+        action: input.action,
+        reason: input.reason,
+        duration: input.durationHours ? `${input.durationHours} hour(s)` : null,
+        publicBaseUrl: input.publicBaseUrl,
+        dmChannelId,
+      }).catch((error) => ({
+        eligible: true,
+        deliveryStatus: 'failed',
+        error: error instanceof Error ? error.message : String(error),
+      }))
+    : { eligible: false }
   try {
     if (!['warn', 'note'].includes(input.action)) {
       await executeModerationAction(
@@ -322,7 +341,7 @@ export async function createModerationCase(input: CreateModerationInput): Promis
       executionStatus: 'failed',
     }).catch(() => undefined)
   }
-  return { row: (await getModerationCase(input.guildId, row.id)) ?? row, replayed: false, dmChannelId }
+  return { row: (await getModerationCase(input.guildId, row.id)) ?? row, replayed: false, appeal }
 }
 
 async function executeReversalRequest(guildId: string, userId: string, action: 'unban' | 'clear_timeout'): Promise<void> {
