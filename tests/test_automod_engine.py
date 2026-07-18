@@ -407,7 +407,7 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
         expires_at = datetime.now(timezone.utc) + timedelta(days=7)
         user = SimpleNamespace(id=55, display_name="Kayrozaa")
 
-        embed = build_punishment_notice(
+        view = build_punishment_notice(
             guild=guild,
             user=user,
             action="Ban",
@@ -415,18 +415,23 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
             case_number=12,
             duration="7 days",
             appeal_expires_at=expires_at,
+            appeal_url="https://docketbot.xyz/appeal/token",
         )
 
-        self.assertEqual(embed.title, "Kayrozaa !!")
-        self.assertEqual(embed.author.name, "The Supreme People")
-        self.assertEqual(embed.thumbnail.url, "https://example.com/guild.png")
-        self.assertEqual(embed.fields, [])
-        self.assertIn("**You have been banned** for **7 days**", embed.description)
-        self.assertIn("**Reason**\n> Repeated scam links", embed.description)
-        self.assertIn("Appeal available for", embed.description)
-        self.assertIn("`user:55 case:CASE-0012 date:", embed.description)
-        self.assertIsNone(embed.footer.text)
-        self.assertIsNone(embed.timestamp)
+        self.assertIsInstance(view, discord.ui.LayoutView)
+        container = view.children[0]
+        self.assertIsInstance(container, discord.ui.Container)
+        section = container.children[0]
+        self.assertIsInstance(section, discord.ui.Section)
+        header = next(item.content for item in section.children if isinstance(item, discord.ui.TextDisplay))
+        details = next(item.content for item in container.children if isinstance(item, discord.ui.TextDisplay))
+        self.assertIn("## Kayrozaa !!", header)
+        self.assertIn("You have been **banned** for **7 days**", header)
+        self.assertIn("**Reason**\n> Repeated scam links", details)
+        self.assertIn("`CASE-0012 • 55 •", details)
+        self.assertIsInstance(view.children[1], discord.ui.TextDisplay)
+        self.assertIn("Appeal available for", view.children[1].content)
+        self.assertIsInstance(view.children[2], discord.ui.ActionRow)
 
     async def test_appeal_expiry_is_stored_as_naive_utc_for_postgres(self) -> None:
         source = datetime(2026, 7, 18, 16, 30, tzinfo=timezone(timedelta(hours=-5)))

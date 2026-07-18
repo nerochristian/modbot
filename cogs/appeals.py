@@ -62,15 +62,15 @@ def _database_timestamp(value: datetime) -> datetime:
 def _action_copy(action: str) -> tuple[str, str]:
     normalized = action.strip().lower()
     labels = {
-        "automod": ("warn", "Your message was removed"),
-        "warn": ("warn", "You received a warning"),
-        "mute": ("mute", "You have been muted"),
-        "timeout": ("mute", "You have been timed out"),
-        "kick": ("kick", "You have been kicked"),
-        "ban": ("ban", "You have been banned"),
-        "tempban": ("ban", "You have been temporarily banned"),
-        "softban": ("ban", "You have been softbanned"),
-        "quarantine": ("lock", "You have been quarantined"),
+        "automod": ("warn", "Your message was **removed**"),
+        "warn": ("warn", "You received a **warning**"),
+        "mute": ("mute", "You have been **muted**"),
+        "timeout": ("mute", "You have been **timed out**"),
+        "kick": ("kick", "You have been **kicked**"),
+        "ban": ("ban", "You have been **banned**"),
+        "tempban": ("ban", "You have been **temporarily banned**"),
+        "softban": ("ban", "You have been **softbanned**"),
+        "quarantine": ("lock", "You have been **quarantined**"),
     }
     return labels.get(normalized, ("warning", "Moderation action"))
 
@@ -84,34 +84,60 @@ def build_punishment_notice(
     case_number: int,
     duration: Optional[str] = None,
     appeal_expires_at: Optional[datetime] = None,
-) -> discord.Embed:
+    appeal_url: Optional[str] = None,
+) -> discord.ui.LayoutView:
     emoji_kind, action_text = _action_copy(action)
     emoji = get_app_emoji(emoji_kind)
-    action_line = f"{emoji} **{action_text}**" if emoji else f"**{action_text}**"
+    action_line = f"{emoji} {action_text}" if emoji else action_text
     if duration:
         action_line += f" for **{duration}**"
 
-    detail_lines = [action_line, f"**Reason**\n> {str(reason or 'No reason provided')[:700]}"]
-    if appeal_expires_at:
-        detail_lines.append(f"Appeal available for <t:{int(appeal_expires_at.timestamp())}:R>")
-
+    member_name = discord.utils.escape_markdown(
+        str(getattr(user, "display_name", None) or getattr(user, "name", None) or "Member")
+    )[:80]
+    header = f"## {member_name} !!\n{action_line}"
+    reason_text = str(reason or "No reason provided")[:700]
     info_emoji = get_app_emoji("info")
-    identity = f"user:{user.id} " if user is not None else ""
-    detail_lines.append(
-        f"{info_emoji + ' ' if info_emoji else ''}`{identity}case:CASE-{case_number:04d} "
-        f"date:{datetime.now(timezone.utc):%Y-%m-%d}`"
-    )
-
-    embed = discord.Embed(
-        title=f"{getattr(user, 'display_name', None) or getattr(user, 'name', None) or 'Member'} !!",
-        description="\n\n".join(detail_lines),
-        color=0xED4245 if action.strip().lower() in {"ban", "tempban", "softban"} else 0xF0B232,
+    identity = f" • {user.id}" if user is not None else ""
+    details = (
+        f"**Reason**\n> {reason_text}\n\n"
+        f"-# {info_emoji + ' ' if info_emoji else ''}`CASE-{case_number:04d}{identity} • "
+        f"{datetime.now(timezone.utc):%Y-%m-%d}`"
     )
     guild_icon = getattr(getattr(guild, "icon", None), "url", None)
-    embed.set_author(name=guild.name)
+    children: list[discord.ui.Item[Any]] = []
     if guild_icon:
-        embed.set_thumbnail(url=guild_icon)
-    return embed
+        children.append(
+            discord.ui.Section(
+                discord.ui.TextDisplay(header),
+                accessory=discord.ui.Thumbnail(guild_icon),
+            )
+        )
+    else:
+        children.append(discord.ui.TextDisplay(header))
+    children.extend(
+        [
+            discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+            discord.ui.TextDisplay(details),
+        ]
+    )
+
+    view = discord.ui.LayoutView(timeout=None)
+    accent_color = 0xED4245 if action.strip().lower() in {"ban", "tempban", "softban"} else 0xF0B232
+    view.add_item(discord.ui.Container(*children, accent_color=accent_color))
+    if appeal_expires_at:
+        view.add_item(discord.ui.TextDisplay(f"Appeal available for <t:{int(appeal_expires_at.timestamp())}:R>"))
+    if appeal_url:
+        view.add_item(
+            discord.ui.ActionRow(
+                discord.ui.Button(
+                    label="Appeal here",
+                    url=appeal_url,
+                    emoji=get_app_emoji("info") or None,
+                )
+            )
+        )
+    return view
 
 
 class Appeals(commands.Cog):
@@ -213,7 +239,7 @@ class Appeals(commands.Cog):
                     token_row_id = int(row[0]) if row else None
                 appeal_url = f"{base_url}/appeal/{token}"
 
-        embed = build_punishment_notice(
+        view = build_punishment_notice(
             guild=guild,
             user=user,
             action=action,
@@ -221,20 +247,12 @@ class Appeals(commands.Cog):
             case_number=case_number,
             duration=duration,
             appeal_expires_at=expires_at if appeal_url else None,
+            appeal_url=appeal_url,
         )
-        view = discord.ui.View(timeout=None)
-        if appeal_url:
-            view.add_item(
-                discord.ui.Button(
-                    label="Appeal here",
-                    url=appeal_url,
-                    emoji=get_app_emoji("info") or None,
-                )
-            )
         delivery_status = "sent"
         delivery_error: Optional[str] = None
         try:
-            await (delivery_channel or user).send(embed=embed, view=view if appeal_url else None)
+            await (delivery_channel or user).send(view=view)
         except (discord.Forbidden, discord.HTTPException) as exc:
             delivery_status = "failed"
             delivery_error = str(exc)[:500]
