@@ -382,7 +382,7 @@ export const MODULE_DEFINITIONS: readonly ModuleDefinition[] = [
     defaultEnabled: false,
     special: 'verification',
     fields: [
-      { key: 'verification_method', label: 'Verification method', type: 'select', fallback: 'discord', hint: 'Use Docket inside Discord, or send members to the protected website check.', options: [{ label: 'Discord captcha', value: 'discord' }, { label: 'Website · Cloudflare Turnstile', value: 'website' }] },
+      { key: 'verification_method', label: 'Verification method', type: 'select', fallback: 'discord', hint: 'Use Docket inside Discord, or send members to the protected website check.', options: [{ label: 'Discord captcha', value: 'discord' }, { label: 'Website · hCaptcha', value: 'website' }] },
       { key: 'verified_role', label: 'Verified role', type: 'roleId', hint: 'Granted once a member verifies' },
       { key: 'unverified_role', label: 'Unverified role', type: 'roleId', hint: 'Applied while a member is waiting to verify' },
       { key: 'verify_channel', label: 'Verification channel', type: 'channelId', channelTypes: [0, 5], hint: 'Channel that hosts the verification panel.' },
