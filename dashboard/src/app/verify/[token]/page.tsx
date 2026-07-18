@@ -53,7 +53,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ token: 
           </div>
         </header>
 
-        <div className="px-5 py-7 sm:px-8 sm:py-9">
+        <div className="px-4 py-7 sm:px-8 sm:py-9">
           <div className="mb-7 border-l-2 border-[#2f7bff] pl-4 sm:pl-5">
             <p className="font-mono text-[0.625rem] font-bold uppercase tracking-[0.2em] text-[#6ca2ff]">Access checkpoint</p>
             <h1 className="mt-3 max-w-lg font-display text-[2rem] font-semibold leading-[1.05] tracking-[-0.035em] sm:text-[2.65rem]">

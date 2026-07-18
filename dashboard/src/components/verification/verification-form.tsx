@@ -189,7 +189,7 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
           <span className="font-mono text-[0.625rem] font-semibold uppercase tracking-[0.14em] text-[#6680a8]">Step 1 of 1</span>
         </div>
 
-        <div className="space-y-4 p-4 sm:p-5">
+        <div className="space-y-4 p-3 sm:p-5">
           <div className="relative min-h-[72px] overflow-hidden rounded-xl border border-[#243652] bg-[#070d18] p-2">
             {(state === 'idle' || state === 'retrying') && !challenge && (
               <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 text-xs text-[#7f91ad]">
