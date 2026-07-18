@@ -89,7 +89,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ token: 
         </div>
 
         <footer className="flex flex-col gap-2 border-t border-[#1d2b45] bg-[#080e1b] px-5 py-4 text-[0.6875rem] text-[#71809a] sm:flex-row sm:items-center sm:justify-between sm:px-7">
-          <span className="flex items-center gap-1.5"><ShieldCheck className="size-3.5 text-[#6ca2ff]" /> Secured by Docket + hCaptcha</span>
+          <span className="flex items-center gap-1.5"><ShieldCheck className="size-3.5 text-[#6ca2ff]" /> Secured by Docket + reCAPTCHA</span>
           <span className="flex items-center gap-1.5 font-mono uppercase tracking-[0.1em]"><LockKeyhole className="size-3" /> Private session</span>
         </footer>
       </section>
