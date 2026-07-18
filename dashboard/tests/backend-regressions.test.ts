@@ -431,9 +431,11 @@ test('public verification uses an explicit resilient Turnstile flow', () => {
 
   assert.match(verificationPage, /Prove you&amp;apos;re human|Prove you&apos;re human/)
   assert.match(verificationPage, /docket-glyph\.png/)
-  assert.match(verificationForm, /api\.js\?render=explicit/)
+  assert.match(verificationForm, /onload=__docketTurnstileReady&render=explicit/)
   assert.match(verificationForm, /window\.turnstile\.render/)
   assert.match(verificationForm, /'expired-callback'/)
   assert.match(verificationForm, /'error-callback'/)
   assert.match(verificationForm, /window\.turnstile\.reset/)
+  assert.match(verificationForm, /code === '110200'/)
+  assert.match(verificationForm, /TRANSIENT_ERROR_PREFIXES = \['300', '600'\]/)
 })

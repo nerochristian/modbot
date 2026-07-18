@@ -1,70 +1,128 @@
 'use client'
 
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { FormEvent, useCallback, useEffect, useRef, useState } from 'react'
 import Script from 'next/script'
 import { ArrowRight, CheckCircle2, Loader2, RotateCcw, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
+type TurnstileRenderOptions = {
+  sitekey: string
+  action: string
+  theme: 'dark'
+  size: 'flexible'
+  retry: 'auto'
+  'retry-interval': number
+  callback: (token: string) => void
+  'expired-callback': () => void
+  'timeout-callback': () => void
+  'error-callback': (code?: string) => void
+}
+
 type TurnstileApi = {
-  render: (target: HTMLElement, options: {
-    sitekey: string
-    action: string
-    theme: 'dark'
-    size: 'flexible'
-    callback: (token: string) => void
-    'expired-callback': () => void
-    'error-callback': () => void
-  }) => string
-  remove: (widgetId: string) => void
-  reset: (widgetId: string) => void
+  render: (target: HTMLElement, options: TurnstileRenderOptions) => string
+  remove: (widgetId?: string) => void
+  reset: (widgetId?: string) => void
 }
 
 declare global {
   interface Window {
     turnstile?: TurnstileApi
+    __docketTurnstileReady?: () => void
   }
 }
 
+const TRANSIENT_ERROR_PREFIXES = ['300', '600']
+const MAX_WIDGET_RETRIES = 3
+
+function describeTurnstileError(code?: string): string {
+  if (!code) return 'The human check could not load. Refresh the page and try again.'
+  if (TRANSIENT_ERROR_PREFIXES.some((prefix) => code.startsWith(prefix))) {
+    return `The human check lost its connection (error ${code}). Retrying automatically.`
+  }
+  if (code === '110200') {
+    return `This verification address is not approved in Cloudflare yet (error ${code}). A server admin must add this hostname to the Turnstile widget.`
+  }
+  if (code.startsWith('110')) {
+    return `The human check is misconfigured (error ${code}). Let a server admin know.`
+  }
+  return `The human check reported error ${code}. Refresh the page and try again.`
+}
+
 export function VerificationForm({ token, siteKey }: { token: string; siteKey: string }) {
-  const [state, setState] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
+  const [state, setState] = useState<'idle' | 'ready' | 'retrying' | 'submitting' | 'success' | 'error'>('idle')
   const [message, setMessage] = useState('')
-  const [scriptReady, setScriptReady] = useState(false)
   const [challenge, setChallenge] = useState('')
+  const [canReset, setCanReset] = useState(true)
   const widgetHost = useRef<HTMLDivElement>(null)
   const widgetId = useRef<string | null>(null)
+  const retries = useRef(0)
+  const retryTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  useEffect(() => {
-    if (!scriptReady || !widgetHost.current || !window.turnstile || widgetId.current) return
+  const renderWidget = useCallback(() => {
+    if (!widgetHost.current || !window.turnstile || widgetId.current) return
     widgetId.current = window.turnstile.render(widgetHost.current, {
       sitekey: siteKey,
       action: 'docket-verification',
       theme: 'dark',
       size: 'flexible',
+      retry: 'auto',
+      'retry-interval': 4_000,
       callback: (value) => {
+        retries.current = 0
         setChallenge(value)
-        setState('idle')
+        setCanReset(true)
+        setState('ready')
         setMessage('')
       },
       'expired-callback': () => {
         setChallenge('')
+        setCanReset(true)
         setState('error')
         setMessage('The human check expired. Complete it again to continue.')
       },
-      'error-callback': () => {
+      'timeout-callback': () => {
         setChallenge('')
+        setState('retrying')
+        setMessage('The human check timed out. Restarting it now.')
+        if (window.turnstile && widgetId.current) window.turnstile.reset(widgetId.current)
+      },
+      'error-callback': (code) => {
+        setChallenge('')
+        const transient = !code || TRANSIENT_ERROR_PREFIXES.some((prefix) => code.startsWith(prefix))
+        if (transient && retries.current < MAX_WIDGET_RETRIES) {
+          retries.current += 1
+          setCanReset(true)
+          setState('retrying')
+          setMessage(describeTurnstileError(code))
+          retryTimer.current = setTimeout(() => {
+            if (window.turnstile && widgetId.current) window.turnstile.reset(widgetId.current)
+          }, 1_500)
+          return
+        }
+        setCanReset(code !== '110200' && !code?.startsWith('110'))
         setState('error')
-        setMessage('Cloudflare could not load the human check. Refresh the page and try again.')
+        setMessage(describeTurnstileError(code))
       },
     })
+  }, [siteKey])
 
+  useEffect(() => {
+    window.__docketTurnstileReady = renderWidget
+    if (window.turnstile) renderWidget()
     return () => {
+      if (retryTimer.current) clearTimeout(retryTimer.current)
       if (widgetId.current && window.turnstile) window.turnstile.remove(widgetId.current)
       widgetId.current = null
+      delete window.__docketTurnstileReady
     }
-  }, [scriptReady, siteKey])
+  }, [renderWidget])
 
   function resetChallenge() {
+    retries.current = 0
     setChallenge('')
+    setCanReset(true)
+    setState('idle')
+    setMessage('')
     if (widgetId.current && window.turnstile) window.turnstile.reset(widgetId.current)
   }
 
@@ -89,8 +147,10 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
       setMessage('Your server access is open. You can return to Discord now.')
     } catch (error) {
       setState('error')
+      setCanReset(true)
       setMessage(error instanceof Error ? error.message : 'Verification could not be completed')
-      resetChallenge()
+      setChallenge('')
+      if (widgetId.current && window.turnstile) window.turnstile.reset(widgetId.current)
     }
   }
 
@@ -111,9 +171,9 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
   return (
     <>
       <Script
-        src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
+        src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__docketTurnstileReady&render=explicit"
         strategy="afterInteractive"
-        onReady={() => setScriptReady(true)}
+        onReady={renderWidget}
       />
       <form onSubmit={submit} className="overflow-hidden rounded-2xl border border-[#1e3152] bg-[#0b1425]">
         <div className="flex items-center justify-between border-b border-[#1e3152] bg-[#0d192d] px-4 py-3 sm:px-5">
@@ -131,9 +191,9 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
 
         <div className="space-y-4 p-4 sm:p-5">
           <div className="relative min-h-[72px] overflow-hidden rounded-xl border border-[#243652] bg-[#070d18] p-2">
-            {!scriptReady && (
-              <div className="absolute inset-0 flex items-center justify-center gap-2 text-xs text-[#7f91ad]">
-                <Loader2 className="size-4 animate-spin text-[#6ca2ff]" /> Loading secure check…
+            {(state === 'idle' || state === 'retrying') && !challenge && (
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 text-xs text-[#7f91ad]">
+                <Loader2 className="size-4 animate-spin text-[#6ca2ff]" /> {state === 'retrying' ? 'Reconnecting secure check…' : 'Loading secure check…'}
               </div>
             )}
             <div ref={widgetHost} className="min-h-[56px]" aria-label="Cloudflare human verification" />
@@ -144,9 +204,17 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
               <span className="flex items-start gap-2 leading-5">
                 <TriangleAlert className="mt-0.5 size-4 shrink-0" /> {message}
               </span>
-              <button type="button" onClick={resetChallenge} className="focus-ring shrink-0 rounded-md p-1 text-[#ff9baa] transition hover:bg-[#3a1b25]" aria-label="Reset human check">
-                <RotateCcw className="size-4" />
-              </button>
+              {canReset && (
+                <button type="button" onClick={resetChallenge} className="focus-ring shrink-0 rounded-md p-1 text-[#ff9baa] transition hover:bg-[#3a1b25]" aria-label="Reset human check">
+                  <RotateCcw className="size-4" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {state === 'retrying' && (
+            <div className="flex items-start gap-2 rounded-xl border border-[#294066] bg-[#101d33] px-3.5 py-3 text-sm text-[#9db8e6]" role="status">
+              <Loader2 className="mt-0.5 size-4 shrink-0 animate-spin" /> <span className="leading-5">{message}</span>
             </div>
           )}
 
