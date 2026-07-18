@@ -1,11 +1,53 @@
+# ---- Node / dashboard ----
 node_modules/
 build/
 dist/
 coverage/
-.DS_Store
-*.log
+.next/
+out/
+*.tsbuildinfo
+.turbo/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# ---- Environment / secrets ----
 .env*
 !.env.example
+*.pem
+*.key
+id_rsa
+id_rsa.*
+vps_key*
+credentials*.json
 
-# Runtime bot PID lockfile — must never be tracked (dirties tree, blocks auto-deploy)
+# ---- Databases / runtime data ----
+*.db
+*.sqlite
+*.sqlite3
+dashboard/data/
+backups/
+
+# ---- Logs & OS cruft ----
+*.log
+.DS_Store
+Thumbs.db
+
+# ---- Runtime bot PID lockfile — must never be tracked (dirties tree, blocks auto-deploy) ----
 .modbot.lock
+
+# ---- Deploy scratch ----
+.deploy-canary
