@@ -1369,7 +1369,7 @@ const OPERATIONAL_SECTIONS: Record<OperationalSpecial, OperationalSectionDefinit
     {
       register: 'METHOD / 01',
       title: 'Human check',
-      description: 'Choose whether members verify inside Discord or through the Cloudflare-protected website.',
+      description: 'Choose whether members verify inside Discord or through the hCaptcha-protected website.',
       keys: ['verification_method'],
     },
     {
