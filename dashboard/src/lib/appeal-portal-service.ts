@@ -124,7 +124,7 @@ export async function issueAppealToken(input: {
   await ensureDashboardBackendSchema()
   const settings = await getBotGuildSettings(input.guildId)
   if (!APPEALABLE_ACTIONS.has(input.action.toLowerCase())) return { eligible: false as const }
-  const enabled = settings.appeals_enabled === true
+  const enabled = settings.appeals_enabled !== false
   const open = settings.appeals_open !== false
   const eligible = enabled && open && /^https?:\/\//.test(input.publicBaseUrl)
   if (!eligible) {
@@ -200,7 +200,7 @@ export async function getAppealPortalCase(token: string) {
   const row = await findPortalToken(token)
   if (!row) return { kind: 'not_found' as const }
   const settings = await getBotGuildSettings(row.guild_id)
-  if (settings.appeals_enabled !== true || settings.appeals_open === false) return { kind: 'closed' as const }
+  if (settings.appeals_enabled === false || settings.appeals_open === false) return { kind: 'closed' as const }
   if (new Date(row.expires_at).getTime() <= Date.now()) return { kind: 'expired' as const }
   if (row.used_at) return { kind: 'used' as const }
   return {
@@ -291,7 +291,7 @@ export async function submitAppealWithToken(token: string, answers: Record<strin
     const row = tokenResult.rows[0]
     if (!row) return { kind: 'not_found' as const }
     const settings = await getBotGuildSettings(row.guild_id)
-    if (settings.appeals_enabled !== true || settings.appeals_open === false) return { kind: 'closed' as const }
+    if (settings.appeals_enabled === false || settings.appeals_open === false) return { kind: 'closed' as const }
     if (new Date(row.expires_at).getTime() <= Date.now()) return { kind: 'expired' as const }
     if (row.used_at) return { kind: 'used' as const }
     const questions = parseQuestions(row.questions_json)
