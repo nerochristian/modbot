@@ -44,7 +44,7 @@ async function applicationEmojis(): Promise<DiscordApplicationEmoji[]> {
   return items
 }
 
-async function statusEmoji(kind: 'ban' | 'kick' | 'mute' | 'warn' | 'lock' | 'info') {
+async function statusEmoji(kind: 'ban' | 'kick' | 'mute' | 'warn' | 'lock' | 'info' | 'id') {
   const defaults = {
     ban: ['STATUS_BAN_EMOJI_NAME', 'mod_ban', '🔨'],
     kick: ['STATUS_KICK_EMOJI_NAME', 'mod_kick', '🥾'],
@@ -52,6 +52,7 @@ async function statusEmoji(kind: 'ban' | 'kick' | 'mute' | 'warn' | 'lock' | 'in
     warn: ['STATUS_WARN_EMOJI_NAME', 'mod_warn', '⚠️'],
     lock: ['STATUS_LOCK_EMOJI_NAME', 'mod_lock', '🔒'],
     info: ['STATUS_INFO_EMOJI_NAME', 'mod_info', 'ℹ️'],
+    id: ['STATUS_ID_EMOJI_NAME', 'mod_id', '🆔'],
   } as const
   const [envName, defaultName, fallback] = defaults[kind]
   const name = process.env[envName]?.trim() || defaultName
@@ -151,11 +152,12 @@ async function sendPunishmentDm(input: {
         : action === 'quarantine'
           ? 'lock'
           : 'ban'
-  const [profile, guild, actionEmoji, infoEmoji] = await Promise.all([
+  const [profile, guild, actionEmoji, infoEmoji, idEmoji] = await Promise.all([
     discordGet<DiscordUserProfile>(`/users/${input.userId}`),
     discordGet<DiscordGuildProfile>(`/guilds/${input.guildId}`),
     statusEmoji(emojiKind),
     statusEmoji('info'),
+    statusEmoji('id'),
   ])
   const title = escapeDiscordMarkdown(profile?.global_name || profile?.username || 'Member').slice(0, 80)
   const actionLine = `${actionEmoji.mention} ${actionText}${input.duration && !input.punishmentExpiresAt ? ` for **${input.duration}**` : ''}`
@@ -165,8 +167,8 @@ async function sendPunishmentDm(input: {
   const punishmentTimestamp = input.punishmentExpiresAt
     ? Math.floor(input.punishmentExpiresAt.getTime() / 1000)
     : null
-  const header = `## ${title} !! 🥢\n${actionLine}${punishmentTimestamp ? `\nuntil <t:${punishmentTimestamp}:R>` : ''}`
-  const details = `**Reason :**\n> ${(input.reason || 'No reason provided').slice(0, 700)}\n-# ${infoEmoji.mention} \`user:${input.userId} date:${new Date().toISOString().slice(0, 10)}\`${punishmentTimestamp ? `\n-# Available again <t:${punishmentTimestamp}:R>` : ''}`
+  const header = `## ${title} !!” 🥢\n${actionLine}${punishmentTimestamp ? `\nuntil <t:${punishmentTimestamp}:R>` : ''}`
+  const details = `**Reason :**\n> ${(input.reason || 'No reason provided').slice(0, 700)}\n-# ${idEmoji.mention} \`user:${input.userId} date:${new Date().toISOString().slice(0, 10)}\``
   const headerComponent = guildIcon
     ? { type: 9, components: [{ type: 10, content: header }], accessory: { type: 11, media: { url: guildIcon } } }
     : { type: 10, content: header }
@@ -175,9 +177,13 @@ async function sendPunishmentDm(input: {
     accent_color: ['ban', 'tempban', 'softban'].includes(action) ? 0xed4245 : 0xf0b232,
     components: [
       headerComponent,
+      { type: 14, divider: true, spacing: 1 },
       { type: 10, content: details },
     ],
   }]
+  if (punishmentTimestamp) {
+    components.push({ type: 10, content: `Available again <t:${punishmentTimestamp}:R>` })
+  }
   if (input.appealUrl) {
     components.push({
       type: 1,

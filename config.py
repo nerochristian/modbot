@@ -97,6 +97,7 @@ class Config:
     EMOJI_KICK = os.getenv("EMOJI_KICK", "\U0001f462")
     EMOJI_MUTE = os.getenv("EMOJI_MUTE", "\U0001f507")
     EMOJI_WARN = os.getenv("EMOJI_WARN", "\u26a0\ufe0f")
+    EMOJI_ID = os.getenv("EMOJI_ID", "\U0001f194")
 
     # Auto-create per-guild custom status emojis from local assets when needed.
     AUTO_CREATE_STATUS_EMOJIS = str(os.getenv("AUTO_CREATE_STATUS_EMOJIS", "1")).strip().lower() in {"1", "true", "yes", "on"}
@@ -111,6 +112,7 @@ class Config:
     STATUS_KICK_EMOJI_NAME = os.getenv("STATUS_KICK_EMOJI_NAME", "mod_kick")
     STATUS_MUTE_EMOJI_NAME = os.getenv("STATUS_MUTE_EMOJI_NAME", "mod_mute")
     STATUS_WARN_EMOJI_NAME = os.getenv("STATUS_WARN_EMOJI_NAME", "mod_warn")
+    STATUS_ID_EMOJI_NAME = os.getenv("STATUS_ID_EMOJI_NAME", "mod_id")
     STATUS_EMOJI_CREATE_REASON = os.getenv(
         "STATUS_EMOJI_CREATE_REASON",
         "Auto-create status emojis for moderation responses.",

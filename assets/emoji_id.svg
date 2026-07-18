@@ -1,0 +1,32 @@
+<svg width="128" height="128" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="idGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF667A"/>
+      <stop offset="100%" stop-color="#C92F4A"/>
+    </linearGradient>
+    <linearGradient id="idShine" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="white" stop-opacity="0"/>
+      <stop offset="50%" stop-color="white" stop-opacity="0.38"/>
+      <stop offset="100%" stop-color="white" stop-opacity="0"/>
+    </linearGradient>
+    <filter id="idShadow" x="-20%" y="-30%" width="140%" height="160%">
+      <feDropShadow dx="0" dy="1" stdDeviation="1" flood-color="#410713" flood-opacity="0.42"/>
+    </filter>
+    <clipPath id="idClip">
+      <rect x="2" y="5" width="20" height="14" rx="3"/>
+    </clipPath>
+  </defs>
+
+  <g transform-origin="12 12" filter="url(#idShadow)">
+    <animateTransform attributeName="transform" type="scale" values="1;1.04;1;1" keyTimes="0;0.16;0.34;1" dur="2.5s" repeatCount="indefinite"/>
+    <rect x="2" y="5" width="20" height="14" rx="3" fill="url(#idGrad)"/>
+    <rect x="2.5" y="5.5" width="19" height="13" rx="2.5" fill="none" stroke="white" stroke-opacity="0.22"/>
+
+    <path d="M7.5 8.5V15.5" fill="none" stroke="white" stroke-width="2" stroke-linecap="round"/>
+    <path d="M11 8.5H13.4C16 8.5 17.5 9.8 17.5 12C17.5 14.2 16 15.5 13.4 15.5H11V8.5Z" fill="none" stroke="white" stroke-width="2" stroke-linejoin="round"/>
+
+    <rect x="-8" y="4" width="6" height="16" fill="url(#idShine)" clip-path="url(#idClip)" transform="skewX(-18)">
+      <animate attributeName="x" values="-8;28;28" keyTimes="0;0.34;1" dur="2.5s" repeatCount="indefinite"/>
+    </rect>
+  </g>
+</svg>

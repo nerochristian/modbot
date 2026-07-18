@@ -427,13 +427,15 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(section, discord.ui.Section)
         header = next(item.content for item in section.children if isinstance(item, discord.ui.TextDisplay))
         details = next(item.content for item in container.children if isinstance(item, discord.ui.TextDisplay))
-        self.assertIn("## Kayrozaa !! 🥢", header)
+        self.assertIn("## Kayrozaa !!” 🥢", header)
         self.assertIn("You have been **banned** for **7 days**", header)
         self.assertIn(f"until <t:{int(punishment_expires_at.timestamp())}:R>", header)
         self.assertIn("**Reason :**\n> Repeated scam links", details)
         self.assertIn("`user:55 date:", details)
-        self.assertIn(f"Available again <t:{int(punishment_expires_at.timestamp())}:R>", details)
-        self.assertIsInstance(view.children[1], discord.ui.ActionRow)
+        self.assertIsInstance(container.children[1], discord.ui.Separator)
+        self.assertIsInstance(view.children[1], discord.ui.TextDisplay)
+        self.assertIn(f"Available again <t:{int(punishment_expires_at.timestamp())}:R>", view.children[1].content)
+        self.assertIsInstance(view.children[2], discord.ui.ActionRow)
 
     async def test_appeal_expiry_is_stored_as_naive_utc_for_postgres(self) -> None:
         source = datetime(2026, 7, 18, 16, 30, tzinfo=timezone(timedelta(hours=-5)))

@@ -96,6 +96,13 @@ _EMOJI_META = {
         "default_name": "mod_warn",
         "asset": "emoji_warn.gif",
     },
+    "id": {
+        "config_icon": "EMOJI_ID",
+        "default_icon": "\U0001f194",
+        "config_name": "STATUS_ID_EMOJI_NAME",
+        "default_name": "mod_id",
+        "asset": "emoji_id.gif",
+    },
 }
 
 _SEMANTIC_KIND_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (

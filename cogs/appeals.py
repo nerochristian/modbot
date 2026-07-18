@@ -100,9 +100,9 @@ def build_punishment_notice(
         if punishment_expires_at is not None
         else ""
     )
-    header = f"## {member_name} !! 🥢\n{action_line}{expiry_line}"
+    header = f"## {member_name} !!” 🥢\n{action_line}{expiry_line}"
     reason_text = str(reason or "No reason provided")[:700]
-    info_emoji = get_app_emoji("info")
+    id_emoji = get_app_emoji("id")
     identity = f"user:{user.id} " if user is not None else ""
     available_again = (
         f"\n-# Available again <t:{int(punishment_expires_at.timestamp())}:R>"
@@ -111,8 +111,7 @@ def build_punishment_notice(
     )
     details = (
         f"**Reason :**\n> {reason_text}\n"
-        f"-# {info_emoji + ' ' if info_emoji else ''}`{identity}date:{datetime.now(timezone.utc):%Y-%m-%d}`"
-        f"{available_again}"
+        f"-# {id_emoji + ' ' if id_emoji else ''}`{identity}date:{datetime.now(timezone.utc):%Y-%m-%d}`"
     )
     guild_icon = getattr(getattr(guild, "icon", None), "url", None)
     children: list[discord.ui.Item[Any]] = []
@@ -125,11 +124,18 @@ def build_punishment_notice(
         )
     else:
         children.append(discord.ui.TextDisplay(header))
-    children.append(discord.ui.TextDisplay(details))
+    children.extend(
+        [
+            discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+            discord.ui.TextDisplay(details),
+        ]
+    )
 
     view = discord.ui.LayoutView(timeout=None)
     accent_color = 0xED4245 if action.strip().lower() in {"ban", "tempban", "softban"} else 0xF0B232
     view.add_item(discord.ui.Container(*children, accent_color=accent_color))
+    if punishment_expires_at is not None:
+        view.add_item(discord.ui.TextDisplay(available_again.removeprefix("\n-# ")))
     if appeal_url:
         view.add_item(
             discord.ui.ActionRow(
