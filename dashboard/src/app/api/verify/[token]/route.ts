@@ -8,7 +8,7 @@ import { verifyVerificationCapability } from '@/lib/web-verification'
 const DISCORD_API = 'https://discord.com/api/v10'
 const attempts = new Map<string, { count: number; resetAt: number }>()
 
-type TurnstileResponse = { success: boolean; hostname?: string; action?: string; 'error-codes'?: string[] }
+type HcaptchaResponse = { success: boolean; hostname?: string; 'error-codes'?: string[] }
 type DiscordMember = { user: { id: string; bot?: boolean }; joined_at?: string }
 
 function clientAddress(request: Request): string {
@@ -53,23 +53,24 @@ export async function POST(request: Request, context: { params: Promise<{ token:
     if (!settings.verification_enabled || settings.verification_method !== 'website') {
       return apiError('Website verification is not active for this server.', 409)
     }
-    const secret = process.env.TURNSTILE_SECRET_KEY?.trim()
+    const secret = process.env.HCAPTCHA_SECRET_KEY?.trim()
+    const sitekey = process.env.HCAPTCHA_SITE_KEY?.trim()
     if (!secret) return apiError('Website verification is not configured.', 503)
     const form = new URLSearchParams({
       secret,
       response: body.challenge,
       remoteip: clientAddress(request),
-      idempotency_key: randomUUID(),
     })
-    const turnstileResponse = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+    if (sitekey) form.set('sitekey', sitekey)
+    const hcaptchaResponse = await fetch('https://api.hcaptcha.com/siteverify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form,
       cache: 'no-store',
     })
-    const turnstile = await turnstileResponse.json() as TurnstileResponse
+    const hcaptcha = await hcaptchaResponse.json() as HcaptchaResponse
     const expectedHostname = new URL(dashboardBaseUrl(request.url)).hostname
-    if (!turnstile.success || turnstile.action !== 'docket-verification' || (turnstile.hostname && turnstile.hostname !== expectedHostname)) {
+    if (!hcaptcha.success || (hcaptcha.hostname && hcaptcha.hostname !== expectedHostname)) {
       return apiError('The human check was not accepted. Refresh the page and try again.', 400)
     }
 
