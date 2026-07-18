@@ -8,6 +8,7 @@ import {
   getBotGuild,
   getBotGuildMember,
   getBotGuildMemberRoles,
+  openBotDirectMessageChannel,
   sendBotChannelMessage,
 } from '@/lib/discord'
 import { getBotGuildSettings } from '@/lib/bot-settings'
@@ -255,7 +256,7 @@ async function createPendingCase(input: CreateModerationInput): Promise<{ row: M
   })
 }
 
-export async function createModerationCase(input: CreateModerationInput): Promise<{ row: ModerationCaseRow; replayed: boolean }> {
+export async function createModerationCase(input: CreateModerationInput): Promise<{ row: ModerationCaseRow; replayed: boolean; dmChannelId: string | null }> {
   await ensureDashboardBackendSchema()
   const settings = await getBotGuildSettings(input.guildId)
   await assertTargetIsNotProtected(input, settings)
@@ -269,14 +270,19 @@ export async function createModerationCase(input: CreateModerationInput): Promis
         recoveredPendingCommand: true,
         executionStatus: 'succeeded',
       })
-      return { row: (await getModerationCase(input.guildId, pending.row.id)) ?? pending.row, replayed: true }
+      return { row: (await getModerationCase(input.guildId, pending.row.id)) ?? pending.row, replayed: true, dmChannelId: null }
     }
-    return pending
+    return { ...pending, dmChannelId: null }
   }
 
   const row = pending.row
   const commandId = row.command_id
   if (!commandId) throw new Error('Moderation command was not created')
+  const shouldPrepareDm = settingBoolean(settings.moderation_dm_users, true)
+    && ['warn', 'mute', 'timeout', 'kick', 'ban'].includes(input.action)
+  const dmChannelId = shouldPrepareDm
+    ? await openBotDirectMessageChannel(input.targetUserId).catch(() => null)
+    : null
   try {
     if (!['warn', 'note'].includes(input.action)) {
       await executeModerationAction(
@@ -316,7 +322,7 @@ export async function createModerationCase(input: CreateModerationInput): Promis
       executionStatus: 'failed',
     }).catch(() => undefined)
   }
-  return { row: (await getModerationCase(input.guildId, row.id)) ?? row, replayed: false }
+  return { row: (await getModerationCase(input.guildId, row.id)) ?? row, replayed: false, dmChannelId }
 }
 
 async function executeReversalRequest(guildId: string, userId: string, action: 'unban' | 'clear_timeout'): Promise<void> {

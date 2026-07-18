@@ -75,6 +75,7 @@ async function sendPunishmentDm(input: {
   duration?: string | null
   appealUrl?: string | null
   expiresAt?: Date | null
+  dmChannelId?: string | null
 }): Promise<void> {
   const action = input.action.toLowerCase()
   const title = ({
@@ -98,7 +99,7 @@ async function sendPunishmentDm(input: {
     type: 1,
     components: [{ type: 2, style: 5, label: 'Appeal here', url: input.appealUrl }],
   }] : []
-  await discordMessage(await dmChannel(input.userId), {
+  await discordMessage(input.dmChannelId || await dmChannel(input.userId), {
     embeds: [{
       title,
       description,
@@ -120,6 +121,7 @@ export async function issueAppealToken(input: {
   reason: string
   duration?: string | null
   publicBaseUrl: string
+  dmChannelId?: string | null
 }) {
   await ensureDashboardBackendSchema()
   const settings = await getBotGuildSettings(input.guildId)

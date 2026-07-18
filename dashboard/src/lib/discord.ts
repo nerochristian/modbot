@@ -235,11 +235,17 @@ async function discordJsonMutation<T>(path: string, method: string, body: unknow
   return response.json() as Promise<T>
 }
 
-async function sendBotDirectMessage(userId: string, content: string): Promise<void> {
+export async function openBotDirectMessageChannel(userId: string): Promise<string> {
+  if (!/^\d{15,22}$/.test(userId)) throw new Error('Invalid Discord user ID')
   const channel = await discordJsonMutation<{ id: string }>('/users/@me/channels', 'POST', {
     recipient_id: userId,
   })
-  await discordMutation(`/channels/${channel.id}/messages`, 'POST', {
+  return channel.id
+}
+
+async function sendBotDirectMessage(userId: string, content: string): Promise<void> {
+  const channelId = await openBotDirectMessageChannel(userId)
+  await discordMutation(`/channels/${channelId}/messages`, 'POST', {
     content: content.slice(0, 2000),
     allowed_mentions: { parse: [] },
   })

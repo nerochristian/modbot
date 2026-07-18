@@ -184,6 +184,7 @@ export async function POST(request: Request) {
           reason: data.reason,
           duration: durationHours ? `${durationHours} hour(s)` : null,
           publicBaseUrl: dashboardBaseUrl(request.url),
+          dmChannelId: result.dmChannelId,
         }).catch((error) => ({
           eligible: true as const,
           deliveryStatus: 'failed',

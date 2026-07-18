@@ -17,7 +17,7 @@ from cogs.automod import AutoModEngine, Category, domain_matches, normalize_doma
 from cogs.automod.logging import AutoModLogger
 from cogs.automod.models import Action, RuleMatch, Severity
 from cogs.automod.storage import AutoModStorage
-from cogs.appeals import build_punishment_notice
+from cogs.appeals import Appeals, _database_timestamp, build_punishment_notice
 
 
 class FakePermissions:
@@ -423,6 +423,34 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("**Duration:** 7 days", embed.description)
         self.assertIn("Appeal available until", embed.description)
         self.assertEqual(embed.footer.text, "CASE-0012 | Docket")
+
+    async def test_appeal_expiry_is_stored_as_naive_utc_for_postgres(self) -> None:
+        source = datetime(2026, 7, 18, 16, 30, tzinfo=timezone(timedelta(hours=-5)))
+
+        stored = _database_timestamp(source)
+
+        self.assertIsNone(stored.tzinfo)
+        self.assertEqual(stored, datetime(2026, 7, 18, 21, 30))
+
+    async def test_punishment_notice_uses_preopened_dm_channel(self) -> None:
+        user = SimpleNamespace(id=55, send=AsyncMock())
+        dm_channel = SimpleNamespace(send=AsyncMock())
+        guild = SimpleNamespace(id=1, name="Guild", icon=None)
+        appeals = Appeals(SimpleNamespace())
+
+        delivered = await appeals.notify_punishment(
+            guild=guild,
+            user=user,
+            action="Ban",
+            reason="Test",
+            case_number=4,
+            settings={"appeals_enabled": False},
+            delivery_channel=dm_channel,
+        )
+
+        self.assertTrue(delivered)
+        dm_channel.send.assert_awaited_once()
+        user.send.assert_not_awaited()
 
 
 class AutoModPanelTests(unittest.IsolatedAsyncioTestCase):
