@@ -34,6 +34,7 @@ from utils.checks import is_admin
 from utils.embeds import ModEmbed
 from utils.components_v2 import branded_panel_container
 from utils.guild_branding import get_guild_brand_assets, resolve_guild_component_emoji
+from utils.status_emojis import get_app_emoji
 from utils.server_setup import apply_verification_gate, module_enabled, sync_setup_aliases
 
 # Try to import Pillow for image captchas
@@ -238,33 +239,26 @@ class VerificationPanelLayout(discord.ui.LayoutView):
         super().__init__(timeout=None)
         self._cog = cog
 
-        logo_url, banner_url = get_guild_brand_assets(guild)
         guild_name = guild.name if guild else "this server"
+        lock_emoji = get_app_emoji("lock") or "🔒"
+        unlock_emoji = get_app_emoji("unlock") or "🔓"
+        success_emoji = get_app_emoji("success") or "✅"
+        info_emoji = get_app_emoji("info") or "ℹ️"
         container = branded_panel_container(
-            title="🔐 Member verification",
+            title=f"{lock_emoji} Verification required",
             description=(
-                f"**{guild_name} uses a private entry check.**\n"
-                "Verify once and Docket unlocks the rest of the server automatically."
+                f"### Welcome to {guild_name}\n"
+                "Complete one quick security check to unlock the server."
             ),
-            banner_url=banner_url,
-            logo_url=logo_url,
             accent_color=0x2B7FFF,
-            banner_separated=True,
         )
 
-        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.large))
+        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
 
         start_button = discord.ui.Button(
             label="Start verification",
-            style=discord.ButtonStyle.success,
-            emoji=resolve_guild_component_emoji(
-                guild,
-                "verify",
-                "verified",
-                "success",
-                "check",
-                fallback="✅",
-            ),
+            style=discord.ButtonStyle.primary,
+            emoji=success_emoji,
             custom_id="verification:start",
         )
 
@@ -274,15 +268,9 @@ class VerificationPanelLayout(discord.ui.LayoutView):
         start_button.callback = _start
 
         tutorial_button = discord.ui.Button(
-            label="View guide",
+            label="How it works",
             style=discord.ButtonStyle.secondary,
-            emoji=resolve_guild_component_emoji(
-                guild,
-                "tutorial",
-                "info",
-                "help",
-                fallback="❔",
-            ),
+            emoji=info_emoji,
             custom_id="verification:tutorial",
         )
 
@@ -292,29 +280,18 @@ class VerificationPanelLayout(discord.ui.LayoutView):
         tutorial_button.callback = _tutorial
 
         container.add_item(
-            discord.ui.Section(
-                discord.ui.TextDisplay(
-                    "### Ready when you are\n"
-                    "Open a private check made only for you. Most members finish in under a minute."
-                ),
-                accessory=start_button,
+            discord.ui.TextDisplay(
+                f"## {unlock_emoji} Unlock your access\n"
+                "Docket creates a private checkpoint for your Discord account. "
+                "Pass it once and your member role is added automatically."
             )
         )
-
+        container.add_item(discord.ui.ActionRow(start_button, tutorial_button))
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         container.add_item(
-            discord.ui.Section(
-                discord.ui.TextDisplay(
-                    "### What happens next\n"
-                    "Docket validates the check, swaps your access roles, and opens the server instantly."
-                ),
-                accessory=tutorial_button,
+            discord.ui.TextDisplay(
+                f"-# {info_emoji} No password  •  {success_emoji} Automatic access  •  {lock_emoji} Single-use link"
             )
-        )
-
-        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
-        container.add_item(
-            discord.ui.TextDisplay("-# 🔒 Private • 🔑 Single-use • ⚡ Instant access")
         )
 
         self.add_item(container)
@@ -327,38 +304,41 @@ class WebsiteVerificationLayout(discord.ui.LayoutView):
     def __init__(self, *, guild: Optional[discord.Guild], url: str):
         super().__init__(timeout=10 * 60)
 
-        logo_url, banner_url = get_guild_brand_assets(guild)
         guild_name = guild.name if guild else "this server"
+        lock_emoji = get_app_emoji("lock") or "🔒"
+        unlock_emoji = get_app_emoji("unlock") or "🔓"
+        info_emoji = get_app_emoji("info") or "ℹ️"
         container = branded_panel_container(
-            title="🔐 Your private checkpoint is ready",
+            title=f"{lock_emoji} Your checkpoint is ready",
             description=(
-                f"One quick check stands between you and **{guild_name}**. "
+                f"Open the secure page below to unlock **{guild_name}**. "
                 "Docket never asks for your password or another Discord login."
             ),
-            banner_url=banner_url,
-            logo_url=logo_url,
             accent_color=0x2B7FFF,
-            banner_separated=True,
         )
 
-        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.large))
+        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         container.add_item(
-            discord.ui.Section(
-                discord.ui.TextDisplay(
-                    "### Continue on the secure page\n"
-                    "Complete the quick human check, then return to Discord. Your roles update automatically."
-                ),
-                accessory=discord.ui.Button(
-                    label="Open checkpoint",
+            discord.ui.TextDisplay(
+                f"## {unlock_emoji} Finish verification\n"
+                "Complete the human check in your browser. Your Discord access updates automatically when you pass."
+            )
+        )
+        container.add_item(
+            discord.ui.ActionRow(
+                discord.ui.Button(
+                    label="Open secure checkpoint",
                     style=discord.ButtonStyle.link,
                     url=url,
-                    emoji="🔐",
-                ),
+                    emoji=lock_emoji,
+                )
             )
         )
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         container.add_item(
-            discord.ui.TextDisplay("-# ⏳ Expires in 10 minutes • 🔑 Works once • 🛡️ Protected by hCaptcha")
+            discord.ui.TextDisplay(
+                f"-# {info_emoji} Expires in 10 minutes  •  {lock_emoji} Works once  •  Protected human check"
+            )
         )
 
         self.add_item(container)
