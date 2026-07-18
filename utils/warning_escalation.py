@@ -188,14 +188,10 @@ async def apply_warning_escalation(
     if rule.action == "timeout":
         case_action = "Mute"
         case_duration = rule.duration_seconds
-        await member.timeout(timedelta(seconds=rule.duration_seconds or MIN_TIMEOUT_SECONDS), reason=reason)
     elif rule.action == "kick":
         case_action = "Kick"
-        await guild.kick(member, reason=reason)
     else:
         case_action = "Ban"
-        delete_days = 0 if settings.get("moderation_preserve_ban_messages", True) else max(0, min(7, int(ban_delete_days)))
-        await guild.ban(member, reason=reason, delete_message_days=delete_days)
 
     if moderation_bool(settings, "moderation_dm_users", True):
         sender = getattr(member, "send", None)
@@ -216,8 +212,16 @@ async def apply_warning_escalation(
                     f"You were {action_label} in {guild_name}.\nReason: {reason}{duration_line}"
                 )
             except Exception:
-                # Closed DMs must never roll back an already-applied punishment.
+                # Closed DMs must never prevent the configured punishment.
                 pass
+
+    if rule.action == "timeout":
+        await member.timeout(timedelta(seconds=rule.duration_seconds or MIN_TIMEOUT_SECONDS), reason=reason)
+    elif rule.action == "kick":
+        await guild.kick(member, reason=reason)
+    else:
+        delete_days = 0 if settings.get("moderation_preserve_ban_messages", True) else max(0, min(7, int(ban_delete_days)))
+        await guild.ban(member, reason=reason, delete_message_days=delete_days)
 
     if create_case is not None:
         await create_case(case_action, reason, case_duration)
