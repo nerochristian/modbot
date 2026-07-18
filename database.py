@@ -47,7 +47,7 @@ _MODULE_ID_ALIASES = {
 _FEATURE_MODULE_KEYS = {
     "automod": ("automod_enabled", True),
     "aimod": ("aimod_enabled", False),
-    "appeals": ("appeals_enabled", False),
+    "appeals": ("appeals_enabled", True),
 }
 
 _LOG_CHANNEL_MODULE_FIELDS = {
@@ -1049,6 +1049,35 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
                 "INSERT OR IGNORE INTO dashboard_schema_migrations (key) VALUES (?)",
                 ("20260712_case_severity_backfill",),
             )
+
+        notification_defaults_migration = "20260718_punishment_notifications_on"
+        cursor = await db.execute(
+            "SELECT key FROM dashboard_schema_migrations WHERE key = ?",
+            (notification_defaults_migration,),
+        )
+        if not await cursor.fetchone():
+            cursor = await db.execute("SELECT guild_id, settings FROM guild_settings")
+            for row in await cursor.fetchall():
+                raw_settings = _row_get(row, "settings")
+                try:
+                    guild_settings = json.loads(raw_settings) if raw_settings else {}
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    guild_settings = {}
+                if not isinstance(guild_settings, dict):
+                    guild_settings = {}
+                guild_settings["moderation_dm_users"] = True
+                guild_settings["automod_notify_users"] = True
+                guild_settings["appeals_enabled"] = True
+                guild_settings["appeals_open"] = True
+                guild_settings = normalize_runtime_settings(guild_settings)
+                await db.execute(
+                    "UPDATE guild_settings SET settings = ? WHERE guild_id = ?",
+                    (json.dumps(guild_settings), int(_row_get(row, "guild_id"))),
+                )
+            await db.execute(
+                "INSERT OR IGNORE INTO dashboard_schema_migrations (key) VALUES (?)",
+                (notification_defaults_migration,),
+            )
     
     async def init_guild(self, guild_id: int) -> None:
         """Initialize all database tables and ensure guild exists"""
@@ -1683,6 +1712,9 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
         settings = normalize_runtime_settings(settings)
         merged = AUTOMOD_SETTINGS.copy()
         merged.update(settings)
+        merged.setdefault("moderation_dm_users", True)
+        merged.setdefault("appeals_enabled", True)
+        merged.setdefault("appeals_open", True)
         return normalize_runtime_settings(merged)
     
     async def update_settings(self, guild_id: int, settings: Dict[str, Any]) -> None:

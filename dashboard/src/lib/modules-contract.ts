@@ -150,9 +150,9 @@ export const DEFAULT_AUTOPUNISH_RULES: AutopunishRule[] = [
 export const MODERATION_FIELDS: ModuleField[] = [
   {
     key: 'moderation_dm_users',
-    label: 'DM users on kick, ban, or mute',
+    label: 'DM users for every punishment',
     type: 'toggle',
-    hint: 'Send the member a direct message before the action is applied.',
+    hint: 'Notify members about warnings, kicks, bans, timeouts, mutes, softbans, and automatic punishments.',
     fallback: true,
   },
   {
@@ -362,7 +362,7 @@ export const MODULE_DEFINITIONS: readonly ModuleDefinition[] = [
     icon: 'scale',
     badge: 'new',
     enableKey: 'appeals_enabled',
-    defaultEnabled: false,
+    defaultEnabled: true,
     special: 'appeals',
     fields: [
       { key: 'appeals_open', label: 'Accept new appeals', type: 'toggle', fallback: true, hint: 'Closing submissions disables every unused appeal link without deleting pending appeals.' },
