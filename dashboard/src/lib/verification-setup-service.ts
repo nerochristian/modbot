@@ -297,6 +297,7 @@ export async function automaticallySetupVerification(guildId: string) {
     await setOverwrite(channel.id, unverified.id, 0, BigInt(0), VIEW_CHANNEL)
   })
   await setOverwrite(verifyChannel.id, unverified.id, 0, VIEW_CHANNEL | READ_MESSAGE_HISTORY, SEND_MESSAGES)
+  await setOverwrite(verifyChannel.id, verified.id, 0, BigInt(0), VIEW_CHANNEL)
   await setOverwrite(logChannel.id, guildId, 0, BigInt(0), VIEW_CHANNEL)
   await setOverwrite(logChannel.id, botUser.id, 1, VIEW_CHANNEL | SEND_MESSAGES | READ_MESSAGE_HISTORY, BigInt(0))
   await mapConcurrent(

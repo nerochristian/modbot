@@ -371,6 +371,13 @@ class Verification(commands.Cog):
                 settings = await self._get_settings(guild.id)
                 if not module_enabled(settings, "verification", False):
                     continue
+                gate_result = await apply_verification_gate(guild, settings)
+                if gate_result.get("errors"):
+                    logger.warning(
+                        "Verification access repair reported errors for guild %s: %s",
+                        guild.id,
+                        "; ".join(str(error) for error in gate_result["errors"]),
+                    )
                 unverified_role, verified_role = await self._get_roles(guild)
                 if unverified_role is not None and verified_role is not None:
                     assigned = await self._queue_existing_members(
@@ -1204,6 +1211,7 @@ class Verification(commands.Cog):
             channel = interaction.channel
 
         try:
+            await apply_verification_gate(interaction.guild, settings)
             await channel.send(view=VerificationPanelLayout(self, guild=interaction.guild))
         except discord.Forbidden:
             # Self-healing: try to fix permissions if we are admin but locked out

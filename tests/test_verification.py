@@ -5,6 +5,30 @@ from unittest.mock import AsyncMock
 import discord
 
 from cogs.verification import Verification, VerificationPanelLayout
+from utils.server_setup import apply_verification_gate
+
+
+class _PermissionChannel:
+    def __init__(self, channel_id: int, name: str):
+        self.id = channel_id
+        self.name = name
+        self._overwrites: dict[int, discord.PermissionOverwrite] = {}
+        self.set_permissions = AsyncMock(side_effect=self._save_permissions)
+
+    def overwrites_for(self, role):
+        return self._overwrites.get(role.id, discord.PermissionOverwrite())
+
+    async def _save_permissions(self, role, *, overwrite, reason):
+        self._overwrites[role.id] = overwrite
+
+
+class _PermissionGuild:
+    def __init__(self, roles, channels):
+        self._roles = {role.id: role for role in roles}
+        self.channels = channels
+
+    def get_role(self, role_id):
+        return self._roles.get(role_id)
 
 
 def _panel_text(view: discord.ui.LayoutView) -> str:
@@ -54,6 +78,33 @@ class VerificationPanelTests(unittest.TestCase):
 
 
 class VerificationRoleRepairTests(unittest.IsolatedAsyncioTestCase):
+    async def test_verified_role_is_hidden_from_verification_channel(self) -> None:
+        unverified_role = SimpleNamespace(id=456, name="Unverified")
+        verified_role = SimpleNamespace(id=789, name="Verified")
+        verify_channel = _PermissionChannel(100, "verify")
+        welcome_channel = _PermissionChannel(101, "welcome")
+        general_channel = _PermissionChannel(102, "general")
+        guild = _PermissionGuild(
+            [unverified_role, verified_role],
+            [verify_channel, welcome_channel, general_channel],
+        )
+
+        result = await apply_verification_gate(guild, {
+            "verification_enabled": True,
+            "unverified_role": unverified_role.id,
+            "verified_role": verified_role.id,
+            "verify_channel": verify_channel.id,
+            "welcome_channel": welcome_channel.id,
+        })
+
+        self.assertEqual(result["errors"], [])
+        self.assertTrue(verify_channel.overwrites_for(unverified_role).view_channel)
+        self.assertFalse(verify_channel.overwrites_for(verified_role).view_channel)
+        self.assertTrue(welcome_channel.overwrites_for(unverified_role).view_channel)
+        self.assertIsNone(welcome_channel.overwrites_for(verified_role).view_channel)
+        self.assertFalse(general_channel.overwrites_for(unverified_role).view_channel)
+        self.assertIsNone(general_channel.overwrites_for(verified_role).view_channel)
+
     async def test_existing_member_is_given_waiting_role_when_starting(self) -> None:
         waiting_role = SimpleNamespace(id=456)
         member = SimpleNamespace(roles=[], add_roles=AsyncMock())

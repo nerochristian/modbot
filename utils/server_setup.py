@@ -703,6 +703,15 @@ def _verification_exempt_channel_ids(settings: Dict[str, Any]) -> set[int]:
     return exempt_ids
 
 
+def _verification_panel_channel_ids(settings: Dict[str, Any]) -> set[int]:
+    panel_ids: set[int] = set()
+    for key in ("verify_channel", "verification_channel"):
+        channel_id = _coerce_int(settings.get(key))
+        if channel_id:
+            panel_ids.add(channel_id)
+    return panel_ids
+
+
 async def apply_verification_gate(
     guild: discord.Guild,
     settings: Dict[str, Any],
@@ -721,6 +730,8 @@ async def apply_verification_gate(
         }
 
     exempt_channel_ids = _verification_exempt_channel_ids(settings)
+    panel_channel_ids = _verification_panel_channel_ids(settings)
+    verified_role = guild.get_role(_coerce_int(settings.get("verified_role")) or 0)
     updated = 0
     errors: List[str] = []
     stale_unverified_role = None
@@ -733,6 +744,8 @@ async def apply_verification_gate(
             continue
 
         role_targets = [(unverified_role, True if enabled and channel.id in exempt_channel_ids else (False if enabled else None))]
+        if verified_role is not None and channel.id in panel_channel_ids:
+            role_targets.append((verified_role, False if enabled else None))
         if stale_unverified_role is not None:
             role_targets.append((stale_unverified_role, None))
 

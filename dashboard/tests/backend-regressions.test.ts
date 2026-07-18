@@ -412,6 +412,7 @@ test('production SQL and standalone deployment match the bot runtime contracts',
   assert.match(verificationSetup, /queueExistingMembers/)
   assert.match(verificationSetup, /assertPersistedSetup/)
   assert.match(verificationSetup, /custom_id: 'verification:start'/)
+  assert.match(verificationSetup, /setOverwrite\(verifyChannel\.id, verified\.id, 0, BigInt\(0\), VIEW_CHANNEL\)/)
   assert.match(verificationSetup, /existingMembersAssigned: memberQueue\.assigned/)
   assert.match(automodRoute, /private, no-store, no-cache, must-revalidate/)
   assert.match(useApi, /cache: 'no-store'/)
