@@ -8,7 +8,7 @@ import { getBotGuildSettings } from '@/lib/bot-settings'
 import { DEFAULT_APPEAL_QUESTIONS, type TicketQuestion } from '@/lib/modules-contract'
 
 const TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/
-const APPEALABLE_ACTIONS = new Set(['automod', 'warn', 'mute', 'timeout', 'kick', 'ban', 'tempban', 'softban'])
+const APPEALABLE_ACTIONS = new Set(['automod', 'warn', 'mute', 'timeout', 'kick', 'ban', 'tempban', 'softban', 'quarantine'])
 
 function tokenHash(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex')

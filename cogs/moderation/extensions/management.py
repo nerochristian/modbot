@@ -979,6 +979,34 @@ class ManagementCommands:
                 delta, human_duration = parsed
                 expires_at = datetime.now(timezone.utc) + delta
 
+        notify_user = moderation_bool(settings, "moderation_dm_users", True)
+        dm_channel = await self.prepare_dm_channel(user) if notify_user else None
+        case_num = await self.bot.db.create_case(
+            source.guild.id,
+            user.id,
+            author.id,
+            "Quarantine",
+            reason,
+            human_duration,
+        )
+        dm_embed = discord.Embed(
+            title=f"Quarantined in {source.guild.name}",
+            description=f"**Reason:** {reason}\n**Duration:** {human_duration}",
+            color=Colors.DARK_RED,
+        )
+        if notify_user:
+            await self.send_punishment_notice(
+                guild=source.guild,
+                user=user,
+                action="Quarantine",
+                reason=reason,
+                case_number=case_num,
+                settings=settings,
+                fallback_embed=dm_embed,
+                duration=human_duration,
+                delivery_channel=dm_channel,
+            )
+
         # Backup roles
         backup_role_ids = await self._backup_roles(user, quarantine_role.id)
         
@@ -1052,14 +1080,6 @@ class ManagementCommands:
                     )
                 except Exception:
                     pass
-
-        # DM
-        dm_embed = discord.Embed(
-            title=f"☣️ Quarantined in {source.guild.name}",
-            description=f"**Reason:** {reason}\n**Duration:** {human_duration}",
-            color=Colors.DARK_RED
-        )
-        await self.dm_user(user, dm_embed)
 
     async def _unquarantine_logic(self, source, user: discord.Member, reason: str = "Quarantine lifted"):
         author = source.user if isinstance(source, discord.Interaction) else source.author

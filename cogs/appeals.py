@@ -16,7 +16,7 @@ from utils.status_emojis import get_app_emoji
 
 logger = logging.getLogger("ModBot.Appeals")
 
-APPEALABLE_ACTIONS = {"automod", "warn", "mute", "timeout", "kick", "ban", "tempban", "softban"}
+APPEALABLE_ACTIONS = {"automod", "warn", "mute", "timeout", "kick", "ban", "tempban", "softban", "quarantine"}
 DEFAULT_QUESTIONS = [
     {"id": "why", "label": "Why should this punishment be reviewed?", "placeholder": "Explain what happened and why staff should reconsider the case.", "style": "paragraph", "required": True},
     {"id": "context", "label": "Anything else staff should know?", "placeholder": "Add evidence, message links, or relevant context.", "style": "paragraph", "required": False},
@@ -70,6 +70,7 @@ def _action_copy(action: str) -> tuple[str, str]:
         "ban": ("ban", "You were banned"),
         "tempban": ("ban", "You were temporarily banned"),
         "softban": ("ban", "You were softbanned"),
+        "quarantine": ("lock", "You were quarantined"),
     }
     return labels.get(normalized, ("warning", "Moderation action"))
 
