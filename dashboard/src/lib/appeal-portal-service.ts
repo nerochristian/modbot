@@ -65,6 +65,10 @@ function tokenHash(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex')
 }
 
+function escapeDiscordMarkdown(value: string): string {
+  return value.replace(/([\\`*_{}\[\]()<>#+\-.!|])/g, '\\$1')
+}
+
 function questionsFrom(value: unknown): TicketQuestion[] {
   if (!Array.isArray(value)) return structuredClone(DEFAULT_APPEAL_QUESTIONS)
   const seen = new Set<string>()
@@ -127,15 +131,15 @@ async function sendPunishmentDm(input: {
 }): Promise<void> {
   const action = input.action.toLowerCase()
   const actionText = ({
-    automod: 'Your message was removed',
-    warn: 'You received a warning',
-    mute: 'You have been muted',
-    timeout: 'You have been timed out',
-    kick: 'You have been kicked',
-    ban: 'You have been banned',
-    tempban: 'You have been temporarily banned',
-    softban: 'You have been softbanned',
-    quarantine: 'You have been quarantined',
+    automod: 'Your message was **removed**',
+    warn: 'You received a **warning**',
+    mute: 'You have been **muted**',
+    timeout: 'You have been **timed out**',
+    kick: 'You have been **kicked**',
+    ban: 'You have been **banned**',
+    tempban: 'You have been **temporarily banned**',
+    softban: 'You have been **softbanned**',
+    quarantine: 'You have been **quarantined**',
   } as Record<string, string>)[action] ?? 'Moderation action'
   const emojiKind = action === 'automod' || action === 'warn'
     ? 'warn'
@@ -152,31 +156,34 @@ async function sendPunishmentDm(input: {
     statusEmoji(emojiKind),
     statusEmoji('info'),
   ])
-  const title = `${profile?.global_name || profile?.username || 'Member'} !!`
-  const actionLine = `${actionEmoji.mention} **${actionText}**${input.duration ? ` for **${input.duration}**` : ''}`
-  const description = [
-    actionLine,
-    `**Reason**\n> ${(input.reason || 'No reason provided').slice(0, 700)}`,
-    ...(input.appealUrl && input.expiresAt
-      ? [`Appeal available for <t:${Math.floor(input.expiresAt.getTime() / 1000)}:R>`]
-      : []),
-    `${infoEmoji.mention} \`user:${input.userId} case:CASE-${String(input.caseNumber).padStart(4, '0')} date:${new Date().toISOString().slice(0, 10)}\``,
-  ].join('\n\n')
-  const components = input.appealUrl ? [{
-    type: 1,
-    components: [{ type: 2, style: 5, label: 'Appeal here', url: input.appealUrl, emoji: infoEmoji.component }],
-  }] : []
+  const title = escapeDiscordMarkdown(profile?.global_name || profile?.username || 'Member').slice(0, 80)
+  const actionLine = `${actionEmoji.mention} ${actionText}${input.duration ? ` for **${input.duration}**` : ''}`
   const guildIcon = guild?.icon
     ? `https://cdn.discordapp.com/icons/${input.guildId}/${guild.icon}.${guild.icon.startsWith('a_') ? 'gif' : 'png'}?size=256`
     : undefined
+  const header = `## ${title} !!\n${actionLine}`
+  const details = `**Reason**\n> ${(input.reason || 'No reason provided').slice(0, 700)}\n\n-# ${infoEmoji.mention} \`CASE-${String(input.caseNumber).padStart(4, '0')} • ${input.userId} • ${new Date().toISOString().slice(0, 10)}\``
+  const headerComponent = guildIcon
+    ? { type: 9, components: [{ type: 10, content: header }], accessory: { type: 11, media: { url: guildIcon } } }
+    : { type: 10, content: header }
+  const components: Record<string, unknown>[] = [{
+    type: 17,
+    accent_color: ['ban', 'tempban', 'softban'].includes(action) ? 0xed4245 : 0xf0b232,
+    components: [
+      headerComponent,
+      { type: 14, divider: true, spacing: 1 },
+      { type: 10, content: details },
+    ],
+  }]
+  if (input.appealUrl && input.expiresAt) {
+    components.push({ type: 10, content: `Appeal available for <t:${Math.floor(input.expiresAt.getTime() / 1000)}:R>` })
+    components.push({
+      type: 1,
+      components: [{ type: 2, style: 5, label: 'Appeal here', url: input.appealUrl, emoji: infoEmoji.component }],
+    })
+  }
   await discordMessage(input.dmChannelId || await dmChannel(input.userId), {
-    embeds: [{
-      title,
-      description,
-      color: ['ban', 'tempban', 'softban'].includes(action) ? 0xed4245 : 0xf0b232,
-      author: { name: guild?.name || 'Docket' },
-      ...(guildIcon ? { thumbnail: { url: guildIcon } } : {}),
-    }],
+    flags: 1 << 15,
     components,
     allowed_mentions: { parse: [] },
   })
