@@ -20,13 +20,32 @@ class WarningCommands:
         if not can_mod:
             return await self._respond(source, embed=ModEmbed.error("Cannot Warn", error), ephemeral=True)
         
-        # Add to database
-        warning_id, warn_count = await self.bot.db.add_warning(source.guild.id, user.id, author.id, reason)
-        warnings = await self.bot.db.get_warnings(source.guild.id, user.id)
+        settings = await self.bot.db.get_settings(source.guild.id)
+        existing_warnings = await self.bot.db.get_warnings(source.guild.id, user.id)
+        projected_warning_count = len(existing_warnings) + 1
         case_num = await self.bot.db.create_case(
             source.guild.id, user.id, author.id, "Warn", reason
         )
-        
+        dm_embed = discord.Embed(
+            title=f"⚠️ Warning in {source.guild.name}",
+            description=f"**Reason:** {reason}\n**Total Warnings:** {projected_warning_count}",
+            color=Colors.WARNING
+        )
+        if settings.get("moderation_dm_users", True):
+            await self.send_punishment_notice(
+                guild=source.guild,
+                user=user,
+                action="Warn",
+                reason=reason,
+                case_number=case_num,
+                settings=settings,
+                fallback_embed=dm_embed,
+            )
+
+        # Record the warning only after the member notification is attempted.
+        warning_id, warn_count = await self.bot.db.add_warning(source.guild.id, user.id, author.id, reason)
+        warnings = await self.bot.db.get_warnings(source.guild.id, user.id)
+
         # Create embed
         embed = await self.create_mod_embed(
             title="⚠️ User Warned",
@@ -41,24 +60,6 @@ class WarningCommands:
         await self._respond(source, embed=embed)
         await self.log_action(source.guild, embed)
         
-        # DM user
-        dm_embed = discord.Embed(
-            title=f"⚠️ Warning in {source.guild.name}",
-            description=f"**Reason:** {reason}\n**Total Warnings:** {len(warnings)}",
-            color=Colors.WARNING
-        )
-        settings = await self.bot.db.get_settings(source.guild.id)
-        if settings.get("moderation_dm_users", True):
-            await self.send_punishment_notice(
-                guild=source.guild,
-                user=user,
-                action="Warn",
-                reason=reason,
-                case_number=case_num,
-                settings=settings,
-                fallback_embed=dm_embed,
-            )
-
         # Apply only the highest escalation whose threshold this warning crossed.
         auto_action = None
 
