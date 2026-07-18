@@ -5,55 +5,45 @@ import Script from 'next/script'
 import { CheckCircle2, Loader2, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-type TurnstileRenderOptions = {
+type HCaptchaRenderOptions = {
   sitekey: string
-  action?: string
-  theme?: 'auto' | 'light' | 'dark'
-  size?: 'normal' | 'flexible' | 'compact'
-  retry?: 'auto' | 'never'
-  'retry-interval'?: number
+  theme?: 'light' | 'dark'
+  size?: 'normal' | 'compact' | 'invisible'
   callback?: (token: string) => void
   'error-callback'?: (code?: string) => void
-  'timeout-callback'?: () => void
+  'chalexpired-callback'?: () => void
   'expired-callback'?: () => void
 }
 
-type Turnstile = {
-  render: (container: HTMLElement, options: TurnstileRenderOptions) => string
+type HCaptcha = {
+  render: (container: HTMLElement, options: HCaptchaRenderOptions) => string
   reset: (widgetId?: string) => void
   remove: (widgetId?: string) => void
 }
 
 declare global {
   interface Window {
-    turnstile?: Turnstile
-    __docketTurnstileReady?: () => void
+    hcaptcha?: HCaptcha
+    __docketHcaptchaReady?: () => void
   }
 }
 
-// Genuinely transient Turnstile failures — challenge execution/timeout and
-// generic connectivity. These are worth resetting the widget for. Config errors
-// (bad sitekey, domain not allowed) are deliberately NOT here: retrying them
-// just loops forever on a problem only the server owner can fix.
-const NETWORK_ERROR_PREFIXES = ['300', '600']
+// hCaptcha error names that are genuinely transient (connectivity/challenge
+// execution). These are worth resetting the widget for. Config problems
+// (invalid sitekey, etc.) are deliberately NOT here: retrying them just loops
+// forever on something only the server owner can fix.
+const TRANSIENT_ERRORS = new Set(['network-error', 'challenge-error', 'rate-limited'])
 const MAX_WIDGET_RETRIES = 3
 
-function describeTurnstileError(code?: string): string {
+function describeHcaptchaError(code?: string): string {
   if (!code) return 'The human check could not load. Refresh the page and try again.'
-  if (NETWORK_ERROR_PREFIXES.some((prefix) => code.startsWith(prefix))) {
-    return `Could not reach the human check (error ${code}). This is usually a temporary network issue—retrying automatically.`
+  if (TRANSIENT_ERRORS.has(code)) {
+    return `Could not reach the human check (${code}). This is usually a temporary network issue—retrying automatically.`
   }
-  // 110200 = the widget's domain isn't authorized for this Turnstile sitekey.
-  // Permanent until the server owner adds the domain in Cloudflare, so say so
-  // plainly rather than pretending it will retry away.
-  if (code === '110200') {
-    return `This server's verification page isn't authorized yet (error ${code}). Let a server admin know — they need to add this site to the Cloudflare Turnstile allowlist.`
+  if (code === 'invalid-sitekey' || code === 'invalid-data') {
+    return `The human check is misconfigured (${code}). Please let a server admin know.`
   }
-  // Other 110xxx are sitekey/config problems the visitor also can't resolve.
-  if (code.startsWith('110')) {
-    return `The human check is misconfigured (error ${code}). Please let a server admin know.`
-  }
-  return `The human check reported error ${code}. Refresh the page and try again.`
+  return `The human check reported an error (${code}). Refresh the page and try again.`
 }
 
 export function VerificationForm({ token, siteKey }: { token: string; siteKey: string }) {
@@ -65,18 +55,15 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
   const retriesRef = useRef(0)
 
   const renderWidget = useCallback(() => {
-    if (!window.turnstile || !containerRef.current) return
+    if (!window.hcaptcha || !containerRef.current) return
     if (widgetIdRef.current !== null) {
-      window.turnstile.reset(widgetIdRef.current)
+      window.hcaptcha.reset(widgetIdRef.current)
       return
     }
-    widgetIdRef.current = window.turnstile.render(containerRef.current, {
+    widgetIdRef.current = window.hcaptcha.render(containerRef.current, {
       sitekey: siteKey,
-      action: 'docket-verification',
-      theme: 'auto',
-      size: 'flexible',
-      retry: 'auto',
-      'retry-interval': 4_000,
+      theme: 'dark',
+      size: 'normal',
       callback: (value) => {
         retriesRef.current = 0
         setChallenge(value)
@@ -87,40 +74,42 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
         setChallenge('')
         setState('idle')
       },
-      'timeout-callback': () => {
-        if (window.turnstile && widgetIdRef.current !== null) window.turnstile.reset(widgetIdRef.current)
+      'chalexpired-callback': () => {
+        setChallenge('')
+        setState('idle')
+        if (window.hcaptcha && widgetIdRef.current !== null) window.hcaptcha.reset(widgetIdRef.current)
       },
       'error-callback': (code) => {
         setChallenge('')
-        const transient = !code || NETWORK_ERROR_PREFIXES.some((prefix) => code.startsWith(prefix))
+        const transient = !code || TRANSIENT_ERRORS.has(code)
         if (transient && retriesRef.current < MAX_WIDGET_RETRIES) {
           retriesRef.current += 1
           setState('retrying')
-          setMessage(describeTurnstileError(code))
+          setMessage(describeHcaptchaError(code))
           setTimeout(() => {
-            if (window.turnstile && widgetIdRef.current !== null) window.turnstile.reset(widgetIdRef.current)
+            if (window.hcaptcha && widgetIdRef.current !== null) window.hcaptcha.reset(widgetIdRef.current)
           }, 1_500)
           return
         }
         setState('error')
-        setMessage(describeTurnstileError(code))
+        setMessage(describeHcaptchaError(code))
       },
     })
   }, [siteKey])
 
   useEffect(() => {
-    window.__docketTurnstileReady = renderWidget
-    if (window.turnstile) renderWidget()
+    window.__docketHcaptchaReady = renderWidget
+    if (window.hcaptcha) renderWidget()
     return () => {
-      if (window.turnstile && widgetIdRef.current !== null) {
+      if (window.hcaptcha && widgetIdRef.current !== null) {
         try {
-          window.turnstile.remove(widgetIdRef.current)
+          window.hcaptcha.remove(widgetIdRef.current)
         } catch {
           // widget already gone
         }
       }
       widgetIdRef.current = null
-      delete window.__docketTurnstileReady
+      delete window.__docketHcaptchaReady
     }
   }, [renderWidget])
 
@@ -147,7 +136,7 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
       setState('error')
       setMessage(error instanceof Error ? error.message : 'Verification could not be completed')
       setChallenge('')
-      if (window.turnstile && widgetIdRef.current !== null) window.turnstile.reset(widgetIdRef.current)
+      if (window.hcaptcha && widgetIdRef.current !== null) window.hcaptcha.reset(widgetIdRef.current)
     }
   }
 
@@ -169,7 +158,7 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
   return (
     <>
       <Script
-        src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=__docketTurnstileReady&render=explicit"
+        src="https://js.hcaptcha.com/1/api.js?onload=__docketHcaptchaReady&render=explicit"
         strategy="afterInteractive"
       />
       <form onSubmit={submit} className="space-y-4">
@@ -179,7 +168,7 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
           </span>
           <div>
             <p className="text-sm font-semibold text-foreground">Private human check</p>
-            <p className="mt-1 text-xs leading-5 text-muted">Powered by Cloudflare Turnstile. Your result is single-use and expires with this link.</p>
+            <p className="mt-1 text-xs leading-5 text-muted">Powered by hCaptcha. Your result is single-use and expires with this link.</p>
           </div>
         </div>
 
