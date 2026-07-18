@@ -315,6 +315,51 @@ class VerificationPanelLayout(discord.ui.LayoutView):
         self.add_item(container)
 
 
+class WebsiteVerificationLayout(discord.ui.LayoutView):
+    """Ephemeral Components v2 card handed to a member after they press Verify me
+    when the server uses website (Cloudflare) verification."""
+
+    def __init__(self, *, guild: Optional[discord.Guild], url: str):
+        super().__init__(timeout=10 * 60)
+
+        logo_url, banner_url = get_guild_brand_assets(guild)
+        guild_name = guild.name if guild else "this server"
+        container = branded_panel_container(
+            title="🔐 Secure website verification",
+            description=(
+                f"You're one step from unlocking **{guild_name}**. "
+                "Open the protected page and complete a quick Cloudflare human check — "
+                "no password and no second login."
+            ),
+            banner_url=banner_url,
+            logo_url=logo_url,
+            accent_color=0x2B7FFF,
+            banner_separated=True,
+        )
+
+        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.large))
+        container.add_item(
+            discord.ui.Section(
+                discord.ui.TextDisplay(
+                    "### Open your secure page\n"
+                    "Tap the button, pass the check, and hop back here — access unlocks automatically."
+                ),
+                accessory=discord.ui.Button(
+                    label="Open secure verification",
+                    style=discord.ButtonStyle.link,
+                    url=url,
+                    emoji="🔐",
+                ),
+            )
+        )
+        container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
+        container.add_item(
+            discord.ui.TextDisplay("-# ⏳ Link expires in 10 minutes • 🔑 Works once • 🛡️ Private")
+        )
+
+        self.add_item(container)
+
+
 class Verification(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -899,21 +944,8 @@ class Verification(commands.Cog):
 
             website_url = await self._website_verification_url(guild.id, member.id)
             if website_url:
-                view = discord.ui.View(timeout=10 * 60)
-                view.add_item(
-                    discord.ui.Button(
-                        label="Open secure verification",
-                        style=discord.ButtonStyle.link,
-                        url=website_url,
-                        emoji="🔐",
-                    )
-                )
+                view = WebsiteVerificationLayout(guild=guild, url=website_url)
                 await interaction.response.send_message(
-                    embed=ModEmbed.info(
-                        "Secure Website Verification",
-                        "Open the protected page below and complete the Cloudflare human check. "
-                        "This private link expires in **10 minutes** and works once.",
-                    ),
                     view=view,
                     ephemeral=ephemeral,
                 )
