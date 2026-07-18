@@ -93,7 +93,7 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
   return (
     <>
       <Script
-        src={`https://www.google.com/recaptcha/api.js?render=${encodeURIComponent(siteKey)}`}
+        src={`https://www.google.com/recaptcha/enterprise.js?render=${encodeURIComponent(siteKey)}`}
         strategy="afterInteractive"
         onReady={() => setScriptReady(true)}
       />
