@@ -265,13 +265,26 @@ class HelperCommands:
         except Exception as e:
             logger.error(f"Failed to log action in {guild.name}: {e}")
 
-    async def dm_user(self, user: discord.User, embed: discord.Embed) -> bool:
+    async def prepare_dm_channel(self, user: discord.abc.User) -> Optional[discord.DMChannel]:
+        """Open the DM route while a departing member still shares the guild."""
+        try:
+            return await user.create_dm()
+        except (discord.Forbidden, discord.HTTPException):
+            return None
+
+    async def dm_user(
+        self,
+        user: discord.abc.User,
+        embed: discord.Embed,
+        *,
+        delivery_channel: Optional[discord.abc.Messageable] = None,
+    ) -> bool:
         """
         Attempt to DM a user
         Returns: bool indicating success
         """
         try:
-            await user.send(embed=embed)
+            await (delivery_channel or user).send(embed=embed)
             return True
         except (discord.Forbidden, discord.HTTPException):
             return False
@@ -287,6 +300,7 @@ class HelperCommands:
         settings: dict,
         fallback_embed: discord.Embed,
         duration: Optional[str] = None,
+        delivery_channel: Optional[discord.abc.Messageable] = None,
     ) -> bool:
         """Send the case-bound appeal DM, falling back to the legacy notice."""
         appeals = self.bot.get_cog("Appeals")
@@ -300,10 +314,11 @@ class HelperCommands:
                     case_number=case_number,
                     duration=duration,
                     settings=settings,
+                    delivery_channel=delivery_channel,
                 )
             except Exception:
                 logger.exception("Appeal-aware punishment DM failed for case %s", case_number)
-        return await self.dm_user(user, fallback_embed)
+        return await self.dm_user(user, fallback_embed, delivery_channel=delivery_channel)
 
     async def create_mod_embed(
         self,

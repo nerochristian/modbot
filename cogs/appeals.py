@@ -54,6 +54,11 @@ def _questions(value: object) -> list[dict[str, Any]]:
     return normalized or [dict(question) for question in DEFAULT_QUESTIONS]
 
 
+def _database_timestamp(value: datetime) -> datetime:
+    """Store UTC in the runtime's timezone-less PostgreSQL timestamp columns."""
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
 def _action_copy(action: str) -> tuple[str, str]:
     normalized = action.strip().lower()
     labels = {
@@ -155,6 +160,7 @@ class Appeals(commands.Cog):
         case_number: int,
         duration: Optional[str] = None,
         settings: Optional[dict[str, Any]] = None,
+        delivery_channel: Optional[discord.abc.Messageable] = None,
     ) -> bool:
         settings = settings or await self.bot.db.get_settings(guild.id)
         normalized_action = action.strip().lower()
@@ -187,7 +193,14 @@ class Appeals(commands.Cog):
                           questions_json = excluded.questions_json, created_at = CURRENT_TIMESTAMP
                         RETURNING id
                         """,
-                        (token_hash, guild.id, moderation_case["id"], user.id, expires_at, json.dumps(_questions(settings.get("appeal_questions")))),
+                        (
+                            token_hash,
+                            guild.id,
+                            moderation_case["id"],
+                            user.id,
+                            _database_timestamp(expires_at),
+                            json.dumps(_questions(settings.get("appeal_questions"))),
+                        ),
                     )
                     row = await cursor.fetchone()
                     token_row_id = int(row[0]) if row else None
@@ -213,7 +226,7 @@ class Appeals(commands.Cog):
         delivery_status = "sent"
         delivery_error: Optional[str] = None
         try:
-            await user.send(embed=embed, view=view if appeal_url else None)
+            await (delivery_channel or user).send(embed=embed, view=view if appeal_url else None)
         except (discord.Forbidden, discord.HTTPException) as exc:
             delivery_status = "failed"
             delivery_error = str(exc)[:500]
