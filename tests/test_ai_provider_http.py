@@ -161,6 +161,13 @@ def test_relayrouter_api_enabled_reflects_key(monkeypatch):
     assert ai_client_module._relayrouter_api_enabled() is False
 
 
+def test_relayrouter_timeouts_are_bounded(monkeypatch):
+    monkeypatch.setenv("RELAYROUTER_TIMEOUT", "1")
+    monkeypatch.setenv("RELAYROUTER_VISION_TIMEOUT", "999")
+    assert ai_client_module._relayrouter_request_timeout(multimodal=False) == 5
+    assert ai_client_module._relayrouter_request_timeout(multimodal=True) == 90
+
+
 def test_relayrouter_vision_uses_standard_chat_completions(monkeypatch):
     client = AIClient.__new__(AIClient)
     client._block_until = None
@@ -192,7 +199,8 @@ def test_relayrouter_vision_uses_standard_chat_completions(monkeypatch):
     kwargs = client._post_chat_completion.await_args.kwargs
     assert kwargs["model"] == "gpt-5-6-terra"
     assert kwargs["allow_multimodal"] is True
-    assert kwargs["request_timeout"] == 90
+    assert kwargs["request_timeout"] == 45
+    assert kwargs["max_retries"] == 0
     assert "chat_path" not in kwargs
 
 

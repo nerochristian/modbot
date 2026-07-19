@@ -126,6 +126,17 @@ def _relayrouter_api_enabled() -> bool:
     return _credential_is_configured(_RELAYROUTER_API_KEY)
 
 
+def _relayrouter_request_timeout(*, multimodal: bool) -> int:
+    """Return a bounded per-model timeout so failover remains responsive."""
+    name = "RELAYROUTER_VISION_TIMEOUT" if multimodal else "RELAYROUTER_TIMEOUT"
+    default = 45 if multimodal else 20
+    try:
+        configured = int(os.getenv(name, str(default)).strip())
+    except ValueError:
+        configured = default
+    return min(90, max(5, configured))
+
+
 def _galaxy_multimodal_enabled() -> bool:
     """Enable Galaxy's documented multimodal SSE endpoint."""
     return (os.getenv("GALAXY_MULTIMODAL_ENABLED") or "1").strip().lower() in {"1", "true", "yes", "on"}
@@ -566,8 +577,12 @@ class AIClient:
                     json_mode=json_mode,
                     allow_multimodal=allow_multimodal,
                     provider_label=f"RelayRouter ({candidate})",
-                    max_retries=1,
-                    request_timeout=90 if allow_multimodal else 60,
+                    # Each candidate is itself a retry route. Retrying a dead
+                    # route first made multi-model failover take over a minute.
+                    max_retries=0,
+                    request_timeout=_relayrouter_request_timeout(
+                        multimodal=allow_multimodal
+                    ),
                 )
                 if result:
                     if index:
