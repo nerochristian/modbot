@@ -728,12 +728,9 @@ class Help(commands.Cog):
 
     def audit_help_coverage(self) -> dict[str, int | list[str]]:
         """Verify every visible registered command can render complete help."""
-        index = self._build_unified_index()
-        commands_by_id = {
-            id(command): command
-            for command_list in index.categories.values()
-            for command in command_list
-        }
+        registered = [*_walk_slash_commands(self.bot.tree)]
+        registered.extend(command for command in self.bot.walk_commands() if not command.hidden)
+        commands_by_id = {id(command): command for command in registered}
         issues: list[str] = []
         synthesized = 0
 
