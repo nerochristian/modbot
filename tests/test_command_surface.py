@@ -164,3 +164,16 @@ def test_server_is_a_top_level_slash_command() -> None:
     assert command.name == "server"
     assert command.parameters == []
     assert "server" not in {command.name for command in Utility.utility_group.commands}
+
+
+def test_missing_prefix_arguments_open_the_command_help_card() -> None:
+    source = (ROOT / "bot.py").read_text(encoding="utf-8-sig")
+    handler = source[source.index("    async def on_command_error"):source.index("    async def on_ready")]
+    branch = handler[
+        handler.index("if isinstance(error, commands.MissingRequiredArgument)"):
+        handler.index("if isinstance(error, (commands.MemberNotFound, commands.UserNotFound))")
+    ]
+
+    assert 'self.get_cog("Help")' in branch
+    assert 'getattr(help_cog, "command_help_embed", None)' in branch
+    assert "missing_parameter=error.param.name" in branch
