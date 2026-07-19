@@ -260,6 +260,12 @@ class AIActionRoutingTests(unittest.TestCase):
         )
         self.assertNotIn("what you need", reply.lower())
 
+    def test_whats_up_reply_does_not_turn_into_a_capability_advertisement(self) -> None:
+        reply = self.cog._quick_conversation_reply("What's up?")
+
+        self.assertEqual(reply, "Not much on my end. What's up with you?")
+        self.assertNotIn("i can help", reply.lower())
+
     def test_model_identity_reports_requested_model_without_guessing(self) -> None:
         self.cog.ai = SimpleNamespace(
             conversation_model_name=lambda override=None: override or "gpt-5-6-luna"

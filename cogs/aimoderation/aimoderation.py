@@ -709,7 +709,7 @@ class AIModeration(commands.Cog):
         if low in self._GREETING_WORDS:
             return "hey. what's up?"
         if low in {"what's new", "whats new", "what is new", "what's up", "whats up"}:
-            return "not much on my end. i can help with questions, server stuff, or just chat."
+            return "Not much on my end. What's up with you?"
         if self._WHO_ARE_YOU_RE.search(low) or re.fullmatch(r"what(?:'s| is) the ai thingy\??", low):
             return (
                 "I'm Docket, the server's AI. I can chat, answer questions, look up "
