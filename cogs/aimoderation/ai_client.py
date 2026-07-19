@@ -81,7 +81,7 @@ _RELAYROUTER_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
 )
 _RELAYROUTER_VISION_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
     "RELAYROUTER_VISION_FALLBACK_MODELS",
-    "claude-sonnet-4-6",
+    "gpt-5-6-luna,claude-sonnet-4-6",
 )
 
 # Optional DeepSeek HTTP API (OpenAI-compatible). The authenticated web session
