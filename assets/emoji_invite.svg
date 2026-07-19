@@ -17,6 +17,6 @@
 
     <g fill="none" stroke="white" stroke-width="1.45" stroke-linecap="round"><circle cx="10" cy="9.5" r="2.3"/><path d="M6.5 17c.4-2.5 1.6-3.7 3.5-3.7 1.2 0 2.2.5 2.8 1.5M16 10v5m-2.5-2.5h5"/>
           
-          <animate attributeName="opacity" values=".7; 1; .7; .7" keyTimes="0; 0.15; 0.3; 1" dur="2.5s" " repeatCount="indefinite"/></g>
+          <animate attributeName="opacity" values=".7; 1; .7; .7" keyTimes="0; 0.15; 0.3; 1" dur="2.5s"  repeatCount="indefinite"/></g>
   </g>
 </svg>

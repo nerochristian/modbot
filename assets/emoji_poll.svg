@@ -17,16 +17,16 @@
 
     <g fill="white"><rect x="7" y="12" width="2.5" height="5" rx=".7">
           
-          <animate attributeName="height" values="3; 5; 3; 3" keyTimes="0; 0.15; 0.3; 1" dur="2.5s" " repeatCount="indefinite"/>
+          <animate attributeName="height" values="3; 5; 3; 3" keyTimes="0; 0.15; 0.3; 1" dur="2.5s"  repeatCount="indefinite"/>
           
-          <animate attributeName="y" values="14; 12; 14; 14" keyTimes="0; 0.15; 0.3; 1" dur="2.5s" " repeatCount="indefinite"/></rect><rect x="10.8" y="9" width="2.5" height="8" rx=".7">
+          <animate attributeName="y" values="14; 12; 14; 14" keyTimes="0; 0.15; 0.3; 1" dur="2.5s"  repeatCount="indefinite"/></rect><rect x="10.8" y="9" width="2.5" height="8" rx=".7">
           
-          <animate attributeName="height" values="6; 8; 6; 6" keyTimes="0; 0.15; 0.3; 1" dur="2.5s" " repeatCount="indefinite"/>
+          <animate attributeName="height" values="6; 8; 6; 6" keyTimes="0; 0.15; 0.3; 1" dur="2.5s"  repeatCount="indefinite"/>
           
-          <animate attributeName="y" values="11; 9; 11; 11" keyTimes="0; 0.15; 0.3; 1" dur="2.5s" " repeatCount="indefinite"/></rect><rect x="14.5" y="7" width="2.5" height="10" rx=".7">
+          <animate attributeName="y" values="11; 9; 11; 11" keyTimes="0; 0.15; 0.3; 1" dur="2.5s"  repeatCount="indefinite"/></rect><rect x="14.5" y="7" width="2.5" height="10" rx=".7">
           
-          <animate attributeName="height" values="8; 10; 8; 8" keyTimes="0; 0.15; 0.3; 1" dur="2.5s" " repeatCount="indefinite"/>
+          <animate attributeName="height" values="8; 10; 8; 8" keyTimes="0; 0.15; 0.3; 1" dur="2.5s"  repeatCount="indefinite"/>
           
-          <animate attributeName="y" values="9; 7; 9; 9" keyTimes="0; 0.15; 0.3; 1" dur="2.5s" " repeatCount="indefinite"/></rect></g>
+          <animate attributeName="y" values="9; 7; 9; 9" keyTimes="0; 0.15; 0.3; 1" dur="2.5s"  repeatCount="indefinite"/></rect></g>
   </g>
 </svg>

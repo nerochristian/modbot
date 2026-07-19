@@ -16,6 +16,6 @@
     <path d="M12 2.5L4.5 6.3V11C4.5 15.6 7.8 18.9 12 21.2C16.2 18.9 19.5 15.6 19.5 11V6.3L12 2.5Z" fill="none" stroke="white" stroke-opacity="0.2" stroke-width="0.5"/>
 
     <g fill="none" stroke="white" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round"><path d="m15.5 6.5-5 7M9 12l4 3M8.5 12.5 6.5 16c2.8 1.8 5.3 2 7.5.5l1.5-2.5-7-1.5Z"/>
-          <animateTransform attributeName="transform" type="rotate" values="-4 12 12; 4 12 12; -4 12 12; -4 12 12" keyTimes="0; 0.15; 0.3; 1" dur="2.5s" " repeatCount="indefinite"/></g>
+          <animateTransform attributeName="transform" type="rotate" values="-4 12 12; 4 12 12; -4 12 12; -4 12 12" keyTimes="0; 0.15; 0.3; 1" dur="2.5s"  repeatCount="indefinite"/></g>
   </g>
 </svg>
