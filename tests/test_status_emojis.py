@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 
 import discord
@@ -71,6 +72,29 @@ class StatusEmojiTests(unittest.IsolatedAsyncioTestCase):
         updated = await apply_status_emoji_overrides(embed, guild)
 
         self.assertEqual(updated.title, "<a:mod_info:1521191582424895741> Channel Permissions Changed")
+
+    def test_additional_application_emoji_assets_are_complete(self) -> None:
+        assets_dir = Path(status_emojis.__file__).resolve().parents[1] / "assets"
+
+        self.assertEqual(len(status_emojis._ADDITIONAL_EMOJI_DEFAULTS), 28)
+        for kind in status_emojis._ADDITIONAL_EMOJI_DEFAULTS:
+            meta = status_emojis._EMOJI_META[kind]
+            self.assertEqual(meta["default_name"], f"mod_{kind}")
+            self.assertEqual(meta["asset"], f"emoji_{kind}.gif")
+            self.assertTrue((assets_dir / f"emoji_{kind}.svg").is_file(), kind)
+
+    async def test_verification_title_uses_verification_application_emoji(self) -> None:
+        status_emojis._application_kind_cache["verification"] = (
+            "<a:mod_verification:1521191582424895742>"
+        )
+        embed = discord.Embed(title="Member Verification Complete")
+
+        updated = await apply_status_emoji_overrides(embed, SimpleNamespace())
+
+        self.assertEqual(
+            updated.title,
+            "<a:mod_verification:1521191582424895742> Member Verification Complete",
+        )
 
     def test_moderation_confirmation_is_an_embed(self) -> None:
         status_emojis._application_kind_cache["ban"] = "<a:mod_ban:1521191582424895740>"
