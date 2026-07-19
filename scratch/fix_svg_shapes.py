@@ -25,8 +25,8 @@ count = 0
 for svg_file in assets_dir.glob("emoji_*.svg"):
     content = svg_file.read_text(encoding="utf-8")
     
-    if 'calcMode="spline"' in content and 'M12 2L4 6V11C4' in content:
-        # Already good (like emoji_warn.svg, emoji_ban.svg)
+    if svg_file.name in ["emoji_warn.svg", "emoji_ban.svg", "emoji_error.svg", "emoji_success.svg", "emoji_info.svg", "emoji_kick.svg", "emoji_mute.svg", "emoji_lock.svg", "emoji_unlock.svg", "emoji_verification.svg"]:
+        # Skip the ones that are already good or don't use this template
         continue
         
     print(f"Fixing {svg_file.name}...")
@@ -45,7 +45,6 @@ for svg_file in assets_dir.glob("emoji_*.svg"):
     gradient_str = re.sub(r'</linearGradient>', '\n    </linearGradient>', gradient_str)
     
     # Extract inner g
-    # It starts after stroke-width=".5"/> and goes until the end of the outer <g>
     inner_g = ""
     if 'stroke-width=".5"/>' in content:
         tail = content.split('stroke-width=".5"/>')[1]
@@ -55,6 +54,12 @@ for svg_file in assets_dir.glob("emoji_*.svg"):
         print(f"Could not find inner icon delimiter in {svg_file.name}, skipping.")
         continue
         
+    # Replace the opacity animation to match the static hold of `warn` / `ban`
+    # This prevents the GIF from having 75 unique frames and exceeding the 256KB limit!
+    bad_anim = r'<animate attributeName="opacity" values="[^"]+" dur="2.5s" repeatCount="indefinite"/>'
+    good_anim = '<animate attributeName="opacity" values="0.75; 1; 1; 0.75" keyTimes="0; 0.15; 0.85; 1" dur="2.5s" repeatCount="indefinite" />'
+    inner_g = re.sub(bad_anim, good_anim, inner_g)
+    
     # Ensure inner_g animation is formatted somewhat nicely
     inner_g = re.sub(r'<animate attributeName', '\n      <animate attributeName', inner_g)
     # Add indent to inner_g
