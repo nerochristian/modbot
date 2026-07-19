@@ -62,13 +62,26 @@ def _format_invocation(cmd: app_commands.Command | app_commands.Group | commands
     return f",{cmd.qualified_name}"
 
 
+def _format_invocation_with_prefix(
+    cmd: app_commands.Command | app_commands.Group | commands.Command,
+    prefix: str = ",",
+) -> str:
+    if isinstance(cmd, (app_commands.Command, app_commands.Group)):
+        return f"/{cmd.qualified_name}"
+    return f"{prefix}{cmd.qualified_name}"
+
+
 def _chunked(items: list, *, size: int) -> Iterable[list]:
     for i in range(0, len(items), size):
         yield items[i : i + size]
 
 
-def _usage_line(cmd: app_commands.Command | app_commands.Group | commands.Command) -> str:
-    parts = [_format_invocation(cmd)]
+def _usage_line(
+    cmd: app_commands.Command | app_commands.Group | commands.Command,
+    *,
+    prefix: str = ",",
+) -> str:
+    parts = [_format_invocation_with_prefix(cmd, prefix)]
     
     if isinstance(cmd, (app_commands.Command, app_commands.Group)):
         for p in getattr(cmd, "parameters", []):
@@ -85,6 +98,27 @@ def _usage_line(cmd: app_commands.Command | app_commands.Group | commands.Comman
                 parts.append(f"[{name}]")
                 
     return " ".join(parts)
+
+
+_PARAMETER_HINTS = {
+    "user": "The member to target.",
+    "member": "The member to target.",
+    "target": "The member or item to target.",
+    "reason": "Why this action is being taken.",
+    "duration": "How long the action should last, such as `10m`, `2h`, or `7d`.",
+    "amount": "The number or quantity to use.",
+    "channel": "The channel to use.",
+    "role": "The role to use.",
+    "message": "The message content or message ID.",
+    "case": "The moderation case number.",
+    "case_id": "The moderation case number.",
+    "query": "What to search for.",
+    "name": "The name to use.",
+}
+
+
+def _parameter_hint(name: str) -> str:
+    return _PARAMETER_HINTS.get(name.lower(), f"Value for `{name}`.")
 
 
 def _parameter_lines(cmd: app_commands.Command | app_commands.Group | commands.Command) -> str:
