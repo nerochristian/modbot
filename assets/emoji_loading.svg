@@ -1,13 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 240" width="100%" height="100%">
   <defs>
-    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+    <filter id="shadow_loading" x="-20%" y="-20%" width="140%" height="140%">
       <feGaussianBlur stdDeviation="6"/>
     </filter>
     
     <path id="wedge" d="M 120,120 C 150,90 200,100 220,120 A 100,100 0 0,1 170,206.6 C 177.32,179.28 160.98,130.98 120,120 Z" />
   </defs>
 
-  <circle cx="120" cy="125" r="95" fill="#000000" opacity="0.2" filter="url(#shadow)" />
+  <circle cx="120" cy="125" r="95" fill="#000000" opacity="0.2" filter="url(#shadow_loading)" />
 
   <g>
     <animateTransform 
