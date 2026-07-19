@@ -1463,10 +1463,14 @@ class AIClient:
         try:
             await self._rate_limiter.record_call(author.id)
             http_primary_attempted = False
-            if (
+            relay_primary = self.prefers_relayrouter and _relayrouter_api_enabled()
+            deepseek_primary = (
                 self.prefers_deepseek_http
                 and _deepseek_api_enabled()
                 and (not image_context or _galaxy_multimodal_enabled())
+            )
+            if (
+                (relay_primary or deepseek_primary)
                 and not (
                     signals.mode == ConversationMode.RESEARCH
                     and uses_native_search
@@ -1479,13 +1483,27 @@ class AIClient:
                         if signals.asks_for_long_answer
                         else plan.max_tokens
                     )
-                    content = await self._call_deepseek_api(
-                        multimodal_api_messages,
-                        temperature=plan.temperature,
-                        max_tokens=max_tokens,
-                        model=model,
-                        allow_multimodal=bool(image_context),
-                    )
+                    if relay_primary:
+                        selected_model = model or (
+                            _RELAYROUTER_VISION_MODEL
+                            if image_context
+                            else _RELAYROUTER_CHAT_MODEL
+                        )
+                        content = await self._call_relayrouter(
+                            multimodal_api_messages,
+                            temperature=plan.temperature,
+                            max_tokens=max_tokens,
+                            model=selected_model,
+                            allow_multimodal=bool(image_context),
+                        )
+                    else:
+                        content = await self._call_deepseek_api(
+                            multimodal_api_messages,
+                            temperature=plan.temperature,
+                            max_tokens=max_tokens,
+                            model=model,
+                            allow_multimodal=bool(image_context),
+                        )
                     if content:
                         content = self._postprocess_chat_response(content)
                         if signals.mode == ConversationMode.RESEARCH:
@@ -1506,9 +1524,17 @@ class AIClient:
                         return content
                 except Exception:
                     logger.warning(
-                        "Primary DeepSeek HTTP conversation failed; trying browser fallback.",
+                        "Primary HTTP conversation failed; trying an eligible fallback.",
                         exc_info=True,
                     )
+
+            if relay_primary and image_context:
+                # Never answer an image question through a text-only fallback or
+                # the legacy browser vision lane; either inspect the pixels or fail.
+                return (
+                    "I couldn't inspect that image through the vision provider "
+                    "right now. Please try again shortly."
+                )
 
             if not self._deepseek_web.enabled:
                 # Browser scraper off — use the HTTP conversation path (DeepSeek
@@ -2659,19 +2685,29 @@ class AIClient:
                 {"role": "system", "content": self._MEMORY_SUMMARY_PROMPT},
                 {"role": "user", "content": prompt},
             ]
-            memory_model = os.getenv(
-                "DO_MEMORY_MODEL",
-                os.getenv("DO_PROFILE_MODEL", "deepseek-4-flash"),
-            ).strip() or "deepseek-4-flash"
-            content = await asyncio.wait_for(
-                self._call_digitalocean(
+            if self.prefers_relayrouter:
+                memory_model = os.getenv(
+                    "RELAYROUTER_MEMORY_MODEL",
+                    _RELAYROUTER_CHAT_MODEL,
+                ).strip() or _RELAYROUTER_CHAT_MODEL
+                call = self._call_relayrouter(
                     messages,
                     temperature=0.2,
                     max_tokens=800,
                     model=memory_model,
-                ),
-                timeout=60,
-            )
+                )
+            else:
+                memory_model = os.getenv(
+                    "DO_MEMORY_MODEL",
+                    os.getenv("DO_PROFILE_MODEL", "deepseek-4-flash"),
+                ).strip() or "deepseek-4-flash"
+                call = self._call_digitalocean(
+                    messages,
+                    temperature=0.2,
+                    max_tokens=800,
+                    model=memory_model,
+                )
+            content = await asyncio.wait_for(call, timeout=60)
             if content:
                 content = self._CODE_FENCE_RE.sub("", content).strip()
                 # Strip any leading/trailing full-line code fences left over.

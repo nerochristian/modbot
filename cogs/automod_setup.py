@@ -276,6 +276,21 @@ async def call_deepseek_json(
 ) -> dict[str, Any]:
     ai_cog = cog.bot.get_cog("AIModeration") if getattr(cog, "bot", None) is not None else None
     ai = getattr(ai_cog, "ai", None)
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+    if ai is not None and hasattr(ai, "_call"):
+        result = await ai._call(
+            messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            json_mode=True,
+            session_key=session_key,
+            session_name=session_name,
+        )
+        return _extract_json_object(str(result))
+
     web = getattr(ai, "_deepseek_web", None)
     if web is not None and getattr(web, "enabled", False):
         timeout = float(os.environ.get("DEEPSEEK_WEB_PRIMARY_TIMEOUT", "8"))
@@ -288,10 +303,6 @@ async def call_deepseek_json(
         except Exception:
             pass
     if ai is not None and hasattr(ai, "_call_digitalocean"):
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt},
-        ]
         result = await ai._call_digitalocean(messages, temperature=temperature, max_tokens=max_tokens, json_mode=True)
         return _extract_json_object(str(result))
     raise RuntimeError("No DeepSeek provider is available")
