@@ -105,7 +105,61 @@ _EMOJI_META = {
     },
 }
 
+_ADDITIONAL_EMOJI_DEFAULTS = {
+    "bot": "🤖",
+    "role": "🎭",
+    "channel": "#️⃣",
+    "server": "🖥️",
+    "ticket": "🎫",
+    "appeal": "↩️",
+    "report": "🚩",
+    "court": "⚖️",
+    "case": "💼",
+    "evidence": "🔎",
+    "transcript": "📄",
+    "message": "💬",
+    "edit": "✏️",
+    "delete": "🗑️",
+    "purge": "🧹",
+    "pin": "📌",
+    "announcement": "📣",
+    "search": "🔍",
+    "settings": "⚙️",
+    "link": "🔗",
+    "invite": "📨",
+    "poll": "📊",
+    "giveaway": "🎁",
+    "backup": "💾",
+    "restore": "♻️",
+    "upload": "⬆️",
+    "download": "⬇️",
+    "verification": "🛡️",
+}
+
+for _kind, _fallback_icon in _ADDITIONAL_EMOJI_DEFAULTS.items():
+    _upper_kind = _kind.upper()
+    _EMOJI_META[_kind] = {
+        "config_icon": f"EMOJI_{_upper_kind}",
+        "default_icon": _fallback_icon,
+        "config_name": f"STATUS_{_upper_kind}_EMOJI_NAME",
+        "default_name": f"mod_{_kind}",
+        "asset": f"emoji_{_kind}.gif",
+    }
+
+del _kind, _fallback_icon, _upper_kind
+
 _SEMANTIC_KIND_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("verification", ("verification", "verify member", "human check")),
+    ("appeal", ("appeal submitted", "appeal reviewed", "appeal denied")),
+    ("ticket", ("ticket opened", "ticket closed", "ticket created")),
+    ("court", ("court case", "verdict", "jury")),
+    ("report", ("member report", "report submitted", "reported member")),
+    ("transcript", ("transcript",)),
+    ("giveaway", ("giveaway",)),
+    ("poll", ("poll created", "poll ended")),
+    ("backup", ("backup created", "server backup")),
+    ("restore", ("backup restored", "restore complete")),
+    ("announcement", ("announcement",)),
     ("unlock", ("unlocked", "lockdown lifted")),
     ("success", ("unbanned", "unmuted", "timeout removed", "quarantine lifted")),
     ("ban", ("ban list", "banned", "softban", "tempban", "ban member", "user ban")),
