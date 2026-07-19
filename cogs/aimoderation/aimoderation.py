@@ -708,7 +708,10 @@ class AIModeration(commands.Cog):
             return fun_reply
         if low in self._GREETING_WORDS:
             return "hey. what's up?"
-        if low in {"what's new", "whats new", "what is new", "what's up", "whats up"}:
+        if re.fullmatch(
+            r"(?:what'?s new|what is new|what'?s up|what is up)\??",
+            low,
+        ):
             return "Not much on my end. What's up with you?"
         if self._WHO_ARE_YOU_RE.search(low) or re.fullmatch(r"what(?:'s| is) the ai thingy\??", low):
             return (
