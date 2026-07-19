@@ -1438,7 +1438,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
 
         with patch(
             "cogs.aimoderation.ai_client._RELAYROUTER_API_KEY",
-            "rr_live_test",
+            "relay-test-key",
         ):
             response = await client.converse(
                 user_content="what is in this image?",

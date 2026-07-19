@@ -155,7 +155,7 @@ def test_deepseek_api_enabled_reflects_key(monkeypatch):
 
 
 def test_relayrouter_api_enabled_reflects_key(monkeypatch):
-    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "rr_live_test")
+    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "relay-test-key")
     assert ai_client_module._relayrouter_api_enabled() is True
     monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "")
     assert ai_client_module._relayrouter_api_enabled() is False
@@ -166,7 +166,7 @@ def test_relayrouter_vision_uses_standard_chat_completions(monkeypatch):
     client._block_until = None
     client._block_reason = None
     client._post_chat_completion = AsyncMock(return_value="vision")
-    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "rr_live_test")
+    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "relay-test-key")
 
     messages = [
         {
@@ -203,7 +203,7 @@ def test_relayrouter_falls_back_in_configured_order(monkeypatch):
     client._post_chat_completion = AsyncMock(
         side_effect=[RuntimeError("primary down"), "fallback answer"]
     )
-    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "rr_live_test")
+    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "relay-test-key")
 
     result = asyncio.run(
         client._call_relayrouter(
@@ -231,7 +231,7 @@ def test_relayrouter_provider_routes_before_legacy_providers(monkeypatch):
     client._deepseek_web = types.SimpleNamespace(enabled=True, chat=AsyncMock())
     client._call_deepseek_api = AsyncMock(return_value="deepseek")
     client._call_digitalocean = AsyncMock(return_value="digitalocean")
-    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "rr_live_test")
+    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "relay-test-key")
 
     result = asyncio.run(
         client._call(
