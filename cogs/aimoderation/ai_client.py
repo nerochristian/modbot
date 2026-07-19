@@ -1,8 +1,9 @@
 """
 AI Client — provider-agnostic AI interface with rate limiting, web search, and memory.
 
-Uses DeepSeek Web as the default provider and a configurable DeepSeek HTTP
-gateway for the fast/reasoning fallback path.
+Supports RelayRouter's OpenAI-compatible gateway as the production provider,
+with role-specific chat, moderation, and vision models plus bounded fallbacks.
+The authenticated DeepSeek browser remains available for native web research.
 """
 from __future__ import annotations
 
@@ -42,6 +43,47 @@ _RESEARCH_UNAVAILABLE = (
 _DO_API_KEY: Final[str] = os.getenv("DO_API_KEY", "").strip()
 _DO_BASE_URL: Final[str] = os.getenv("DO_INFERENCE_BASE_URL", "https://inference.do-ai.run/v1").strip().rstrip("/")
 
+_RELAYROUTER_API_KEY: Final[str] = os.getenv("RELAYROUTER_API_KEY", "").strip()
+_RELAYROUTER_BASE_URL: Final[str] = os.getenv(
+    "RELAYROUTER_BASE_URL",
+    "https://relayrouter.org/v1",
+).strip().rstrip("/")
+_RELAYROUTER_CHAT_MODEL: Final[str] = os.getenv(
+    "RELAYROUTER_CHAT_MODEL",
+    "gpt-5-6-luna",
+).strip()
+_RELAYROUTER_MODERATION_MODEL: Final[str] = os.getenv(
+    "RELAYROUTER_MODERATION_MODEL",
+    "gpt-5-6-terra",
+).strip()
+_RELAYROUTER_VISION_MODEL: Final[str] = os.getenv(
+    "RELAYROUTER_VISION_MODEL",
+    "gpt-5-6-terra",
+).strip()
+_RELAYROUTER_ROUTER_MODEL: Final[str] = os.getenv(
+    "RELAYROUTER_ROUTER_MODEL",
+    "gpt-5-6-luna",
+).strip()
+
+
+def _model_list_env(name: str, default: str) -> Tuple[str, ...]:
+    values: List[str] = []
+    for raw in os.getenv(name, default).split(","):
+        model = raw.strip()
+        if model and model not in values:
+            values.append(model)
+    return tuple(values)
+
+
+_RELAYROUTER_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
+    "RELAYROUTER_FALLBACK_MODELS",
+    "claude-sonnet-4-6,deepseek-v4-flash",
+)
+_RELAYROUTER_VISION_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
+    "RELAYROUTER_VISION_FALLBACK_MODELS",
+    "claude-sonnet-4-6",
+)
+
 # Optional DeepSeek HTTP API (OpenAI-compatible). The authenticated web session
 # remains primary whenever it is enabled.
 _DEEPSEEK_API_KEY: Final[str] = (os.getenv("DEEPSEEK_API_KEY") or os.getenv("DEEPSEA_API_KEY") or "").strip()
@@ -77,6 +119,11 @@ def _credential_is_configured(value: str) -> bool:
 def _deepseek_api_enabled() -> bool:
     """The DeepSeek HTTP API is usable when an API key is configured."""
     return _credential_is_configured(_DEEPSEEK_API_KEY)
+
+
+def _relayrouter_api_enabled() -> bool:
+    """RelayRouter is usable when a non-placeholder key is configured."""
+    return _credential_is_configured(_RELAYROUTER_API_KEY)
 
 
 def _galaxy_multimodal_enabled() -> bool:
@@ -175,6 +222,8 @@ class AIClient:
     @property
     def is_available(self) -> bool:
         provider = str(getattr(self, "provider", "") or "").strip().lower()
+        if provider in {"relay", "relayrouter", "relayrouter.org"}:
+            return _relayrouter_api_enabled()
         if provider == "digitalocean":
             return bool(_DO_API_KEY)
         deepseek_web = getattr(self, "_deepseek_web", None)
@@ -189,8 +238,21 @@ class AIClient:
         provider = str(getattr(self, "provider", "") or "").strip().lower()
         return provider in {"deepseek", "deepseek-api", "deepseek-http", "galaxy", "glxy", "deepsea"}
 
+    @property
+    def prefers_relayrouter(self) -> bool:
+        provider = str(getattr(self, "provider", "") or "").strip().lower()
+        return provider in {"relay", "relayrouter", "relayrouter.org"}
+
     def availability_message(self) -> str:
         provider = str(getattr(self, "provider", "") or "").strip().lower()
+        if self.prefers_relayrouter:
+            if not _relayrouter_api_enabled():
+                return "RelayRouter is missing `RELAYROUTER_API_KEY`."
+            return (
+                f"RelayRouter is configured: chat `{_RELAYROUTER_CHAT_MODEL}`, "
+                f"moderation `{_RELAYROUTER_MODERATION_MODEL}`, and vision "
+                f"`{_RELAYROUTER_VISION_MODEL}`."
+            )
         if provider == "digitalocean":
             return "DigitalOcean inference is configured." if _DO_API_KEY else "DigitalOcean inference is missing DO_API_KEY."
         deepseek_web = getattr(self, "_deepseek_web", None)
@@ -224,6 +286,19 @@ class AIClient:
     def diagnostic_lines(self) -> List[str]:
         provider = str(getattr(self, "provider", "") or "deepseek").strip().lower()
         lines = [f"Provider preference: `{provider}`"]
+        if self.prefers_relayrouter:
+            lines.extend(
+                [
+                    f"RelayRouter configured: {'yes' if _relayrouter_api_enabled() else 'no'}",
+                    f"Conversation model: `{_RELAYROUTER_CHAT_MODEL}`",
+                    f"Moderation model: `{_RELAYROUTER_MODERATION_MODEL}`",
+                    f"Vision model: `{_RELAYROUTER_VISION_MODEL}`",
+                    "Vision transport: OpenAI-compatible image input",
+                    f"Available now: {'yes' if self.is_available else 'no'}",
+                    self.availability_message(),
+                ]
+            )
+            return lines
         storage_path = getattr(self._deepseek_web, "storage_state_path", None)
         session_index = getattr(self._deepseek_web, "session_index_path", None)
         lines.extend(
@@ -348,6 +423,22 @@ class AIClient:
         session_name: Optional[str] = None,
         long_answer: bool = False,
     ) -> Optional[str]:
+        if self.prefers_relayrouter and _relayrouter_api_enabled():
+            try:
+                return await self._call_relayrouter(
+                    messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    model=model or _RELAYROUTER_MODERATION_MODEL,
+                    json_mode=json_mode,
+                    allow_multimodal=allow_multimodal,
+                )
+            except Exception:
+                logger.warning(
+                    "RelayRouter call failed; trying configured legacy fallbacks.",
+                    exc_info=True,
+                )
+
         http_attempted = False
         if self.prefers_deepseek_http and _deepseek_api_enabled():
             http_attempted = True
@@ -417,6 +508,93 @@ class AIClient:
             json_mode=json_mode,
             allow_multimodal=allow_multimodal,
         )
+
+    async def _call_relayrouter(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        temperature: float,
+        max_tokens: int,
+        model: Optional[str] = None,
+        json_mode: bool = False,
+        allow_multimodal: bool = False,
+        fallback_models: Optional[Tuple[str, ...]] = None,
+    ) -> Optional[str]:
+        """Call RelayRouter with ordered, de-duplicated model failover."""
+        if not _relayrouter_api_enabled():
+            raise RuntimeError("RelayRouter is missing RELAYROUTER_API_KEY.")
+
+        selected_model = (model or "").strip()
+        if selected_model.lower() in {
+            "",
+            "deepseek-web",
+            "digitalocean",
+            "relay",
+            "relayrouter",
+            "relayrouter.org",
+        }:
+            selected_model = (
+                _RELAYROUTER_VISION_MODEL
+                if allow_multimodal
+                else _RELAYROUTER_MODERATION_MODEL
+            )
+
+        configured_fallbacks = fallback_models
+        if configured_fallbacks is None:
+            configured_fallbacks = (
+                _RELAYROUTER_VISION_FALLBACK_MODELS
+                if allow_multimodal
+                else _RELAYROUTER_FALLBACK_MODELS
+            )
+
+        candidates: List[str] = []
+        for candidate in (selected_model, *configured_fallbacks):
+            normalized = str(candidate or "").strip()
+            if normalized and normalized not in candidates:
+                candidates.append(normalized)
+
+        last_error: Optional[Exception] = None
+        for index, candidate in enumerate(candidates):
+            try:
+                result = await self._post_chat_completion(
+                    messages,
+                    base_url=_RELAYROUTER_BASE_URL,
+                    api_key=_RELAYROUTER_API_KEY,
+                    model=candidate,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    json_mode=json_mode,
+                    allow_multimodal=allow_multimodal,
+                    provider_label=f"RelayRouter ({candidate})",
+                    max_retries=1,
+                    request_timeout=90 if allow_multimodal else 60,
+                )
+                if result:
+                    if index:
+                        logger.info(
+                            "RelayRouter fallback model %s succeeded after %d failed route(s)",
+                            candidate,
+                            index,
+                        )
+                    self._block_until = None
+                    self._block_reason = None
+                    return result
+                last_error = RuntimeError(
+                    f"RelayRouter ({candidate}) returned no assistant content."
+                )
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "RelayRouter model %s failed (%d/%d): %s",
+                    candidate,
+                    index + 1,
+                    len(candidates),
+                    exc,
+                )
+
+        if last_error is not None:
+            raise last_error
+        return None
 
     async def _call_digitalocean(
         self,
@@ -496,6 +674,7 @@ class AIClient:
         provider_label: str,
         chat_path: str = "/chat/completions",
         max_retries: int = 2,
+        request_timeout: int = 60,
     ) -> Optional[str]:
         """Shared OpenAI-compatible chat-completions POST with bounded retries.
 
@@ -517,7 +696,7 @@ class AIClient:
 
         last_error: Optional[Exception] = None
         for attempt in range(max_retries + 1):
-            session, owned_session = self._get_http_session(timeout=60)
+            session, owned_session = self._get_http_session(timeout=request_timeout)
             try:
                 async with session.post(
                     f"{base_url}{chat_path}",
@@ -622,12 +801,27 @@ class AIClient:
         model: Optional[str] = None,
         long_answer: bool = False,
     ) -> Optional[str]:
-        """Text conversation over an HTTP provider: DeepSeek API, then DigitalOcean.
+        """Text conversation over the configured HTTP provider, then fallbacks.
 
         Used when the browser scraper is disabled/unavailable. Vision and native
         web-search remain browser-only; this covers plain text turns.
         """
         max_tokens = max(self.config.max_tokens_chat, 2400) if long_answer else self.config.max_tokens_chat
+        if self.prefers_relayrouter and _relayrouter_api_enabled():
+            try:
+                result = await self._call_relayrouter(
+                    [{"role": "user", "content": prompt}],
+                    temperature=self.config.temperature_chat,
+                    max_tokens=max_tokens,
+                    model=model or _RELAYROUTER_CHAT_MODEL,
+                )
+                if result is not None:
+                    return result
+            except Exception:
+                logger.warning(
+                    "RelayRouter conversation failed; trying DigitalOcean.",
+                    exc_info=True,
+                )
         if _deepseek_api_enabled():
             try:
                 result = await self._call_deepseek_api(
@@ -994,9 +1188,11 @@ class AIClient:
             return Decision.error("AI encountered an unexpected error.")
 
     async def classify_research_route(self, user_content: str) -> Optional[Dict[str, Any]]:
-        """Ask Galaxy whether a turn needs chat, search, or search plus DeepThink."""
+        """Ask the configured fast model whether a turn needs live research."""
         text = re.sub(r"\s+", " ", user_content or "").strip()
-        if not text or not self.prefers_deepseek_http or not _deepseek_api_enabled():
+        relay_ready = self.prefers_relayrouter and _relayrouter_api_enabled()
+        deepseek_ready = self.prefers_deepseek_http and _deepseek_api_enabled()
+        if not text or not (relay_ready or deepseek_ready):
             return None
 
         system_prompt = (
@@ -1024,17 +1220,28 @@ class AIClient:
                 timeout = float(os.getenv("GALAXY_ROUTER_TIMEOUT", "5").strip())
             except ValueError:
                 timeout = 5.0
-            raw = await asyncio.wait_for(
-                self._call_deepseek_api(
-                    [
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt},
-                    ],
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ]
+            if relay_ready:
+                call = self._call_relayrouter(
+                    messages,
+                    temperature=0.0,
+                    max_tokens=220,
+                    model=_RELAYROUTER_ROUTER_MODEL,
+                    json_mode=True,
+                )
+            else:
+                call = self._call_deepseek_api(
+                    messages,
                     temperature=0.0,
                     max_tokens=220,
                     model=os.getenv("GALAXY_ROUTER_MODEL", "gemini-3-5-flash").strip(),
                     json_mode=True,
-                ),
+                )
+            raw = await asyncio.wait_for(
+                call,
                 timeout=min(10.0, max(1.0, timeout)),
             )
             data = self._parse_research_route_payload(raw or "")

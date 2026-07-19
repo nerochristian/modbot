@@ -118,6 +118,12 @@ def _default_ai_model() -> str:
     if explicit:
         return explicit
     provider = _default_ai_provider()
+    if provider in {"relay", "relayrouter", "relayrouter.org"}:
+        return (
+            os.getenv("RELAYROUTER_MODERATION_MODEL")
+            or os.getenv("RELAYROUTER_MODEL")
+            or "gpt-5-6-terra"
+        ).strip()
     if provider == "digitalocean":
         return (
             os.getenv("DO_AIMOD_MODEL")
