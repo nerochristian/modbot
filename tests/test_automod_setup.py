@@ -172,6 +172,49 @@ class AutoModSetupValidationTests(unittest.TestCase):
 
 
 class AutoModSetupAITests(unittest.IsolatedAsyncioTestCase):
+    async def test_call_deepseek_json_uses_shared_provider_path_first(self) -> None:
+        class FakeAI:
+            async def _call(
+                self,
+                messages,
+                *,
+                temperature,
+                max_tokens,
+                json_mode,
+                session_key,
+                session_name,
+            ):
+                self.messages = messages
+                self.temperature = temperature
+                self.max_tokens = max_tokens
+                self.json_mode = json_mode
+                self.session_key = session_key
+                self.session_name = session_name
+                return '{"ok": true}'
+
+        fake_ai = FakeAI()
+        cog = SimpleNamespace(
+            bot=SimpleNamespace(
+                get_cog=lambda name: SimpleNamespace(ai=fake_ai)
+                if name == "AIModeration"
+                else None
+            )
+        )
+
+        payload = await call_deepseek_json(
+            cog,
+            "system",
+            "user",
+            max_tokens=500,
+            session_key="automod-setup:1:2",
+            session_name="Test AutoMod setup",
+        )
+
+        self.assertEqual(payload, {"ok": True})
+        self.assertTrue(fake_ai.json_mode)
+        self.assertEqual(fake_ai.max_tokens, 500)
+        self.assertEqual(fake_ai.session_key, "automod-setup:1:2")
+
     async def test_call_deepseek_json_passes_web_session_identity(self) -> None:
         class WorkingWeb:
             enabled = True
