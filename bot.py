@@ -2302,6 +2302,16 @@ class ModBot(commands.Bot):
             return await _send_error_response(embed)
 
         if isinstance(error, commands.MissingRequiredArgument):
+            help_cog = self.get_cog("Help")
+            help_builder = getattr(help_cog, "command_help_embed", None)
+            if ctx.command is not None and callable(help_builder):
+                embed = help_builder(
+                    ctx.command,
+                    prefix=str(ctx.clean_prefix or ctx.prefix or ","),
+                    missing_parameter=error.param.name,
+                )
+                return await _send_error_response(embed)
+
             embed = ModEmbed.error(
                 "Missing argument",
                 f"Missing required argument: `{error.param.name}`\n\n"

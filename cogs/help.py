@@ -780,6 +780,7 @@ class Help(commands.Cog):
     @commands.command(name="help", help="Browse commands and get detailed help")
     async def help_prefix(self, ctx: commands.Context, *, command: Optional[str] = None):
         """Browse the same help index used by /help."""
+        prefix = str(ctx.clean_prefix or ctx.prefix or ",")
         if not command:
             await ctx.send(view=self._website_help_view())
             return
@@ -788,9 +789,9 @@ class Help(commands.Cog):
         if command:
             cmd = self._find_command(index, command)
             if not cmd:
-                await ctx.send(self._not_found_text(index, command, ",help"), delete_after=15)
+                await ctx.send(self._not_found_text(index, command, f"{prefix}help"), delete_after=15)
                 return
-            await ctx.send(embed=self._build_details_embed(cmd))
+            await ctx.send(embed=self._build_details_embed(cmd, prefix=prefix))
             return
 
         view = HelpView(bot=self.bot, author_id=ctx.author.id, index=index, mode="unified")
