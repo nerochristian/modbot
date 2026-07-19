@@ -254,6 +254,17 @@ class AIClient:
         provider = str(getattr(self, "provider", "") or "").strip().lower()
         return provider in {"relay", "relayrouter", "relayrouter.org"}
 
+    def conversation_model_name(self, override: Optional[str] = None) -> str:
+        """Return the model this bot requests, without claiming upstream attestation."""
+        selected = str(override or "").strip()
+        if selected:
+            return selected
+        if self.prefers_relayrouter:
+            return _RELAYROUTER_CHAT_MODEL
+        if self.prefers_deepseek_http:
+            return _DEEPSEEK_API_MODEL
+        return str(self.config.model or "deepseek-web").strip()
+
     def availability_message(self) -> str:
         provider = str(getattr(self, "provider", "") or "").strip().lower()
         if self.prefers_relayrouter:

@@ -249,6 +249,42 @@ class AIActionRoutingTests(unittest.TestCase):
             "I asked the audit log for gossip and it said everything is suspicious.",
         )
 
+    def test_how_are_you_followup_is_warm_and_reciprocal(self) -> None:
+        reply = self.cog._quick_conversation_reply(
+            "That's true, anyway, how are you?"
+        )
+
+        self.assertEqual(
+            reply,
+            "I'm doing good, thanks for asking. How are you?",
+        )
+        self.assertNotIn("what you need", reply.lower())
+
+    def test_model_identity_reports_requested_model_without_guessing(self) -> None:
+        self.cog.ai = SimpleNamespace(
+            conversation_model_name=lambda override=None: override or "gpt-5-6-luna"
+        )
+
+        reply = self.cog._quick_conversation_reply("What llm are you?")
+
+        self.assertIn("`gpt-5-6-luna`", reply)
+        self.assertIn("fallback", reply.lower())
+        self.assertNotIn("gpt-4o", reply.lower())
+
+    def test_world_news_routes_to_research_when_classifier_returns_nothing(self) -> None:
+        self.cog.ai = SimpleNamespace(
+            classify_research_route=AsyncMock(return_value=None),
+            has_web_search=True,
+        )
+
+        signals = asyncio.run(
+            self.cog._build_conversation_signals("What's going on in the world?")
+        )
+
+        self.assertEqual(signals.mode, ConversationMode.RESEARCH)
+        self.assertTrue(signals.asks_for_current_info)
+        self.assertTrue(signals.show_research_indicator)
+
     def test_reply_target_timeout_shortcut_keeps_reason_and_duration(self) -> None:
         message = SimpleNamespace(mentions=[])
         decision = self.cog._quick_route(message, "timeout this guy 10m for spam")

@@ -60,6 +60,17 @@ _REPLY_TARGET_RE = re.compile(
     r"\b(?:this|that)\s+(?:guy|dude|person|member|user|one)|\b(?:him|her|them|that\s+user|this\s+user)\b",
     re.IGNORECASE,
 )
+_MODEL_IDENTITY_RE = re.compile(
+    r"\b(?:what|which)\s+(?:(?:ai|llm)\s+)?model\s+(?:are|is)\s+(?:you|this)|"
+    r"\bwhat\s+(?:llm|model)\s+are\s+you|\bwhat\s+are\s+you\s+(?:running|powered\s+by)",
+    re.IGNORECASE,
+)
+_LIVE_WORLD_NEWS_RE = re.compile(
+    r"\b(?:what(?:'s|\s+is)\s+(?:going\s+on|happening)\s+(?:in|around)\s+(?:the\s+)?world|"
+    r"what(?:'s|\s+is)\s+happening\s+globally|current\s+events|"
+    r"(?:world|global)\s+(?:news|headlines)|(?:news|headlines)\s+(?:today|right\s+now))\b",
+    re.IGNORECASE,
+)
 
 
 def _looks_like_image_question_text(content: str) -> bool:
@@ -665,7 +676,12 @@ class AIModeration(commands.Cog):
         )
         return any(re.match(prefix + pattern, low) for pattern in action_patterns)
 
-    def _quick_conversation_reply(self, content: str) -> Optional[str]:
+    def _quick_conversation_reply(
+        self,
+        content: str,
+        *,
+        model: Optional[str] = None,
+    ) -> Optional[str]:
         """Deterministic replies for simple social turns where the model overdoes it."""
         low = self._normalize_chat_text(content)
         has_user_mention = bool(_MENTION_RE.search(content))
@@ -695,9 +711,23 @@ class AIModeration(commands.Cog):
         if low in {"what's new", "whats new", "what is new", "what's up", "whats up"}:
             return "not much on my end. i can help with questions, server stuff, or just chat."
         if self._WHO_ARE_YOU_RE.search(low) or re.fullmatch(r"what(?:'s| is) the ai thingy\??", low):
-            return "that's me, Docket. i'm the server AI for chatting, answering questions, and helping with moderation when you mention me."
+            return (
+                "I'm Docket, the server's AI. I can chat, answer questions, look up "
+                "current information, inspect images, and help with moderation."
+            )
+        if _MODEL_IDENTITY_RE.search(low):
+            ai = getattr(self, "ai", None)
+            model_name = (
+                ai.conversation_model_name(model)
+                if ai is not None and callable(getattr(ai, "conversation_model_name", None))
+                else "the configured conversation model"
+            )
+            return (
+                f"This server currently requests `{model_name}` for conversation. "
+                "If that route is unavailable, Docket can use a fallback model."
+            )
         if self._HOW_ARE_YOU_RE.search(low):
-            return "i'm good. what you need?"
+            return "I'm doing good, thanks for asking. How are you?"
         return None
 
     @staticmethod
@@ -745,15 +775,18 @@ class AIModeration(commands.Cog):
             r"comprehensive|in[-\s]?depth|detailed\s+analysis|compare\s+(?:sources|reports))\b",
             low,
         ))
-        current_hint = bool(re.search(
-            r"\b(latest|current(?:ly)?|right\s+now|today|tonight|yesterday|tomorrow|"
-            r"recent(?:ly)?|newest|upcoming|this\s+(?:week|month|year|season)|"
-            r"version|patch|update|release|price|weather|forecast|news|schedule|"
-            r"president|prime\s+minister|governor|mayor|ceo|owner|officeholder|"
-            r"law|legal|regulation|policy|stock|crypto|exchange\s+rate|"
-            r"available|availability|recommend(?:ed|ation|ations)?)\b",
-            low,
-        ))
+        current_hint = bool(
+            re.search(
+                r"\b(latest|current(?:ly)?|right\s+now|today|tonight|yesterday|tomorrow|"
+                r"recent(?:ly)?|newest|upcoming|this\s+(?:week|month|year|season)|"
+                r"version|patch|update|release|price|weather|forecast|news|schedule|"
+                r"president|prime\s+minister|governor|mayor|ceo|owner|officeholder|"
+                r"law|legal|regulation|policy|stock|crypto|exchange\s+rate|"
+                r"available|availability|recommend(?:ed|ation|ations)?)\b",
+                low,
+            )
+            or _LIVE_WORLD_NEWS_RE.search(low)
+        )
         casual_followup = bool(re.fullmatch(
             r"(?:what'?s new|what is new|what'?s up|what is the ai thingy|what'?s the ai thingy|what do you mean|what is that|what's that|huh|wdym|hi|hey|hello|yo)\??",
             low,
@@ -2700,7 +2733,7 @@ class AIModeration(commands.Cog):
             await self.reply(message, content=lookup_reply)
             self._mark_chat_active(message.channel.id)
             return
-        quick_reply = self._quick_conversation_reply(content)
+        quick_reply = self._quick_conversation_reply(content, model=settings.model)
         if quick_reply:
             await self.reply(message, content=quick_reply)
             self._mark_chat_active(message.channel.id)
