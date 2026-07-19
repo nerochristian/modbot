@@ -29,7 +29,7 @@ def replacer(match):
     suffix = match.group(5)
     # Strip any existing dur
     suffix = re.sub(r'\s*dur="[^"]+"', '', suffix)
-    return f'{prefix}{v1}; {v2}; {v3}; {v3}" keyTimes="0; 0.15; 0.3; 1" dur="2.5s" {suffix.strip()}'
+    return f'{prefix}{v1}; {v2}; {v3}; {v3}" keyTimes="0; 0.15; 0.3; 1" dur="2.5s" {suffix.strip()[1:]}'
 
 count = 0
 for svg_file in assets_dir.glob("emoji_*.svg"):
