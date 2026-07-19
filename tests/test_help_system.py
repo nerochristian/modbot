@@ -5,7 +5,14 @@ from types import SimpleNamespace
 import discord
 from discord.ext import commands
 
-from cogs.help import Help, HelpView, _HelpIndex, _normalize_command_name
+from cogs.help import (
+    Help,
+    HelpView,
+    _HelpIndex,
+    _command_summary,
+    _normalize_command_name,
+    _parameter_lines,
+)
 
 
 async def _sample_warn(ctx, user: str, *, reason: str = "No reason provided"):
@@ -47,6 +54,31 @@ class HelpSystemTests(unittest.TestCase):
         self.assertEqual(embed.title, "Help: ,warn")
         self.assertTrue(any(field.name == "Run it" for field in embed.fields))
         self.assertTrue(any(field.name == "Inputs" for field in embed.fields))
+
+    def test_bare_command_error_renders_complete_help_with_live_prefix(self) -> None:
+        help_cog = Help(SimpleNamespace())
+        embed = help_cog.command_help_embed(
+            self.warn_command,
+            prefix="!",
+            missing_parameter="user",
+        )
+
+        self.assertEqual(embed.title, "Help: !warn")
+        fields = {field.name: str(field.value) for field in embed.fields}
+        self.assertIn("`!warn` needs `user`", fields["Start here"])
+        self.assertIn("`!warn <user> [reason]`", fields["Run it"])
+        self.assertIn("The member to target.", fields["Inputs"])
+        self.assertIn("Why this action is being taken.", fields["Inputs"])
+
+    def test_legacy_command_without_metadata_still_has_complete_help(self) -> None:
+        async def legacy(ctx, user: str):
+            return None
+
+        command = commands.Command(legacy, name="legacytool")
+
+        self.assertEqual(_command_summary(command), "Run the legacytool command.")
+        self.assertIn("The member to target.", _parameter_lines(command))
+        self.assertNotIn("No description", _command_summary(command))
 
     def test_panel_commands_are_not_registered_on_help_cog(self) -> None:
         self.assertFalse(hasattr(Help, "modpanel"))

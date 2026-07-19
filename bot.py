@@ -1799,6 +1799,23 @@ class ModBot(commands.Bot):
             except Exception as e:
                 failed.append((cog, str(e)))
                 logger.error(f"  [ERR] Failed: {cog} - {e}")
+
+        help_cog = self.get_cog("Help")
+        help_audit = getattr(help_cog, "audit_help_coverage", None)
+        if callable(help_audit):
+            coverage = help_audit()
+            coverage_issues = list(coverage.get("issues", []))
+            if coverage_issues:
+                detail = "; ".join(coverage_issues)
+                failed.append(("help coverage", detail))
+                logger.error("[HELP] Incomplete command help: %s", detail)
+            else:
+                logger.info(
+                    "[HELP] Complete coverage: %s commands (%s legacy descriptions synthesized)",
+                    coverage.get("total", 0),
+                    coverage.get("synthesized", 0),
+                )
+
         # Summary
         logger.info("=" * 60)
         logger.info("[COG] Cog Loading Summary:")
