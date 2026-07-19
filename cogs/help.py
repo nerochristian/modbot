@@ -129,7 +129,7 @@ def _parameter_lines(cmd: app_commands.Command | app_commands.Group | commands.C
         if not params:
             return "No parameters."
         for p in params:
-            desc = (p.description or "No description").strip()
+            desc = (p.description or _parameter_hint(p.name)).strip()
             required = "required" if p.required else "optional"
             lines.append(f"• `{p.name}` ({required}) — {desc}")
     else:
@@ -138,7 +138,7 @@ def _parameter_lines(cmd: app_commands.Command | app_commands.Group | commands.C
             return "No parameters."
         for name, param in cmd.clean_params.items():
             required = "required" if param.default is param.empty else "optional"
-            lines.append(f"• `{name}` ({required})")
+            lines.append(f"• `{name}` ({required}) — {_parameter_hint(name)}")
             
     return "\n".join(lines)
 
@@ -150,8 +150,23 @@ def _shorten(text: str, limit: int) -> str:
     return text[: max(0, limit - 3)].rstrip() + "..."
 
 
+def _raw_command_summary(cmd: app_commands.Command | app_commands.Group | commands.Command) -> Optional[str]:
+    for value in (getattr(cmd, "description", None), getattr(cmd, "help", None)):
+        text = " ".join(str(value or "").split())
+        if text and text.lower() not in {"no description", "no description.", "..."}:
+            return text
+    return None
+
+
 def _command_summary(cmd: app_commands.Command | app_commands.Group | commands.Command) -> str:
-    return _shorten(getattr(cmd, "description", None) or getattr(cmd, "help", None) or "No description.", 78)
+    authored = _raw_command_summary(cmd)
+    if authored:
+        return _shorten(authored, 78)
+
+    readable_name = cmd.qualified_name.replace("-", " ")
+    if isinstance(cmd, (commands.Group, app_commands.Group)):
+        return _shorten(f"Browse and run {readable_name} commands.", 78)
+    return _shorten(f"Run the {readable_name} command.", 78)
 
 
 def _command_type_label(cmd: app_commands.Command | app_commands.Group | commands.Command) -> str:
@@ -621,9 +636,13 @@ class Help(commands.Cog):
     def _build_details_embed(
         self,
         cmd: app_commands.Command | app_commands.Group | commands.Command,
+        *,
+        prefix: str = ",",
+        missing_parameter: Optional[str] = None,
     ) -> discord.Embed:
         category = _category_for_command(cmd)
-        title = f"Help: {_format_invocation(cmd)}"
+        invocation = _format_invocation_with_prefix(cmd, prefix)
+        title = f"Help: {invocation}"
         desc = _command_summary(cmd)
         is_slash = isinstance(cmd, (app_commands.Command, app_commands.Group))
 
@@ -632,9 +651,15 @@ class Help(commands.Cog):
             description=desc,
             color=Config.COLOR_EMBED,
         )
+        if missing_parameter:
+            embed.add_field(
+                name="Start here",
+                value=f"`{invocation}` needs `{missing_parameter}`. Use the full command below.",
+                inline=False,
+            )
         embed.add_field(name="Category", value=category, inline=True)
         embed.add_field(name="Type", value=_command_type_label(cmd), inline=True)
-        embed.add_field(name="Run it", value=f"`{_usage_line(cmd)}`", inline=False)
+        embed.add_field(name="Run it", value=f"`{_usage_line(cmd, prefix=prefix)}`", inline=False)
         embed.add_field(name="Inputs", value=_parameter_lines(cmd), inline=False)
 
         if isinstance(cmd, commands.Command) and cmd.aliases:
@@ -651,7 +676,7 @@ class Help(commands.Cog):
         elif isinstance(cmd, commands.Group):
             subcommands = sorted(child.qualified_name for child in cmd.commands)
             if subcommands:
-                lines = [f"`,{name}`" for name in subcommands[:12]]
+                lines = [f"`{prefix}{name}`" for name in subcommands[:12]]
                 if len(subcommands) > 12:
                     lines.append(f"... and {len(subcommands) - 12} more")
                 embed.add_field(name="Subcommands", value="\n".join(lines), inline=False)
@@ -659,9 +684,9 @@ class Help(commands.Cog):
         examples: list[str] = []
         if cmd.qualified_name.startswith("ticket"):
             examples = [
-                "`/ticket create`" if is_slash else "`,ticket create general Need help`",
-                "`/ticket close reason:resolved`" if is_slash else "`,ticket close resolved`",
-                "`/ticket transcript`" if is_slash else "`,ticket transcript`",
+                "`/ticket create`" if is_slash else f"`{prefix}ticket create general Need help`",
+                "`/ticket close reason:resolved`" if is_slash else f"`{prefix}ticket close resolved`",
+                "`/ticket transcript`" if is_slash else f"`{prefix}ticket transcript`",
             ]
         elif cmd.qualified_name.startswith("automod"):
             examples = ["`/automod help`", "`/automod status`", "`/automod setup`"]
@@ -674,18 +699,62 @@ class Help(commands.Cog):
                 if first_required:
                     examples.append(f"`/{cmd.qualified_name} {first_required.name}:<value>`")
         else:
-            examples.append(f"`,{cmd.qualified_name}`")
+            examples.append(f"`{prefix}{cmd.qualified_name}`")
             if cmd.clean_params:
                 parts = []
                 for name, param in cmd.clean_params.items():
                     parts.append(f"<{name}>" if param.default is param.empty else f"[{name}]")
-                examples.append(f"`,{cmd.qualified_name} {' '.join(parts)}`")
+                examples.append(f"`{prefix}{cmd.qualified_name} {' '.join(parts)}`")
 
         if examples:
             embed.add_field(name="Examples", value="\n".join(examples), inline=False)
 
-        embed.set_footer(text="Same lookup works through /help and ,help")
+        embed.set_footer(text=f"Same lookup works through /help and {prefix}help")
         return embed
+
+    def command_help_embed(
+        self,
+        command: app_commands.Command | app_commands.Group | commands.Command,
+        *,
+        prefix: str = ",",
+        missing_parameter: Optional[str] = None,
+    ) -> discord.Embed:
+        """Build the canonical command help card for direct errors and /help."""
+        return self._build_details_embed(
+            command,
+            prefix=prefix,
+            missing_parameter=missing_parameter,
+        )
+
+    def audit_help_coverage(self) -> dict[str, int | list[str]]:
+        """Verify every visible registered command can render complete help."""
+        index = self._build_unified_index()
+        commands_by_id = {
+            id(command): command
+            for command_list in index.categories.values()
+            for command in command_list
+        }
+        issues: list[str] = []
+        synthesized = 0
+
+        for command in commands_by_id.values():
+            if _raw_command_summary(command) is None:
+                synthesized += 1
+            summary = _command_summary(command).strip()
+            usage = _usage_line(command).strip()
+            inputs = _parameter_lines(command).strip()
+            if not summary or summary.lower().startswith("no description"):
+                issues.append(f"{command.qualified_name}: missing summary")
+            if not usage:
+                issues.append(f"{command.qualified_name}: missing usage")
+            if not inputs:
+                issues.append(f"{command.qualified_name}: missing input help")
+
+        return {
+            "total": len(commands_by_id),
+            "synthesized": synthesized,
+            "issues": issues,
+        }
 
     def _build_unified_index(self) -> _HelpIndex:
         return _HelpIndex.build(self.bot, include_slash=True, include_prefix=True)
