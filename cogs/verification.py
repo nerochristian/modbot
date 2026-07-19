@@ -240,12 +240,13 @@ class VerificationPanelLayout(discord.ui.LayoutView):
         self._cog = cog
 
         guild_name = guild.name if guild else "this server"
+        verification_emoji = get_app_emoji("verification") or "🛡️"
         lock_emoji = get_app_emoji("lock") or "🔒"
         unlock_emoji = get_app_emoji("unlock") or "🔓"
         success_emoji = get_app_emoji("success") or "✅"
         info_emoji = get_app_emoji("info") or "ℹ️"
         container = branded_panel_container(
-            title=f"{lock_emoji} Verification required",
+            title=f"{verification_emoji} Verification required",
             description=(
                 f"### Welcome to {guild_name}\n"
                 "Complete one quick security check to unlock the server."
@@ -258,7 +259,7 @@ class VerificationPanelLayout(discord.ui.LayoutView):
         start_button = discord.ui.Button(
             label="Start verification",
             style=discord.ButtonStyle.primary,
-            emoji=success_emoji,
+            emoji=verification_emoji,
             custom_id="verification:start",
         )
 
@@ -305,11 +306,12 @@ class WebsiteVerificationLayout(discord.ui.LayoutView):
         super().__init__(timeout=10 * 60)
 
         guild_name = guild.name if guild else "this server"
+        verification_emoji = get_app_emoji("verification") or "🛡️"
         lock_emoji = get_app_emoji("lock") or "🔒"
         unlock_emoji = get_app_emoji("unlock") or "🔓"
         info_emoji = get_app_emoji("info") or "ℹ️"
         container = branded_panel_container(
-            title=f"{lock_emoji} Your checkpoint is ready",
+            title=f"{verification_emoji} Your checkpoint is ready",
             description=(
                 f"Open the secure page below to unlock **{guild_name}**. "
                 "Docket never asks for your password or another Discord login."
@@ -330,7 +332,7 @@ class WebsiteVerificationLayout(discord.ui.LayoutView):
                     label="Open secure checkpoint",
                     style=discord.ButtonStyle.link,
                     url=url,
-                    emoji=lock_emoji,
+                    emoji=verification_emoji,
                 )
             )
         )
