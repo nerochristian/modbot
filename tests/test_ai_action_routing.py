@@ -21,6 +21,7 @@ from cogs.aimoderation.aimoderation import (
     ToolResult,
     ToolType,
 )
+from cogs.aimoderation.types import ImageContext
 from cogs.aimoderation.registry import ToolRegistry
 from utils.deepseek_web import DeepSeekWebError
 
@@ -1399,6 +1400,62 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response, "fallback answer")
         client._conversation_via_http.assert_awaited_once()
         client._update_memory_smart.assert_called_once()
+
+    async def test_relayrouter_inspects_images_without_deepseek_vision(self) -> None:
+        client = object.__new__(AIClient)
+        client.provider = "relayrouter"
+        client.config = AIConfig(provider="relayrouter", model="gpt-5-6-terra")
+        client._block_until = None
+        client._block_reason = None
+        client._brave_search_api_key = None
+        client._tavily_api_key = None
+        client._serpapi_api_key = None
+        client._rate_limiter = SimpleNamespace(
+            is_rate_limited=AsyncMock(return_value=(False, 0)),
+            record_call=AsyncMock(),
+        )
+        client._deepseek_web = SimpleNamespace(
+            enabled=True,
+            chat=AsyncMock(return_value="browser chat"),
+            vision=AsyncMock(return_value="browser vision"),
+        )
+        client._call_relayrouter = AsyncMock(return_value="The image is red.")
+        client._collect_image_context = AsyncMock(
+            return_value=[
+                ImageContext(
+                    label="attached image",
+                    filename="pixel.png",
+                    mime_type="image/png",
+                    data=b"pixel",
+                )
+            ]
+        )
+        client._update_memory_smart = AsyncMock()
+        client.bot = SimpleNamespace(
+            user=SimpleNamespace(id=999),
+            db=SimpleNamespace(get_ai_memory=AsyncMock(return_value="")),
+        )
+
+        with patch(
+            "cogs.aimoderation.ai_client._RELAYROUTER_API_KEY",
+            "rr_live_test",
+        ):
+            response = await client.converse(
+                user_content="what is in this image?",
+                guild=SimpleNamespace(id=1, name="Guild", member_count=10),
+                author=SimpleNamespace(id=2, name="User"),
+                recent_messages=[],
+                signals=ConversationSignals(
+                    mode=ConversationMode.STANDARD,
+                    confidence=1.0,
+                ),
+            )
+
+        self.assertEqual(response, "The image is red.")
+        kwargs = client._call_relayrouter.await_args.kwargs
+        self.assertEqual(kwargs["model"], "gpt-5-6-terra")
+        self.assertTrue(kwargs["allow_multimodal"])
+        client._deepseek_web.vision.assert_not_awaited()
 
     async def test_reason_is_rewritten_once_and_cleaned(self) -> None:
         cog = object.__new__(AIModeration)
