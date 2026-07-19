@@ -168,7 +168,9 @@ def test_server_is_a_top_level_slash_command() -> None:
 
 def test_missing_prefix_arguments_open_the_command_help_card() -> None:
     source = (ROOT / "bot.py").read_text(encoding="utf-8-sig")
-    handler = source[source.index("    async def on_command_error"):source.index("    async def on_ready")]
+    handler_start = source.index("    async def on_command_error")
+    handler_end = source.index("    async def on_ready", handler_start)
+    handler = source[handler_start:handler_end]
     branch = handler[
         handler.index("if isinstance(error, commands.MissingRequiredArgument)"):
         handler.index("if isinstance(error, (commands.MemberNotFound, commands.UserNotFound))")
