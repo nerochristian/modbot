@@ -50,6 +50,19 @@ class AIActionRoutingTests(unittest.TestCase):
         ):
             self.assertEqual(_default_ai_model(), "gemini-3-5-flash")
 
+    def test_default_relayrouter_model_uses_moderation_model(self) -> None:
+        from cogs.aimoderation.types import _default_ai_model
+
+        with patch.dict(
+            "os.environ",
+            {
+                "AI_PROVIDER": "relayrouter",
+                "AI_MODEL": "",
+                "RELAYROUTER_MODERATION_MODEL": "gpt-5-6-terra",
+            },
+        ):
+            self.assertEqual(_default_ai_model(), "gpt-5-6-terra")
+
     def test_purge_is_a_targeted_tool(self) -> None:
         from cogs.aimoderation.types import TARGETED_TOOLS
 

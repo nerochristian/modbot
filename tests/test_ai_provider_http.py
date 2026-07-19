@@ -154,6 +154,100 @@ def test_deepseek_api_enabled_reflects_key(monkeypatch):
     assert ai_client_module._deepseek_api_enabled() is False
 
 
+def test_relayrouter_api_enabled_reflects_key(monkeypatch):
+    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "rr_live_test")
+    assert ai_client_module._relayrouter_api_enabled() is True
+    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "")
+    assert ai_client_module._relayrouter_api_enabled() is False
+
+
+def test_relayrouter_vision_uses_standard_chat_completions(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client._block_until = None
+    client._block_reason = None
+    client._post_chat_completion = AsyncMock(return_value="vision")
+    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "rr_live_test")
+
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "text", "text": "describe"},
+                {"type": "image_url", "image_url": {"url": "data:image/png;base64,AA=="}},
+            ],
+        }
+    ]
+    result = asyncio.run(
+        client._call_relayrouter(
+            messages,
+            temperature=0.0,
+            max_tokens=32,
+            model="gpt-5-6-terra",
+            allow_multimodal=True,
+            fallback_models=(),
+        )
+    )
+
+    assert result == "vision"
+    kwargs = client._post_chat_completion.await_args.kwargs
+    assert kwargs["model"] == "gpt-5-6-terra"
+    assert kwargs["allow_multimodal"] is True
+    assert kwargs["request_timeout"] == 90
+    assert "chat_path" not in kwargs
+
+
+def test_relayrouter_falls_back_in_configured_order(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client._block_until = None
+    client._block_reason = None
+    client._post_chat_completion = AsyncMock(
+        side_effect=[RuntimeError("primary down"), "fallback answer"]
+    )
+    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "rr_live_test")
+
+    result = asyncio.run(
+        client._call_relayrouter(
+            [{"role": "user", "content": "hello"}],
+            temperature=0.7,
+            max_tokens=64,
+            model="gpt-5-6-luna",
+            fallback_models=("claude-sonnet-4-6", "deepseek-v4-flash"),
+        )
+    )
+
+    assert result == "fallback answer"
+    models = [
+        call.kwargs["model"]
+        for call in client._post_chat_completion.await_args_list
+    ]
+    assert models == ["gpt-5-6-luna", "claude-sonnet-4-6"]
+
+
+def test_relayrouter_provider_routes_before_legacy_providers(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client.provider = "relayrouter"
+    client.config = AIConfig(provider="relayrouter", model="gpt-5-6-terra")
+    client._call_relayrouter = AsyncMock(return_value="relay")
+    client._deepseek_web = types.SimpleNamespace(enabled=True, chat=AsyncMock())
+    client._call_deepseek_api = AsyncMock(return_value="deepseek")
+    client._call_digitalocean = AsyncMock(return_value="digitalocean")
+    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "rr_live_test")
+
+    result = asyncio.run(
+        client._call(
+            [{"role": "user", "content": "route this"}],
+            temperature=0.0,
+            max_tokens=32,
+        )
+    )
+
+    assert result == "relay"
+    client._call_relayrouter.assert_awaited_once()
+    client._deepseek_web.chat.assert_not_awaited()
+    client._call_deepseek_api.assert_not_awaited()
+    client._call_digitalocean.assert_not_awaited()
+
+
 @pytest.mark.parametrize(
     "placeholder",
     (
