@@ -209,6 +209,30 @@ def _looks_like_image_question_text(content: str) -> bool:
     )
 
 
+def _vision_response_missed_image(content: str) -> bool:
+    """Detect gateways that return text while silently dropping image input."""
+    text = re.sub(r"\s+", " ", str(content or "")).strip().lower()
+    if not text:
+        return False
+    return bool(
+        re.search(
+            r"\b(?:please|kindly)\s+(?:upload|attach|send|provide)\b.{0,80}"
+            r"\b(?:image|photo|picture|screenshot)\b",
+            text,
+        )
+        or re.search(
+            r"\b(?:cannot|can't|unable\s+to)\s+(?:see|view|access|inspect|analy[sz]e)\b"
+            r".{0,80}\b(?:image|photo|picture|screenshot)\b",
+            text,
+        )
+        or re.search(
+            r"\bno\s+(?:image|photo|picture|screenshot)\s+(?:was\s+)?"
+            r"(?:provided|attached|received)\b",
+            text,
+        )
+    )
+
+
 class AIClient:
     """Async wrapper around the configured AI provider with rate limiting and memory."""
 
@@ -1530,6 +1554,10 @@ class AIClient:
                             model=model,
                             allow_multimodal=bool(image_context),
                         )
+                    if image_context and _vision_response_missed_image(content or ""):
+                        raise RuntimeError(
+                            "The HTTP vision route returned a response without receiving the image."
+                        )
                     if content:
                         content = self._postprocess_chat_response(content)
                         if signals.mode == ConversationMode.RESEARCH:
@@ -1554,9 +1582,8 @@ class AIClient:
                         exc_info=True,
                     )
 
-            if relay_primary and image_context:
-                # Never answer an image question through a text-only fallback or
-                # the legacy browser vision lane; either inspect the pixels or fail.
+            if image_context and not self._deepseek_web.enabled:
+                # Never answer an image question through a text-only fallback.
                 return (
                     "I couldn't inspect that image through the vision provider "
                     "right now. Please try again shortly."
@@ -1592,6 +1619,10 @@ class AIClient:
                     self._update_memory_smart(author.id, user_content, content, stored_memory)
                 )
                 return content
+            if image_context and http_primary_attempted:
+                logger.info(
+                    "HTTP vision routes failed or dropped the image; using DeepSeek Web vision fallback."
+                )
             session_key, session_name = self._deepseek_session_identity(
                 guild,
                 source_message,
