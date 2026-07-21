@@ -609,7 +609,10 @@ class DeepSeekWebClient:
                 )
             )
             if send_button is not None:
-                await send_button.click(timeout=5_000)
+                try:
+                    await send_button.click(timeout=5_000, force=True)
+                except Exception:
+                    await textbox.press("Enter")
                 return
             await textbox.press("Enter")
             return
@@ -621,7 +624,10 @@ class DeepSeekWebClient:
         )
         if send_button is None:
             raise DeepSeekWebError("DeepSeek image send button was not available.")
-        await send_button.click(timeout=5_000)
+        try:
+            await send_button.click(timeout=5_000, force=True)
+        except Exception:
+            await textbox.press("Enter")
 
     async def _extract_answer(self, answer: Any) -> tuple[str, list[str]]:
         text = await answer.evaluate(
