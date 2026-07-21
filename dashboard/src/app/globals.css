@@ -455,94 +455,98 @@ body {
 }
 
 /* ================================================================== */
-/* FRONT DESK — the landing page as an open case file.                */
+/* MIDNIGHT — the marketing storefront.                               */
 /*                                                                    */
-/* The storefront wears the product's own identity: porcelain paper,  */
-/* cobalt ink, and the stamp/tick-meter signatures. It adds only what */
-/* a printed docket needs — sheets of paper and an inked rubber       */
-/* stamp. No glow, no glass, no radar.                                */
+/* A scoped always-dark palette for the landing surface: near-black   */
+/* navy, electric blue → violet aurora accents, and soft neon rims    */
+/* around the hero console. Applied to the marketing wrapper only, so */
+/* the dashboard's own light/dark theming is untouched.               */
 /* ================================================================== */
-.sheet {
-  position: relative;
-  background: var(--card);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  box-shadow:
-    0 1px 0 rgba(20, 22, 28, 0.02),
-    0 18px 44px -30px rgba(20, 22, 28, 0.3);
+.midnight {
+  --paper: #05070d;
+  --surface: #0a0e18;
+  --surface-2: #111726;
+  --card: #0b101c;
+  --overlay: rgba(2, 4, 10, 0.8);
+  --border: rgba(148, 163, 184, 0.12);
+  --border-strong: rgba(148, 163, 184, 0.22);
+  --foreground: #f2f5ff;
+  --muted: #99a4c0;
+  --muted-2: #606c87;
+
+  --accent: #3b82f6;
+  --accent-foreground: #ffffff;
+  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
+  --accent-line: color-mix(in srgb, var(--accent) 38%, transparent);
+  --violet: #8b5cf6;
+
+  --success: #22c55e;
+  --success-soft: color-mix(in srgb, #22c55e 16%, transparent);
+  --mint: var(--success);
+  --mint-soft: var(--success-soft);
+  --warning: #e0942e;
+  --warning-soft: color-mix(in srgb, #e0942e 16%, transparent);
+  --danger: #f0424b;
+  --danger-soft: color-mix(in srgb, #f0424b 16%, transparent);
+  --info: #38bdf8;
+  --info-soft: color-mix(in srgb, #38bdf8 16%, transparent);
+
+  --sev-none: #5b6270;
+  --sev-low: #3f7bff;
+  --sev-medium: #e0942e;
+  --sev-high: #f0703f;
+  --sev-critical: #f0424b;
+
+  color-scheme: dark;
+  color: var(--foreground);
+  background:
+    radial-gradient(
+      circle at 22% -6%,
+      color-mix(in srgb, var(--accent) 13%, transparent),
+      transparent 34rem
+    ),
+    radial-gradient(
+      circle at 82% 4%,
+      color-mix(in srgb, var(--violet) 10%, transparent),
+      transparent 30rem
+    ),
+    var(--paper);
 }
-/* The page underneath — a second sheet peeking out of the stack. */
-.sheet-under {
-  position: absolute;
-  inset: 0;
-  transform: rotate(1.6deg) translate(10px, 12px);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-}
-/* Inked rubber stamp — rotated, official, colored via currentColor. */
-.ink-stamp {
-  display: inline-block;
-  padding: 0.25rem 0.8rem;
-  border: 2.5px solid currentColor;
-  border-radius: 7px;
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  font-weight: 600;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  transform: rotate(-6deg);
-  opacity: 0.92;
-}
-/* The big one — slams onto the hero like a records clerk means it. */
-@keyframes stamp-slam {
-  0% {
-    opacity: 0;
-    transform: rotate(-16deg) scale(2.4);
-  }
-  62% {
-    opacity: 1;
-    transform: rotate(-8deg) scale(0.95);
-  }
-  100% {
-    opacity: 1;
-    transform: rotate(-8deg) scale(1);
-  }
-}
-.stamp-slam {
-  animation: stamp-slam 0.5s cubic-bezier(0.2, 0.9, 0.25, 1.2) 0.4s both;
-}
-/* Ghost numerals — section numbers set like a print poster's folios. */
-.ghost-numeral {
-  position: absolute;
-  z-index: 0;
-  font-family: var(--font-display);
-  font-weight: 700;
-  line-height: 0.8;
+
+/* Aurora — the blue→violet signature gradient. */
+.text-aurora {
+  background: linear-gradient(105deg, var(--accent) 5%, var(--violet) 90%);
+  -webkit-background-clip: text;
+  background-clip: text;
   color: transparent;
-  -webkit-text-stroke: 1.5px var(--border-strong);
-  user-select: none;
-  pointer-events: none;
 }
-/* Docket ticker — the wire of filings running across the page. */
-@keyframes marquee {
-  to {
-    transform: translateX(-50%);
-  }
+.bg-aurora {
+  background: linear-gradient(105deg, #2f6bff, var(--violet));
 }
-.marquee-track {
-  display: flex;
-  width: max-content;
-  animation: marquee 30s linear infinite;
+/* Neon rim for the hero console and highlighted pricing card. */
+.glow-frame {
+  border: 1px solid var(--accent-line);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--violet) 18%, transparent),
+    0 0 70px -18px color-mix(in srgb, var(--accent) 65%, transparent),
+    0 30px 80px -40px rgba(0, 0, 0, 0.8);
+}
+/* Feature cards lift and rim-light on hover. */
+.card-glow {
+  transition:
+    transform 200ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    border-color 200ms ease,
+    box-shadow 200ms ease;
+}
+.card-glow:hover {
+  transform: translateY(-3px);
+  border-color: var(--accent-line);
+  box-shadow: 0 20px 50px -28px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 @media (prefers-reduced-motion: reduce) {
-  .marquee-track {
-    animation: none;
-  }
-  .stamp-slam {
-    animation: none;
-    opacity: 0.92;
-    transform: rotate(-8deg);
+  .card-glow,
+  .card-glow:hover {
+    transform: none;
   }
 }
 
