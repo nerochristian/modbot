@@ -455,75 +455,44 @@ body {
 }
 
 /* ================================================================== */
-/* SITUATION ROOM — the Live Wire marketing front door.               */
+/* FRONT DESK — the landing page as an open case file.                */
 /*                                                                    */
-/* Scoped palette: a deep ink-blue operations surface with exactly    */
-/* two functional signal colors — RED = threat, TEAL = contained.     */
-/* Deliberately NOT the "black + neon glow" cliché: color reads like  */
-/* an air-traffic / SOC instrument, restrained; the drama comes from  */
-/* motion and density, not luminance. Applied to a marketing wrapper  */
-/* only, so the dashboard's calm light identity is untouched.         */
+/* The storefront wears the product's own identity: porcelain paper,  */
+/* cobalt ink, and the stamp/tick-meter signatures. It adds only what */
+/* a printed docket needs — sheets of paper and an inked rubber       */
+/* stamp. No glow, no glass, no radar.                                */
 /* ================================================================== */
-.situation {
-  --paper: #070a14;          /* deep navy — matches the logo backdrop */
-  --surface: #0d1220;
-  --surface-2: #141b2c;
-  --card: #0d1220;
-  --overlay: rgba(2, 4, 9, 0.74);
-  --border: #1e263a;
-  --border-strong: #2c3752;
-  --foreground: #eef2fb;
-  --muted: #93a0bc;
-  --muted-2: #5b6884;
-
-  --accent: #1e78ff;         /* brand electric blue — primary signal */
-  --accent-foreground: #ffffff;
-  --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
-  --accent-line: color-mix(in srgb, var(--accent) 36%, transparent);
-  /* Brand gradient sampled from the logo's D stroke + cyan checkmarks. */
-  --brand-from: #005bf3;
-  --brand-to: #0a87fd;
-  --brand-cyan: #33d6ff;
-
-  --threat: #ff4d4d;         /* threat / blocked — the counter-signal */
-  --threat-soft: color-mix(in srgb, #ff4d4d 15%, transparent);
-
-  --success: #33d6ff;        /* contained / safe — brand cyan */
-  --success-soft: color-mix(in srgb, #33d6ff 16%, transparent);
-  --mint: var(--success);
-  --mint-soft: var(--success-soft);
-  --warning: #e0942e;
-  --warning-soft: color-mix(in srgb, #e0942e 16%, transparent);
-  --danger: #ff4d4d;
-  --danger-soft: color-mix(in srgb, #ff4d4d 15%, transparent);
-  --info: #1e78ff;
-  --info-soft: color-mix(in srgb, #1e78ff 15%, transparent);
-
-  --sev-none: #5b6884;
-  --sev-low: #1e78ff;
-  --sev-medium: #e0942e;
-  --sev-high: #ff7a45;
-  --sev-critical: #ff4d4d;
-
-  color-scheme: dark;
-  background: var(--paper);
-  color: var(--foreground);
+.sheet {
+  position: relative;
+  background: var(--card);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 1px 0 rgba(20, 22, 28, 0.02),
+    0 18px 44px -30px rgba(20, 22, 28, 0.3);
 }
-
-/* Modern Docket surfaces: depth comes from light and layering, not noisy grids. */
-.modern-marketing {
-  background:
-    radial-gradient(
-      circle at 15% 0%,
-      rgba(37, 99, 235, 0.2),
-      transparent 30rem
-    ),
-    radial-gradient(
-      circle at 85% 8%,
-      rgba(56, 189, 248, 0.12),
-      transparent 28rem
-    ),
-    var(--paper);
+/* The page underneath — a second sheet peeking out of the stack. */
+.sheet-under {
+  position: absolute;
+  inset: 0;
+  transform: rotate(1.6deg) translate(10px, 12px);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+/* Inked rubber stamp — rotated, official, colored via currentColor. */
+.ink-stamp {
+  display: inline-block;
+  padding: 0.25rem 0.8rem;
+  border: 2.5px solid currentColor;
+  border-radius: 7px;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  transform: rotate(-6deg);
+  opacity: 0.92;
 }
 
 .modern-shell {
