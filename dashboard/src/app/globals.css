@@ -494,6 +494,57 @@ body {
   transform: rotate(-6deg);
   opacity: 0.92;
 }
+/* The big one — slams onto the hero like a records clerk means it. */
+@keyframes stamp-slam {
+  0% {
+    opacity: 0;
+    transform: rotate(-16deg) scale(2.4);
+  }
+  62% {
+    opacity: 1;
+    transform: rotate(-8deg) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: rotate(-8deg) scale(1);
+  }
+}
+.stamp-slam {
+  animation: stamp-slam 0.5s cubic-bezier(0.2, 0.9, 0.25, 1.2) 0.4s both;
+}
+/* Ghost numerals — section numbers set like a print poster's folios. */
+.ghost-numeral {
+  position: absolute;
+  z-index: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 0.8;
+  color: transparent;
+  -webkit-text-stroke: 1.5px var(--border-strong);
+  user-select: none;
+  pointer-events: none;
+}
+/* Docket ticker — the wire of filings running across the page. */
+@keyframes marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 30s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .marquee-track {
+    animation: none;
+  }
+  .stamp-slam {
+    animation: none;
+    opacity: 0.92;
+    transform: rotate(-8deg);
+  }
+}
 
 .modern-shell {
   background:
