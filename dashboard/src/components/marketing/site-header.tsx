@@ -12,9 +12,9 @@ import { cn } from '@/lib/utils'
 
 const NAV = [
   { label: 'Features', href: '/#features' },
-  { label: 'Dashboard', href: '/#dashboard' },
-  { label: 'Pricing', href: '/#pricing' },
+  { label: 'How it works', href: '/#setup' },
   { label: 'Commands', href: '/commands' },
+  { label: 'Support', href: '/commands#support' },
 ]
 
 type HeaderUser = { name: string; email: string; avatarUrl: string | null; avatarColor: string }
@@ -84,8 +84,8 @@ export function SiteHeader({ user }: { user: HeaderUser | null }) {
             </Dropdown>
           ) : (
             <>
-              <Link href="/login" className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'hidden sm:inline-flex')}>Login</Link>
-              <Link href="/register" className={buttonVariants({ variant: 'primary', size: 'sm' })}>Add to server</Link>
+              <Link href="/login" className={cn(buttonVariants({ variant: 'ghost', size: 'sm' }), 'hidden sm:inline-flex')}>Sign in</Link>
+              <Link href="/register" className={buttonVariants({ variant: 'primary', size: 'sm' })}>Open dashboard</Link>
             </>
           )}
           <button
