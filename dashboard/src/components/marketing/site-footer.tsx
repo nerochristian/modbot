@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Github, Heart, MessageSquare, Twitter, Youtube } from 'lucide-react'
+import { AtSign, Globe, Heart, MessageSquare, Rss } from 'lucide-react'
 import { Logo } from '@/components/logo'
 
 const COLUMNS: { heading: string; links: { label: string; href: string }[] }[] = [
@@ -41,9 +41,9 @@ const COLUMNS: { heading: string; links: { label: string; href: string }[] }[] =
 
 const SOCIALS = [
   { label: 'Discord', href: '#', icon: MessageSquare },
-  { label: 'GitHub', href: '#', icon: Github },
-  { label: 'Twitter', href: '#', icon: Twitter },
-  { label: 'YouTube', href: '#', icon: Youtube },
+  { label: 'Website', href: '#', icon: Globe },
+  { label: 'Contact', href: '#', icon: AtSign },
+  { label: 'Updates', href: '#', icon: Rss },
 ]
 
 export function SiteFooter() {
