@@ -1,5 +1,5 @@
 {
-  "description": "Docket - The all-in-one Discord bot for safer servers:\nAutoMod, AI moderation, verification, welcomes, embeds, tickets, appeals, logs, court cases, stats, backups, utilities, and more.\n\nDashboard: https://docketbot.xyz\nInvite: https://docketbot.xyz/invite\nSupport: https://docketbot.xyz/support",
+  "description": "Docket - The all-in-one Discord bot for safer servers:\nAutoMod, AI moderation, verification, welcomes, embeds, tickets, appeals, logs, court cases, stats, backups, utilities, and more.\n\nDashboard: https://docketbot.xyz\nInvite: https://discord.com/oauth2/authorize?client_id=1527098566273925251&scope=bot%20applications.commands\nSupport: https://discord.gg/FhnuCdsWa",
   "redirect_uris": [
     "https://docketbot.xyz/api/auth/discord/callback"
   ]
