@@ -1831,6 +1831,8 @@ class AIModeration(commands.Cog):
                 args["nsfw"] = True
             return decision(ToolType.EDIT_CHANNEL, "edit_channel", args)
 
+        if re.search(r"\b(?:reaction|button|dropdown|select(?:ion)?)[ -]?roles?\b", low):
+            return decision(ToolType.EXECUTE_PYTHON, "advanced_role_workflow")
         if re.search(r"\b(?:create|make|add|build|set up)\b.*\brole\b", low):
             name = self._extract_simple_name_after(content, r"role")
             return decision(ToolType.CREATE_ROLE, "create_role", {"name": name} if name else {})

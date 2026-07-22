@@ -98,11 +98,11 @@ READ_ONLY_TOOLS = {
 
 
 @pytest.mark.parametrize(
-    ("request", "expected_tool"),
+    ("prompt_text", "expected_tool"),
     ACTION_CASES,
     ids=[f"action-{index + 1:04d}" for index in range(len(ACTION_CASES))],
 )
-def test_generated_action_route_review_matrix(request: str, expected_tool: ToolType) -> None:
+def test_generated_action_route_review_matrix(prompt_text: str, expected_tool: ToolType) -> None:
     cog = object.__new__(AIModeration)
     bot_user = SimpleNamespace(id=BOT_ID, bot=True)
     author = SimpleNamespace(id=AUTHOR_ID, mention=f"<@{AUTHOR_ID}>", bot=False)
@@ -112,16 +112,16 @@ def test_generated_action_route_review_matrix(request: str, expected_tool: ToolT
     cog.bot = SimpleNamespace(user=bot_user)
     message = SimpleNamespace(
         author=author,
-        mentions=[bot_user] + ([target] if f"<@{TARGET_ID}>" in request else []),
-        role_mentions=[role] if f"<@&{ROLE_ID}>" in request else [],
-        channel_mentions=[channel_mention] if f"<#{CHANNEL_ID}>" in request else [],
+        mentions=[bot_user] + ([target] if f"<@{TARGET_ID}>" in prompt_text else []),
+        role_mentions=[role] if f"<@&{ROLE_ID}>" in prompt_text else [],
+        channel_mentions=[channel_mention] if f"<#{CHANNEL_ID}>" in prompt_text else [],
         channel=SimpleNamespace(id=CHANNEL_ID, mention=f"<#{CHANNEL_ID}>"),
         reference=None,
     )
 
-    decision = cog._quick_route(message, request)
+    decision = cog._quick_route(message, prompt_text)
     if decision is None:
-        decision = cog._recover_tool_decision(message, request)
+        decision = cog._recover_tool_decision(message, prompt_text)
 
     assert decision is not None
     assert decision.type == DecisionType.TOOL_CALL
