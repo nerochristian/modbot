@@ -300,6 +300,22 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertEqual(decision.arguments["seconds"], 600)
         self.assertEqual(decision.arguments["reason"], "spam")
 
+    def test_bulk_timeout_shortcut_grounds_excluded_role_without_target(self) -> None:
+        role = SimpleNamespace(id=55, name="Above all")
+        message = SimpleNamespace(mentions=[], role_mentions=[role])
+
+        decision = self.cog._quick_route(
+            message,
+            "mute everyone who doesn't have the role <@&55>",
+        )
+
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision.tool, ToolType.TIMEOUT)
+        self.assertTrue(decision.arguments["all_members"])
+        self.assertEqual(decision.arguments["exclude_role_id"], 55)
+        self.assertEqual(decision.arguments["exclude_role_name"], "Above all")
+        self.assertNotIn("target_user_id", decision.arguments)
+
     def test_reply_target_warn_shortcut_keeps_reason(self) -> None:
         message = SimpleNamespace(mentions=[])
         decision = self.cog._quick_route(message, "warn them for being weird")
@@ -1125,6 +1141,53 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(enriched.arguments["amount"], 50)
         self.assertFalse(enriched.arguments["amount_is_limit"])
         self.assertEqual(enriched.arguments["target_user_id"], target.id)
+
+    async def test_bulk_timeout_enrichment_discards_stale_or_hallucinated_target(self) -> None:
+        cog = object.__new__(AIModeration)
+        bot_user = SimpleNamespace(id=999, bot=True)
+        excluded_role = SimpleNamespace(id=55, name="Above all")
+        cog.bot = SimpleNamespace(user=bot_user)
+        cog.config = AIConfig(timeout_default_seconds=3600)
+        content = "mute everyone who doesn't have the role <@&55>"
+        cog.clean_content = lambda message: content
+        cog._infer_target = AsyncMock(return_value=20)
+        message = SimpleNamespace(
+            content=content,
+            mentions=[bot_user],
+            role_mentions=[excluded_role],
+            channel_mentions=[],
+            reference=None,
+            author=SimpleNamespace(id=10),
+            guild=SimpleNamespace(id=1),
+        )
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="model route",
+            tool=ToolType.TIMEOUT,
+            arguments={"target_user_id": 20},
+        )
+
+        enriched = await cog._enrich(message, decision, [])
+
+        self.assertTrue(enriched.arguments["all_members"])
+        self.assertEqual(enriched.arguments["exclude_role_id"], excluded_role.id)
+        self.assertNotIn("target_user_id", enriched.arguments)
+        cog._infer_target.assert_not_awaited()
+
+    def test_bulk_timeout_always_requires_confirmation(self) -> None:
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="bulk timeout",
+            tool=ToolType.TIMEOUT,
+            arguments={"all_members": True, "seconds": 60},
+        )
+
+        self.assertTrue(
+            self.cog._requires_confirmation(
+                GuildSettings(confirm_enabled=False, confirm_actions=set()),
+                decision,
+            )
+        )
 
     async def test_bot_ingress_reserves_direct_mentions_for_ai(self) -> None:
         from bot import ModBot

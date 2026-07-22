@@ -6,6 +6,7 @@ pipeline when the LLM decides a member-focused action is needed.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import timedelta
 from typing import Optional
@@ -462,6 +463,9 @@ async def handle_get_history(ctx: ToolContext) -> ToolResult:
     category="members",
 )
 async def handle_timeout(ctx: ToolContext) -> ToolResult:
+    if ctx.bool_arg("all_members"):
+        return await _handle_bulk_timeout(ctx)
+
     target = await ctx.resolve_target()
     if not target:
         return ToolResult.fail("Could not resolve target member.")
@@ -511,6 +515,130 @@ async def handle_timeout(ctx: ToolContext) -> ToolResult:
         ),
         embed=embed,
     )
+
+
+async def _handle_bulk_timeout(ctx: ToolContext) -> ToolResult:
+    """Timeout an explicit member set without allowing one bad target to abort it."""
+    settings = await _guild_moderation_settings(ctx)
+    raw_seconds = ctx.int_arg("seconds", ctx.cog.config.timeout_default_seconds)
+    seconds = max(1, min(raw_seconds, ctx.cog.config.timeout_max_seconds))
+    duration = _format_duration(seconds)
+    reason = ctx.str_arg("reason")
+
+    excluded_role = None
+    excluded_role_query = ctx.arg("exclude_role_id") or ctx.arg("exclude_role_name")
+    if excluded_role_query:
+        excluded_role = await ctx.cog.resolve_role(ctx.guild, excluded_role_query)
+        if not excluded_role:
+            return ToolResult.fail("The excluded role was not found, so nobody was muted.")
+
+    bot_member = ctx.guild.me
+    if not bot_member:
+        return ToolResult.fail("Could not verify my server role, so nobody was muted.")
+
+    eligible: list[discord.Member] = []
+    counts = {
+        "excluded": 0,
+        "bots": 0,
+        "admins": 0,
+        "protected": 0,
+        "hierarchy": 0,
+        "failed": 0,
+    }
+    for member in ctx.guild.members:
+        if member.id == ctx.actor.id:
+            continue
+        if member.bot:
+            counts["bots"] += 1
+            continue
+        if excluded_role and any(role.id == excluded_role.id for role in member.roles):
+            counts["excluded"] += 1
+            continue
+        if member.id == ctx.guild.owner_id or member.guild_permissions.administrator:
+            counts["admins"] += 1
+            continue
+        if _has_protected_role(ctx, member, settings):
+            counts["protected"] += 1
+            continue
+        if not ctx.cog.can_moderate(ctx.actor, member) or not ctx.cog.can_moderate(bot_member, member):
+            counts["hierarchy"] += 1
+            continue
+        eligible.append(member)
+
+    semaphore = asyncio.Semaphore(3)
+
+    async def apply_timeout(member: discord.Member) -> bool:
+        async with semaphore:
+            try:
+                await member.timeout(timedelta(seconds=seconds), reason=reason)
+                if moderation_bool(settings, "moderation_dm_users", True):
+                    await _dm_moderation_action(
+                        member,
+                        guild_name=ctx.guild.name,
+                        action="Muted",
+                        reason=reason,
+                        duration=duration,
+                    )
+                return True
+            except (discord.Forbidden, discord.HTTPException):
+                logger.warning(
+                    "Discord rejected bulk timeout for user %s in guild %s",
+                    member.id,
+                    ctx.guild.id,
+                )
+                return False
+
+    outcomes = await asyncio.gather(*(apply_timeout(member) for member in eligible))
+    muted_count = sum(outcomes)
+    counts["failed"] = len(outcomes) - muted_count
+
+    excluded_label = excluded_role.mention if excluded_role else "none"
+    summary_parts = [
+        f"Muted **{muted_count}** member(s) for **{duration}**.",
+        f"Excluded by role: **{counts['excluded']}** ({excluded_label}).",
+    ]
+    skipped = counts["admins"] + counts["protected"] + counts["hierarchy"]
+    if skipped:
+        summary_parts.append(
+            f"Safely skipped **{skipped}** admin, protected, or out-of-hierarchy member(s)."
+        )
+    if counts["failed"]:
+        summary_parts.append(f"Discord rejected **{counts['failed']}** eligible timeout(s).")
+    result_message = " ".join(summary_parts)
+
+    embed = action_embed(
+        title="Bulk Member Timeout",
+        color=discord.Color.orange(),
+        actor=ctx.actor,
+        reason=reason,
+        extra={
+            "Duration": duration,
+            "Muted": str(muted_count),
+            "Excluded Role": excluded_label,
+            "Excluded Members": str(counts["excluded"]),
+            "Safety Skips": str(skipped),
+            "Discord Failures": str(counts["failed"]),
+        },
+    )
+    await ctx.cog.log_action(
+        message=ctx.message,
+        action="bulk_timeout_members",
+        actor=ctx.actor,
+        target=None,
+        reason=reason,
+        decision=ctx.decision,
+        extra={
+            "Duration": duration,
+            "Muted": str(muted_count),
+            "Excluded Role": excluded_label,
+            "Excluded Members": str(counts["excluded"]),
+            "Safety Skips": str(skipped),
+            "Discord Failures": str(counts["failed"]),
+        },
+    )
+    if counts["failed"] and muted_count == 0 and eligible:
+        return ToolResult.fail(result_message)
+    return ToolResult.ok(result_message, embed=embed)
 
 
 @ToolRegistry.register(

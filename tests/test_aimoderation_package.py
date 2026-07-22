@@ -10,7 +10,7 @@ from cogs.aimoderation import ToolRegistry, ToolType
 from cogs.aimoderation.handlers.admin import _raw_api_safety_error, handle_execute_python
 from cogs.aimoderation.handlers.channels import handle_unlock_channel
 from cogs.aimoderation.handlers.messages import handle_purge
-from cogs.aimoderation.handlers.members import handle_unban, handle_warn
+from cogs.aimoderation.handlers.members import handle_timeout, handle_unban, handle_warn
 from cogs.aimoderation.bridge import warn_member
 from cogs.aimoderation.handlers.query_handlers import (
     handle_find_inactive,
@@ -433,6 +433,74 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(result.success)
         self.assertIn("Created 3 channels", result.message)
         self.assertIn(execution_digest(code)[:12], result.message)
+        cog.log_action.assert_awaited_once()
+
+    async def test_bulk_timeout_excludes_named_role_and_skips_unsafe_targets(self) -> None:
+        excluded_role = SimpleNamespace(id=5, name="Above all", mention="<@&5>")
+        ordinary_role = SimpleNamespace(id=6, name="Member")
+
+        def member(member_id, *, roles=(), bot=False, administrator=False):
+            return SimpleNamespace(
+                id=member_id,
+                bot=bot,
+                roles=list(roles),
+                guild_permissions=SimpleNamespace(administrator=administrator),
+                timeout=AsyncMock(),
+                send=AsyncMock(),
+            )
+
+        actor = member(10)
+        actor.mention = "<@10>"
+        bot_member = member(99, bot=True)
+        excluded = member(20, roles=(excluded_role,))
+        eligible = member(30, roles=(ordinary_role,))
+        administrator = member(40, roles=(ordinary_role,), administrator=True)
+        above_bot = member(50, roles=(ordinary_role,))
+        guild = SimpleNamespace(
+            id=1,
+            name="Guild",
+            owner_id=1,
+            me=bot_member,
+            members=[actor, bot_member, excluded, eligible, administrator, above_bot],
+        )
+        database = SimpleNamespace(
+            get_settings=AsyncMock(return_value={"moderation_dm_users": False})
+        )
+        cog = SimpleNamespace(
+            bot=SimpleNamespace(db=database),
+            config=SimpleNamespace(timeout_default_seconds=3600, timeout_max_seconds=259200),
+            resolve_role=AsyncMock(return_value=excluded_role),
+            can_moderate=lambda moderator, target: target.id != above_bot.id,
+            log_action=AsyncMock(),
+        )
+        values = {
+            "all_members": True,
+            "exclude_role_id": excluded_role.id,
+            "seconds": 600,
+            "reason": "requested bulk moderation",
+        }
+        ctx = SimpleNamespace(
+            args=values,
+            arg=lambda key, default=None: values.get(key, default),
+            bool_arg=lambda key, default=False: bool(values.get(key, default)),
+            int_arg=lambda key, default=0: int(values.get(key, default)),
+            str_arg=lambda key, default="No reason provided": str(values.get(key, default)),
+            cog=cog,
+            actor=actor,
+            guild=guild,
+            message=SimpleNamespace(),
+            decision=SimpleNamespace(),
+        )
+
+        result = await handle_timeout(ctx)
+
+        self.assertTrue(result.success)
+        self.assertIn("Muted **1**", result.message)
+        self.assertIn("Excluded by role: **1**", result.message)
+        eligible.timeout.assert_awaited_once()
+        excluded.timeout.assert_not_awaited()
+        administrator.timeout.assert_not_awaited()
+        above_bot.timeout.assert_not_awaited()
         cog.log_action.assert_awaited_once()
 
     async def test_execute_python_rejects_code_changed_after_confirmation(self) -> None:
