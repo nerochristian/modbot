@@ -150,6 +150,7 @@ class ToolRegistry:
             message.guild,
             tool,
             configured_mod_role=configured_mod_role,
+            channel=cog._permission_channel_for_args(message, args),
         )
         if access_error:
             return ToolResult.fail(access_error)

@@ -243,11 +243,10 @@ class AIModeration(commands.Cog):
         "unquar", "unquarantine", "unwarn", "delwarn",
         "ban", "kick", "mute", "timeout", "quarantine", "quar", "warn",
     })
-    _MOD_ROLE_PERMISSION_GATES: ClassVar[frozenset[str]] = frozenset({
+    _CHANNEL_PERMISSION_GATES: ClassVar[frozenset[str]] = frozenset({
         "manage_messages",
-        "moderate_members",
-        "kick_members",
-        "ban_members",
+        "manage_threads",
+        "create_instant_invite",
     })
     _MOD_REQUEST_RE: ClassVar[re.Pattern] = re.compile(
         r"^(warn|kick|ban|unban|mute|timeout|unmute|untimeout|purge|clear|clean|"
@@ -1152,38 +1151,60 @@ class AIModeration(commands.Cog):
         tool: ToolType,
         *,
         configured_mod_role: bool = False,
+        channel: Optional[discord.abc.GuildChannel] = None,
     ) -> Optional[str]:
         metadata = ToolRegistry.get_metadata(tool)
         required = metadata.required_permission
         if not required:
             return None
-        if is_bot_owner_id(actor.id):
-            return None
+        actor_is_owner = is_bot_owner_id(actor.id)
         if required == "bot_owner":
-            return "This action is restricted to the bot owner."
-        if not isinstance(actor, discord.Member):
-            return "Could not verify your guild permissions."
-        if actor.guild_permissions.administrator:
-            return None
+            return None if actor_is_owner else "This action is restricted to the bot owner."
 
         perm_name = required.replace("_", " ").title()
         def has_perm(member: discord.Member, name: str) -> bool:
+            guild_permissions = member.guild_permissions
+            if bool(getattr(guild_permissions, "administrator", False)):
+                return True
+            permissions = guild_permissions
+            if channel is not None and name in self._CHANNEL_PERMISSION_GATES:
+                permissions_for = getattr(channel, "permissions_for", None)
+                if callable(permissions_for):
+                    permissions = permissions_for(member)
             if name == "manage_emojis":
                 return bool(
-                    getattr(member.guild_permissions, "manage_emojis_and_stickers", False)
-                    or getattr(member.guild_permissions, "manage_emojis", False)
+                    getattr(permissions, "manage_emojis_and_stickers", False)
+                    or getattr(permissions, "manage_emojis", False)
                 )
-            return bool(getattr(member.guild_permissions, name, False))
+            return bool(getattr(permissions, name, False))
 
-        role_authorized = (
-            configured_mod_role
-            and required in self._MOD_ROLE_PERMISSION_GATES
-        )
-        if not has_perm(actor, required) and not role_authorized:
+        # A configured moderator role may enter the AI routing surface, but it
+        # never substitutes for the Discord permission required by an action.
+        _ = configured_mod_role
+        if not actor_is_owner and not isinstance(actor, discord.Member):
+            return "Could not verify your guild permissions."
+        if not actor_is_owner and not has_perm(actor, required):
             return f"You need the `{perm_name}` permission."
         if guild and guild.me and not has_perm(guild.me, required):
             return f"I need the `{perm_name}` permission."
         return None
+
+    @staticmethod
+    def _permission_channel_for_args(
+        message: discord.Message,
+        args: Dict[str, Any],
+    ) -> Optional[discord.abc.GuildChannel]:
+        channel: Optional[discord.abc.GuildChannel] = message.channel
+        raw_channel_id = args.get("channel_id")
+        if raw_channel_id is None or message.guild is None:
+            return channel
+        try:
+            channel_id = int(raw_channel_id)
+        except (TypeError, ValueError):
+            return channel
+        resolver = getattr(message.guild, "get_channel_or_thread", None)
+        resolved = resolver(channel_id) if callable(resolver) else message.guild.get_channel(channel_id)
+        return resolved or channel
 
     # ------------------------------------------------------------------
     # Text-parsing helpers
@@ -2718,6 +2739,7 @@ class AIModeration(commands.Cog):
                     message.author,
                     settings,
                 ),
+                channel=self._permission_channel_for_args(message, decision.arguments),
             )
             if access_error:
                 await self.reply(

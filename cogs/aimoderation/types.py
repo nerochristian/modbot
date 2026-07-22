@@ -489,6 +489,12 @@ class PermissionFlags:
             "mute_members": self.mute_members,
         }
 
+    def allows(self, permission: str) -> bool:
+        """Return whether this member may use a standard Discord permission gate."""
+        if self.administrator:
+            return True
+        return bool(getattr(self, str(permission or "").strip(), False))
+
 
 @dataclass
 class MentionInfo:
