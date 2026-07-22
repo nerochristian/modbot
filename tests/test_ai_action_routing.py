@@ -900,6 +900,146 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Owner-only automation", preview)
         self.assertNotIn("guild.delete", preview)
 
+    async def test_generated_python_plan_retries_preflight_and_locks_digest(self) -> None:
+        cog = object.__new__(AIModeration)
+        cog.bot = SimpleNamespace(user=SimpleNamespace(id=999))
+        cog.ai = SimpleNamespace(
+            prefers_relayrouter=True,
+            _call=AsyncMock(
+                side_effect=[
+                    (
+                        '{"code":"import os\\nreturn os.getcwd()",'
+                        '"summary":"Inspect files","scope":"host",'
+                        '"expected_effects":["Read files"]}'
+                    ),
+                    (
+                        '{"code":"return f\'Guild {guild.id} has {len(guild.members)} members.\'",'
+                        '"summary":"Count server members","scope":"Current guild only",'
+                        '"expected_effects":["Read the cached member count"]}'
+                    ),
+                ]
+            )
+        )
+        guild = SimpleNamespace(
+            id=1,
+            name="Guild",
+            member_count=5,
+            members=[SimpleNamespace() for _ in range(5)],
+            categories=[],
+            channels=[],
+            roles=[],
+        )
+        message = SimpleNamespace(
+            guild=guild,
+            author=SimpleNamespace(id=10, __str__=lambda self: "Owner"),
+            channel=SimpleNamespace(id=20, name="general"),
+            mentions=[],
+        )
+
+        plan = await cog._generate_execute_python_plan(
+            content="count the members",
+            message=message,
+            settings=GuildSettings(model="claude-opus-4-8"),
+        )
+
+        self.assertIsNotNone(plan)
+        self.assertEqual(plan["summary"], "Count server members")
+        self.assertEqual(len(plan["code_sha256"]), 64)
+        self.assertEqual(cog.ai._call.await_count, 2)
+        self.assertIsNone(cog.ai._call.await_args.kwargs["model"])
+        second_prompt = cog.ai._call.await_args_list[1].args[0][1]["content"]
+        self.assertIn("failed preflight", second_prompt)
+        self.assertTrue(cog.ai._call.await_args.kwargs["json_mode"])
+
+    async def test_direct_mention_is_not_discarded_when_it_matches_legacy_command(self) -> None:
+        cog = object.__new__(AIModeration)
+        bot_user = SimpleNamespace(id=999, bot=True)
+        cog.bot = SimpleNamespace(
+            user=bot_user,
+            get_context=AsyncMock(return_value=SimpleNamespace(valid=True)),
+        )
+        cog.get_guild_settings = AsyncMock(
+            return_value=GuildSettings(enabled=False, chat_enabled=False),
+        )
+        cog._message_replies_to_bot = AsyncMock(return_value=False)
+        cog.clean_content = lambda message: "purge the last 50 messages sent by cherry"
+        cog._looks_like_mod_request = lambda content: True
+        cog._looks_like_advanced_action_request = lambda content: False
+        cog.reply = AsyncMock()
+        message = SimpleNamespace(
+            author=SimpleNamespace(bot=False, id=10),
+            guild=SimpleNamespace(id=1),
+            mentions=[bot_user],
+            reference=None,
+            content="<@999> purge the last 50 messages sent by cherry",
+            channel=SimpleNamespace(id=30),
+        )
+
+        await cog.on_message(message)
+
+        cog.reply.assert_awaited_once()
+        self.assertIn("AI moderation is disabled", cog.reply.await_args.kwargs["content"])
+
+    def test_purge_parser_preserves_last_message_count(self) -> None:
+        cog = object.__new__(AIModeration)
+
+        args = cog._extract_purge_args(
+            "purge the last 50 messages sent by <@123456789012345678>"
+        )
+
+        self.assertEqual(args["amount"], 50)
+        self.assertEqual(args["target_user_id"], 123456789012345678)
+
+    async def test_enrichment_overrides_hallucinated_purge_count_and_target(self) -> None:
+        cog = object.__new__(AIModeration)
+        bot_user = SimpleNamespace(id=999, bot=True)
+        target = SimpleNamespace(id=123456789012345678, bot=False)
+        cog.bot = SimpleNamespace(user=bot_user)
+        content = "purge the last 50 messages sent by <@123456789012345678>"
+        cog.clean_content = lambda message: content
+        message = SimpleNamespace(
+            content=content,
+            mentions=[bot_user, target],
+            channel_mentions=[],
+            reference=None,
+            author=SimpleNamespace(id=10),
+            guild=SimpleNamespace(id=1),
+        )
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="model route",
+            tool=ToolType.PURGE,
+            arguments={"amount": "five hundred", "target_user_id": 777},
+        )
+
+        enriched = await cog._enrich(message, decision, [])
+
+        self.assertEqual(enriched.arguments["amount"], 50)
+        self.assertFalse(enriched.arguments["amount_is_limit"])
+        self.assertEqual(enriched.arguments["target_user_id"], target.id)
+
+    async def test_bot_ingress_reserves_direct_mentions_for_ai(self) -> None:
+        from bot import ModBot
+
+        fake_bot = SimpleNamespace(
+            blacklist_cache=set(),
+            owner_ids=set(),
+            messages_seen=0,
+            _starts_with_bot_mention=lambda message: True,
+            get_cog=lambda name: object() if name == "AIModeration" else None,
+            get_context=AsyncMock(),
+        )
+        message = SimpleNamespace(
+            author=SimpleNamespace(bot=False, id=10),
+            guild=SimpleNamespace(id=1),
+            content="<@999> purge the last 50 messages sent by cherry",
+        )
+
+        await ModBot.on_message(fake_bot, message)
+
+        self.assertEqual(fake_bot.messages_seen, 1)
+        fake_bot.get_context.assert_not_awaited()
+
     async def test_memory_summarization_uses_digitalocean_flash(self) -> None:
         client = AIClient(
             SimpleNamespace(),
@@ -1481,6 +1621,9 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         with patch(
             "cogs.aimoderation.ai_client._RELAYROUTER_API_KEY",
             "relay-test-key",
+        ), patch(
+            "cogs.aimoderation.ai_client._RELAYROUTER_VISION_MODEL",
+            "vision-model",
         ):
             response = await client.converse(
                 user_content="what is in this image?",
@@ -1495,7 +1638,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(response, "The image is red.")
         kwargs = client._call_relayrouter.await_args.kwargs
-        self.assertEqual(kwargs["model"], "gpt-5-6-terra")
+        self.assertEqual(kwargs["model"], "vision-model")
         self.assertTrue(kwargs["allow_multimodal"])
         client._deepseek_web.vision.assert_not_awaited()
 

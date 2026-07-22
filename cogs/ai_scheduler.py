@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 import discord
 from discord.ext import commands, tasks
 
+from cogs.aimoderation.python_runtime import execution_digest, safe_builtins, validate_python_code
 from utils.checks import is_bot_owner_id
 
 logger = logging.getLogger("ModBot.AIScheduler")
@@ -102,18 +103,26 @@ class AIScheduler(commands.Cog):
 
             code = payload.get("code")
             if code:
+                code = str(code)
+                compiled = validate_python_code(code)
+                expected_digest = str(payload.get("code_sha256") or "").strip().lower()
+                if expected_digest and expected_digest != execution_digest(code):
+                    raise ValueError("Scheduled Python changed after it was authorized.")
                 env = {
+                    "__builtins__": safe_builtins(),
                     "bot": self.bot,
                     "guild": guild,
                     "discord": discord,
                     "asyncio": asyncio,
                 }
-                wrapped = "async def _scheduled_task():\n"
-                for line in code.splitlines():
-                    wrapped += f"    {line}\n"
                 logger.info("Running scheduled execute_python authored by owner %s in guild %s.", author_id, guild_id)
-                exec(wrapped, env)
-                await asyncio.wait_for(env["_scheduled_task"](), timeout=60)
+                exec(compiled, env)
+                result = await asyncio.wait_for(env["__ai_exec_func"](), timeout=60)
+                logger.info(
+                    "Scheduled execute_python completed for guild %s: %s",
+                    guild_id,
+                    str(result)[:500] if result is not None else "no return value",
+                )
 
     @_task_loop.before_loop
     async def _before_task_loop(self):

@@ -2,44 +2,36 @@
 from __future__ import annotations
 
 import asyncio
+import collections
+import csv
+import datetime as datetime_module
 import io
+import itertools
 import json
 import logging
-import os as _os
+import math
 import random
 import re
-import traceback as _tb
+import statistics
+import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict
 
 import discord
 
 from ..context import ToolContext, ToolResult, _now
+from ..python_runtime import (
+    PythonSafetyError,
+    execution_digest,
+    normalize_python_code,
+    safe_builtins,
+    validate_python_code,
+)
 from ..registry import ToolRegistry
 from ..types import ToolType
 from utils.checks import is_bot_owner_id
 
 logger = logging.getLogger("ModBot.AIModeration.Handlers.Admin")
-
-
-# ---- execute_python helpers -------------------------------------------------
-
-
-def _strip_code_fences(raw: str) -> str:
-    code = raw.strip()
-    for prefix in ("```python", "```py", "```"):
-        if code.startswith(prefix):
-            code = code[len(prefix):]
-            break
-    if code.endswith("```"):
-        code = code[:-3]
-    return code.strip()
-
-
-def _wrap_async(code: str) -> str:
-    lines = code.splitlines()
-    indented = "\n".join(f"    {line}" for line in lines)
-    return f"async def __ai_exec_func():\n{indented}\n"
 
 
 def _make_activity_fetcher(guild: discord.Guild) -> Callable:
@@ -229,8 +221,6 @@ async def handle_execute_raw_api(ctx: ToolContext) -> ToolResult:
     category="admin",
 )
 async def handle_execute_python(ctx: ToolContext) -> ToolResult:
-    import csv as _csv
-
     _TIMEOUT = 60
     _MAX_PREVIEW = 900
     _MAX_CODE_DISPLAY = 1000
@@ -239,55 +229,74 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
     if not is_owner:
         return ToolResult.fail("Execute Python is restricted to the bot owner.")
 
-    code = _strip_code_fences(str(ctx.arg("code", "")))
-    if not code:
-        return ToolResult.fail("No Python code provided.")
+    code = normalize_python_code(str(ctx.arg("code", "")))
+    try:
+        compiled = validate_python_code(code)
+    except PythonSafetyError as exc:
+        return ToolResult.fail(f"Generated action failed its safety check: {exc}")
+
+    digest = execution_digest(code)
+    expected_digest = str(ctx.arg("code_sha256", "")).strip().lower()
+    if expected_digest and expected_digest != digest:
+        return ToolResult.fail("Generated action changed after confirmation, so it was not executed.")
 
     real_channel = ctx.message.channel if ctx.message else None
     env: Dict[str, Any] = {
+        "__builtins__": safe_builtins(),
         "bot": ctx.cog.bot,
         "guild": ctx.guild,
         "author": ctx.actor,
         "message": ctx.message,
         "channel": real_channel,
-        "discord": __import__("discord"),
-        "asyncio": __import__("asyncio"),
-        "csv": _csv,
-        "datetime": datetime,
+        "discord": discord,
+        "asyncio": asyncio,
+        "collections": collections,
+        "csv": csv,
+        "datetime": datetime_module,
         "io": io,
+        "itertools": itertools,
         "json": json,
-        "os": _os,
+        "math": math,
         "random": random,
         "re": re,
+        "statistics": statistics,
+        "uuid": uuid,
         "fetch_recent_activity": _make_activity_fetcher(ctx.guild),
     }
-
-    wrapped = _wrap_async(code)
-    try:
-        compiled = compile(wrapped, "<ai_exec>", "exec")
-    except SyntaxError as exc:
-        return ToolResult.fail(f"Syntax error (line {exc.lineno}): {exc.msg}")
 
     try:
         exec(compiled, env)
         raw_result = await asyncio.wait_for(env["__ai_exec_func"](), timeout=_TIMEOUT)
     except asyncio.TimeoutError:
+        log_embed = discord.Embed(title="Python Execution Timed Out", color=discord.Color.orange(), timestamp=_now())
+        log_embed.add_field(name="Execution ID", value=f"`{digest[:12]}`", inline=True)
+        log_embed.add_field(name="Code", value=f"```py\n{code[:_MAX_CODE_DISPLAY]}\n```", inline=False)
+        await _log_execution(ctx, f"Timed out after {_TIMEOUT}s", log_embed)
         return ToolResult.fail(f"Execution timed out after {_TIMEOUT}s. Try a smaller scope or break into steps.")
     except Exception as exc:
-        tb_lines = _tb.format_exception(type(exc), exc, exc.__traceback__)
-        short = "".join(tb_lines[-5:])
-        if len(short) > _MAX_PREVIEW:
-            short = short[:_MAX_PREVIEW - 3] + "..."
-        return ToolResult.fail(f"Python execution failed:\n```\n{short}\n```")
+        logger.exception("Owner-authorized AI Python execution failed (id=%s)", digest[:12])
+        error_preview = f"{type(exc).__name__}: {exc}"
+        log_embed = discord.Embed(title="Python Execution Failed", color=discord.Color.red(), timestamp=_now())
+        log_embed.add_field(name="Execution ID", value=f"`{digest[:12]}`", inline=True)
+        log_embed.add_field(name="Error", value=f"```\n{error_preview[:_MAX_PREVIEW]}\n```", inline=False)
+        log_embed.add_field(name="Code", value=f"```py\n{code[:_MAX_CODE_DISPLAY]}\n```", inline=False)
+        await _log_execution(ctx, error_preview, log_embed)
+        return ToolResult.fail(
+            f"The generated action failed during execution ({type(exc).__name__}). "
+            f"Execution ID: `{digest[:12]}`. Details are in automod logs."
+        )
 
     preview = str(raw_result) if raw_result is not None else "Execution completed successfully (no return value)."
     if len(preview) > _MAX_PREVIEW:
         preview = preview[:_MAX_PREVIEW - 3] + "..."
 
     log_embed = discord.Embed(title="Python Code Executed", color=discord.Color.green(), timestamp=_now())
+    log_embed.add_field(name="Execution ID", value=f"`{digest[:12]}`", inline=True)
+    if summary := str(ctx.arg("summary", "")).strip():
+        log_embed.add_field(name="Plan", value=summary[:500], inline=False)
     log_embed.add_field(name="Code", value=f"```py\n{code[:_MAX_CODE_DISPLAY]}\n```", inline=False)
     log_embed.add_field(name="Result", value=f"```\n{preview}\n```", inline=False)
     log_embed.add_field(name="Actor", value=f"{ctx.actor.mention} (`{ctx.actor.id}`)", inline=True)
 
     await _log_execution(ctx, preview, log_embed)
-    return ToolResult.ok("Done! I put the execution details in automod logs.")
+    return ToolResult.ok(f"Done: {preview}\nExecution ID: `{digest[:12]}`.")

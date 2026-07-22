@@ -1,7 +1,13 @@
 server {
-    listen 80;
-    listen [::]:80;
     server_name docketbot.xyz www.docketbot.xyz;
+
+    location /invite {
+        return 302 "https://discord.com/oauth2/authorize?client_id=1527098566273925251&scope=bot%20applications.commands";
+    }
+
+    location /support {
+        return 302 https://discord.gg/FhnuCdsWa;
+    }
 
     location / {
         proxy_pass http://localhost:10547;
@@ -13,4 +19,33 @@ server {
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     }
+
+    listen [::]:443 ssl; # managed by Certbot
+    listen 443 ssl; # managed by Certbot
+    ssl_certificate /etc/letsencrypt/live/docketbot.xyz/fullchain.pem; # managed by Certbot
+    ssl_certificate_key /etc/letsencrypt/live/docketbot.xyz/privkey.pem; # managed by Certbot
+    include /etc/letsencrypt/options-ssl-nginx.conf; # managed by Certbot
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem; # managed by Certbot
+
+
+}
+server {
+    if ($host = www.docketbot.xyz) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    if ($host = docketbot.xyz) {
+        return 301 https://$host$request_uri;
+    } # managed by Certbot
+
+
+    listen 80;
+    listen [::]:80;
+    server_name docketbot.xyz www.docketbot.xyz;
+    return 404; # managed by Certbot
+
+
+
+
 }

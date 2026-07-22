@@ -36,13 +36,7 @@ class Blacklist(commands.Cog):
         user: discord.User,
         reason: Optional[str] = "No reason provided"
     ):
-        # Check if user is a bot owner (can't blacklist owners)
-        owner_ids = getattr(self.bot, "owner_ids", set()) or set()
-        if user.id in owner_ids:
-            return await interaction.response.send_message(
-                embed=ModEmbed.error("Cannot Blacklist", "You cannot blacklist a bot owner."),
-                ephemeral=True
-            )
+
         
         # Check if already blacklisted
         if await self.bot.db.is_blacklisted(user.id):

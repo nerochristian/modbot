@@ -162,14 +162,10 @@ class WarningCommands:
     @commands.command(name="warn", description="⚠️ Warn a user")
     @is_mod()
     async def mod_warn(self, ctx: commands.Context, user: discord.Member, *, reason: str = "No reason provided"):
-        if is_bot_owner_id(user.id) and not is_bot_owner_id(ctx.author.id):
-            return await self._respond(ctx, embed=ModEmbed.error("Permission Denied", "You cannot warn the bot owner."), ephemeral=True)
         await self._warn_logic(ctx, user, reason)
 
     # Slash command - registered dynamically in __init__.py
     async def warn_slash(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
-        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
-             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "You cannot warn the bot owner."), ephemeral=True)
         await self._warn_logic(interaction, user, reason)
 
     @commands.command(name="warnings", description="⚠️ View warnings for a user")

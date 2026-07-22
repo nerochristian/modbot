@@ -5,8 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import discord
 
+from cogs.ai_scheduler import AIScheduler
 from cogs.aimoderation import ToolRegistry, ToolType
-from cogs.aimoderation.handlers.admin import _raw_api_safety_error
+from cogs.aimoderation.handlers.admin import _raw_api_safety_error, handle_execute_python
 from cogs.aimoderation.handlers.channels import handle_unlock_channel
 from cogs.aimoderation.handlers.messages import handle_purge
 from cogs.aimoderation.handlers.members import handle_unban, handle_warn
@@ -14,6 +15,11 @@ from cogs.aimoderation.bridge import warn_member
 from cogs.aimoderation.handlers.query_handlers import (
     handle_find_inactive,
     handle_scan_channel,
+)
+from cogs.aimoderation.python_runtime import (
+    PythonSafetyError,
+    execution_digest,
+    validate_python_code,
 )
 
 
@@ -367,7 +373,101 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
         result = await handle_purge(ctx)
 
         self.assertTrue(result.success)
-        self.assertEqual(channel.purge.await_args.kwargs["limit"], 100)
+        self.assertEqual(channel.purge.await_args.kwargs["limit"], 500)
+
+    def test_python_runtime_accepts_normal_discord_action_code(self) -> None:
+        code = (
+            "members = [member for member in guild.members if not member.bot]\n"
+            "members.sort(key=lambda member: member.joined_at or datetime.datetime.min.replace(tzinfo=datetime.timezone.utc))\n"
+            "return f'Found {len(members)} members.'"
+        )
+
+        compiled = validate_python_code(code)
+
+        self.assertIsNotNone(compiled)
+
+    def test_python_runtime_blocks_escape_and_lifecycle_operations(self) -> None:
+        blocked = (
+            "import os\nreturn os.environ",
+            "return open('token.txt').read()",
+            "return bot.http.token",
+            "await bot.close()",
+            "asyncio.create_task(channel.send('later'))",
+            "while True:\n    await asyncio.sleep(1)",
+            "return guild.__dict__",
+            "await guild.delete()",
+        )
+
+        for code in blocked:
+            with self.subTest(code=code), self.assertRaises(PythonSafetyError):
+                validate_python_code(code)
+
+    async def test_execute_python_runs_digest_bound_plan_and_returns_result(self) -> None:
+        code = "return 'Created 3 channels.'"
+        values = {
+            "code": code,
+            "code_sha256": execution_digest(code),
+            "summary": "Create three project channels",
+        }
+        actor = SimpleNamespace(id=10, mention="<@10>")
+        bot = SimpleNamespace(
+            is_owner=AsyncMock(return_value=True),
+            get_cog=lambda name: None,
+        )
+        cog = SimpleNamespace(bot=bot, log_action=AsyncMock())
+        ctx = SimpleNamespace(
+            actor=actor,
+            guild=SimpleNamespace(text_channels=[]),
+            message=SimpleNamespace(channel=SimpleNamespace()),
+            decision=SimpleNamespace(reason="owner action"),
+            cog=cog,
+            arg=lambda key, default=None: values.get(key, default),
+        )
+
+        with patch(
+            "cogs.aimoderation.handlers.admin.is_bot_owner_id",
+            return_value=True,
+        ):
+            result = await handle_execute_python(ctx)
+
+        self.assertTrue(result.success)
+        self.assertIn("Created 3 channels", result.message)
+        self.assertIn(execution_digest(code)[:12], result.message)
+        cog.log_action.assert_awaited_once()
+
+    async def test_execute_python_rejects_code_changed_after_confirmation(self) -> None:
+        code = "return 'safe'"
+        values = {"code": code, "code_sha256": execution_digest("return 'different'")}
+        bot = SimpleNamespace(is_owner=AsyncMock(return_value=True), get_cog=lambda name: None)
+        ctx = SimpleNamespace(
+            actor=SimpleNamespace(id=10),
+            guild=SimpleNamespace(text_channels=[]),
+            message=SimpleNamespace(channel=SimpleNamespace()),
+            decision=SimpleNamespace(reason="owner action"),
+            cog=SimpleNamespace(bot=bot, log_action=AsyncMock()),
+            arg=lambda key, default=None: values.get(key, default),
+        )
+
+        with patch(
+            "cogs.aimoderation.handlers.admin.is_bot_owner_id",
+            return_value=True,
+        ):
+            result = await handle_execute_python(ctx)
+
+        self.assertFalse(result.success)
+        self.assertIn("changed after confirmation", result.message)
+
+    async def test_scheduled_python_is_revalidated_before_execution(self) -> None:
+        scheduler = object.__new__(AIScheduler)
+        scheduler.bot = SimpleNamespace(get_guild=lambda guild_id: SimpleNamespace(id=guild_id))
+
+        with patch("cogs.ai_scheduler.is_bot_owner_id", return_value=True), self.assertRaises(PythonSafetyError):
+            await scheduler._execute_task(
+                1,
+                "execute_python",
+                {"code": "import subprocess\nreturn subprocess.check_output(['whoami'])"},
+                author_id=10,
+            )
 
     def test_raw_api_rejects_cross_server_and_webhook_routes(self) -> None:
         actor = SimpleNamespace(id=1)

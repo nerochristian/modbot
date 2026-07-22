@@ -2193,6 +2193,18 @@ class ModBot(commands.Bot):
 
         self.messages_seen += 1
 
+        # A direct bot mention is the AI moderation/conversation surface.  Do
+        # not let discord.py reinterpret the first word after the mention as a
+        # legacy prefix command (for example, ``@Docket purge the last 50``
+        # previously reached the prefix converter and failed before AIMod saw
+        # the request). Configured textual prefixes continue to invoke commands.
+        if (
+            message.guild is not None
+            and self._starts_with_bot_mention(message)
+            and self.get_cog("AIModeration") is not None
+        ):
+            return
+
         ctx = await self.get_context(message)
         if ctx.command is None:
             if self._starts_with_bot_mention(message):

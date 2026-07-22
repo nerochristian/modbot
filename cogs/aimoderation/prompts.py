@@ -62,7 +62,7 @@ AVAILABLE TOOLS
 - kick_member: target_user_id (int), reason (str)
 - ban_member: target_user_id (int), delete_message_days (int), reason (str)
 - unban_member: target_user_id (int), reason (str)
-- purge_messages: amount (int), reason (str)
+- purge_messages: amount (int, 1-500), target_user_id (int, opt), channel_id (int, opt), lookback_seconds (int, opt), all_channels_requested (bool, opt), reason (str)
 
 ### Role Management
 - add_role: target_user_id (int), role_name (str), reason (str)
@@ -101,7 +101,7 @@ AVAILABLE TOOLS
 
 ### Bot-owner-only Fallbacks
 - execute_raw_api: method (str), endpoint (str), payload (object). Last-resort fallback for valid Discord REST API actions not covered by standard tools.
-- execute_python: code (str). Last-resort bot-owner automation for explicit server actions not covered by standard tools.
+- execute_python: no arguments. Last-resort bot-owner automation for explicit server actions not covered by standard tools. A separate guarded planner generates the implementation.
 
 ================================================================================
 LAST-RESORT FALLBACKS
@@ -129,27 +129,17 @@ Good `execute_python` candidates:
 - Support/community systems: tickets, reports, polls, reaction-role setup, welcome/onboarding flows, FAQ responses
 - Analytics/admin: activity reports, inactive-member lists, raid lockdowns, verification queues, audit/log summaries
 
-Required argument:
-- code: A raw Python string using `discord.py` to achieve the exact request. 
+Return `execute_python` with an empty arguments object. Never generate Python in the routing response; a separate guarded planner does that after permissions are checked.
 
 Never use `execute_python` for casual prompts like "who is your favorite person",
 "what do you think", "tell me a joke", "rate this", "what is this image", or
 anything that can be answered conversationally.
 
-Python Execution Rules:
-1. The code runs dynamically inside an async wrapper. You have access to these globals: `bot`, `guild`, `author`, `message`, `channel`, `discord`, `asyncio`.
-2. Do NOT write `import` statements for standard modules unless needed (discord and asyncio are already loaded). You can import `datetime`, `json`, `re`. (Do NOT use `pytz`).
-3. **Fetching Data**: You have full access to `guild.members` (contains `member.joined_at`, `member.roles`, etc).
-   - IMPORTANT: `discord.Member` DOES NOT have `last_message`, `last_active`, or `last_voice_channel` attributes.
-   - If you need to check activity, call the global async helper: `activity_dict = await fetch_recent_activity(days=7)`. This returns a `dict[int, datetime.datetime]` mapping member IDs to their last message time.
-   - If asked "who joined recently", you iterate `guild.members`, sort by `joined_at`, and send the result.
-4. **Purging/Deleting**: If asked to delete messages from a specific user, you MUST use the `check` kwarg: `await channel.purge(limit=100, check=lambda m: m.author.id == TARGET_ID)`. NEVER purge without a check if the user asked for a specific person.
-5. **Scheduling/Reminders**: Persist future work in `scheduled_tasks`; do NOT use `bot.db.execute` because it does not exist. Use:
-   `async with bot.db.get_connection() as db: await db.execute("INSERT INTO scheduled_tasks (guild_id, author_id, task_type, payload, execute_at) VALUES (?, ?, ?, ?, ?)", (guild.id, author.id, "execute_python", json.dumps({"code": "await bot.get_channel(CHANNEL_ID).send('hello')"}), future_dt)); await db.commit()`
-   Scheduled code must be self-contained because later execution only has `bot`, `guild`, `discord`, and `asyncio`.
-6. **Discord Events**: Use `await guild.create_scheduled_event(...)`. Calculate relative times ("tomorrow at 6pm") using python's `datetime` (use `datetime.timezone.utc`). Set `privacy_level=discord.PrivacyLevel.guild_only` and `entity_type=discord.EntityType.external` with `location="Server"`.
-7. Do not send public success embeds from generated Python. Return a concise string result instead; the bot logs execution details to automod logs.
-8. If the request is unclear or too broad, return `chat` asking for scope instead of writing code.
+Routing integrity rules:
+1. Copy explicit numeric counts as integers. "last 50 messages" means amount=50, never a string and never the default limit.
+2. Preserve explicit targets, channels, timeframes, and all-channel scope exactly. Never broaden a request.
+3. If a standard tool can perform the request, always use it instead of `execute_python`.
+4. If the target or scope is genuinely ambiguous, return `chat` and ask one concise clarification question.
 
 ================================================================================
 LANGUAGE UNDERSTANDING & CONTEXT RULES

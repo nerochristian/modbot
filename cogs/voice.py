@@ -208,8 +208,7 @@ class Voice(commands.Cog):
     @app_commands.describe(user="The user to mute", reason="Reason for muting")
     @is_mod()
     async def vc_mute(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
-        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
-            return await interaction.response.send_message(embed=ModEmbed.error("Permission Denied", "You cannot mute the bot owner."), ephemeral=True)
+
         await self._mute(interaction, user, reason)
     
     @vc_group.command(name="unmute", description="Server unmute a user in voice")
@@ -222,8 +221,7 @@ class Voice(commands.Cog):
     @app_commands.describe(user="The user to deafen", reason="Reason for deafening")
     @is_mod()
     async def vc_deafen(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
-        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
-            return await interaction.response.send_message(embed=ModEmbed.error("Permission Denied", "You cannot deafen the bot owner."), ephemeral=True)
+
         await self._deafen(interaction, user, reason)
     
     @vc_group.command(name="undeafen", description="Server undeafen a user in voice")
@@ -236,8 +234,7 @@ class Voice(commands.Cog):
     @app_commands.describe(user="The user to kick from VC", reason="Reason for kicking")
     @is_mod()
     async def vc_kick(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
-        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
-            return await interaction.response.send_message(embed=ModEmbed.error("Permission Denied", "You cannot kick the bot owner."), ephemeral=True)
+
         await self._kick(interaction, user, reason)
     
     @vc_group.command(name="move", description="Move a user to another voice channel")
@@ -278,8 +275,7 @@ class Voice(commands.Cog):
     @app_commands.describe(user="The user to voice ban", reason="Reason for banning")
     @is_mod()
     async def vc_ban(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
-        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
-            return await interaction.response.send_message(embed=ModEmbed.error("Permission Denied", "You cannot ban the bot owner."), ephemeral=True)
+
         await self._ban(interaction, user, reason)
     
     @vc_group.command(name="unban", description="Unban a user from voice channels")

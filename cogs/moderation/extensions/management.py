@@ -853,8 +853,6 @@ class ManagementCommands:
         failed = []
         
         for member in guild.members:
-            if is_bot_owner_id(member.id) and not is_bot_owner_id(author.id):
-                continue
             if role in member.roles:
                 continue
             
@@ -890,8 +888,6 @@ class ManagementCommands:
         failed = []
         
         for member in guild.members:
-            if is_bot_owner_id(member.id) and not is_bot_owner_id(author.id):
-                continue
             if role not in member.roles:
                 continue
             
@@ -1257,42 +1253,36 @@ class ManagementCommands:
     @commands.command(name="softban", description="🧹 Ban and immediately unban to delete messages")
     @is_mod()
     async def mod_softban(self, ctx: commands.Context, user: discord.Member, delete_days: Optional[int] = 1, *, reason: str = "No reason provided"):
-        if is_bot_owner_id(user.id) and not is_bot_owner_id(ctx.author.id):
-            return await self._respond(ctx, embed=ModEmbed.error("Permission Denied", "You cannot softban the bot owner."), ephemeral=True)
+
         # Check permissions inside logic or redundant check? Original had explicit check.
         # Logic handles it.
         await self._softban_logic(ctx, user, reason)
 
     # Slash command - registered dynamically in __init__.py
     async def softban_slash(self, interaction: discord.Interaction, user: discord.Member, reason: str = "No reason provided"):
-        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
-             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "You cannot softban the bot owner."), ephemeral=True)
+
         await self._softban_logic(interaction, user, reason)
 
     @commands.command(name="tempban", description="⏱️ Temporarily ban a user")
     @is_mod()
     async def mod_tempban(self, ctx: commands.Context, user: discord.Member, duration: str = "1d", *, reason: str = "No reason provided"):
-        if is_bot_owner_id(user.id) and not is_bot_owner_id(ctx.author.id):
-            return await self._respond(ctx, embed=ModEmbed.error("Permission Denied", "You cannot ban the bot owner."), ephemeral=True)
+
         await self._tempban_logic(ctx, user, duration, reason)
 
     # Slash command - registered dynamically in __init__.py
     async def tempban_slash(self, interaction: discord.Interaction, user: discord.Member, duration: str = "1d", reason: str = "No reason provided"):
-        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
-             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "You cannot ban the bot owner."), ephemeral=True)
+
         await self._tempban_logic(interaction, user, duration, reason)
 
     @commands.command(name="mute", aliases=["timeout"], description="🔇 Timeout/mute a user")
     @is_mod()
     async def mute_prefix(self, ctx: commands.Context, user: discord.Member, duration: str = "1h", *, reason: str = "No reason provided"):
-        if is_bot_owner_id(user.id) and not is_bot_owner_id(ctx.author.id):
-            return await self._respond(ctx, embed=ModEmbed.error("Permission Denied", "You cannot timeout the bot owner."), ephemeral=True)
+
         await self._mute_logic(ctx, user, duration, reason)
 
     # Slash command - registered dynamically in __init__.py
     async def mute_slash(self, interaction: discord.Interaction, user: discord.Member, duration: str = "1h", reason: str = "No reason provided"):
-        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
-             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "You cannot timeout the bot owner."), ephemeral=True)
+
         await self._mute_logic(interaction, user, duration, reason)
     
     @commands.command(name="unmute", aliases=["untimeout"], description="🔊 Remove timeout from a user")
@@ -1306,8 +1296,7 @@ class ManagementCommands:
 
     # Slash command - registered dynamically in __init__.py
     async def timeout_slash(self, interaction: discord.Interaction, user: discord.Member, duration: str = "1h", reason: str = "No reason provided"):
-        if is_bot_owner_id(user.id) and not is_bot_owner_id(interaction.user.id):
-             return await self._respond(interaction, embed=ModEmbed.error("Permission Denied", "You cannot timeout the bot owner."), ephemeral=True)
+
         await self._mute_logic(interaction, user, duration, reason)
         
     # Slash command - registered dynamically in __init__.py

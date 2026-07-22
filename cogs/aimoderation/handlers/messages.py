@@ -212,7 +212,7 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
         purge_limit = (
             remaining + 1
             if target_user_id is None and lookback_seconds is None
-            else min(5_000, max(100, remaining * 5))
+            else min(5_000, max(500, remaining * 20))
         )
         return await target_channel.purge(limit=purge_limit, check=should_delete)
 

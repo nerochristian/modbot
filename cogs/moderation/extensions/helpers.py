@@ -484,9 +484,7 @@ class HelperCommands:
 
         target_is_owner = await self._is_bot_owner(target)
 
-        # Protect bot owner(s)
-        if target_is_owner and not moderator_is_owner:
-            return False, "You cannot moderate the bot owner."
+
 
         # Bot owner override (still subject to Discord's own limitations)
         if moderator_is_owner:
