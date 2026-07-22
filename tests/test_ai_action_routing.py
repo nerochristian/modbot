@@ -21,7 +21,7 @@ from cogs.aimoderation.aimoderation import (
     ToolResult,
     ToolType,
 )
-from cogs.aimoderation.types import ImageContext
+from cogs.aimoderation.types import ImageContext, PermissionFlags
 from cogs.aimoderation.registry import ToolRegistry
 from utils.deepseek_web import DeepSeekWebError
 
@@ -533,7 +533,7 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertEqual(settings.mod_roles, {987654321})
         self.assertEqual(settings.to_dict()["mod_roles"], [987654321])
 
-    def test_mod_role_only_satisfies_bounded_moderator_permission_gates(self) -> None:
+    def test_configured_mod_role_never_replaces_native_action_permission(self) -> None:
         actor_permissions = SimpleNamespace(
             administrator=False,
             ban_members=False,
@@ -550,13 +550,11 @@ class AIActionRoutingTests(unittest.TestCase):
             "cogs.aimoderation.aimoderation.is_bot_owner_id",
             return_value=False,
         ):
-            self.assertIsNone(
+            self.assertIn(
+                "Ban Members",
                 self.cog.validate_tool_access(
-                    actor,
-                    guild,
-                    ToolType.BAN,
-                    configured_mod_role=True,
-                )
+                    actor, guild, ToolType.BAN, configured_mod_role=True
+                ),
             )
             self.assertIn(
                 "Manage Channels",
@@ -571,7 +569,7 @@ class AIActionRoutingTests(unittest.TestCase):
     def test_mod_role_does_not_bypass_bot_discord_permissions(self) -> None:
         actor = SimpleNamespace(
             id=123,
-            guild_permissions=SimpleNamespace(administrator=False, ban_members=False),
+            guild_permissions=SimpleNamespace(administrator=False, ban_members=True),
         )
         guild = SimpleNamespace(
             me=SimpleNamespace(guild_permissions=SimpleNamespace(ban_members=False)),
@@ -589,6 +587,83 @@ class AIActionRoutingTests(unittest.TestCase):
             )
 
         self.assertEqual(error, "I need the `Ban Members` permission.")
+
+    def test_channel_manage_messages_override_authorizes_purge(self) -> None:
+        actor = SimpleNamespace(
+            id=123,
+            guild_permissions=SimpleNamespace(administrator=False, manage_messages=False),
+        )
+        bot_member = SimpleNamespace(
+            id=999,
+            guild_permissions=SimpleNamespace(administrator=False, manage_messages=False),
+        )
+        guild = SimpleNamespace(me=bot_member)
+        channel = SimpleNamespace(
+            permissions_for=lambda member: SimpleNamespace(
+                administrator=False,
+                manage_messages=member.id in {123, 999},
+            )
+        )
+
+        with patch("cogs.aimoderation.aimoderation.discord.Member", SimpleNamespace), patch(
+            "cogs.aimoderation.aimoderation.is_bot_owner_id",
+            return_value=False,
+        ):
+            error = self.cog.validate_tool_access(
+                actor,
+                guild,
+                ToolType.PURGE,
+                channel=channel,
+            )
+
+        self.assertIsNone(error)
+
+    def test_administrator_still_requires_bot_action_permission(self) -> None:
+        actor = SimpleNamespace(
+            id=123,
+            guild_permissions=SimpleNamespace(administrator=True, ban_members=False),
+        )
+        guild = SimpleNamespace(
+            me=SimpleNamespace(
+                id=999,
+                guild_permissions=SimpleNamespace(administrator=False, ban_members=False),
+            )
+        )
+
+        with patch("cogs.aimoderation.aimoderation.discord.Member", SimpleNamespace), patch(
+            "cogs.aimoderation.aimoderation.is_bot_owner_id",
+            return_value=False,
+        ):
+            error = self.cog.validate_tool_access(actor, guild, ToolType.BAN)
+
+        self.assertEqual(error, "I need the `Ban Members` permission.")
+
+    def test_routing_prompt_exposes_permission_derived_tool_allowlist(self) -> None:
+        client = object.__new__(AIClient)
+        client.config = AIConfig()
+        client.bot = SimpleNamespace(user=SimpleNamespace(id=999))
+        permissions = PermissionFlags(manage_messages=True)
+        author = SimpleNamespace(
+            id=123,
+            roles=[SimpleNamespace(name="Moderator", is_default=lambda: False)],
+            __str__=lambda self: "Staff",
+        )
+
+        prompt = client._build_routing_prompt(
+            user_content="purge 10 messages",
+            guild=SimpleNamespace(id=1, name="Guild", member_count=5),
+            author=author,
+            mentions=[],
+            recent_messages=[],
+            permissions=permissions,
+        )
+
+        authorized = prompt.split("Authorized standard tools: ", 1)[1].splitlines()[0]
+        blocked = prompt.split("Blocked standard tools: ", 1)[1].splitlines()[0]
+        self.assertIn("purge_messages", authorized)
+        self.assertNotIn("ban_member", authorized)
+        self.assertIn("ban_member", blocked)
+        self.assertIn("Role names (untrusted labels", prompt)
 
     def test_deepseek_disabled_diagnostic_names_real_setting(self) -> None:
         client = object.__new__(AIClient)
