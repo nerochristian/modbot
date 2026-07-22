@@ -1414,6 +1414,51 @@ class AIModeration(commands.Cog):
         raw = m.group(1).strip().strip("`").lstrip("@").strip()
         return _ROLE_MENTION_RE.sub(r"\1", raw) or None
 
+    @staticmethod
+    def _is_bulk_timeout_request(text: str) -> bool:
+        """Return whether a timeout request explicitly targets a member set."""
+        normalized = (text or "").lower().replace("’", "'")
+        return bool(
+            re.search(
+                r"\b(?:everyone|everybody|all\s+(?:members?|users?|people)|"
+                r"members?|users?|people)\s+(?:who|that|without\b)",
+                normalized,
+            )
+            or re.search(r"\b(?:mute|timeout|time\s+out)\s+(?:everyone|everybody|all)\b", normalized)
+        )
+
+    def _bulk_timeout_arguments(
+        self,
+        message: discord.Message,
+        content: str,
+    ) -> Dict[str, Any]:
+        """Build a grounded bulk-timeout scope from the Discord message."""
+        args: Dict[str, Any] = {"all_members": True}
+        role_mentions = list(getattr(message, "role_mentions", []) or [])
+        if role_mentions:
+            role = role_mentions[0]
+            args["exclude_role_id"] = role.id
+            args["exclude_role_name"] = role.name
+            return args
+
+        if role_match := _ROLE_MENTION_RE.search(content or ""):
+            args["exclude_role_id"] = int(role_match.group(1))
+            return args
+
+        normalized = (content or "").replace("’", "'")
+        role_name_match = re.search(
+            r"\b(?:without|except(?:\s+for)?|who\s+(?:doesn't|does\s+not|don't|do\s+not)\s+have)"
+            r"\s+(?:the\s+)?(?:role\s+)?(.+?)"
+            r"(?:\s+\b(?:for|because|reason)\b|\s+\d+\s*(?:s|m|h|d|w)\b|$)",
+            normalized,
+            re.IGNORECASE,
+        )
+        if role_name_match:
+            role_name = role_name_match.group(1).strip(" .,:;`'\"@")
+            if role_name:
+                args["exclude_role_name"] = role_name
+        return args
+
     def _extract_channel_create_args(self, text: str) -> Optional[Dict[str, Any]]:
         if not text:
             return None
@@ -1627,13 +1672,20 @@ class AIModeration(commands.Cog):
             return Decision(type=DecisionType.TOOL_CALL, reason="rule: untimeout", tool=ToolType.UNTIMEOUT, arguments={})
         if re.match(r"^(mute|timeout|time\s*out)\b", low):
             args: Dict[str, Any] = {}
+            bulk_timeout = self._is_bulk_timeout_request(content)
+            if bulk_timeout:
+                args.update(self._bulk_timeout_arguments(message, content))
             secs = self._parse_duration_seconds(content)
             if secs:
                 args["seconds"] = secs
-            reason = self._extract_moderation_reason(content, r"(?:mute|timeout|time\s*out)")
+            reason = (
+                self._extract_reason(content)
+                if bulk_timeout
+                else self._extract_moderation_reason(content, r"(?:mute|timeout|time\s*out)")
+            )
             if reason:
                 args["reason"] = reason
-            if message.mentions:
+            if not bulk_timeout and message.mentions:
                 non_bot = [
                     mentioned
                     for mentioned in message.mentions
@@ -1718,6 +1770,19 @@ class AIModeration(commands.Cog):
 
         if self._looks_like_history_lookup(low):
             return decision(ToolType.GET_HISTORY, "get_history")
+
+        if re.search(r"\b(?:unmute|untimeout|remove\s+timeout|un-?timeout)\b", low):
+            return decision(ToolType.UNTIMEOUT, "untimeout_member")
+
+        if re.search(r"\b(?:mute|timeout|time\s+out)\b", low):
+            args: Dict[str, Any] = {}
+            if self._is_bulk_timeout_request(content):
+                args.update(self._bulk_timeout_arguments(message, content))
+            if seconds := self._parse_duration_seconds(content):
+                args["seconds"] = seconds
+            if reason := self._extract_reason(content):
+                args["reason"] = reason
+            return decision(ToolType.TIMEOUT, "timeout_member", args)
 
         if re.match(r"^\s*(?:purge|clear|clean)\b", content, re.IGNORECASE):
             return decision(ToolType.PURGE, "purge_messages", self._extract_purge_args(content))
@@ -1908,13 +1973,24 @@ class AIModeration(commands.Cog):
         args = dict(decision.arguments or {})
         content = self._strip_action_prefix(self.clean_content(message))
         tool = decision.tool
+        bulk_timeout = tool == ToolType.TIMEOUT and (
+            bool(args.get("all_members")) or self._is_bulk_timeout_request(content)
+        )
+
+        if bulk_timeout:
+            args["all_members"] = True
+            args.pop("target_user_id", None)
+            grounded_scope = self._bulk_timeout_arguments(message, content)
+            for key in ("exclude_role_id", "exclude_role_name"):
+                if key in grounded_scope:
+                    args[key] = grounded_scope[key]
 
         if tool in {ToolType.ADD_ROLE, ToolType.REMOVE_ROLE, ToolType.DELETE_ROLE, ToolType.EDIT_ROLE}:
             role = self._extract_role_name(content)
             if role:
                 args["role_name"] = role
 
-        if tool in TARGETED_TOOLS:
+        if tool in TARGETED_TOOLS and not bulk_timeout:
             explicit_members = [
                 member
                 for member in message.mentions
@@ -1935,7 +2011,11 @@ class AIModeration(commands.Cog):
             elif not args.get("seconds"):
                 args["seconds"] = self.config.timeout_default_seconds
         if tool in {ToolType.WARN, ToolType.TIMEOUT, ToolType.KICK, ToolType.BAN}:
-            reason = self._extract_moderation_reason(content, tool.value.removesuffix("_member"))
+            reason = (
+                self._extract_reason(content)
+                if bulk_timeout
+                else self._extract_moderation_reason(content, tool.value.removesuffix("_member"))
+            )
             if reason:
                 args["reason"] = reason
         elif "reason" in args and isinstance(args["reason"], str):
@@ -2238,6 +2318,8 @@ class AIModeration(commands.Cog):
         if decision.tool.value in GuildSettings._DEFAULT_CONFIRM_ACTIONS:
             return True
         if decision.tool == ToolType.TIMEOUT:
+            if decision.arguments.get("all_members"):
+                return True
             try:
                 if int(decision.arguments.get("seconds", 0)) >= 86_400:
                     return True
@@ -2264,6 +2346,14 @@ class AIModeration(commands.Cog):
         target_id = args.get("target_user_id")
         if target_id:
             rows.append(("Target", f"<@{target_id}> (`{target_id}`)"))
+        if decision.tool == ToolType.TIMEOUT and args.get("all_members"):
+            rows.append(("Scope", "All eligible server members"))
+            excluded_role_id = args.get("exclude_role_id")
+            excluded_role_name = str(args.get("exclude_role_name") or "").strip()
+            if excluded_role_id:
+                rows.append(("Excluded Role", f"<@&{excluded_role_id}>"))
+            elif excluded_role_name:
+                rows.append(("Excluded Role", excluded_role_name))
         if role_name := str(args.get("role_name") or "").strip():
             rows.append(("Role", role_name))
         if channel_id := args.get("channel_id"):
