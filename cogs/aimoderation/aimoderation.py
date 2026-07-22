@@ -1434,29 +1434,44 @@ class AIModeration(commands.Cog):
     ) -> Dict[str, Any]:
         """Build a grounded bulk-timeout scope from the Discord message."""
         args: Dict[str, Any] = {"all_members": True}
+        excluded_user_ids: list[int] = []
+        normalized = (content or "").replace("’", "'")
+        exclusion_clause = re.search(
+            r"\b(?:except(?:\s+for)?|excluding)\s+(.+?)(?:\s+\b(?:for|because|reason)\b|$)",
+            normalized,
+            re.IGNORECASE,
+        )
+        if exclusion_clause:
+            clause = exclusion_clause.group(1)
+            if re.search(r"\b(?:me|myself)\b", clause, re.IGNORECASE):
+                excluded_user_ids.append(message.author.id)
+            for member in getattr(message, "mentions", []) or []:
+                if member.bot or (self.bot.user and member.id == self.bot.user.id):
+                    continue
+                if member.id not in excluded_user_ids:
+                    excluded_user_ids.append(member.id)
+        if excluded_user_ids:
+            args["exclude_user_ids"] = excluded_user_ids
+
         role_mentions = list(getattr(message, "role_mentions", []) or [])
         if role_mentions:
             role = role_mentions[0]
             args["exclude_role_id"] = role.id
             args["exclude_role_name"] = role.name
-            return args
-
-        if role_match := _ROLE_MENTION_RE.search(content or ""):
+        elif role_match := _ROLE_MENTION_RE.search(content or ""):
             args["exclude_role_id"] = int(role_match.group(1))
-            return args
-
-        normalized = (content or "").replace("’", "'")
-        role_name_match = re.search(
-            r"\b(?:without|except(?:\s+for)?|who\s+(?:doesn't|does\s+not|don't|do\s+not)\s+have)"
-            r"\s+(?:the\s+)?(?:role\s+)?(.+?)"
-            r"(?:\s+\b(?:for|because|reason)\b|\s+\d+\s*(?:s|m|h|d|w)\b|$)",
-            normalized,
-            re.IGNORECASE,
-        )
-        if role_name_match:
-            role_name = role_name_match.group(1).strip(" .,:;`'\"@")
-            if role_name:
-                args["exclude_role_name"] = role_name
+        elif not excluded_user_ids:
+            role_name_match = re.search(
+                r"\b(?:without|except(?:\s+for)?|who\s+(?:doesn't|does\s+not|don't|do\s+not)\s+have)"
+                r"\s+(?:the\s+)?role\s+(.+?)"
+                r"(?:\s+\b(?:for|because|reason)\b|\s+\d+\s*(?:s|m|h|d|w)\b|$)",
+                normalized,
+                re.IGNORECASE,
+            )
+            if role_name_match:
+                role_name = role_name_match.group(1).strip(" .,:;`'\"@")
+                if role_name:
+                    args["exclude_role_name"] = role_name
         return args
 
     def _extract_channel_create_args(self, text: str) -> Optional[Dict[str, Any]]:
@@ -1981,7 +1996,8 @@ class AIModeration(commands.Cog):
             args["all_members"] = True
             args.pop("target_user_id", None)
             grounded_scope = self._bulk_timeout_arguments(message, content)
-            for key in ("exclude_role_id", "exclude_role_name"):
+            for key in ("exclude_role_id", "exclude_role_name", "exclude_user_ids"):
+                args.pop(key, None)
                 if key in grounded_scope:
                     args[key] = grounded_scope[key]
 
@@ -2315,20 +2331,16 @@ class AIModeration(commands.Cog):
     def _requires_confirmation(settings: GuildSettings, decision: Decision) -> bool:
         if decision.type != DecisionType.TOOL_CALL or not decision.tool:
             return False
-        if decision.tool.value in GuildSettings._DEFAULT_CONFIRM_ACTIONS:
-            return True
-        if decision.tool == ToolType.TIMEOUT:
-            if decision.arguments.get("all_members"):
-                return True
-            try:
-                if int(decision.arguments.get("seconds", 0)) >= 86_400:
-                    return True
-            except (TypeError, ValueError):
-                return True
-        return bool(
-            settings.confirm_enabled
-            and decision.tool.value in settings.confirm_actions
-        )
+        non_mutating_tools = {
+            ToolType.HELP,
+            ToolType.GET_WARNINGS,
+            ToolType.GET_HISTORY,
+            ToolType.FIND_INACTIVE_MEMBERS,
+            ToolType.SCAN_CHANNEL,
+            ToolType.SUMMARIZE_ACTIONS,
+            ToolType.SAFETY_CHECK,
+        }
+        return decision.tool not in non_mutating_tools
 
     def _confirmation_preview(
         self,
@@ -2348,6 +2360,21 @@ class AIModeration(commands.Cog):
             rows.append(("Target", f"<@{target_id}> (`{target_id}`)"))
         if decision.tool == ToolType.TIMEOUT and args.get("all_members"):
             rows.append(("Scope", "All eligible server members"))
+            excluded_user_ids = []
+            for raw_user_id in args.get("exclude_user_ids") or []:
+                try:
+                    user_id = int(raw_user_id)
+                except (TypeError, ValueError):
+                    continue
+                if user_id not in excluded_user_ids:
+                    excluded_user_ids.append(user_id)
+            if excluded_user_ids:
+                rows.append(
+                    (
+                        "Excluded Members",
+                        ", ".join(f"<@{user_id}>" for user_id in excluded_user_ids[:25]),
+                    )
+                )
             excluded_role_id = args.get("exclude_role_id")
             excluded_role_name = str(args.get("exclude_role_name") or "").strip()
             if excluded_role_id:
@@ -2387,6 +2414,32 @@ class AIModeration(commands.Cog):
         reason = self._clean_moderation_reason(args.get("reason", ""))
         if reason:
             rows.append(("Reason", reason))
+
+        displayed_args = {
+            "target_user_id", "all_members", "exclude_user_ids",
+            "exclude_role_id", "exclude_role_name", "role_name",
+            "channel_id", "channel_name", "amount", "amount_is_limit",
+            "all_channels_requested", "seconds", "reason",
+        }
+        hidden_args = {
+            "code", "code_sha256", "payload", "expected_effects",
+            "summary", "scope", "needs_channel_scope",
+        }
+        for key, value in args.items():
+            if key in displayed_args or key in hidden_args or value is None:
+                continue
+            label = key.replace("_", " ").title()
+            if isinstance(value, bool):
+                rendered = "Yes" if value else "No"
+            elif isinstance(value, (list, tuple, set)):
+                rendered = ", ".join(str(item) for item in list(value)[:25])
+            elif isinstance(value, dict):
+                rendered = f"{len(value)} configured field(s)"
+            else:
+                rendered = str(value)
+            rendered = rendered.strip()
+            if rendered:
+                rows.append((label, rendered[:700]))
         if decision.tool == ToolType.EXECUTE_PYTHON:
             if summary := str(args.get("summary") or "").strip():
                 rows.append(("Plan", summary))

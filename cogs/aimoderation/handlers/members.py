@@ -532,13 +532,21 @@ async def _handle_bulk_timeout(ctx: ToolContext) -> ToolResult:
         if not excluded_role:
             return ToolResult.fail("The excluded role was not found, so nobody was muted.")
 
+    excluded_user_ids: set[int] = set()
+    for raw_user_id in ctx.arg("exclude_user_ids", []) or []:
+        try:
+            excluded_user_ids.add(int(raw_user_id))
+        except (TypeError, ValueError):
+            continue
+
     bot_member = ctx.guild.me
     if not bot_member:
         return ToolResult.fail("Could not verify my server role, so nobody was muted.")
 
     eligible: list[discord.Member] = []
     counts = {
-        "excluded": 0,
+        "excluded_role": 0,
+        "excluded_users": 0,
         "bots": 0,
         "admins": 0,
         "protected": 0,
@@ -546,13 +554,16 @@ async def _handle_bulk_timeout(ctx: ToolContext) -> ToolResult:
         "failed": 0,
     }
     for member in ctx.guild.members:
+        if member.id in excluded_user_ids:
+            counts["excluded_users"] += 1
+            continue
         if member.id == ctx.actor.id:
             continue
         if member.bot:
             counts["bots"] += 1
             continue
         if excluded_role and any(role.id == excluded_role.id for role in member.roles):
-            counts["excluded"] += 1
+            counts["excluded_role"] += 1
             continue
         if member.id == ctx.guild.owner_id or member.guild_permissions.administrator:
             counts["admins"] += 1
@@ -592,11 +603,24 @@ async def _handle_bulk_timeout(ctx: ToolContext) -> ToolResult:
     muted_count = sum(outcomes)
     counts["failed"] = len(outcomes) - muted_count
 
-    excluded_label = excluded_role.mention if excluded_role else "none"
+    excluded_role_label = excluded_role.mention if excluded_role else "None"
+    excluded_members = [
+        member.mention
+        for member in ctx.guild.members
+        if member.id in excluded_user_ids
+    ]
+    excluded_members_label = ", ".join(excluded_members[:25]) or "None"
     summary_parts = [
         f"Muted **{muted_count}** member(s) for **{duration}**.",
-        f"Excluded by role: **{counts['excluded']}** ({excluded_label}).",
     ]
+    if excluded_role:
+        summary_parts.append(
+            f"Excluded by role: **{counts['excluded_role']}** ({excluded_role_label})."
+        )
+    if excluded_user_ids:
+        summary_parts.append(
+            f"Explicitly excluded: **{counts['excluded_users']}** member(s)."
+        )
     skipped = counts["admins"] + counts["protected"] + counts["hierarchy"]
     if skipped:
         summary_parts.append(
@@ -614,8 +638,9 @@ async def _handle_bulk_timeout(ctx: ToolContext) -> ToolResult:
         extra={
             "Duration": duration,
             "Muted": str(muted_count),
-            "Excluded Role": excluded_label,
-            "Excluded Members": str(counts["excluded"]),
+            "Excluded Role": excluded_role_label,
+            "Excluded Role Members": str(counts["excluded_role"]),
+            "Excluded Members": excluded_members_label,
             "Safety Skips": str(skipped),
             "Discord Failures": str(counts["failed"]),
         },
@@ -630,8 +655,9 @@ async def _handle_bulk_timeout(ctx: ToolContext) -> ToolResult:
         extra={
             "Duration": duration,
             "Muted": str(muted_count),
-            "Excluded Role": excluded_label,
-            "Excluded Members": str(counts["excluded"]),
+            "Excluded Role": excluded_role_label,
+            "Excluded Role Members": str(counts["excluded_role"]),
+            "Excluded Members": excluded_members_label,
             "Safety Skips": str(skipped),
             "Discord Failures": str(counts["failed"]),
         },

@@ -73,7 +73,7 @@ AVAILABLE TOOLS
 - get_warnings: target_user_id (int)
 - get_history: target_user_id (int) — full moderation record (cases + warnings + notes)
 - warn_member: target_user_id (int), reason (str), warning_count (optional int, 1-10)
-- timeout_member: target_user_id (int, single target), all_members (bool, bulk scope), exclude_role_id (int, opt), exclude_role_name (str, opt), seconds (int), reason (str)
+- timeout_member: target_user_id (int, single target), all_members (bool, bulk scope), exclude_user_ids (int array, opt), exclude_role_id (int, opt), exclude_role_name (str, opt), seconds (int), reason (str)
 - untimeout_member: target_user_id (int), reason (str)
 - kick_member: target_user_id (int), reason (str)
 - ban_member: target_user_id (int), delete_message_days (int), reason (str)
@@ -165,6 +165,7 @@ Understand slang, typos, shorthand, and casual phrasing.
 - "mute him" -> timeout_member
 - "shut him up for 10m" -> timeout_member seconds=600
 - "mute everyone who doesn't have @Staff" -> timeout_member all_members=true exclude_role_id=<mentioned role id>; never infer or reuse an individual target
+- "mute everyone except me, @Alex, and @Sam" -> timeout_member all_members=true exclude_user_ids=[requester id, Alex id, Sam id]; never treat member names as a role
 - "free him" -> untimeout_member
 - "boot him" -> kick_member
 - "get him out forever" -> ban_member
