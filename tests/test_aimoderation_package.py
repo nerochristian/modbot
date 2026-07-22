@@ -442,6 +442,7 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
         def member(member_id, *, roles=(), bot=False, administrator=False):
             return SimpleNamespace(
                 id=member_id,
+                mention=f"<@{member_id}>",
                 bot=bot,
                 roles=list(roles),
                 guild_permissions=SimpleNamespace(administrator=administrator),
@@ -502,6 +503,63 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
         administrator.timeout.assert_not_awaited()
         above_bot.timeout.assert_not_awaited()
         cog.log_action.assert_awaited_once()
+
+    async def test_bulk_timeout_honors_explicit_member_exclusions(self) -> None:
+        def member(member_id):
+            return SimpleNamespace(
+                id=member_id,
+                mention=f"<@{member_id}>",
+                bot=False,
+                roles=[],
+                guild_permissions=SimpleNamespace(administrator=False),
+                timeout=AsyncMock(),
+                send=AsyncMock(),
+            )
+
+        actor = member(10)
+        explicitly_excluded = member(20)
+        eligible = member(30)
+        bot_member = SimpleNamespace(id=99, mention="<@99>", bot=True, roles=[])
+        guild = SimpleNamespace(
+            id=1,
+            name="Guild",
+            owner_id=1,
+            me=bot_member,
+            members=[actor, explicitly_excluded, eligible, bot_member],
+        )
+        database = SimpleNamespace(
+            get_settings=AsyncMock(return_value={"moderation_dm_users": False})
+        )
+        cog = SimpleNamespace(
+            bot=SimpleNamespace(db=database),
+            config=SimpleNamespace(timeout_default_seconds=3600, timeout_max_seconds=259200),
+            resolve_role=AsyncMock(),
+            can_moderate=lambda moderator, target: True,
+            log_action=AsyncMock(),
+        )
+        values = {
+            "all_members": True,
+            "exclude_user_ids": [actor.id, explicitly_excluded.id],
+            "seconds": 600,
+        }
+        ctx = SimpleNamespace(
+            arg=lambda key, default=None: values.get(key, default),
+            bool_arg=lambda key, default=False: bool(values.get(key, default)),
+            int_arg=lambda key, default=0: int(values.get(key, default)),
+            str_arg=lambda key, default="No reason provided": str(values.get(key, default)),
+            cog=cog,
+            actor=actor,
+            guild=guild,
+            message=SimpleNamespace(),
+            decision=SimpleNamespace(),
+        )
+
+        result = await handle_timeout(ctx)
+
+        self.assertTrue(result.success)
+        self.assertIn("Explicitly excluded: **2**", result.message)
+        explicitly_excluded.timeout.assert_not_awaited()
+        eligible.timeout.assert_awaited_once()
 
     async def test_execute_python_rejects_code_changed_after_confirmation(self) -> None:
         code = "return 'safe'"

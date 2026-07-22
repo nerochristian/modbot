@@ -100,7 +100,27 @@ class AIActionRoutingTests(unittest.TestCase):
             tool=ToolType.TIMEOUT,
             arguments={},
         )
-        self.assertFalse(self.cog._requires_confirmation(settings, timeout))
+        self.assertTrue(self.cog._requires_confirmation(settings, timeout))
+
+        for tool in (
+            ToolType.HELP,
+            ToolType.GET_WARNINGS,
+            ToolType.GET_HISTORY,
+            ToolType.FIND_INACTIVE_MEMBERS,
+            ToolType.SCAN_CHANNEL,
+            ToolType.SUMMARIZE_ACTIONS,
+            ToolType.SAFETY_CHECK,
+        ):
+            with self.subTest(read_only_tool=tool):
+                read_only = Decision(
+                    type=DecisionType.TOOL_CALL,
+                    reason="read only",
+                    tool=tool,
+                    arguments={},
+                )
+                self.assertFalse(
+                    self.cog._requires_confirmation(settings, read_only)
+                )
 
         long_timeout = Decision(
             type=DecisionType.TOOL_CALL,
@@ -314,6 +334,29 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertTrue(decision.arguments["all_members"])
         self.assertEqual(decision.arguments["exclude_role_id"], 55)
         self.assertEqual(decision.arguments["exclude_role_name"], "Above all")
+        self.assertNotIn("target_user_id", decision.arguments)
+
+    def test_bulk_timeout_shortcut_grounds_excluded_members_without_fake_role(self) -> None:
+        bot_user = SimpleNamespace(id=999, bot=True)
+        aries = SimpleNamespace(id=20, bot=False)
+        cherry = SimpleNamespace(id=30, bot=False)
+        author = SimpleNamespace(id=10)
+        self.cog.bot = SimpleNamespace(user=bot_user)
+        message = SimpleNamespace(
+            author=author,
+            mentions=[bot_user, aries, cherry],
+            role_mentions=[],
+        )
+
+        decision = self.cog._quick_route(
+            message,
+            "mute everyone, except me, <@20> and <@30>",
+        )
+
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision.tool, ToolType.TIMEOUT)
+        self.assertEqual(decision.arguments["exclude_user_ids"], [10, 20, 30])
+        self.assertNotIn("exclude_role_name", decision.arguments)
         self.assertNotIn("target_user_id", decision.arguments)
 
     def test_reply_target_warn_shortcut_keeps_reason(self) -> None:
@@ -1023,6 +1066,29 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("Owner-only automation", preview)
         self.assertNotIn("guild.delete", preview)
+
+    def test_confirmation_preview_renders_excluded_members_separately(self) -> None:
+        cog = object.__new__(AIModeration)
+        message = SimpleNamespace(
+            author=SimpleNamespace(mention="<@10>"),
+            channel=SimpleNamespace(mention="<#2>"),
+        )
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="bulk timeout",
+            tool=ToolType.TIMEOUT,
+            arguments={
+                "all_members": True,
+                "exclude_user_ids": [10, 20, 30],
+                "seconds": 3600,
+            },
+        )
+
+        preview = cog._confirmation_preview(message, decision)
+
+        self.assertIn("Excluded Members", preview)
+        self.assertIn("<@10>, <@20>, <@30>", preview)
+        self.assertNotIn("Excluded Role", preview)
 
     async def test_generated_python_plan_retries_preflight_and_locks_digest(self) -> None:
         cog = object.__new__(AIModeration)
