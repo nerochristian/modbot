@@ -442,8 +442,26 @@ class PermissionFlags:
     mute_members: bool = False
 
     @classmethod
-    def from_member(cls, member: "discord.Member") -> "PermissionFlags":
+    def from_member(
+        cls,
+        member: "discord.Member",
+        channel: Optional["discord.abc.GuildChannel"] = None,
+    ) -> "PermissionFlags":
         perms = member.guild_permissions
+        channel_perms = None
+        permissions_for = getattr(channel, "permissions_for", None)
+        if callable(permissions_for):
+            channel_perms = permissions_for(member)
+
+        def effective(name: str) -> bool:
+            if channel_perms is not None and name in {
+                "manage_messages",
+                "manage_threads",
+                "create_instant_invite",
+            }:
+                return bool(getattr(channel_perms, name, False))
+            return bool(getattr(perms, name, False))
+
         return cls(
             administrator=perms.administrator,
             ban_members=perms.ban_members,
@@ -451,11 +469,11 @@ class PermissionFlags:
             manage_guild=perms.manage_guild,
             manage_channels=perms.manage_channels,
             manage_roles=perms.manage_roles,
-            manage_messages=perms.manage_messages,
-            manage_threads=perms.manage_threads,
+            manage_messages=effective("manage_messages"),
+            manage_threads=effective("manage_threads"),
             manage_nicknames=perms.manage_nicknames,
             manage_emojis=perms.manage_emojis_and_stickers,
-            create_instant_invite=perms.create_instant_invite,
+            create_instant_invite=effective("create_instant_invite"),
             move_members=perms.move_members,
             moderate_members=perms.moderate_members,
             mute_members=perms.mute_members,

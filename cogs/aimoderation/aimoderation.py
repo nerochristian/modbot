@@ -2676,7 +2676,7 @@ class AIModeration(commands.Cog):
 
         # --- Main routing: moderation actions ---
         permissions = (
-            PermissionFlags.from_member(message.author)
+            PermissionFlags.from_member(message.author, message.channel)
             if isinstance(message.author, discord.Member)
             else PermissionFlags()
         )

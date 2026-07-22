@@ -618,6 +618,39 @@ class AIActionRoutingTests(unittest.TestCase):
 
         self.assertIsNone(error)
 
+    def test_permission_snapshot_includes_effective_channel_override(self) -> None:
+        guild_permissions = SimpleNamespace(
+            administrator=False,
+            ban_members=False,
+            kick_members=False,
+            manage_guild=False,
+            manage_channels=False,
+            manage_roles=False,
+            manage_messages=False,
+            manage_threads=False,
+            manage_nicknames=False,
+            manage_emojis_and_stickers=False,
+            create_instant_invite=False,
+            move_members=False,
+            moderate_members=False,
+            mute_members=False,
+        )
+        member = SimpleNamespace(guild_permissions=guild_permissions)
+        channel = SimpleNamespace(
+            permissions_for=lambda _: SimpleNamespace(
+                manage_messages=True,
+                manage_threads=True,
+                create_instant_invite=True,
+            )
+        )
+
+        permissions = PermissionFlags.from_member(member, channel)
+
+        self.assertTrue(permissions.manage_messages)
+        self.assertTrue(permissions.manage_threads)
+        self.assertTrue(permissions.create_instant_invite)
+        self.assertFalse(permissions.ban_members)
+
     def test_administrator_still_requires_bot_action_permission(self) -> None:
         actor = SimpleNamespace(
             id=123,
