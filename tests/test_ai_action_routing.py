@@ -1175,6 +1175,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         cog._infer_target.assert_not_awaited()
 
     def test_bulk_timeout_always_requires_confirmation(self) -> None:
+        cog = object.__new__(AIModeration)
         decision = Decision(
             type=DecisionType.TOOL_CALL,
             reason="bulk timeout",
@@ -1183,7 +1184,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         )
 
         self.assertTrue(
-            self.cog._requires_confirmation(
+            cog._requires_confirmation(
                 GuildSettings(confirm_enabled=False, confirm_actions=set()),
                 decision,
             )
