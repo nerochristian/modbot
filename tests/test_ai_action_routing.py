@@ -210,6 +210,35 @@ class AIActionRoutingTests(unittest.TestCase):
                     self.cog._looks_like_advanced_action_request(content)
                 )
 
+    def test_direct_single_target_actions_stay_on_deterministic_router(self) -> None:
+        direct_actions = (
+            "warn @Target for spam",
+            "timeout @Target for 10 minutes",
+            "kick @Target for harassment",
+            "ban @Target for malicious links",
+            "purge 25 messages",
+        )
+
+        for content in direct_actions:
+            with self.subTest(content=content):
+                self.assertFalse(self.cog._requires_model_routing(content))
+
+    def test_complex_actions_require_model_routing(self) -> None:
+        complex_actions = (
+            "warn every member without the Verified role",
+            "timeout all accounts created less than one hour ago",
+            "copy matching messages to mod-log and then delete them",
+            "allow viewing but deny sending messages for Muted members",
+            "schedule a cleanup of expired roles every day",
+            "archive all threads inactive for seven days",
+            "quarantine new arrivals when more than ten members join",
+            "restore yesterday's backup after exporting the current state",
+        )
+
+        for content in complex_actions:
+            with self.subTest(content=content):
+                self.assertTrue(self.cog._requires_model_routing(content))
+
     def test_forced_targeted_orientation_claim_is_not_repeated(self) -> None:
         reply = self.cog._quick_conversation_reply(
             "say: <@123456789012345678> is gay"

@@ -682,6 +682,65 @@ class AIModeration(commands.Cog):
         )
         return any(re.match(prefix + pattern, low) for pattern in action_patterns)
 
+    def _requires_model_routing(self, content: str) -> bool:
+        """Keep conditional, bulk, and multi-step actions out of simple routes.
+
+        The deterministic router is intentionally narrow: it is reliable for a
+        direct action with an explicit target, but it cannot preserve arbitrary
+        filters, exclusions, schedules, permission overwrites, or workflows.
+        Those requests must reach the configured moderation model before a tool
+        or guarded Python plan is selected.
+        """
+        low = self._normalize_chat_text(self._strip_action_prefix(content))
+        if not low:
+            return False
+
+        broad_scope = re.search(
+            r"\b(?:everyone|everybody|all|each)\b|"
+            r"\b(?:members?|users?|accounts?|messages?|threads?|invites?|roles?)\s+"
+            r"(?:who|that|with|without|matching|created|joined|pending|playing|holding)\b|"
+            r"\bacross\s+(?:the\s+)?(?:server|guild|channels?)\b|"
+            r"\ball\s+(?:accessible\s+)?(?:text\s+)?channels?\b",
+            low,
+        )
+        conditional = re.search(
+            r"\b(?:if|when|whenever|unless|until)\b|"
+            r"\b(?:more|less|older|newer)\s+than\b|"
+            r"\b(?:inactive|pending)\s+for\b|"
+            r"\b(?:doesn'?t|does\s+not|do\s+not|without)\s+have\b",
+            low,
+        )
+        exclusions = re.search(
+            r"\b(?:except|excluding|exclude|while\s+respecting|protected\s+roles?)\b",
+            low,
+        )
+        multi_step = re.search(
+            r"\b(?:and\s+then|then|after|before)\b.*\b"
+            r"(?:delete|remove|archive|lock|warn|timeout|kick|ban|export|copy|send|move)\b|"
+            r"\b(?:copy|export|summarize|log|record)\b.*\b(?:and\s+then|then)\b",
+            low,
+        )
+        workflow = re.search(
+            r"\b(?:automod|raid|lockdown|onboarding|verification\s+flow|"
+            r"ticket\s+workflow|appeals?|audit\s+(?:entries|snapshot|review)|"
+            r"analytics?|workload\s+report|schedule|scheduled|recurring|"
+            r"backup|restore|reaction[ -]?role|forum|signups?|reminder\s+sequence)\b",
+            low,
+        )
+        permission_matrix = re.search(
+            r"\b(?:allow|deny|reset|inherit|sync)\b.*\bpermissions?\b|"
+            r"\b(?:allow|deny)\b.*\b(?:viewing|sending|attachments?|threads?|mention[ -]?everyone)\b",
+            low,
+        )
+        return bool(
+            broad_scope
+            or conditional
+            or exclusions
+            or multi_step
+            or workflow
+            or permission_matrix
+        )
+
     def _quick_conversation_reply(
         self,
         content: str,
@@ -2833,9 +2892,11 @@ class AIModeration(commands.Cog):
             limit=settings.context_messages,
         )
 
-        decision = self._quick_route(message, content)
+        requires_model_routing = self._requires_model_routing(content)
+        decision = None if requires_model_routing else self._quick_route(message, content)
         if (
             not decision
+            and not requires_model_routing
             and is_mod_request
             and self._can_use_ai_tools(message.author, settings)
         ):
