@@ -42,8 +42,10 @@ class _FakeSession:
         self._responses = list(responses)
         self.calls = 0
         self.closed = False
+        self.requests = []
 
     def post(self, *args, **kwargs):
+        self.requests.append((args, kwargs))
         resp = self._responses[self.calls]
         self.calls += 1
         return resp
@@ -65,6 +67,14 @@ def _make_client(responses):
 
 
 _OK = {"choices": [{"message": {"content": "HELLO"}}]}
+_RESPONSES_OK = {
+    "output": [
+        {
+            "type": "message",
+            "content": [{"type": "output_text", "text": "HELLO"}],
+        }
+    ]
+}
 
 
 def _post(client, **overrides):
@@ -159,6 +169,145 @@ def test_relayrouter_api_enabled_reflects_key(monkeypatch):
     assert ai_client_module._relayrouter_api_enabled() is True
     monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "")
     assert ai_client_module._relayrouter_api_enabled() is False
+
+
+def test_aimodel_api_enabled_reflects_key(monkeypatch):
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
+    assert ai_client_module._aimodel_api_enabled() is True
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "")
+    assert ai_client_module._aimodel_api_enabled() is False
+
+
+def test_aimodel_timeouts_are_bounded(monkeypatch):
+    monkeypatch.setenv("AIMODEL_TIMEOUT", "1")
+    monkeypatch.setenv("AIMODEL_VISION_TIMEOUT", "999")
+    assert ai_client_module._aimodel_request_timeout(multimodal=False) == 5
+    assert ai_client_module._aimodel_request_timeout(multimodal=True) == 180
+
+
+def test_aimodel_responses_success_and_json_mode(monkeypatch):
+    client, session, _ = _make_client([_FakeResp(200, _RESPONSES_OK)])
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_BASE_URL", "https://aimodel.test/v1")
+
+    result = asyncio.run(
+        client._post_responses_api(
+            [
+                {"role": "system", "content": "Return JSON."},
+                {"role": "user", "content": "Hello"},
+            ],
+            model="glm-5.1",
+            temperature=0.1,
+            max_tokens=64,
+            json_mode=True,
+            allow_multimodal=False,
+            provider_label="AiModel test",
+        )
+    )
+
+    assert result == "HELLO"
+    args, kwargs = session.requests[0]
+    assert args[0] == "https://aimodel.test/v1/responses"
+    assert kwargs["json"]["model"] == "accounts/aimodel/models/glm-5.1"
+    assert kwargs["json"]["input"] == [
+        {"role": "system", "content": "Return JSON."},
+        {"role": "user", "content": "Hello"},
+    ]
+    assert kwargs["json"]["text"] == {"format": {"type": "json_object"}}
+    assert kwargs["json"]["max_output_tokens"] == 64
+
+
+def test_aimodel_multimodal_messages_use_responses_parts():
+    converted = AIClient._responses_input(
+        [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "describe"},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": "data:image/png;base64,AA==",
+                            "detail": "high",
+                        },
+                    },
+                ],
+            }
+        ],
+        allow_multimodal=True,
+    )
+
+    assert converted == [
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": "describe"},
+                {
+                    "type": "input_image",
+                    "image_url": "data:image/png;base64,AA==",
+                    "detail": "high",
+                },
+            ],
+        }
+    ]
+
+
+def test_aimodel_falls_back_in_configured_order(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client._block_until = None
+    client._block_reason = None
+    client._post_responses_api = AsyncMock(
+        side_effect=[RuntimeError("primary down"), "fallback answer"]
+    )
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
+
+    result = asyncio.run(
+        client._call_aimodel(
+            [{"role": "user", "content": "hello"}],
+            temperature=0.7,
+            max_tokens=64,
+            model="accounts/aimodel/models/glm-5.1",
+            fallback_models=("accounts/aimodel/models/minimax-m2.7",),
+        )
+    )
+
+    assert result == "fallback answer"
+    models = [
+        call.kwargs["model"]
+        for call in client._post_responses_api.await_args_list
+    ]
+    assert models == [
+        "accounts/aimodel/models/glm-5.1",
+        "accounts/aimodel/models/minimax-m2.7",
+    ]
+
+
+def test_aimodel_provider_routes_before_legacy_providers(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client.provider = "aimodel"
+    client.config = AIConfig(provider="aimodel", model="accounts/aimodel/models/glm-5.1")
+    client._call_aimodel = AsyncMock(return_value="aimodel")
+    client._call_relayrouter = AsyncMock(return_value="relay")
+    client._deepseek_web = types.SimpleNamespace(enabled=True, chat=AsyncMock())
+    client._call_deepseek_api = AsyncMock(return_value="deepseek")
+    client._call_digitalocean = AsyncMock(return_value="digitalocean")
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
+
+    result = asyncio.run(
+        client._call(
+            [{"role": "user", "content": "route this"}],
+            temperature=0.0,
+            max_tokens=32,
+            model="stale-guild-model",
+        )
+    )
+
+    assert result == "aimodel"
+    assert client._call_aimodel.await_args.kwargs["model"] == ai_client_module._AIMODEL_MODERATION_MODEL
+    client._call_relayrouter.assert_not_awaited()
+    client._deepseek_web.chat.assert_not_awaited()
+    client._call_deepseek_api.assert_not_awaited()
+    client._call_digitalocean.assert_not_awaited()
 
 
 def test_relayrouter_timeouts_are_bounded(monkeypatch):
