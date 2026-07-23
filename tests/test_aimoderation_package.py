@@ -460,7 +460,10 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
         ):
             result = await handle_execute_python(ctx)
 
-            self.assertTrue(result.success)
+        self.assertTrue(result.success)
+        self.assertIn("Created 3 channels", result.message)
+        self.assertIn(execution_digest(code)[:12], result.message)
+        cog.log_action.assert_awaited_once()
 
     async def test_execute_python_send_bounded_attaches_long_reports(self) -> None:
         actor = SimpleNamespace(id=123, mention="<@123>")
@@ -490,9 +493,6 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
         args, kwargs = destination.send.await_args
         self.assertEqual(args[0], "The full action report is attached.")
         self.assertEqual(kwargs["file"].filename, "raid-rollback.json")
-        self.assertIn("Created 3 channels", result.message)
-        self.assertIn(execution_digest(code)[:12], result.message)
-        cog.log_action.assert_awaited_once()
 
     async def test_bulk_timeout_excludes_named_role_and_skips_unsafe_targets(self) -> None:
         excluded_role = SimpleNamespace(id=5, name="Above all", mention="<@&5>")
