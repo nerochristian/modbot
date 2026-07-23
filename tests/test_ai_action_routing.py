@@ -1297,6 +1297,88 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(enriched.arguments["amount_is_limit"])
         self.assertEqual(enriched.arguments["target_user_id"], target.id)
 
+    async def test_enrichment_preserves_every_explicit_member_target(self) -> None:
+        cog = object.__new__(AIModeration)
+        bot_user = SimpleNamespace(id=999, bot=True)
+        first_target = SimpleNamespace(id=20, bot=False)
+        second_target = SimpleNamespace(id=30, bot=False)
+        cog.bot = SimpleNamespace(user=bot_user)
+        content = "unmute <@20> and <@30>"
+        cog.clean_content = lambda message: content
+        message = SimpleNamespace(
+            content=content,
+            mentions=[bot_user, first_target, second_target],
+            role_mentions=[],
+            channel_mentions=[],
+            reference=None,
+            author=SimpleNamespace(id=10),
+            guild=SimpleNamespace(id=1),
+        )
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="model route",
+            tool=ToolType.UNTIMEOUT,
+            arguments={"target_user_id": 777},
+        )
+
+        enriched = await cog._enrich(message, decision, [])
+
+        self.assertEqual(enriched.arguments["target_user_ids"], [20, 30])
+        self.assertNotIn("target_user_id", enriched.arguments)
+
+    def test_confirmation_preview_renders_multiple_targets(self) -> None:
+        cog = object.__new__(AIModeration)
+        message = SimpleNamespace(
+            author=SimpleNamespace(mention="<@10>"),
+            channel=SimpleNamespace(mention="<#2>"),
+        )
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="remove both timeouts",
+            tool=ToolType.UNTIMEOUT,
+            arguments={"target_user_ids": [20, 30]},
+        )
+
+        preview = cog._confirmation_preview(message, decision)
+
+        self.assertIn("Targets", preview)
+        self.assertIn("<@20>, <@30>", preview)
+
+    async def test_execute_decision_fans_out_and_reports_partial_failure(self) -> None:
+        cog = object.__new__(AIModeration)
+        cog.get_guild_settings = AsyncMock(return_value=GuildSettings(enabled=True))
+        cog._has_configured_mod_role = lambda author, settings: False
+        cog._remember_target = unittest.mock.Mock()
+        cog.reply_tool_result = AsyncMock()
+        message = SimpleNamespace(
+            guild=SimpleNamespace(id=1),
+            author=SimpleNamespace(id=10),
+        )
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="remove both timeouts",
+            tool=ToolType.UNTIMEOUT,
+            arguments={"target_user_ids": [20, 30], "reason": "requested"},
+        )
+
+        with patch.object(
+            ToolRegistry,
+            "execute",
+            new_callable=AsyncMock,
+            side_effect=[ToolResult.ok("first done"), ToolResult.fail("second denied")],
+        ) as execute:
+            result = await cog._execute_decision(message, decision, send_result=True)
+
+        self.assertTrue(result.success)
+        self.assertIn("Completed **1** of **2**", result.message)
+        self.assertIn("<@20>", result.message)
+        self.assertIn("<@30>: second denied", result.message)
+        self.assertEqual(execute.await_count, 2)
+        self.assertEqual(execute.await_args_list[0].args[3]["target_user_id"], 20)
+        self.assertEqual(execute.await_args_list[1].args[3]["target_user_id"], 30)
+        cog._remember_target.assert_called_once_with(1, 10, 20)
+        cog.reply_tool_result.assert_awaited_once_with(message, result)
+
     async def test_bulk_timeout_enrichment_discards_stale_or_hallucinated_target(self) -> None:
         cog = object.__new__(AIModeration)
         bot_user = SimpleNamespace(id=999, bot=True)

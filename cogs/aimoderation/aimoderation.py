@@ -2731,6 +2731,7 @@ class AIModeration(commands.Cog):
         configured_mod_role = self._has_configured_mod_role(message.author, settings)
         raw_target_ids = decision.arguments.get("target_user_ids")
         target_ids: list[int] = []
+        successful_target_ids: list[int] = []
         if isinstance(raw_target_ids, (list, tuple, set)) and decision.tool != ToolType.PURGE:
             for raw_target_id in raw_target_ids:
                 try:
@@ -2764,6 +2765,7 @@ class AIModeration(commands.Cog):
 
             succeeded = [(target_id, item) for target_id, item in results if item.success]
             failed = [(target_id, item) for target_id, item in results if not item.success]
+            successful_target_ids = [target_id for target_id, _ in succeeded]
             summary = [
                 f"Completed **{len(succeeded)}** of **{len(results)}** target action(s)."
             ]
@@ -2791,8 +2793,8 @@ class AIModeration(commands.Cog):
                 decision,
                 configured_mod_role=configured_mod_role,
             )
-        if result.success and target_ids:
-            for target_id in target_ids:
+        if successful_target_ids:
+            for target_id in successful_target_ids:
                 self._remember_target(message.guild.id, message.author.id, target_id)
         elif result.success and (target_id := decision.arguments.get("target_user_id")):
             try:
