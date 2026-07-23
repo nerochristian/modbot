@@ -767,6 +767,24 @@ class AIActionRoutingTests(unittest.TestCase):
                     or self.cog._requires_model_routing(request)
                 )
 
+    def test_owner_fallback_preserves_clarifications_and_impossibility_errors(self) -> None:
+        blocked_reasons = (
+            "Creating the emoji requires an image URL which was not provided.",
+            "No new name was specified; need clarification.",
+            "Cannot programmatically detect disruptive audio; this is fundamentally impossible.",
+            "Multiple possible targets are ambiguous.",
+        )
+        for reason in blocked_reasons:
+            with self.subTest(reason=reason):
+                self.assertFalse(
+                    self.cog._owner_fallback_can_proceed(Decision.error(reason))
+                )
+
+        feasible = Decision.error(
+            "This workflow is beyond standard tool capabilities and requires generated automation."
+        )
+        self.assertTrue(self.cog._owner_fallback_can_proceed(feasible))
+
     def test_administrator_still_requires_bot_action_permission(self) -> None:
         actor = SimpleNamespace(
             id=123,
