@@ -556,7 +556,8 @@ class AIClient:
                 messages,
                 temperature=temperature,
                 max_tokens=max_tokens,
-                model=model or _AIMODEL_MODERATION_MODEL,
+                # Moderation must not inherit stale per-guild model overrides.
+                model=_AIMODEL_MODERATION_MODEL,
                 json_mode=json_mode,
                 allow_multimodal=allow_multimodal,
             )
@@ -3165,7 +3166,19 @@ class AIClient:
                 {"role": "system", "content": self._MEMORY_SUMMARY_PROMPT},
                 {"role": "user", "content": prompt},
             ]
-            if self.prefers_relayrouter:
+            if self.prefers_aimodel:
+                memory_model = os.getenv(
+                    "AIMODEL_MEMORY_MODEL",
+                    _AIMODEL_CHAT_MODEL,
+                ).strip() or _AIMODEL_CHAT_MODEL
+                call = self._call_aimodel(
+                    messages,
+                    temperature=0.2,
+                    max_tokens=800,
+                    model=memory_model,
+                    fallback_models=_AIMODEL_CHAT_FALLBACK_MODELS,
+                )
+            elif self.prefers_relayrouter:
                 memory_model = os.getenv(
                     "RELAYROUTER_MEMORY_MODEL",
                     _RELAYROUTER_CHAT_MODEL,

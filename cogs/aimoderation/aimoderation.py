@@ -2595,7 +2595,10 @@ class AIModeration(commands.Cog):
 
         planner_model = (
             None
-            if getattr(self.ai, "prefers_relayrouter", False)
+            if (
+                getattr(self.ai, "prefers_relayrouter", False)
+                or getattr(self.ai, "prefers_aimodel", False)
+            )
             else settings.model
         )
         validation_feedback = ""
@@ -2607,9 +2610,8 @@ class AIModeration(commands.Cog):
                 ],
                 temperature=0.1,
                 max_tokens=3500,
-                # RelayRouter resolves None through RELAYROUTER_MODERATION_MODEL.
-                # This keeps generated actions on the dedicated Opus alias even
-                # when a guild still has an older dashboard model override.
+                # Managed HTTP providers resolve None through their dedicated
+                # moderation model, ignoring stale per-guild model overrides.
                 model=planner_model,
                 json_mode=True,
             )

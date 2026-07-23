@@ -118,6 +118,12 @@ def _default_ai_model() -> str:
     if explicit:
         return explicit
     provider = _default_ai_provider()
+    if provider in {"aimodel", "aimodel.lol"}:
+        return (
+            os.getenv("AIMODEL_MODERATION_MODEL")
+            or os.getenv("AIMODEL_MODEL")
+            or "accounts/aimodel/models/glm-5.1"
+        ).strip()
     if provider in {"relay", "relayrouter", "relayrouter.org"}:
         return (
             os.getenv("RELAYROUTER_MODERATION_MODEL")
