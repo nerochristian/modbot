@@ -38,7 +38,6 @@ FORBIDDEN_NAMES = frozenset(
         "input",
         "locals",
         "open",
-        "setattr",
         "vars",
         "__import__",
     }
@@ -147,6 +146,23 @@ def _safe_import(
     return builtins.__import__(name, globals, locals, fromlist, level)
 
 
+def _safe_setattr(obj: Any, name: str, value: Any) -> None:
+    """Allow generated plans to toggle only documented Discord permission flags."""
+    cls = type(obj)
+    valid_flags = getattr(cls, "VALID_FLAGS", None)
+    if (
+        cls.__module__ != "discord.permissions"
+        or cls.__name__ != "Permissions"
+        or not isinstance(valid_flags, dict)
+    ):
+        raise TypeError("setattr is restricted to discord.Permissions instances.")
+    if not isinstance(name, str) or name not in valid_flags or name.startswith("_"):
+        raise AttributeError("Only documented Discord permission flags can be changed.")
+    if not isinstance(value, bool):
+        raise TypeError("Discord permission flags must be set with a boolean value.")
+    builtins.setattr(obj, name, value)
+
+
 def safe_builtins() -> Dict[str, Any]:
     names = (
         "ArithmeticError",
@@ -208,4 +224,5 @@ def safe_builtins() -> Dict[str, Any]:
     )
     allowed = {name: getattr(builtins, name) for name in names}
     allowed["__import__"] = _safe_import
+    allowed["setattr"] = _safe_setattr
     return allowed

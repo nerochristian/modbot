@@ -19,6 +19,7 @@ from cogs.aimoderation.handlers.query_handlers import (
 from cogs.aimoderation.python_runtime import (
     PythonSafetyError,
     execution_digest,
+    safe_builtins,
     validate_python_code,
 )
 
@@ -385,6 +386,25 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
         compiled = validate_python_code(code)
 
         self.assertIsNotNone(compiled)
+
+    def test_python_runtime_allows_only_permission_flag_setattr(self) -> None:
+        code = (
+            "permissions = discord.Permissions(administrator=True)\n"
+            "setattr(permissions, 'administrator', False)\n"
+            "return permissions.administrator"
+        )
+        permissions = discord.Permissions(administrator=True)
+        restricted_setattr = safe_builtins()["setattr"]
+
+        self.assertIsNotNone(validate_python_code(code))
+        restricted_setattr(permissions, "administrator", False)
+        self.assertFalse(permissions.administrator)
+        with self.assertRaises(TypeError):
+            restricted_setattr(SimpleNamespace(administrator=True), "administrator", False)
+        with self.assertRaises(AttributeError):
+            restricted_setattr(permissions, "__class__", False)
+        with self.assertRaises(TypeError):
+            restricted_setattr(permissions, "administrator", "false")
 
     def test_python_runtime_blocks_escape_and_lifecycle_operations(self) -> None:
         blocked = (

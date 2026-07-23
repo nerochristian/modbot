@@ -2858,7 +2858,9 @@ class AIModeration(commands.Cog):
             "random, re, statistics, uuid.\n\n"
             "Preserve the literal target and scope, use the live IDs when useful, and return an honest concise result. "
             "The runtime blocks filesystem/process/network-secret access, bot lifecycle access, detached tasks, "
-            "guild deletion, and unbounded execution. The code must be self-contained discord.py 2.x code."
+            "guild deletion, and unbounded execution. setattr is available only for boolean flags on "
+            "discord.Permissions instances; prefer Permissions.update(flag=False) when changing several flags. "
+            "The code must be self-contained discord.py 2.x code."
         )
         user_prompt = (
             "<request>\n"
