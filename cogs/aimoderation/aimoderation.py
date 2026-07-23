@@ -2065,6 +2065,62 @@ class AIModeration(commands.Cog):
 
         return None
 
+    async def _infer_context_target_ids(
+        self,
+        message: discord.Message,
+    ) -> List[int]:
+        """Resolve every explicit target from the request or replied bot result."""
+        direct_ids: list[int] = []
+        for member in message.mentions:
+            if member.bot or (self.bot.user and member.id == self.bot.user.id):
+                continue
+            if member.id not in direct_ids:
+                direct_ids.append(member.id)
+        if direct_ids:
+            return direct_ids
+
+        reference = message.reference
+        if not reference or not reference.message_id:
+            return []
+
+        ref = reference.resolved
+        if not isinstance(ref, discord.Message):
+            try:
+                ref = await message.channel.fetch_message(reference.message_id)
+            except discord.HTTPException:
+                return []
+        if not isinstance(ref, discord.Message):
+            return []
+
+        if not ref.author.bot:
+            return [ref.author.id]
+
+        target_ids: list[int] = []
+        for member in ref.mentions:
+            if member.bot or member.id == message.author.id:
+                continue
+            if self.bot.user and member.id == self.bot.user.id:
+                continue
+            if member.id not in target_ids:
+                target_ids.append(member.id)
+
+        search_text = ref.content or ""
+        for embed in ref.embeds:
+            search_text += f"\n{embed.title or ''}\n{embed.description or ''}"
+            if embed.author and embed.author.name:
+                search_text += f"\n{embed.author.name}"
+            for field in embed.fields:
+                search_text += f"\n{field.name}\n{field.value}"
+        for match in _MENTION_RE.finditer(search_text):
+            user_id = int(match.group(1))
+            if user_id == message.author.id:
+                continue
+            if self.bot.user and user_id == self.bot.user.id:
+                continue
+            if user_id not in target_ids:
+                target_ids.append(user_id)
+        return target_ids
+
     # ------------------------------------------------------------------
     # Decision enrichment
     # ------------------------------------------------------------------
@@ -2100,13 +2156,13 @@ class AIModeration(commands.Cog):
                 args["role_name"] = role
 
         if tool in TARGETED_TOOLS and not bulk_timeout:
-            explicit_members = [
-                member
-                for member in message.mentions
-                if not member.bot and (not self.bot.user or member.id != self.bot.user.id)
-            ]
-            if explicit_members:
-                args["target_user_id"] = explicit_members[0].id
+            context_target_ids = await self._infer_context_target_ids(message)
+            if len(context_target_ids) > 1 and tool != ToolType.PURGE:
+                args["target_user_ids"] = context_target_ids
+                args.pop("target_user_id", None)
+            elif context_target_ids:
+                args["target_user_id"] = context_target_ids[0]
+                args.pop("target_user_ids", None)
             elif not args.get("target_user_id"):
                 hint = self._extract_target_hint(content)
                 target = await self._infer_target(message, recent, hint)
@@ -2326,6 +2382,15 @@ class AIModeration(commands.Cog):
         if decision.tool == ToolType.TIMEOUT and args.get("all_members") is True:
             return None
 
+        raw_targets = args.get("target_user_ids")
+        if isinstance(raw_targets, (list, tuple, set)):
+            for raw_target in raw_targets:
+                try:
+                    if int(raw_target) > 0:
+                        return None
+                except (TypeError, ValueError):
+                    continue
+
         raw_target = args.get("target_user_id")
         try:
             if int(raw_target) > 0:
@@ -2499,6 +2564,21 @@ class AIModeration(commands.Cog):
         target_id = args.get("target_user_id")
         if target_id:
             rows.append(("Target", f"<@{target_id}> (`{target_id}`)"))
+        target_ids: list[int] = []
+        for raw_target_id in args.get("target_user_ids") or []:
+            try:
+                parsed_target_id = int(raw_target_id)
+            except (TypeError, ValueError):
+                continue
+            if parsed_target_id > 0 and parsed_target_id not in target_ids:
+                target_ids.append(parsed_target_id)
+        if target_ids:
+            rows.append(
+                (
+                    "Targets",
+                    ", ".join(f"<@{target_id}>" for target_id in target_ids[:25]),
+                )
+            )
         if decision.tool == ToolType.TIMEOUT and args.get("all_members"):
             rows.append(("Scope", "All eligible non-bot server members"))
             excluded_user_ids = []
@@ -2557,7 +2637,7 @@ class AIModeration(commands.Cog):
             rows.append(("Reason", reason))
 
         displayed_args = {
-            "target_user_id", "all_members", "exclude_user_ids",
+            "target_user_id", "target_user_ids", "all_members", "exclude_user_ids",
             "exclude_role_id", "exclude_role_name", "role_name",
             "channel_id", "channel_name", "amount", "amount_is_limit",
             "all_channels_requested", "seconds", "reason",
