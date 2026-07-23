@@ -377,6 +377,28 @@ def test_aimodel_provider_accepts_internal_execution_model_override(monkeypatch)
     assert client._call_aimodel.await_args.kwargs["model"].endswith("claude-opus-4.8")
 
 
+def test_aimodel_provider_falls_back_to_relayrouter_on_outage(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client.provider = "aimodel"
+    client.config = AIConfig(provider="aimodel")
+    client._call_aimodel = AsyncMock(side_effect=RuntimeError("HTTP 521"))
+    client._call_relayrouter = AsyncMock(return_value="relay-opus")
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
+    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "relay-test-key")
+    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_MODERATION_MODEL", "claude-test-opus-4-8")
+
+    result = asyncio.run(
+        client._call(
+            [{"role": "user", "content": "plan an action"}],
+            temperature=0.0,
+            max_tokens=64,
+        )
+    )
+
+    assert result == "relay-opus"
+    assert client._call_relayrouter.await_args.kwargs["model"] == "claude-test-opus-4-8"
+
+
 def test_relayrouter_timeouts_are_bounded(monkeypatch):
     monkeypatch.setenv("RELAYROUTER_TIMEOUT", "1")
     monkeypatch.setenv("RELAYROUTER_VISION_TIMEOUT", "999")

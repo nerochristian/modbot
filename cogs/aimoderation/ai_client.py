@@ -554,15 +554,35 @@ class AIClient:
         if self.prefers_aimodel:
             if not _aimodel_api_enabled():
                 raise RuntimeError("AiModel is missing AIMODEL_API_KEY.")
-            return await self._call_aimodel(
-                messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                # Moderation must not inherit stale per-guild model overrides.
-                model=provider_model_override or _AIMODEL_MODERATION_MODEL,
-                json_mode=json_mode,
-                allow_multimodal=allow_multimodal,
-            )
+            try:
+                return await self._call_aimodel(
+                    messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    # Moderation must not inherit stale per-guild model overrides.
+                    model=provider_model_override or _AIMODEL_MODERATION_MODEL,
+                    json_mode=json_mode,
+                    allow_multimodal=allow_multimodal,
+                )
+            except Exception:
+                if not _relayrouter_api_enabled():
+                    raise
+                logger.warning(
+                    "AiModel call failed; trying RelayRouter availability fallback.",
+                    exc_info=True,
+                )
+                return await self._call_relayrouter(
+                    messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    model=(
+                        _RELAYROUTER_VISION_MODEL
+                        if allow_multimodal
+                        else _RELAYROUTER_MODERATION_MODEL
+                    ),
+                    json_mode=json_mode,
+                    allow_multimodal=allow_multimodal,
+                )
 
         if self.prefers_relayrouter and _relayrouter_api_enabled():
             try:

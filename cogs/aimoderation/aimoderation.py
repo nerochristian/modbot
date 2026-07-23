@@ -2984,11 +2984,15 @@ class AIModeration(commands.Cog):
         settings: GuildSettings,
     ) -> bool:
         """Replace untrusted router code with a validated, digest-bound plan."""
-        plan = await self._generate_execute_python_plan(
-            content=content,
-            message=message,
-            settings=settings,
-        )
+        try:
+            plan = await self._generate_execute_python_plan(
+                content=content,
+                message=message,
+                settings=settings,
+            )
+        except Exception:
+            logger.exception("Generated action planning failed across all configured providers")
+            return False
         if not plan:
             return False
         decision.arguments = plan
