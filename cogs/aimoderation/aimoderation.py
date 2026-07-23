@@ -749,6 +749,25 @@ class AIModeration(commands.Cog):
             or permission_matrix
         )
 
+    @staticmethod
+    def _owner_fallback_can_proceed(decision: Decision) -> bool:
+        """Do not turn a clarification or impossible request into generated code."""
+        reason = re.sub(r"\s+", " ", str(decision.reason or "")).strip().lower()
+        if not reason:
+            return True
+        blocked = (
+            r"\b(?:need|needs|requires?)\s+(?:a\s+)?clarification\b|"
+            r"\b(?:missing|required)\s+(?:information|details?|input|parameter|argument|image|url)\b|"
+            r"\b(?:was|were|is|are)\s+not\s+provided\b|"
+            r"\bno\s+(?:new\s+)?(?:name|target|channel|role|image|url)\s+(?:was\s+)?specified\b|"
+            r"\b(?:genuinely\s+)?ambiguous\b|"
+            r"\bmultiple\s+possible\s+targets?\b|"
+            r"\b(?:fundamentally\s+)?impossible\b|"
+            r"\bno\s+way\s+to\b|"
+            r"\b(?:cannot|can't)\s+(?:programmatically\s+)?(?:detect|determine|perform)\b"
+        )
+        return re.search(blocked, reason) is None
+
     def _quick_conversation_reply(
         self,
         content: str,
@@ -3002,7 +3021,11 @@ class AIModeration(commands.Cog):
         elif decision.type == DecisionType.CHAT:
             # If this looks like an action request from an admin, the AI may have
             # incorrectly classified it as chat. Escalate to execute_python.
-            if is_mod_request and self._can_use_owner_tools(message.author):
+            if (
+                is_mod_request
+                and self._can_use_owner_tools(message.author)
+                and self._owner_fallback_can_proceed(decision)
+            ):
                 decision = Decision(
                     type=DecisionType.TOOL_CALL,
                     reason="Auto-escalated action request to execute_python",
@@ -3036,7 +3059,11 @@ class AIModeration(commands.Cog):
 
         else:  # ERROR
             # Same auto-escalation for error responses on action requests from admins
-            if is_mod_request and self._can_use_owner_tools(message.author):
+            if (
+                is_mod_request
+                and self._can_use_owner_tools(message.author)
+                and self._owner_fallback_can_proceed(decision)
+            ):
                 decision = Decision(
                     type=DecisionType.TOOL_CALL,
                     reason="Auto-escalated error to execute_python",
