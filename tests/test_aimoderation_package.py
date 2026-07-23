@@ -485,7 +485,7 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
             guild=SimpleNamespace(id=1),
             message=SimpleNamespace(channel=destination),
             arg=lambda name, default="": {
-                "code": "await send_bounded(channel, 'x' * 5000, filename='raid rollback.json')\nreturn 'sent'",
+                "code": "await send_bounded(channel, 'x' * 2500, filename='raid rollback.json')\nreturn 'sent'",
                 "summary": "Send a bounded report",
             }.get(name, default),
         )

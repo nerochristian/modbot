@@ -303,7 +303,7 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
         if not callable(sender):
             raise TypeError("send_bounded destination must provide an async send method.")
         text = str(content)
-        if len(text) <= 3_800:
+        if len(text) <= 2_000:
             return await sender(text)
 
         safe_filename = re.sub(r"[^A-Za-z0-9._-]+", "-", str(filename)).strip(".-")

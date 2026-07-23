@@ -2876,7 +2876,7 @@ class AIModeration(commands.Cog):
             "discord.PermissionOverwrite iteration yields (permission_name_string, value) pairs, so use the "
             "permission name string directly rather than accessing .name on it. "
             "Always use send_bounded for generated reports, exports, backups, rollback snapshots, or any variable "
-            "content that could exceed 3,800 characters; never pass such content directly to channel.send. "
+            "content that could exceed 2,000 characters; never pass such content directly to channel.send. "
             "For bulk mutations, catch discord.HTTPException per item, continue safely, and include the failures "
             "in the concise result so one Discord rejection cannot hide completed changes. "
             "Treat staff/protected members as including the guild owner, administrators, members with moderation "
