@@ -360,6 +360,29 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
             "code_sha256": follow_up_digest,
         }
 
+    async def update_guild_settings(updates: Any) -> Dict[str, Any]:
+        """Persist a bounded set of AutoMod and warning-policy settings."""
+        if not isinstance(updates, dict) or not updates:
+            raise TypeError("updates must be a non-empty dictionary.")
+        if len(updates) > 50:
+            raise ValueError("A generated action can update at most 50 settings.")
+        normalized: Dict[str, Any] = {}
+        for raw_key, value in updates.items():
+            key = str(raw_key).strip()
+            if not key or not (key.startswith("automod_") or key.startswith("warn_")):
+                raise ValueError(f"Setting {key!r} is outside the generated-action allowlist.")
+            try:
+                encoded = json.dumps(value, ensure_ascii=True)
+            except (TypeError, ValueError) as exc:
+                raise TypeError(f"Setting {key!r} is not JSON-serializable.") from exc
+            if len(encoded) > 50_000:
+                raise ValueError(f"Setting {key!r} exceeds the 50KB limit.")
+            normalized[key] = value
+
+        for key, value in normalized.items():
+            await ctx.cog.bot.db.set_setting(ctx.guild.id, key, value)
+        return {"updated": sorted(normalized), "count": len(normalized)}
+
     env: Dict[str, Any] = {
         "__builtins__": safe_builtins(),
         "bot": ctx.cog.bot,
@@ -384,6 +407,7 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
         "fetch_recent_activity": _make_activity_fetcher(ctx.guild),
         "send_bounded": send_bounded,
         "schedule_durable_action": schedule_durable_action,
+        "update_guild_settings": update_guild_settings,
     }
 
     try:

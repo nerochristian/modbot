@@ -540,6 +540,35 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(payload["code_sha256"], execution_digest(follow_up))
         connection.commit.assert_awaited_once()
 
+    async def test_execute_python_can_persist_bounded_automod_settings(self) -> None:
+        actor = SimpleNamespace(id=123, mention="<@123>")
+        bot = SimpleNamespace(
+            is_owner=AsyncMock(return_value=True),
+            db=SimpleNamespace(set_setting=AsyncMock()),
+        )
+        code = (
+            "result = await update_guild_settings({"
+            "'automod_invites_enabled': True, 'warn_threshold_mute': 3})\n"
+            "return result['count']"
+        )
+        ctx = SimpleNamespace(
+            actor=actor,
+            cog=SimpleNamespace(bot=bot),
+            guild=SimpleNamespace(id=1),
+            message=SimpleNamespace(channel=SimpleNamespace()),
+            arg=lambda name, default="": {"code": code, "summary": "Persist AutoMod settings"}.get(name, default),
+        )
+
+        with patch("cogs.aimoderation.handlers.admin.is_bot_owner_id", return_value=True), patch(
+            "cogs.aimoderation.handlers.admin._log_execution", new=AsyncMock()
+        ):
+            result = await handle_execute_python(ctx)
+
+        self.assertTrue(result.success)
+        self.assertEqual(bot.db.set_setting.await_count, 2)
+        bot.db.set_setting.assert_any_await(1, "automod_invites_enabled", True)
+        bot.db.set_setting.assert_any_await(1, "warn_threshold_mute", 3)
+
     async def test_activity_fetcher_supports_detailed_message_records(self) -> None:
         now = datetime.now(timezone.utc)
         author = SimpleNamespace(id=42, bot=False, __str__=lambda self: "Member")
