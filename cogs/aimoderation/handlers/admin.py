@@ -38,17 +38,47 @@ logger = logging.getLogger("ModBot.AIModeration.Handlers.Admin")
 def _make_activity_fetcher(guild: discord.Guild) -> Callable:
     import datetime as _dt
 
-    async def fetch_recent_activity(days: int = 7) -> Dict[int, Any]:
+    async def fetch_recent_activity(
+        days: int = 7,
+        *,
+        lookback: Any = None,
+        kinds: Any = None,
+        limit_per_channel: int = 50,
+    ) -> Any:
+        """Return last-seen activity or detailed message records for generated plans."""
         now_dt = _dt.datetime.now(timezone.utc)
-        cutoff = now_dt - _dt.timedelta(days=max(1, min(days, 30)))
+        detailed = lookback is not None or kinds is not None
+        if isinstance(lookback, _dt.timedelta):
+            bounded_lookback = min(max(lookback, _dt.timedelta(minutes=1)), _dt.timedelta(days=30))
+        elif lookback is not None:
+            bounded_lookback = _dt.timedelta(hours=max(1, min(int(lookback), 24 * 30)))
+        else:
+            bounded_lookback = _dt.timedelta(days=max(1, min(int(days), 30)))
+        cutoff = now_dt - bounded_lookback
+        history_limit = max(1, min(int(limit_per_channel), 200))
         activity: Dict[int, Any] = {}
+        records: list[Dict[str, Any]] = []
 
         async def _scan(ch: discord.TextChannel) -> None:
             try:
-                async for msg in ch.history(limit=50, after=cutoff):
+                async for msg in ch.history(limit=history_limit, after=cutoff):
                     prev = activity.get(msg.author.id)
                     if prev is None or msg.created_at > prev:
                         activity[msg.author.id] = msg.created_at
+                    if detailed:
+                        records.append(
+                            {
+                                "message_id": msg.id,
+                                "channel_id": ch.id,
+                                "channel_name": ch.name,
+                                "author_id": msg.author.id,
+                                "author_name": str(msg.author),
+                                "author_bot": bool(msg.author.bot),
+                                "content": msg.content or "",
+                                "created_at": msg.created_at,
+                                "jump_url": msg.jump_url,
+                            }
+                        )
             except (discord.Forbidden, discord.HTTPException):
                 pass
 
@@ -57,6 +87,9 @@ def _make_activity_fetcher(guild: discord.Guild) -> Callable:
             batch = channels[i:i + 10]
             await asyncio.gather(*[_scan(ch) for ch in batch])
 
+        if detailed:
+            records.sort(key=lambda item: item["created_at"])
+            return records
         return activity
 
     return fetch_recent_activity

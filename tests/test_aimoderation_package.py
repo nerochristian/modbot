@@ -7,7 +7,11 @@ import discord
 
 from cogs.ai_scheduler import AIScheduler
 from cogs.aimoderation import ToolRegistry, ToolType
-from cogs.aimoderation.handlers.admin import _raw_api_safety_error, handle_execute_python
+from cogs.aimoderation.handlers.admin import (
+    _make_activity_fetcher,
+    _raw_api_safety_error,
+    handle_execute_python,
+)
 from cogs.aimoderation.handlers.channels import handle_unlock_channel
 from cogs.aimoderation.handlers.messages import handle_purge
 from cogs.aimoderation.handlers.members import handle_timeout, handle_unban, handle_warn
@@ -494,6 +498,40 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
         args, kwargs = destination.send.await_args
         self.assertEqual(args[0], "The full action report is attached.")
         self.assertEqual(kwargs["file"].filename, "raid-rollback.json")
+
+    async def test_activity_fetcher_supports_detailed_message_records(self) -> None:
+        now = datetime.now(timezone.utc)
+        author = SimpleNamespace(id=42, bot=False, __str__=lambda self: "Member")
+        record = SimpleNamespace(
+            id=99,
+            author=author,
+            content="repeat me",
+            created_at=now,
+            jump_url="https://discord.com/channels/1/2/99",
+        )
+
+        class FakeTextChannel:
+            id = 2
+            name = "general"
+
+            def history(self, **kwargs):
+                async def iterator():
+                    yield record
+
+                return iterator()
+
+        guild = SimpleNamespace(text_channels=[FakeTextChannel()])
+        fetch_recent_activity = _make_activity_fetcher(guild)
+
+        summary = await fetch_recent_activity(days=1)
+        detailed = await fetch_recent_activity(
+            lookback=timedelta(hours=1),
+            kinds=["messages"],
+        )
+
+        self.assertEqual(summary, {42: now})
+        self.assertEqual(detailed[0]["content"], "repeat me")
+        self.assertEqual(detailed[0]["channel_id"], 2)
 
     async def test_bulk_timeout_excludes_named_role_and_skips_unsafe_targets(self) -> None:
         excluded_role = SimpleNamespace(id=5, name="Above all", mention="<@&5>")
