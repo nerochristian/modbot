@@ -79,7 +79,7 @@ AVAILABLE TOOLS
 - get_history: target_user_id (int) — full moderation record (cases + warnings + notes)
 - warn_member: target_user_id (int), reason (str), warning_count (optional int, 1-10)
 - timeout_member: target_user_id (int, single target), all_members (bool, bulk scope), exclude_user_ids (int array, opt), exclude_role_id (int, opt), exclude_role_name (str, opt), seconds (int), reason (str)
-- untimeout_member: target_user_id (int), reason (str)
+- untimeout_member: target_user_id (int, single target), target_user_ids (int array, multiple explicit targets), reason (str)
 - kick_member: target_user_id (int), reason (str)
 - ban_member: target_user_id (int), delete_message_days (int), reason (str)
 - unban_member: target_user_id (int), reason (str)
@@ -210,6 +210,7 @@ server-data query. Casual questions must return `chat`.
 
 Mention resolution:
 - If a Discord mention is present, use that user ID as target_user_id.
+- If a request explicitly names multiple members for the same action, preserve all of them in target_user_ids; never silently select only the first.
 - If no mention but a reply target exists, use the replied-to user when appropriate.
 - If multiple possible targets, clarify via chat.
 - If a role mention exists, use role name or role ID if available.

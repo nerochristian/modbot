@@ -2728,18 +2728,73 @@ class AIModeration(commands.Cog):
                 await self.reply_tool_result(message, result)
             return result
 
-        result = await ToolRegistry.execute(
-            decision.tool,
-            self,
-            message,
-            decision.arguments,
-            decision,
-            configured_mod_role=self._has_configured_mod_role(
-                message.author,
-                settings,
-            ),
-        )
-        if result.success and (target_id := decision.arguments.get("target_user_id")):
+        configured_mod_role = self._has_configured_mod_role(message.author, settings)
+        raw_target_ids = decision.arguments.get("target_user_ids")
+        target_ids: list[int] = []
+        if isinstance(raw_target_ids, (list, tuple, set)) and decision.tool != ToolType.PURGE:
+            for raw_target_id in raw_target_ids:
+                try:
+                    target_id = int(raw_target_id)
+                except (TypeError, ValueError):
+                    continue
+                if target_id > 0 and target_id not in target_ids:
+                    target_ids.append(target_id)
+
+        if target_ids:
+            results: list[tuple[int, ToolResult]] = []
+            for target_id in target_ids:
+                target_args = dict(decision.arguments)
+                target_args.pop("target_user_ids", None)
+                target_args["target_user_id"] = target_id
+                target_decision = Decision(
+                    type=decision.type,
+                    reason=decision.reason,
+                    tool=decision.tool,
+                    arguments=target_args,
+                )
+                target_result = await ToolRegistry.execute(
+                    decision.tool,
+                    self,
+                    message,
+                    target_args,
+                    target_decision,
+                    configured_mod_role=configured_mod_role,
+                )
+                results.append((target_id, target_result))
+
+            succeeded = [(target_id, item) for target_id, item in results if item.success]
+            failed = [(target_id, item) for target_id, item in results if not item.success]
+            summary = [
+                f"Completed **{len(succeeded)}** of **{len(results)}** target action(s)."
+            ]
+            if succeeded:
+                summary.append(
+                    "Succeeded: " + ", ".join(f"<@{target_id}>" for target_id, _ in succeeded)
+                )
+            if failed:
+                failure_lines = [
+                    f"<@{target_id}>: {item.message.splitlines()[0]}"
+                    for target_id, item in failed
+                ]
+                summary.append("Failed:\n" + "\n".join(failure_lines))
+            result = (
+                ToolResult.ok("\n".join(summary))
+                if succeeded
+                else ToolResult.fail("\n".join(summary))
+            )
+        else:
+            result = await ToolRegistry.execute(
+                decision.tool,
+                self,
+                message,
+                decision.arguments,
+                decision,
+                configured_mod_role=configured_mod_role,
+            )
+        if result.success and target_ids:
+            for target_id in target_ids:
+                self._remember_target(message.guild.id, message.author.id, target_id)
+        elif result.success and (target_id := decision.arguments.get("target_user_id")):
             try:
                 self._remember_target(message.guild.id, message.author.id, int(target_id))
             except (TypeError, ValueError):
