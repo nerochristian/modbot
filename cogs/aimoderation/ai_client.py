@@ -72,19 +72,19 @@ _AIMODEL_BASE_URL: Final[str] = os.getenv(
 ).strip().rstrip("/")
 _AIMODEL_CHAT_MODEL: Final[str] = os.getenv(
     "AIMODEL_CHAT_MODEL",
-    "accounts/aimodel/models/glm-5.1",
+    "accounts/aimodel/models/claude-opus-4.8",
 ).strip()
 _AIMODEL_MODERATION_MODEL: Final[str] = os.getenv(
     "AIMODEL_MODERATION_MODEL",
-    "accounts/aimodel/models/glm-5.1",
+    "accounts/aimodel/models/claude-opus-4.8",
 ).strip()
 _AIMODEL_VISION_MODEL: Final[str] = os.getenv(
     "AIMODEL_VISION_MODEL",
-    "accounts/aimodel/models/glm-5.1",
+    "accounts/aimodel/models/claude-opus-4.8",
 ).strip()
 _AIMODEL_ROUTER_MODEL: Final[str] = os.getenv(
     "AIMODEL_ROUTER_MODEL",
-    "accounts/aimodel/models/glm-5.1",
+    "accounts/aimodel/models/claude-opus-4.8",
 ).strip()
 
 
@@ -107,11 +107,11 @@ _RELAYROUTER_VISION_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
 )
 _AIMODEL_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
     "AIMODEL_FALLBACK_MODELS",
-    "accounts/aimodel/models/glm-5.1,accounts/aimodel/models/minimax-m2.7",
+    "accounts/aimodel/models/claude-opus-4.8,accounts/aimodel/models/minimax-m2.7",
 )
 _AIMODEL_CHAT_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
     "AIMODEL_CHAT_FALLBACK_MODELS",
-    "accounts/aimodel/models/minimax-m2.7,accounts/aimodel/models/glm-5.1",
+    "accounts/aimodel/models/minimax-m2.7,accounts/aimodel/models/claude-opus-4.8",
 )
 _AIMODEL_VISION_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
     "AIMODEL_VISION_FALLBACK_MODELS",
