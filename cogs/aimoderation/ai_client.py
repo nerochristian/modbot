@@ -2798,7 +2798,16 @@ class AIClient:
                 else:
                     extras.append(f"{len(msg.attachments)} attachment(s)")
             if msg.embeds:
-                extras.append(f"{len(msg.embeds)} embed(s)")
+                embed_texts = []
+                for e in msg.embeds:
+                    parts = []
+                    if e.title: parts.append(str(e.title).strip())
+                    if e.description: parts.append(str(e.description).strip())
+                    if parts: embed_texts.append(" - ".join(parts))
+                if embed_texts:
+                    extras.append(f"embed: {' | '.join(embed_texts)}")
+                else:
+                    extras.append(f"{len(msg.embeds)} embed(s)")
             if msg.stickers:
                 extras.append(f"sticker: {msg.stickers[0].name}")
             for snapshot in getattr(msg, "message_snapshots", []) or []:
