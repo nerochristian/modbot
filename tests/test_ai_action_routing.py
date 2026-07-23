@@ -1230,6 +1230,8 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("lookback=datetime.timedelta", planner_prompt)
         self.assertIn("guild owner, administrators", planner_prompt)
         self.assertIn("a prose summary alone is not an export", planner_prompt)
+        self.assertIn("never create or wait for another reaction", planner_prompt)
+        self.assertIn("never register an in-memory event listener", planner_prompt)
 
         self.assertIsNotNone(plan)
         self.assertEqual(plan["summary"], "Count server members")

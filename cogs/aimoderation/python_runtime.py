@@ -208,6 +208,7 @@ def safe_builtins() -> Dict[str, Any]:
         "format",
         "frozenset",
         "hash",
+        "hasattr",
         "hex",
         "int",
         "isinstance",

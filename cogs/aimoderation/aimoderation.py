@@ -2885,6 +2885,12 @@ class AIModeration(commands.Cog):
             "or punish those members in a request that excludes staff or protected roles. "
             "If the request says export, create and attach the requested machine-readable CSV or JSON data with "
             "send_bounded; a prose summary alone is not an export. "
+            "The generated action already runs behind the displayed owner confirmation, so never create or wait "
+            "for another reaction, button, message, or confirmation inside the code. "
+            "Rules and workflows must survive bot restarts: use Discord-native rules or the bot's durable database "
+            "and scheduler, never register an in-memory event listener or rely on an in-memory offense counter. If "
+            "the requested durable behavior cannot be implemented with available APIs, report that honestly and "
+            "make no changes. "
             "The code must be self-contained discord.py 2.x code and remain under 16,000 characters."
         )
         user_prompt = (

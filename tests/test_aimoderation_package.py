@@ -421,6 +421,8 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(blocked_name=blocked_name), self.assertRaises(AttributeError):
                 restricted_getattr(SimpleNamespace(), blocked_name, None)
 
+        self.assertTrue(safe_builtins()["hasattr"](permissions, "administrator"))
+
     def test_python_runtime_blocks_escape_and_lifecycle_operations(self) -> None:
         blocked = (
             "import os\nreturn os.environ",
