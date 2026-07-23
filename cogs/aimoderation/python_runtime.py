@@ -24,6 +24,7 @@ ALLOWED_IMPORTS = frozenset(
         "random",
         "re",
         "statistics",
+        "time",
         "uuid",
     }
 )

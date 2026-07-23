@@ -430,7 +430,8 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
 
         for code in blocked:
             with self.subTest(code=code), self.assertRaises(PythonSafetyError):
-                validate_python_code(code)
+        validate_python_code(code)
+        validate_python_code("import time\nreturn time.monotonic()")
 
     async def test_execute_python_runs_digest_bound_plan_and_returns_result(self) -> None:
         code = "return 'Created 3 channels.'"

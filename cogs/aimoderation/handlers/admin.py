@@ -13,6 +13,7 @@ import math
 import random
 import re
 import statistics
+import time as time_module
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Dict
@@ -285,6 +286,7 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
         "random": random,
         "re": re,
         "statistics": statistics,
+        "time": time_module,
         "uuid": uuid,
         "fetch_recent_activity": _make_activity_fetcher(ctx.guild),
         "send_bounded": send_bounded,
