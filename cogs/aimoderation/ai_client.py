@@ -337,11 +337,12 @@ class AIClient:
 
     def conversation_model_name(self, override: Optional[str] = None) -> str:
         """Return the model this bot requests, without claiming upstream attestation."""
+        if self.prefers_aimodel:
+            # AiModel uses full resource IDs; ignore stale dashboard aliases.
+            return _AIMODEL_CHAT_MODEL
         selected = str(override or "").strip()
         if selected:
             return selected
-        if self.prefers_aimodel:
-            return _AIMODEL_CHAT_MODEL
         if self.prefers_relayrouter:
             return _RELAYROUTER_CHAT_MODEL
         if self.prefers_deepseek_http:
@@ -916,6 +917,12 @@ class AIClient:
                     len(candidates),
                     exc,
                 )
+                error_text = str(exc)
+                if any(
+                    marker in error_text
+                    for marker in ("HTTP 401", "HTTP 402", "HTTP 403")
+                ):
+                    break
 
         if last_error is not None:
             raise last_error
@@ -1228,7 +1235,7 @@ class AIClient:
                 [{"role": "user", "content": prompt}],
                 temperature=self.config.temperature_chat,
                 max_tokens=max_tokens,
-                model=model or _AIMODEL_CHAT_MODEL,
+                model=_AIMODEL_CHAT_MODEL,
                 fallback_models=_AIMODEL_CHAT_FALLBACK_MODELS,
             )
         if self.prefers_relayrouter and _relayrouter_api_enabled():
@@ -1940,7 +1947,7 @@ class AIClient:
                         else plan.max_tokens
                     )
                     if aimodel_primary:
-                        selected_model = model or (
+                        selected_model = (
                             _AIMODEL_VISION_MODEL
                             if image_context
                             else _AIMODEL_CHAT_MODEL
