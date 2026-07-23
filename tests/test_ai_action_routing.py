@@ -1226,6 +1226,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("PermissionOverwrite iteration yields", planner_prompt)
         self.assertIn("send_bounded", planner_prompt)
         self.assertIn("never reinterpret public as every channel", planner_prompt)
+        self.assertIn("including text, forum, media", planner_prompt)
 
         self.assertIsNotNone(plan)
         self.assertEqual(plan["summary"], "Count server members")
