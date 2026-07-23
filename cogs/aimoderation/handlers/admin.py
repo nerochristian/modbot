@@ -241,6 +241,31 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
         return ToolResult.fail("Generated action changed after confirmation, so it was not executed.")
 
     real_channel = ctx.message.channel if ctx.message else None
+
+    async def send_bounded(
+        destination: Any,
+        content: Any,
+        *,
+        filename: str = "ai-action-report.txt",
+    ) -> Any:
+        """Send generated reports without exceeding Discord's content limit."""
+        sender = getattr(destination, "send", None)
+        if not callable(sender):
+            raise TypeError("send_bounded destination must provide an async send method.")
+        text = str(content)
+        if len(text) <= 3_800:
+            return await sender(text)
+
+        safe_filename = re.sub(r"[^A-Za-z0-9._-]+", "-", str(filename)).strip(".-")
+        safe_filename = (safe_filename or "ai-action-report.txt")[:100]
+        payload = text.encode("utf-8")
+        max_bytes = 7_500_000
+        if len(payload) > max_bytes:
+            suffix = b"\n\n[Report truncated to fit Discord's upload limit.]"
+            payload = payload[: max_bytes - len(suffix)] + suffix
+        report = discord.File(io.BytesIO(payload), filename=safe_filename)
+        return await sender("The full action report is attached.", file=report)
+
     env: Dict[str, Any] = {
         "__builtins__": safe_builtins(),
         "bot": ctx.cog.bot,
@@ -262,6 +287,7 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
         "statistics": statistics,
         "uuid": uuid,
         "fetch_recent_activity": _make_activity_fetcher(ctx.guild),
+        "send_bounded": send_bounded,
     }
 
     try:

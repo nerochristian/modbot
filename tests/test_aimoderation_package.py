@@ -460,7 +460,36 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
         ):
             result = await handle_execute_python(ctx)
 
+            self.assertTrue(result.success)
+
+    async def test_execute_python_send_bounded_attaches_long_reports(self) -> None:
+        actor = SimpleNamespace(id=123, mention="<@123>")
+        destination = SimpleNamespace(send=AsyncMock())
+        destination.send.return_value = SimpleNamespace(id=456)
+        cog = SimpleNamespace(
+            bot=SimpleNamespace(is_owner=AsyncMock(return_value=True)),
+        )
+        ctx = SimpleNamespace(
+            actor=actor,
+            cog=cog,
+            guild=SimpleNamespace(id=1),
+            message=SimpleNamespace(channel=destination),
+            arg=lambda name, default="": {
+                "code": "await send_bounded(channel, 'x' * 5000, filename='raid rollback.json')\nreturn 'sent'",
+                "summary": "Send a bounded report",
+            }.get(name, default),
+        )
+
+        with patch("cogs.aimoderation.handlers.admin.is_bot_owner_id", return_value=True), patch(
+            "cogs.aimoderation.handlers.admin._log_execution", new=AsyncMock()
+        ):
+            result = await handle_execute_python(ctx)
+
         self.assertTrue(result.success)
+        destination.send.assert_awaited_once()
+        args, kwargs = destination.send.await_args
+        self.assertEqual(args[0], "The full action report is attached.")
+        self.assertEqual(kwargs["file"].filename, "raid-rollback.json")
         self.assertIn("Created 3 channels", result.message)
         self.assertIn(execution_digest(code)[:12], result.message)
         cog.log_action.assert_awaited_once()

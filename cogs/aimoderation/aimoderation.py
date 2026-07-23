@@ -2853,7 +2853,9 @@ class AIModeration(commands.Cog):
             "code is raw async-body Python without markdown; summary and scope are short strings; "
             "expected_effects is an array of 1-5 short strings.\n\n"
             "Runtime globals: bot, guild, author, message, channel, discord, asyncio, collections, csv, "
-            "datetime, io, itertools, json, math, random, re, statistics, uuid, fetch_recent_activity.\n"
+            "datetime, io, itertools, json, math, random, re, statistics, uuid, fetch_recent_activity, "
+            "send_bounded. send_bounded(destination, content, filename='report.txt') sends short text directly "
+            "and automatically attaches long output as a file.\n"
             "Allowed imports: asyncio, collections, csv, datetime, discord, io, itertools, json, math, "
             "random, re, statistics, uuid.\n\n"
             "Preserve the literal target and scope, use the live IDs when useful, and return an honest concise result. "
@@ -2861,6 +2863,10 @@ class AIModeration(commands.Cog):
             "guild deletion, and unbounded execution. setattr is available only for boolean flags on "
             "discord.Permissions instances; prefer Permissions.update(flag=False) when changing several flags. "
             "getattr is available for public non-lifecycle attributes and rejects private or sensitive names. "
+            "Always use send_bounded for generated reports, exports, backups, rollback snapshots, or any variable "
+            "content that could exceed 3,800 characters; never pass such content directly to channel.send. "
+            "For bulk mutations, catch discord.HTTPException per item, continue safely, and include the failures "
+            "in the concise result so one Discord rejection cannot hide completed changes. "
             "The code must be self-contained discord.py 2.x code and remain under 16,000 characters."
         )
         user_prompt = (
