@@ -3318,11 +3318,24 @@ class AIModeration(commands.Cog):
             return
 
         requires_model_routing = self._requires_model_routing(content)
-        is_mod_request = (
+        explicit_mod_request = (
             self._looks_like_mod_request(content)
             or self._looks_like_advanced_action_request(content)
-            or requires_model_routing
         )
+        is_mod_request = explicit_mod_request or requires_model_routing
+
+        if explicit_mod_request and not self._can_use_ai_tools(message.author, settings):
+            if is_mentioned or is_reply_to_bot:
+                await self.reply(
+                    message,
+                    embed=discord.Embed(
+                        title="Permission Denied",
+                        description="You do not have permission to use AI moderation tools.",
+                        color=discord.Color.red()
+                    ),
+                    delete_after=15,
+                )
+            return
 
         if implicit_continuation:
             if not is_mod_request:
@@ -3495,6 +3508,19 @@ class AIModeration(commands.Cog):
             await self._handle_conversation(message, content, settings)
 
         else:  # ERROR
+            if is_mod_request and not self._can_use_ai_tools(message.author, settings):
+                if is_mentioned or is_reply_to_bot:
+                    await self.reply(
+                        message,
+                        embed=discord.Embed(
+                            title="Permission Denied",
+                            description="You do not have permission to use AI moderation tools.",
+                            color=discord.Color.red()
+                        ),
+                        delete_after=15,
+                    )
+                return
+
             # Same auto-escalation for error responses on action requests from admins
             if (
                 is_mod_request
