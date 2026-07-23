@@ -142,6 +142,41 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("between 1 and 10", result.message)
         database.add_warnings.assert_not_awaited()
 
+    async def test_warn_handler_respects_requested_staff_protection(self) -> None:
+        target = SimpleNamespace(
+            id=20,
+            display_name="Protected Moderator",
+            guild_permissions=SimpleNamespace(
+                administrator=False,
+                moderate_members=True,
+                manage_messages=True,
+                kick_members=False,
+                ban_members=False,
+            ),
+            roles=[],
+        )
+        database = SimpleNamespace(
+            get_settings=AsyncMock(return_value={}),
+            add_warnings=AsyncMock(),
+        )
+        cog = SimpleNamespace(
+            bot=SimpleNamespace(db=database),
+            can_moderate=lambda moderator, member: True,
+        )
+        ctx = SimpleNamespace(
+            resolve_target=AsyncMock(return_value=target),
+            cog=cog,
+            actor=SimpleNamespace(id=10),
+            guild=SimpleNamespace(id=1, owner_id=30),
+            bool_arg=lambda key, default=False: key == "respect_staff_protection",
+        )
+
+        result = await handle_warn(ctx)
+
+        self.assertFalse(result.success)
+        self.assertIn("excludes staff or protected members", result.message)
+        database.add_warnings.assert_not_awaited()
+
     async def test_warn_handler_applies_highest_rule_crossed_by_batch(self) -> None:
         target = SimpleNamespace(
             id=20,
