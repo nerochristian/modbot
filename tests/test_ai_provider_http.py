@@ -375,6 +375,7 @@ def test_aimodel_provider_accepts_internal_execution_model_override(monkeypatch)
 
     assert result == "opus"
     assert client._call_aimodel.await_args.kwargs["model"].endswith("claude-opus-4.8")
+    assert client._call_aimodel.await_args.kwargs["fallback_models"] == ()
 
 
 def test_aimodel_provider_falls_back_to_relayrouter_on_outage(monkeypatch):

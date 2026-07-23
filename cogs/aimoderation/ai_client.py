@@ -563,6 +563,7 @@ class AIClient:
                     model=provider_model_override or _AIMODEL_MODERATION_MODEL,
                     json_mode=json_mode,
                     allow_multimodal=allow_multimodal,
+                    fallback_models=() if provider_model_override else None,
                 )
             except Exception:
                 if not _relayrouter_api_enabled():
