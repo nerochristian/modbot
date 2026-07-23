@@ -2165,11 +2165,29 @@ class AIModeration(commands.Cog):
             elif context_target_ids:
                 args["target_user_id"] = context_target_ids[0]
                 args.pop("target_user_ids", None)
-            elif not args.get("target_user_id"):
-                hint = self._extract_target_hint(content)
-                target = await self._infer_target(message, recent, hint)
-                if target:
-                    args["target_user_id"] = target
+            else:
+                raw_target = args.get("target_user_id")
+                try:
+                    parsed_target = int(raw_target)
+                except (TypeError, ValueError):
+                    parsed_target = 0
+
+                # Models occasionally round or truncate Discord snowflakes. Never
+                # show or execute a member action against an ungrounded identifier.
+                # Unbans may legitimately target someone outside the guild, but the
+                # snowflake itself must still have Discord's current 17-20 digits.
+                valid_snowflake = 17 <= len(str(parsed_target)) <= 20
+                target_is_grounded = valid_snowflake and (
+                    tool == ToolType.UNBAN or message.guild.get_member(parsed_target) is not None
+                )
+                if target_is_grounded:
+                    args["target_user_id"] = parsed_target
+                else:
+                    args.pop("target_user_id", None)
+                    hint = self._extract_target_hint(content)
+                    target = await self._infer_target(message, recent, hint)
+                    if target:
+                        args["target_user_id"] = target
 
         if tool == ToolType.TIMEOUT:
             secs = self._parse_duration_seconds(content)

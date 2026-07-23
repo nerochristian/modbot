@@ -1488,6 +1488,41 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("target_user_id", enriched.arguments)
         cog._infer_target.assert_not_awaited()
 
+    async def test_enrichment_replaces_truncated_model_snowflake_with_recent_target(self) -> None:
+        cog = object.__new__(AIModeration)
+        actual_target_id = 1427978992769564775
+        target = SimpleNamespace(id=actual_target_id, bot=False)
+        guild = SimpleNamespace(
+            id=1,
+            get_member=lambda member_id: target if member_id == actual_target_id else None,
+        )
+        cog.bot = SimpleNamespace(user=SimpleNamespace(id=999, bot=True))
+        cog.config = AIConfig()
+        cog.clean_content = lambda _message: (
+            "remove the timeout from whoever I most recently timed out"
+        )
+        cog._infer_context_target_ids = AsyncMock(return_value=[])
+        cog._infer_target = AsyncMock(return_value=actual_target_id)
+        message = SimpleNamespace(
+            mentions=[],
+            role_mentions=[],
+            channel_mentions=[],
+            reference=None,
+            author=SimpleNamespace(id=10),
+            guild=guild,
+        )
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="model route",
+            tool=ToolType.UNTIMEOUT,
+            arguments={"target_user_id": 1427978992769564},
+        )
+
+        enriched = await cog._enrich(message, decision, [])
+
+        self.assertEqual(enriched.arguments["target_user_id"], actual_target_id)
+        cog._infer_target.assert_awaited_once()
+
     def test_bulk_timeout_always_requires_confirmation(self) -> None:
         cog = object.__new__(AIModeration)
         decision = Decision(
