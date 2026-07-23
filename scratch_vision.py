@@ -8,7 +8,7 @@ async def test_vision():
     async with aiohttp.ClientSession() as session:
         headers = {"Authorization": f"Bearer {AIMODEL_API_KEY}"}
         
-        models_to_test = ['accounts/aimodel/models/claude-sonnet-5', 'accounts/aimodel/models/glm-5.1']
+        models_to_test = ['accounts/aimodel/models/claude-sonnet-5', 'accounts/aimodel/models/glm-5.1', 'accounts/aimodel/models/claude-opus-4.8']
         
         for model in models_to_test:
             payload = {
