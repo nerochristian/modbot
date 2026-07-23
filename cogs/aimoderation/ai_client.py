@@ -1,7 +1,7 @@
 """
 AI Client — provider-agnostic AI interface with rate limiting, web search, and memory.
 
-Supports RelayRouter's OpenAI-compatible gateway as the production provider,
+Supports AiModel's Responses API and RelayRouter's OpenAI-compatible gateway
 with role-specific chat, moderation, and vision models plus bounded fallbacks.
 The authenticated DeepSeek browser remains available for native web research.
 """
@@ -65,6 +65,28 @@ _RELAYROUTER_ROUTER_MODEL: Final[str] = os.getenv(
     "gpt-5-6-luna",
 ).strip()
 
+_AIMODEL_API_KEY: Final[str] = os.getenv("AIMODEL_API_KEY", "").strip()
+_AIMODEL_BASE_URL: Final[str] = os.getenv(
+    "AIMODEL_BASE_URL",
+    "https://aimodel.lol/v1",
+).strip().rstrip("/")
+_AIMODEL_CHAT_MODEL: Final[str] = os.getenv(
+    "AIMODEL_CHAT_MODEL",
+    "accounts/aimodel/models/glm-5.1",
+).strip()
+_AIMODEL_MODERATION_MODEL: Final[str] = os.getenv(
+    "AIMODEL_MODERATION_MODEL",
+    "accounts/aimodel/models/glm-5.1",
+).strip()
+_AIMODEL_VISION_MODEL: Final[str] = os.getenv(
+    "AIMODEL_VISION_MODEL",
+    "accounts/aimodel/models/claude-opus-4.8",
+).strip()
+_AIMODEL_ROUTER_MODEL: Final[str] = os.getenv(
+    "AIMODEL_ROUTER_MODEL",
+    "accounts/aimodel/models/glm-5.1",
+).strip()
+
 
 def _model_list_env(name: str, default: str) -> Tuple[str, ...]:
     values: List[str] = []
@@ -82,6 +104,18 @@ _RELAYROUTER_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
 _RELAYROUTER_VISION_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
     "RELAYROUTER_VISION_FALLBACK_MODELS",
     "gpt-5-6-luna,claude-sonnet-4-6",
+)
+_AIMODEL_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
+    "AIMODEL_FALLBACK_MODELS",
+    "accounts/aimodel/models/claude-opus-4.8,accounts/aimodel/models/minimax-m2.7",
+)
+_AIMODEL_CHAT_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
+    "AIMODEL_CHAT_FALLBACK_MODELS",
+    "accounts/aimodel/models/minimax-m2.7,accounts/aimodel/models/claude-opus-4.8",
+)
+_AIMODEL_VISION_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
+    "AIMODEL_VISION_FALLBACK_MODELS",
+    "",
 )
 
 # Optional DeepSeek HTTP API (OpenAI-compatible). The authenticated web session
@@ -126,6 +160,11 @@ def _relayrouter_api_enabled() -> bool:
     return _credential_is_configured(_RELAYROUTER_API_KEY)
 
 
+def _aimodel_api_enabled() -> bool:
+    """AiModel is usable when a non-placeholder key is configured."""
+    return _credential_is_configured(_AIMODEL_API_KEY)
+
+
 def _relayrouter_request_timeout(*, multimodal: bool) -> int:
     """Return a bounded per-model timeout so failover remains responsive."""
     name = "RELAYROUTER_VISION_TIMEOUT" if multimodal else "RELAYROUTER_TIMEOUT"
@@ -135,6 +174,17 @@ def _relayrouter_request_timeout(*, multimodal: bool) -> int:
     except ValueError:
         configured = default
     return min(90, max(5, configured))
+
+
+def _aimodel_request_timeout(*, multimodal: bool) -> int:
+    """Return a bounded Responses API timeout for AiModel routes."""
+    name = "AIMODEL_VISION_TIMEOUT" if multimodal else "AIMODEL_TIMEOUT"
+    default = 90 if multimodal else 60
+    try:
+        configured = int(os.getenv(name, str(default)).strip())
+    except ValueError:
+        configured = default
+    return min(180, max(5, configured))
 
 
 def _galaxy_multimodal_enabled() -> bool:
@@ -257,6 +307,8 @@ class AIClient:
     @property
     def is_available(self) -> bool:
         provider = str(getattr(self, "provider", "") or "").strip().lower()
+        if provider in {"aimodel", "aimodel.lol"}:
+            return _aimodel_api_enabled()
         if provider in {"relay", "relayrouter", "relayrouter.org"}:
             return _relayrouter_api_enabled()
         if provider == "digitalocean":
@@ -278,11 +330,18 @@ class AIClient:
         provider = str(getattr(self, "provider", "") or "").strip().lower()
         return provider in {"relay", "relayrouter", "relayrouter.org"}
 
+    @property
+    def prefers_aimodel(self) -> bool:
+        provider = str(getattr(self, "provider", "") or "").strip().lower()
+        return provider in {"aimodel", "aimodel.lol"}
+
     def conversation_model_name(self, override: Optional[str] = None) -> str:
         """Return the model this bot requests, without claiming upstream attestation."""
         selected = str(override or "").strip()
         if selected:
             return selected
+        if self.prefers_aimodel:
+            return _AIMODEL_CHAT_MODEL
         if self.prefers_relayrouter:
             return _RELAYROUTER_CHAT_MODEL
         if self.prefers_deepseek_http:
@@ -291,6 +350,14 @@ class AIClient:
 
     def availability_message(self) -> str:
         provider = str(getattr(self, "provider", "") or "").strip().lower()
+        if self.prefers_aimodel:
+            if not _aimodel_api_enabled():
+                return "AiModel is missing `AIMODEL_API_KEY`."
+            return (
+                f"AiModel is configured: chat `{_AIMODEL_CHAT_MODEL}`, "
+                f"moderation `{_AIMODEL_MODERATION_MODEL}`, and vision "
+                f"`{_AIMODEL_VISION_MODEL}`."
+            )
         if self.prefers_relayrouter:
             if not _relayrouter_api_enabled():
                 return "RelayRouter is missing `RELAYROUTER_API_KEY`."
@@ -332,6 +399,19 @@ class AIClient:
     def diagnostic_lines(self) -> List[str]:
         provider = str(getattr(self, "provider", "") or "deepseek").strip().lower()
         lines = [f"Provider preference: `{provider}`"]
+        if self.prefers_aimodel:
+            lines.extend(
+                [
+                    f"AiModel configured: {'yes' if _aimodel_api_enabled() else 'no'}",
+                    f"Conversation model: `{_AIMODEL_CHAT_MODEL}`",
+                    f"Moderation model: `{_AIMODEL_MODERATION_MODEL}`",
+                    f"Vision model: `{_AIMODEL_VISION_MODEL}`",
+                    "Transport: Responses API",
+                    f"Available now: {'yes' if self.is_available else 'no'}",
+                    self.availability_message(),
+                ]
+            )
+            return lines
         if self.prefers_relayrouter:
             lines.extend(
                 [
