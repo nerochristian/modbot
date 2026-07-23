@@ -103,6 +103,31 @@ async def handle_warn(ctx: ToolContext) -> ToolResult:
         return ToolResult.fail("Could not resolve target member.")
     if not ctx.cog.can_moderate(ctx.actor, target):
         return ToolResult.fail(f"Cannot moderate {target.display_name} (role hierarchy).")
+    bool_arg = getattr(ctx, "bool_arg", None)
+    respect_staff_protection = (
+        bool_arg("respect_staff_protection")
+        if callable(bool_arg)
+        else bool(getattr(ctx, "args", {}).get("respect_staff_protection"))
+    )
+    if respect_staff_protection:
+        settings = await _guild_moderation_settings(ctx)
+        permissions = target.guild_permissions
+        is_staff = (
+            target.id == ctx.guild.owner_id
+            or permissions.administrator
+            or permissions.moderate_members
+            or permissions.manage_messages
+            or permissions.kick_members
+            or permissions.ban_members
+        )
+        protected_roles = moderation_id_set(settings, "protected_roles")
+        has_protected_role = bool(
+            protected_roles.intersection(role.id for role in target.roles)
+        )
+        if is_staff or has_protected_role:
+            return ToolResult.fail(
+                f"Cannot warn {target.display_name}; the request excludes staff or protected members."
+            )
 
     reason = ctx.str_arg("reason")
     warning_count = ctx.int_arg("warning_count", 1)

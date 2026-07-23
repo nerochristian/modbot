@@ -371,6 +371,22 @@ class AIModeration(commands.Cog):
         r")",
         re.IGNORECASE,
     )
+    _PREVIOUS_MESSAGE_TARGET_RE: ClassVar[re.Pattern] = re.compile(
+        r"(?:"
+        r"\b(?:person|user|member|author)\s+who\s+(?:sent|wrote|posted)\s+"
+        r"(?:the\s+)?message\s+(?:immediately\s+)?before\s+(?:mine|me|this)\b|"
+        r"\b(?:author|sender)\s+of\s+(?:the\s+)?(?:immediately\s+)?previous\s+message\b|"
+        r"\b(?:immediately\s+)?previous\s+(?:message\s+)?(?:author|sender)\b|"
+        r"\blast\s+(?:person|user|member)\s+to\s+(?:message|speak|post)\s+before\s+me\b"
+        r")",
+        re.IGNORECASE,
+    )
+    _PREVIOUS_MESSAGE_SAFE_GUARD_RE: ClassVar[re.Pattern] = re.compile(
+        r"\s*,?\s*unless\s+(?:(?:they(?:'re|\s+are)|it\s+is)\s+)?"
+        r"(?:(?:a\s+)?bot\s+or\s+(?:a\s+)?(?:protected\s+)?staff|"
+        r"(?:protected\s+)?staff\s+or\s+(?:a\s+)?bot)\s*[.!?]*\s*$",
+        re.IGNORECASE,
+    )
     _WARNING_COUNT_RE: ClassVar[re.Pattern] = re.compile(
         r"\b(?P<count>\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|a|an)\s+"
         r"(?:separate\s+)?(?:warn(?:ing)?s?|times?)\b|"
@@ -641,6 +657,10 @@ class AIModeration(commands.Cog):
         low = self._normalize_chat_text(self._strip_action_prefix(content))
         return bool(self._WARNING_ACTION_RE.match(low))
 
+    def _targets_previous_message_author(self, content: str) -> bool:
+        low = self._normalize_chat_text(self._strip_action_prefix(content))
+        return bool(self._PREVIOUS_MESSAGE_TARGET_RE.search(low))
+
     def _looks_like_warning_lookup(self, content: str) -> bool:
         low = self._normalize_chat_text(content)
         if self._looks_like_warning_action(low):
@@ -705,42 +725,49 @@ class AIModeration(commands.Cog):
         if not low:
             return False
 
+        # This relative target is fully groundable from Discord history. Keep it
+        # on the typed warning path, including the common bot/staff safety guard,
+        # instead of allowing an arbitrary Python plan to imitate a warning.
+        routing_low = low
+        if self._looks_like_warning_action(low) and self._targets_previous_message_author(low):
+            routing_low = self._PREVIOUS_MESSAGE_SAFE_GUARD_RE.sub("", low)
+
         broad_scope = re.search(
             r"\b(?:everyone|everybody|all|each)\b|"
             r"\b(?:members?|users?|accounts?|messages?|threads?|invites?|roles?)\s+"
             r"(?:who|that|with|without|matching|created|joined|pending|playing|holding)\b|"
             r"\bacross\s+(?:the\s+)?(?:server|guild|channels?)\b|"
             r"\ball\s+(?:accessible\s+)?(?:text\s+)?channels?\b",
-            low,
+            routing_low,
         )
         conditional = re.search(
             r"\b(?:if|when|whenever|unless|until)\b|"
             r"\b(?:more|less|older|newer)\s+than\b|"
             r"\b(?:inactive|pending)\s+for\b|"
             r"\b(?:doesn'?t|does\s+not|do\s+not|without)\s+have\b",
-            low,
+            routing_low,
         )
         exclusions = re.search(
             r"\b(?:except|excluding|exclude|while\s+respecting|protected\s+roles?)\b",
-            low,
+            routing_low,
         )
         multi_step = re.search(
             r"\b(?:and\s+then|then|after|before)\b.*\b"
             r"(?:delete|remove|archive|lock|warn|timeout|kick|ban|export|copy|send|move)\b|"
             r"\b(?:copy|export|summarize|log|record)\b.*\b(?:and\s+then|then)\b",
-            low,
+            routing_low,
         )
         workflow = re.search(
             r"\b(?:automod|raid|lockdown|onboarding|verification\s+flow|"
             r"ticket\s+workflow|appeals?|audit\s+(?:entries|snapshot|review)|"
             r"analytics?|workload\s+report|schedule|scheduled|recurring|"
             r"backup|restore|reaction[ -]?role|forum|signups?|reminder\s+sequence)\b",
-            low,
+            routing_low,
         )
         permission_matrix = re.search(
             r"\b(?:allow|deny|reset|inherit|sync)\b.*\bpermissions?\b|"
             r"\b(?:allow|deny)\b.*\b(?:viewing|sending|attachments?|threads?|mention[ -]?everyone)\b",
-            low,
+            routing_low,
         )
         return bool(
             broad_scope
@@ -1694,7 +1721,24 @@ class AIModeration(commands.Cog):
 
     def _warning_arguments(self, message: discord.Message, content: str) -> Dict[str, Any]:
         args: Dict[str, Any] = {"warning_count": self._extract_warning_count(content)}
-        reason = self._extract_warning_reason(content)
+        previous_message_target = self._targets_previous_message_author(content)
+        if previous_message_target:
+            args["target_previous_message_author"] = True
+            args["respect_staff_protection"] = bool(
+                re.search(r"\b(?:bot|staff|protected)\b", content, re.IGNORECASE)
+            )
+        explicit_reason = re.search(
+            r"\b(?:for|because|reason\s*:?)\s+(.+)$",
+            content,
+            re.IGNORECASE,
+        )
+        reason = (
+            explicit_reason.group(1).strip(" .,:;-")
+            if explicit_reason
+            else "Message immediately before the moderation request"
+            if previous_message_target
+            else self._extract_warning_reason(content)
+        )
         if reason:
             args["reason"] = reason
         non_bot_mentions = [
@@ -1705,6 +1749,36 @@ class AIModeration(commands.Cog):
         if non_bot_mentions:
             args["target_user_id"] = non_bot_mentions[0].id
         return args
+
+    async def _infer_previous_message_author(
+        self,
+        message: discord.Message,
+        recent: List[discord.Message],
+    ) -> Optional[int]:
+        """Resolve exactly the message immediately before the request.
+
+        A bot immediately before the request is a definitive non-target. We do
+        not skip over it or fall back to cached/mentioned members because that
+        would change the moderator's requested scope.
+        """
+        candidates = [
+            item
+            for item in recent
+            if item.id != message.id and item.id < message.id
+        ]
+        previous = max(candidates, key=lambda item: item.id, default=None)
+        if previous is None:
+            try:
+                previous = await anext(message.channel.history(limit=1, before=message), None)
+            except (discord.HTTPException, discord.Forbidden, AttributeError, TypeError):
+                previous = None
+        if previous is None or getattr(previous.author, "bot", False):
+            return None
+        guild = message.guild
+        member = guild.get_member(previous.author.id) if guild else None
+        if member is None or member.bot:
+            return None
+        return member.id
 
     # ------------------------------------------------------------------
     # Fast rule-based routing
@@ -2158,14 +2232,30 @@ class AIModeration(commands.Cog):
                 args["role_name"] = role
 
         if tool in TARGETED_TOOLS and not bulk_timeout:
-            context_target_ids = await self._infer_context_target_ids(message)
+            previous_message_target = bool(
+                tool == ToolType.WARN
+                and (
+                    args.get("target_previous_message_author")
+                    or self._targets_previous_message_author(content)
+                )
+            )
+            if previous_message_target:
+                args.pop("target_user_id", None)
+                args.pop("target_user_ids", None)
+                target = await self._infer_previous_message_author(message, recent)
+                if target:
+                    args["target_user_id"] = target
+                args["target_previous_message_author"] = True
+            context_target_ids = (
+                [] if previous_message_target else await self._infer_context_target_ids(message)
+            )
             if len(context_target_ids) > 1 and tool != ToolType.PURGE:
                 args["target_user_ids"] = context_target_ids
                 args.pop("target_user_id", None)
             elif context_target_ids:
                 args["target_user_id"] = context_target_ids[0]
                 args.pop("target_user_ids", None)
-            else:
+            elif not previous_message_target:
                 raw_target = args.get("target_user_id")
                 try:
                     parsed_target = int(raw_target)

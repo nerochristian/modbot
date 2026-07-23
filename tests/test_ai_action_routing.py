@@ -397,6 +397,25 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertEqual(decision.tool, ToolType.WARN)
         self.assertEqual(decision.arguments["reason"], "being weird")
 
+    def test_previous_message_warning_stays_on_typed_route(self) -> None:
+        message = SimpleNamespace(mentions=[])
+        content = (
+            "warn the person who sent the message immediately before mine, "
+            "unless they're a bot or protected staff"
+        )
+
+        self.assertFalse(self.cog._requires_model_routing(content))
+        decision = self.cog._quick_route(message, content)
+
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision.tool, ToolType.WARN)
+        self.assertTrue(decision.arguments["target_previous_message_author"])
+        self.assertTrue(decision.arguments["respect_staff_protection"])
+        self.assertEqual(
+            decision.arguments["reason"],
+            "Message immediately before the moderation request",
+        )
+
     def test_mentioned_warn_shortcut_ignores_bot_mention_for_target(self) -> None:
         bot_user = SimpleNamespace(id=10, bot=True)
         target = SimpleNamespace(id=20, bot=False)
@@ -1522,6 +1541,75 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(enriched.arguments["target_user_id"], actual_target_id)
         cog._infer_target.assert_awaited_once()
+
+    async def test_enrichment_grounds_immediately_previous_warning_target(self) -> None:
+        cog = object.__new__(AIModeration)
+        bot_user = SimpleNamespace(id=999, bot=True)
+        target = SimpleNamespace(id=20, bot=False)
+        guild = SimpleNamespace(id=1, get_member=lambda member_id: target if member_id == 20 else None)
+        cog.bot = SimpleNamespace(user=bot_user)
+        cog.clean_content = lambda _message: "warn the previous message author"
+        cog._infer_context_target_ids = AsyncMock(return_value=[777])
+        cog._infer_target = AsyncMock(return_value=888)
+        message = SimpleNamespace(
+            id=300,
+            mentions=[],
+            role_mentions=[],
+            channel_mentions=[],
+            reference=None,
+            author=SimpleNamespace(id=10),
+            guild=guild,
+            channel=SimpleNamespace(),
+        )
+        recent = [
+            SimpleNamespace(id=100, author=SimpleNamespace(id=30, bot=False)),
+            SimpleNamespace(id=200, author=target),
+            message,
+        ]
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="rule: warn",
+            tool=ToolType.WARN,
+            arguments={"target_previous_message_author": True, "target_user_id": 777},
+        )
+
+        enriched = await cog._enrich(message, decision, recent)
+
+        self.assertEqual(enriched.arguments["target_user_id"], 20)
+        cog._infer_context_target_ids.assert_not_awaited()
+        cog._infer_target.assert_not_awaited()
+
+    async def test_previous_message_bot_never_falls_back_to_cached_target(self) -> None:
+        cog = object.__new__(AIModeration)
+        bot_user = SimpleNamespace(id=999, bot=True)
+        guild = SimpleNamespace(id=1, get_member=lambda _member_id: None)
+        cog.bot = SimpleNamespace(user=bot_user)
+        cog.clean_content = lambda _message: "warn the previous message author"
+        cog._infer_context_target_ids = AsyncMock(return_value=[777])
+        cog._infer_target = AsyncMock(return_value=888)
+        message = SimpleNamespace(
+            id=300,
+            mentions=[],
+            role_mentions=[],
+            channel_mentions=[],
+            reference=None,
+            author=SimpleNamespace(id=10),
+            guild=guild,
+            channel=SimpleNamespace(),
+        )
+        recent = [SimpleNamespace(id=200, author=bot_user), message]
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="rule: warn",
+            tool=ToolType.WARN,
+            arguments={"target_previous_message_author": True, "target_user_id": 777},
+        )
+
+        enriched = await cog._enrich(message, decision, recent)
+
+        self.assertNotIn("target_user_id", enriched.arguments)
+        cog._infer_context_target_ids.assert_not_awaited()
+        cog._infer_target.assert_not_awaited()
 
     def test_bulk_timeout_always_requires_confirmation(self) -> None:
         cog = object.__new__(AIModeration)
