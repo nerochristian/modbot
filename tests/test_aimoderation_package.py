@@ -406,6 +406,16 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(TypeError):
             restricted_setattr(permissions, "administrator", "false")
 
+    def test_python_runtime_getattr_blocks_dynamic_sensitive_access(self) -> None:
+        restricted_getattr = safe_builtins()["getattr"]
+        permissions = discord.Permissions(administrator=True)
+
+        self.assertTrue(restricted_getattr(permissions, "administrator"))
+        self.assertEqual(restricted_getattr(SimpleNamespace(), "missing", "fallback"), "fallback")
+        for blocked_name in ("__dict__", "token", "http", "close", "delete"):
+            with self.subTest(blocked_name=blocked_name), self.assertRaises(AttributeError):
+                restricted_getattr(SimpleNamespace(), blocked_name, None)
+
     def test_python_runtime_blocks_escape_and_lifecycle_operations(self) -> None:
         blocked = (
             "import os\nreturn os.environ",

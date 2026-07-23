@@ -163,6 +163,20 @@ def _safe_setattr(obj: Any, name: str, value: Any) -> None:
     builtins.setattr(obj, name, value)
 
 
+def _safe_getattr(obj: Any, name: str, *default: Any) -> Any:
+    """Expose public attributes without allowing dynamic access to blocked capabilities."""
+    if not isinstance(name, str):
+        raise TypeError("getattr attribute names must be strings.")
+    normalized = name.lower()
+    if name.startswith("_") or normalized in FORBIDDEN_ATTRIBUTES or normalized == "delete":
+        raise AttributeError(f"Dynamic access to `{name}` is not available.")
+    if len(default) > 1:
+        raise TypeError("getattr accepts at most one default value.")
+    if default:
+        return builtins.getattr(obj, name, default[0])
+    return builtins.getattr(obj, name)
+
+
 def safe_builtins() -> Dict[str, Any]:
     names = (
         "ArithmeticError",
@@ -224,5 +238,6 @@ def safe_builtins() -> Dict[str, Any]:
     )
     allowed = {name: getattr(builtins, name) for name in names}
     allowed["__import__"] = _safe_import
+    allowed["getattr"] = _safe_getattr
     allowed["setattr"] = _safe_setattr
     return allowed

@@ -2860,6 +2860,7 @@ class AIModeration(commands.Cog):
             "The runtime blocks filesystem/process/network-secret access, bot lifecycle access, detached tasks, "
             "guild deletion, and unbounded execution. setattr is available only for boolean flags on "
             "discord.Permissions instances; prefer Permissions.update(flag=False) when changing several flags. "
+            "getattr is available for public non-lifecycle attributes and rejects private or sensitive names. "
             "The code must be self-contained discord.py 2.x code."
         )
         user_prompt = (
