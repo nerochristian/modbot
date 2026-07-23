@@ -521,6 +521,8 @@ class PermissionFlags:
 
     def allows(self, permission: str) -> bool:
         """Return whether this member may use a standard Discord permission gate."""
+        if permission == "bot_owner":
+            return self.bot_owner
         if self.administrator:
             return True
         return bool(getattr(self, str(permission or "").strip(), False))
