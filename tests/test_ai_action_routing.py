@@ -22,6 +22,7 @@ from cogs.aimoderation.aimoderation import (
     ToolType,
 )
 from cogs.aimoderation.types import ImageContext, PermissionFlags
+from cogs.aimoderation.python_runtime import execution_digest
 from cogs.aimoderation.registry import ToolRegistry
 from utils.deepseek_web import DeepSeekWebError
 
@@ -1155,6 +1156,53 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIn("Owner-only automation", preview)
         self.assertNotIn("guild.delete", preview)
+
+    async def test_generated_python_code_is_logged_before_confirmation(self) -> None:
+        cog = object.__new__(AIModeration)
+        log_channel = SimpleNamespace(send=AsyncMock())
+        logging_cog = SimpleNamespace(
+            get_log_channel=AsyncMock(return_value=log_channel),
+        )
+        cog.bot = SimpleNamespace(
+            get_cog=lambda name: logging_cog if name == "Logging" else None,
+        )
+        message = SimpleNamespace(
+            guild=SimpleNamespace(id=123),
+            author=SimpleNamespace(id=1, mention="<@1>"),
+            jump_url="https://discord.com/channels/123/456/789",
+        )
+        code = "await channel.send('reviewed')"
+        digest = execution_digest(code)
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="advanced action",
+            tool=ToolType.EXECUTE_PYTHON,
+            arguments={"code": code, "code_sha256": digest},
+        )
+
+        filename = await cog._log_execute_python_plan_for_review(message, decision)
+
+        self.assertEqual(filename, f"ai-plan-{digest[:12]}.py")
+        log_channel.send.assert_awaited_once()
+        kwargs = log_channel.send.await_args.kwargs
+        self.assertEqual(kwargs["file"].filename, filename)
+
+    async def test_generated_python_confirmation_fails_closed_without_review_log(self) -> None:
+        cog = object.__new__(AIModeration)
+        cog._log_execute_python_plan_for_review = AsyncMock(return_value=None)
+        cog.reply = AsyncMock()
+        message = SimpleNamespace(channel=SimpleNamespace(send=AsyncMock()))
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="advanced action",
+            tool=ToolType.EXECUTE_PYTHON,
+            arguments={"code": "return None", "code_sha256": "abc"},
+        )
+
+        await cog._request_confirmation(message, decision, GuildSettings())
+
+        message.channel.send.assert_not_awaited()
+        cog.reply.assert_awaited_once()
 
     def test_confirmation_preview_renders_excluded_members_separately(self) -> None:
         cog = object.__new__(AIModeration)

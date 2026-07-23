@@ -6,6 +6,7 @@ Imports from: types, prompts, context, registry, ai_client, handlers
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
 import os
@@ -2673,6 +2674,13 @@ class AIModeration(commands.Cog):
             digest = str(args.get("code_sha256") or "").strip()
             if digest:
                 rows.append(("Execution ID", f"`{digest[:12]}`"))
+            if review_filename := str(args.get("_code_review_filename") or "").strip():
+                rows.append(
+                    (
+                        "Code Review",
+                        f"Full pre-execution code attached in AutoMod logs as `{review_filename}`.",
+                    )
+                )
             rows.append(("Safety", "Owner-only automation; generated code passed preflight and is locked to this confirmation."))
         elif decision.tool == ToolType.EXECUTE_RAW_API:
             rows.append(
@@ -2687,12 +2695,70 @@ class AIModeration(commands.Cog):
             + "\n\nReview the target and scope carefully before confirming."
         )[:3_800]
 
+    async def _log_execute_python_plan_for_review(
+        self,
+        message: discord.Message,
+        decision: Decision,
+    ) -> Optional[str]:
+        """Attach digest-bound generated code to the private log before confirmation."""
+        if decision.tool != ToolType.EXECUTE_PYTHON:
+            return None
+
+        code = normalize_python_code(str(decision.arguments.get("code") or ""))
+        expected_digest = str(decision.arguments.get("code_sha256") or "").strip().lower()
+        if not code or not expected_digest or execution_digest(code) != expected_digest:
+            logger.error("Refused to log an invalid or digest-mismatched generated plan")
+            return None
+
+        logging_cog = self.bot.get_cog("Logging")
+        if not logging_cog or not message.guild:
+            return None
+        try:
+            log_channel = await logging_cog.get_log_channel(message.guild, "automod")
+            if not log_channel:
+                return None
+            short_digest = expected_digest[:12]
+            filename = f"ai-plan-{short_digest}.py"
+            attachment = discord.File(
+                io.BytesIO(code.encode("utf-8")),
+                filename=filename,
+            )
+            await log_channel.send(
+                (
+                    f"Pre-confirmation generated-code review for execution `{short_digest}`.\n"
+                    f"Requester: {message.author.mention} (`{message.author.id}`)\n"
+                    f"Request: {message.jump_url}"
+                ),
+                file=attachment,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
+            return filename
+        except Exception:
+            logger.exception("Failed to write pre-confirmation generated-code review")
+            return None
+
     async def _request_confirmation(
         self,
         message: discord.Message,
         decision: Decision,
         settings: GuildSettings,
     ) -> None:
+        if decision.tool == ToolType.EXECUTE_PYTHON:
+            review_filename = await self._log_execute_python_plan_for_review(
+                message,
+                decision,
+            )
+            if not review_filename:
+                await self.reply(
+                    message,
+                    content=(
+                        "I couldn't write the generated code to the private AutoMod log for review. "
+                        "Nothing was executed, and no confirmation was opened."
+                    ),
+                )
+                return
+            decision.arguments["_code_review_filename"] = review_filename
+
         view = AIActionConfirmationView(
             self,
             message,
