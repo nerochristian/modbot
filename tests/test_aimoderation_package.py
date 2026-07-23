@@ -386,6 +386,7 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
         compiled = validate_python_code(code)
 
         self.assertIsNotNone(compiled)
+        self.assertIsNotNone(validate_python_code("import time\nreturn time.monotonic()"))
 
     def test_python_runtime_allows_only_permission_flag_setattr(self) -> None:
         code = (
@@ -430,8 +431,7 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
 
         for code in blocked:
             with self.subTest(code=code), self.assertRaises(PythonSafetyError):
-        validate_python_code(code)
-        validate_python_code("import time\nreturn time.monotonic()")
+                validate_python_code(code)
 
     async def test_execute_python_runs_digest_bound_plan_and_returns_result(self) -> None:
         code = "return 'Created 3 channels.'"
