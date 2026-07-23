@@ -227,7 +227,7 @@ class DeepSeekWebChatModeTests(unittest.IsolatedAsyncioTestCase):
             has_images=True,
         )
 
-        send_button.click.assert_awaited_once_with(timeout=5_000)
+        send_button.click.assert_awaited_once_with(timeout=5_000, force=True)
         textbox.press.assert_not_awaited()
 
     async def test_text_submission_clicks_enabled_send_button_when_available(self) -> None:
@@ -245,7 +245,7 @@ class DeepSeekWebChatModeTests(unittest.IsolatedAsyncioTestCase):
             has_images=False,
         )
 
-        send_button.click.assert_awaited_once_with(timeout=5_000)
+        send_button.click.assert_awaited_once_with(timeout=5_000, force=True)
         textbox.press.assert_not_awaited()
 
     async def test_text_submission_presses_enter_when_send_button_missing(self) -> None:
