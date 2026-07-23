@@ -1508,11 +1508,14 @@ class AIModeration(commands.Cog):
         normalized = (text or "").lower().replace("’", "'")
         return bool(
             re.search(
-                r"\b(?:everyone|everybody|all\s+(?:members?|users?|people)|"
+                r"\b(?:everyone|everybody|anyone|anybody|all\s+(?:members?|users?|people)|"
                 r"members?|users?|people)\s+(?:who|that|without\b)",
                 normalized,
             )
-            or re.search(r"\b(?:mute|timeout|time\s+out)\s+(?:everyone|everybody|all)\b", normalized)
+            or re.search(
+                r"\b(?:mute|timeout|time\s+out)\s+(?:everyone|everybody|anyone|anybody|all)\b",
+                normalized,
+            )
         )
 
     def _bulk_timeout_arguments(
@@ -2223,6 +2226,26 @@ class AIModeration(commands.Cog):
             cleaned = cleaned[: MAX_MODERATION_REASON_LENGTH - 1].rstrip(" ,;:-") + "…"
         return cleaned
 
+    @staticmethod
+    def _reason_contains_model_meta(reason: str) -> bool:
+        """Reject analysis or prompt text instead of displaying it as a reason."""
+        normalized = re.sub(r"\s+", " ", str(reason or "")).strip().lower()
+        if not normalized:
+            return False
+        meta_markers = (
+            "the user wants",
+            "the user asked",
+            "let me analyze",
+            "let me rewrite",
+            "i need to rewrite",
+            "rewrite this discord moderation reason",
+            "moderation reason as",
+            "sentence fragment",
+            "original reason:",
+            "return only the rewritten reason",
+        )
+        return any(marker in normalized for marker in meta_markers)
+
     async def _polish_decision_reason(
         self,
         decision: Decision,
@@ -2284,8 +2307,36 @@ class AIModeration(commands.Cog):
             except Exception:
                 logger.debug("Failed to polish moderation reason", exc_info=True)
 
-        decision.arguments["reason"] = self._clean_moderation_reason(polished) or original
+        cleaned_polished = self._clean_moderation_reason(polished)
+        if self._reason_contains_model_meta(polished):
+            logger.warning("Discarded model meta-commentary from moderation reason")
+            cleaned_polished = ""
+        decision.arguments["reason"] = cleaned_polished or original
         return decision
+
+    @staticmethod
+    def _decision_scope_error(decision: Decision) -> Optional[str]:
+        """Return a clarification message when a member action has no safe scope."""
+        if decision.type != DecisionType.TOOL_CALL or decision.tool not in TARGETED_TOOLS:
+            return None
+        if decision.tool == ToolType.PURGE:
+            return None
+
+        args = decision.arguments or {}
+        if decision.tool == ToolType.TIMEOUT and args.get("all_members") is True:
+            return None
+
+        raw_target = args.get("target_user_id")
+        try:
+            if int(raw_target) > 0:
+                return None
+        except (TypeError, ValueError):
+            pass
+
+        return (
+            "I couldn't determine which member to act on. Mention a member, reply to "
+            "their message, or explicitly request a supported server-wide scope. Nothing was executed."
+        )
 
     # ------------------------------------------------------------------
     # Member / role resolution
@@ -2449,7 +2500,7 @@ class AIModeration(commands.Cog):
         if target_id:
             rows.append(("Target", f"<@{target_id}> (`{target_id}`)"))
         if decision.tool == ToolType.TIMEOUT and args.get("all_members"):
-            rows.append(("Scope", "All eligible server members"))
+            rows.append(("Scope", "All eligible non-bot server members"))
             excluded_user_ids = []
             for raw_user_id in args.get("exclude_user_ids") or []:
                 try:
@@ -2587,6 +2638,12 @@ class AIModeration(commands.Cog):
             result = ToolResult.fail(
                 "AI moderation is disabled right now. Ask a server admin to enable it with `/aimod toggle`."
             )
+            if send_result:
+                await self.reply_tool_result(message, result)
+            return result
+
+        if scope_error := self._decision_scope_error(decision):
+            result = ToolResult.fail(scope_error)
             if send_result:
                 await self.reply_tool_result(message, result)
             return result
@@ -2992,6 +3049,10 @@ class AIModeration(commands.Cog):
                     embed=discord.Embed(title="Permission Denied", description=access_error, color=discord.Color.red()),
                     delete_after=15,
                 )
+                return
+
+            if scope_error := self._decision_scope_error(decision):
+                await self.reply(message, content=scope_error)
                 return
 
             decision = await self._polish_decision_reason(decision, settings, message)

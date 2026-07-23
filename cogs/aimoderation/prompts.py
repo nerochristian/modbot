@@ -170,6 +170,7 @@ Understand slang, typos, shorthand, and casual phrasing.
 - "mute him" -> timeout_member
 - "shut him up for 10m" -> timeout_member seconds=600
 - "mute everyone who doesn't have @Staff" -> timeout_member all_members=true exclude_role_id=<mentioned role id>; never infer or reuse an individual target
+- "mute anyone who isn't a bot" -> timeout_member all_members=true; bots are always excluded by the executor
 - "mute everyone except me, @Alex, and @Sam" -> timeout_member all_members=true exclude_user_ids=[requester id, Alex id, Sam id]; never treat member names as a role
 - "free him" -> untimeout_member
 - "boot him" -> kick_member

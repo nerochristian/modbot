@@ -2109,6 +2109,64 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result.arguments["reason"], "repeated ban evasion")
 
+    async def test_reason_rejects_model_meta_commentary(self) -> None:
+        cog = object.__new__(AIModeration)
+        cog.ai = SimpleNamespace(
+            is_available=True,
+            _call=AsyncMock(
+                return_value=(
+                    "The user wants me to rewrite a Discord moderation reason as a "
+                    "concise sentence fragment. Let me analyze the original reason."
+                )
+            ),
+        )
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="rule: timeout",
+            tool=ToolType.TIMEOUT,
+            arguments={"target_user_id": 123, "reason": "repeated spam"},
+        )
+
+        result = await cog._polish_decision_reason(decision, GuildSettings())
+
+        self.assertEqual(result.arguments["reason"], "repeated spam")
+
+    def test_anyone_who_isnt_a_bot_is_bulk_timeout(self) -> None:
+        cog = object.__new__(AIModeration)
+        bot_user = SimpleNamespace(id=999, bot=True)
+        cog.bot = SimpleNamespace(user=bot_user)
+        message = SimpleNamespace(
+            author=SimpleNamespace(id=10, mention="<@10>"),
+            mentions=[bot_user],
+            role_mentions=[],
+            channel=SimpleNamespace(mention="<#20>"),
+        )
+
+        decision = cog._quick_route(message, "mute anyone who isnt a bot for 1m")
+
+        self.assertIsNotNone(decision)
+        self.assertEqual(decision.tool, ToolType.TIMEOUT)
+        self.assertEqual(decision.arguments["seconds"], 60)
+        self.assertIs(decision.arguments["all_members"], True)
+        self.assertNotIn("target_user_id", decision.arguments)
+        self.assertNotIn("reason", decision.arguments)
+        self.assertIsNone(cog._decision_scope_error(decision))
+        preview = cog._confirmation_preview(message, decision)
+        self.assertIn("All eligible non-bot server members", preview)
+
+    def test_targeted_action_without_target_is_rejected_before_confirmation(self) -> None:
+        decision = Decision(
+            type=DecisionType.TOOL_CALL,
+            reason="rule: timeout",
+            tool=ToolType.TIMEOUT,
+            arguments={"seconds": 60},
+        )
+
+        error = AIModeration._decision_scope_error(decision)
+
+        self.assertIsNotNone(error)
+        self.assertIn("couldn't determine which member", error)
+
     async def test_classic_tool_result_skips_v2_conversion(self) -> None:
         cog = object.__new__(AIModeration)
         cog.reply = AsyncMock()
