@@ -748,6 +748,25 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertTrue(owner.bot_owner)
         self.assertTrue(owner.allows("bot_owner"))
 
+    def test_complex_server_requests_are_not_misclassified_as_chat(self) -> None:
+        requests = (
+            "list all members whose usernames contain invite links",
+            "summarize timeouts issued during the last seven days",
+            "mark as age-restricted #memes",
+            "route harassment reports to the senior moderation team",
+            "rank the most active public channels",
+            "post an announcement for the server rules update",
+            "rename the existing emoji for approved reports",
+            "show who most recently changed server roles and their permissions",
+        )
+
+        for request in requests:
+            with self.subTest(request=request):
+                self.assertTrue(
+                    self.cog._looks_like_advanced_action_request(request)
+                    or self.cog._requires_model_routing(request)
+                )
+
     def test_administrator_still_requires_bot_action_permission(self) -> None:
         actor = SimpleNamespace(
             id=123,

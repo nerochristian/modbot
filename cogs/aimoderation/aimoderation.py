@@ -679,6 +679,13 @@ class AIModeration(commands.Cog):
             r"(?:who|which\s+members?|which\s+users?)\s+(?:has|have|is|are)\s+(?:the\s+)?[\w\s@#&-]*(?:role|admin|staff|permission|muted|banned|timed\s+out)\b",
             r"(?:who|which\s+members?|which\s+users?)\s+(?:joined|left|boosted|were\s+warned|got\s+warned|was\s+warned)\b",
             r"(?:how\s+many|count)\s+(?:members?|users?|roles?|channels?|warnings?|cases?|messages?)\b",
+            r"(?:show|summarize|export|count|find|rank|compare|identify|calculate|route|escalate|"
+            r"correlate)\b.*\b(?:warnings?|history|timeouts?|bans?|cases?|appeals?|channels?|reports?|"
+            r"tickets?|audit|moderation|permissions?|members?|roles?|emojis?|stickers?|announcements?|"
+            r"configuration|overwrites?|activity)\b",
+            r"mark\s+as\s+age[ -]?restricted\b",
+            r"rename\b.*\b(?:channel|role|emoji|sticker|server)\b",
+            r"post\b.*\bannouncement\b",
         )
         return any(re.match(prefix + pattern, low) for pattern in action_patterns)
 
@@ -2857,7 +2864,12 @@ class AIModeration(commands.Cog):
             await self._handle_conversation(message, content, settings)
             return
 
-        is_mod_request = self._looks_like_mod_request(content) or self._looks_like_advanced_action_request(content)
+        requires_model_routing = self._requires_model_routing(content)
+        is_mod_request = (
+            self._looks_like_mod_request(content)
+            or self._looks_like_advanced_action_request(content)
+            or requires_model_routing
+        )
 
         if implicit_continuation:
             if not is_mod_request:
@@ -2896,7 +2908,6 @@ class AIModeration(commands.Cog):
             limit=settings.context_messages,
         )
 
-        requires_model_routing = self._requires_model_routing(content)
         decision = None if requires_model_routing else self._quick_route(message, content)
         if (
             not decision
