@@ -15,6 +15,7 @@ async def main():
     # mock config since we don't have a real bot
     class DummyConfig:
         model = "accounts/aimodel/models/glm-5.1"
+        provider = "aimodel"
     client = AIClient(None, DummyConfig())
     client.config = DummyConfig()
     client.provider = "aimodel"
