@@ -1225,6 +1225,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         planner_prompt = cog.ai._call.await_args_list[0].args[0][0]["content"]
         self.assertIn("PermissionOverwrite iteration yields", planner_prompt)
         self.assertIn("send_bounded", planner_prompt)
+        self.assertIn("schedule_durable_action", planner_prompt)
         self.assertIn("never reinterpret public as every channel", planner_prompt)
         self.assertIn("including text, forum, media", planner_prompt)
         self.assertIn("lookback=datetime.timedelta", planner_prompt)

@@ -501,6 +501,44 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(args[0], "The full action report is attached.")
         self.assertEqual(kwargs["file"].filename, "raid-rollback.json")
 
+    async def test_execute_python_can_persist_digest_bound_follow_up(self) -> None:
+        actor = SimpleNamespace(id=123, mention="<@123>")
+        connection = AsyncMock()
+        connection_context = AsyncMock()
+        connection_context.__aenter__.return_value = connection
+        bot = SimpleNamespace(
+            is_owner=AsyncMock(return_value=True),
+            db=SimpleNamespace(get_connection=lambda: connection_context),
+        )
+        follow_up = "return 'follow-up complete'"
+        code = (
+            "run_at = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)\n"
+            f"result = await schedule_durable_action(run_at, {follow_up!r}, summary='archive stale tickets')\n"
+            "return result['code_sha256']"
+        )
+        ctx = SimpleNamespace(
+            actor=actor,
+            cog=SimpleNamespace(bot=bot),
+            guild=SimpleNamespace(id=1),
+            message=SimpleNamespace(channel=SimpleNamespace()),
+            arg=lambda name, default="": {"code": code, "summary": "Schedule a durable follow-up"}.get(name, default),
+        )
+
+        with patch("cogs.aimoderation.handlers.admin.is_bot_owner_id", return_value=True), patch(
+            "cogs.aimoderation.handlers.admin._log_execution", new=AsyncMock()
+        ):
+            result = await handle_execute_python(ctx)
+
+        self.assertTrue(result.success)
+        connection.execute.assert_awaited_once()
+        query, params = connection.execute.await_args.args
+        self.assertIn("INSERT INTO scheduled_tasks", query)
+        self.assertEqual(params[0:2], (1, 123))
+        payload = json.loads(params[2])
+        self.assertEqual(payload["code"], follow_up)
+        self.assertEqual(payload["code_sha256"], execution_digest(follow_up))
+        connection.commit.assert_awaited_once()
+
     async def test_activity_fetcher_supports_detailed_message_records(self) -> None:
         now = datetime.now(timezone.utc)
         author = SimpleNamespace(id=42, bot=False, __str__=lambda self: "Member")

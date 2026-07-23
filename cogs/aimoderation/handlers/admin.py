@@ -316,6 +316,50 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
         report = discord.File(io.BytesIO(payload), filename=safe_filename)
         return await sender("The full action report is attached.", file=report)
 
+    async def schedule_durable_action(
+        execute_at: Any,
+        code: Any,
+        *,
+        summary: str = "Scheduled AI moderation follow-up",
+    ) -> Dict[str, Any]:
+        """Persist a digest-bound owner action for the existing AI scheduler."""
+        if not isinstance(execute_at, datetime_module.datetime):
+            raise TypeError("execute_at must be a datetime.datetime value.")
+        if execute_at.tzinfo is None:
+            execute_at_utc = execute_at.replace(tzinfo=timezone.utc)
+        else:
+            execute_at_utc = execute_at.astimezone(timezone.utc)
+        now_utc = datetime_module.datetime.now(timezone.utc)
+        if execute_at_utc < now_utc + timedelta(seconds=30):
+            raise ValueError("Scheduled actions must run at least 30 seconds in the future.")
+        if execute_at_utc > now_utc + timedelta(days=365):
+            raise ValueError("Scheduled actions cannot be more than 365 days in the future.")
+
+        follow_up_code = normalize_python_code(str(code))
+        validate_python_code(follow_up_code)
+        follow_up_digest = execution_digest(follow_up_code)
+        payload = json.dumps(
+            {
+                "code": follow_up_code,
+                "code_sha256": follow_up_digest,
+                "summary": str(summary).strip()[:500],
+            },
+            ensure_ascii=True,
+        )
+        execute_at_naive = execute_at_utc.replace(tzinfo=None)
+        async with ctx.cog.bot.db.get_connection() as db:
+            await db.execute(
+                "INSERT INTO scheduled_tasks "
+                "(guild_id, author_id, task_type, payload, execute_at, status) "
+                "VALUES (?, ?, 'execute_python', ?, ?, 'pending')",
+                (ctx.guild.id, ctx.actor.id, payload, execute_at_naive),
+            )
+            await db.commit()
+        return {
+            "scheduled_for": execute_at_utc.isoformat(),
+            "code_sha256": follow_up_digest,
+        }
+
     env: Dict[str, Any] = {
         "__builtins__": safe_builtins(),
         "bot": ctx.cog.bot,
@@ -339,6 +383,7 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
         "uuid": uuid,
         "fetch_recent_activity": _make_activity_fetcher(ctx.guild),
         "send_bounded": send_bounded,
+        "schedule_durable_action": schedule_durable_action,
     }
 
     try:
