@@ -680,11 +680,12 @@ class AIModeration(commands.Cog):
             r"(?:who|which\s+members?|which\s+users?)\s+(?:joined|left|boosted|were\s+warned|got\s+warned|was\s+warned)\b",
             r"(?:how\s+many|count)\s+(?:members?|users?|roles?|channels?|warnings?|cases?|messages?)\b",
             r"(?:show|summarize|export|count|find|rank|compare|identify|calculate|route|escalate|"
-            r"correlate)\b.*\b(?:warnings?|history|timeouts?|bans?|cases?|appeals?|channels?|reports?|"
+            r"correlate|close|assign|audit|require)\b.*\b(?:warnings?|history|timeouts?|bans?|cases?|appeals?|channels?|reports?|"
             r"tickets?|audit|moderation|permissions?|members?|roles?|emojis?|stickers?|announcements?|"
-            r"configuration|overwrites?|activity)\b",
+            r"configuration|overwrites?|activity|requests?|complaints?|problems?|disputes?|actions?|settings?)\b",
             r"mark\s+as\s+age[ -]?restricted\b",
             r"rename\b.*\b(?:channel|role|emoji|sticker|server)\b",
+            r"rename\s+with\s+an?\s+archived\s+prefix\b",
             r"post\b.*\bannouncement\b",
         )
         return any(re.match(prefix + pattern, low) for pattern in action_patterns)
