@@ -759,11 +759,13 @@ class AIModeration(commands.Cog):
             r"\b(?:need|needs|requires?)\s+(?:a\s+)?clarification\b|"
             r"\b(?:missing|required)\s+(?:information|details?|input|parameter|argument|image|url)\b|"
             r"\b(?:was|were|is|are)\s+not\s+provided\b|"
+            r"\bno\s+(?:image|image\s+url|url)\s+(?:was\s+)?provided\b|"
             r"\bno\s+(?:new\s+)?(?:name|target|channel|role|image|url)\s+(?:was\s+)?specified\b|"
             r"\b(?:genuinely\s+)?ambiguous\b|"
             r"\bmultiple\s+possible\s+targets?\b|"
             r"\b(?:fundamentally\s+)?impossible\b|"
             r"\bno\s+way\s+to\b|"
+            r"\bnot\s+a\s+concrete\s+action\s+with\s+identifiable\s+targets?\b|"
             r"\b(?:cannot|can't)\s+(?:programmatically\s+)?(?:detect|determine|perform)\b"
         )
         return re.search(blocked, reason) is None

@@ -770,8 +770,10 @@ class AIActionRoutingTests(unittest.TestCase):
     def test_owner_fallback_preserves_clarifications_and_impossibility_errors(self) -> None:
         blocked_reasons = (
             "Creating the emoji requires an image URL which was not provided.",
+            "Creating the emoji is impossible because no image URL was provided.",
             "No new name was specified; need clarification.",
             "Cannot programmatically detect disruptive audio; this is fundamentally impossible.",
+            "This is not a concrete action with identifiable targets.",
             "Multiple possible targets are ambiguous.",
         )
         for reason in blocked_reasons:
