@@ -9,13 +9,13 @@ load_dotenv(".env")
 
 sys.path.insert(0, os.path.abspath("."))
 
-from cogs.aimoderation.ai_client import AiClient
+from cogs.aimoderation.ai_client import AIClient
 
 async def main():
-    client = AiClient(None)
     # mock config since we don't have a real bot
     class DummyConfig:
         model = "accounts/aimodel/models/glm-5.1"
+    client = AIClient(None, DummyConfig())
     client.config = DummyConfig()
     client.provider = "aimodel"
 
