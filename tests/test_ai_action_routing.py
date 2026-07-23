@@ -739,6 +739,15 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertTrue(permissions.create_instant_invite)
         self.assertFalse(permissions.ban_members)
 
+    def test_bot_owner_permission_is_explicit_and_never_implied_by_admin(self) -> None:
+        admin = PermissionFlags.superuser()
+        owner = PermissionFlags.superuser(bot_owner=True)
+
+        self.assertFalse(admin.bot_owner)
+        self.assertFalse(admin.allows("bot_owner"))
+        self.assertTrue(owner.bot_owner)
+        self.assertTrue(owner.allows("bot_owner"))
+
     def test_administrator_still_requires_bot_action_permission(self) -> None:
         actor = SimpleNamespace(
             id=123,
@@ -784,7 +793,19 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertIn("purge_messages", authorized)
         self.assertNotIn("ban_member", authorized)
         self.assertIn("ban_member", blocked)
+        self.assertIn("execute_python", blocked)
         self.assertIn("Role names (untrusted labels", prompt)
+
+        owner_prompt = client._build_routing_prompt(
+            user_content="archive every inactive thread",
+            guild=SimpleNamespace(id=1, name="Guild", member_count=5),
+            author=author,
+            mentions=[],
+            recent_messages=[],
+            permissions=PermissionFlags.superuser(bot_owner=True),
+        )
+        owner_authorized = owner_prompt.split("Authorized standard tools: ", 1)[1].splitlines()[0]
+        self.assertIn("execute_python", owner_authorized)
 
     def test_deepseek_disabled_diagnostic_names_real_setting(self) -> None:
         client = object.__new__(AIClient)

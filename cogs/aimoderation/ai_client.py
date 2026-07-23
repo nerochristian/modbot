@@ -1549,8 +1549,6 @@ class AIClient:
         blocked_tools: List[str] = []
         for tool in sorted(ToolRegistry.list_tools(), key=lambda item: item.value):
             required = ToolRegistry.get_metadata(tool).required_permission
-            if required == "bot_owner":
-                continue
             destination = allowed_tools if not required or permissions.allows(required) else blocked_tools
             destination.append(tool.value)
         allowed_tool_lines = ", ".join(allowed_tools) or "none"

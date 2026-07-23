@@ -432,6 +432,7 @@ class ImageContext:
 @dataclass
 class PermissionFlags:
     """Guild permission flags derived from a member."""
+    bot_owner: bool = False
     administrator: bool = False
     ban_members: bool = False
     kick_members: bool = False
@@ -452,6 +453,8 @@ class PermissionFlags:
         cls,
         member: "discord.Member",
         channel: Optional["discord.abc.GuildChannel"] = None,
+        *,
+        bot_owner: bool = False,
     ) -> "PermissionFlags":
         perms = member.guild_permissions
         channel_perms = None
@@ -469,6 +472,7 @@ class PermissionFlags:
             return bool(getattr(perms, name, False))
 
         return cls(
+            bot_owner=bot_owner,
             administrator=perms.administrator,
             ban_members=perms.ban_members,
             kick_members=perms.kick_members,
@@ -486,8 +490,9 @@ class PermissionFlags:
         )
 
     @classmethod
-    def superuser(cls) -> "PermissionFlags":
+    def superuser(cls, *, bot_owner: bool = False) -> "PermissionFlags":
         return cls(
+            bot_owner=bot_owner,
             administrator=True, ban_members=True, kick_members=True,
             manage_guild=True, manage_channels=True, manage_roles=True,
             manage_messages=True, manage_threads=True, manage_nicknames=True,
@@ -497,6 +502,7 @@ class PermissionFlags:
 
     def to_dict(self) -> Dict[str, bool]:
         return {
+            "bot_owner": self.bot_owner,
             "administrator": self.administrator,
             "ban_members": self.ban_members,
             "kick_members": self.kick_members,

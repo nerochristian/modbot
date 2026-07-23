@@ -2882,9 +2882,13 @@ class AIModeration(commands.Cog):
 
         # --- Main routing: moderation actions ---
         permissions = (
-            PermissionFlags.from_member(message.author, message.channel)
+            PermissionFlags.from_member(
+                message.author,
+                message.channel,
+                bot_owner=self._can_use_owner_tools(message.author),
+            )
             if isinstance(message.author, discord.Member)
-            else PermissionFlags()
+            else PermissionFlags(bot_owner=self._can_use_owner_tools(message.author))
         )
         mentions = self.extract_mentions(message)
         recent = await self.fetch_recent_messages(
