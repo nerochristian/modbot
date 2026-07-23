@@ -1,14 +1,17 @@
 import aiohttp
 import asyncio
+import os
+from dotenv import load_dotenv
 
-AIMODEL_API_KEY = "sk-YSOaE1QIsyyUmwkn9EavAsRjZ0D6A63dNIe0SBZVV8R"
-AIMODEL_BASE_URL = "https://aimodel.lol/v1"
+load_dotenv('.env')
+API_KEY = os.getenv('RELAYROUTER_API_KEY')
+BASE_URL = os.getenv('RELAYROUTER_BASE_URL')
 
 async def test_vision():
     async with aiohttp.ClientSession() as session:
-        headers = {"Authorization": f"Bearer {AIMODEL_API_KEY}"}
+        headers = {"Authorization": f"Bearer {API_KEY}"}
         
-        models_to_test = ['accounts/aimodel/models/claude-sonnet-5', 'accounts/aimodel/models/glm-5.1', 'accounts/aimodel/models/claude-opus-4.8']
+        models_to_test = ['claude-test-opus-4-8', 'gpt-5.5']
         
         for model in models_to_test:
             payload = {
@@ -28,7 +31,7 @@ async def test_vision():
                 "max_tokens": 10
             }
             try:
-                async with session.post(f"{AIMODEL_BASE_URL}/chat/completions", headers=headers, json=payload) as resp:
+                async with session.post(f"{BASE_URL}/chat/completions", headers=headers, json=payload) as resp:
                     if resp.status == 200:
                         data = await resp.json()
                         print(f"{model} vision test: SUCCESS. Response: {data['choices'][0]['message']['content']}")
