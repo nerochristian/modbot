@@ -2863,6 +2863,8 @@ class AIModeration(commands.Cog):
             "guild deletion, and unbounded execution. setattr is available only for boolean flags on "
             "discord.Permissions instances; prefer Permissions.update(flag=False) when changing several flags. "
             "getattr is available for public non-lifecycle attributes and rejects private or sensitive names. "
+            "discord.PermissionOverwrite iteration yields (permission_name_string, value) pairs, so use the "
+            "permission name string directly rather than accessing .name on it. "
             "Always use send_bounded for generated reports, exports, backups, rollback snapshots, or any variable "
             "content that could exceed 3,800 characters; never pass such content directly to channel.send. "
             "For bulk mutations, catch discord.HTTPException per item, continue safely, and include the failures "

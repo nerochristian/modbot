@@ -1221,6 +1221,10 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             settings=GuildSettings(model="claude-opus-4-8"),
         )
 
+        planner_prompt = cog.ai._call.await_args_list[0].args[0][0]["content"]
+        self.assertIn("PermissionOverwrite iteration yields", planner_prompt)
+        self.assertIn("send_bounded", planner_prompt)
+
         self.assertIsNotNone(plan)
         self.assertEqual(plan["summary"], "Count server members")
         self.assertEqual(len(plan["code_sha256"]), 64)
