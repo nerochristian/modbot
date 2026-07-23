@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import random
 import re
 from contextlib import suppress
@@ -2859,6 +2860,8 @@ class AIModeration(commands.Cog):
             "Allowed imports: asyncio, collections, csv, datetime, discord, io, itertools, json, math, "
             "random, re, statistics, time, uuid.\n\n"
             "Preserve the literal target and scope, use the live IDs when useful, and return an honest concise result. "
+            "A request scoped to public channels means only channels where the default @everyone role can currently "
+            "view the channel; never reinterpret public as every channel or modify existing private channels. "
             "The runtime blocks filesystem/process/network-secret access, bot lifecycle access, detached tasks, "
             "guild deletion, and unbounded execution. setattr is available only for boolean flags on "
             "discord.Permissions instances; prefer Permissions.update(flag=False) when changing several flags. "
@@ -2896,6 +2899,12 @@ class AIModeration(commands.Cog):
         )
         validation_feedback = ""
         for attempt in range(2):
+            provider_model_override = None
+            if attempt and getattr(self.ai, "prefers_aimodel", False):
+                provider_model_override = os.getenv(
+                    "AIMODEL_EXECUTION_FALLBACK_MODEL",
+                    "accounts/aimodel/models/claude-opus-4.8",
+                ).strip()
             raw_response = await self.ai._call(
                 [
                     {"role": "system", "content": system_prompt},
@@ -2906,6 +2915,7 @@ class AIModeration(commands.Cog):
                 # Managed HTTP providers resolve None through their dedicated
                 # moderation model, ignoring stale per-guild model overrides.
                 model=planner_model,
+                provider_model_override=provider_model_override,
                 json_mode=True,
             )
             if not raw_response:

@@ -1184,6 +1184,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         cog.bot = SimpleNamespace(user=SimpleNamespace(id=999))
         cog.ai = SimpleNamespace(
             prefers_relayrouter=True,
+            prefers_aimodel=True,
             _call=AsyncMock(
                 side_effect=[
                     (
@@ -1224,11 +1225,15 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         planner_prompt = cog.ai._call.await_args_list[0].args[0][0]["content"]
         self.assertIn("PermissionOverwrite iteration yields", planner_prompt)
         self.assertIn("send_bounded", planner_prompt)
+        self.assertIn("never reinterpret public as every channel", planner_prompt)
 
         self.assertIsNotNone(plan)
         self.assertEqual(plan["summary"], "Count server members")
         self.assertEqual(len(plan["code_sha256"]), 64)
         self.assertEqual(cog.ai._call.await_count, 2)
+        self.assertTrue(
+            cog.ai._call.await_args.kwargs["provider_model_override"].endswith("claude-opus-4.8")
+        )
         self.assertIsNone(cog.ai._call.await_args.kwargs["model"])
         second_prompt = cog.ai._call.await_args_list[1].args[0][1]["content"]
         self.assertIn("failed preflight", second_prompt)

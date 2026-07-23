@@ -549,6 +549,7 @@ class AIClient:
         session_key: Optional[str] = None,
         session_name: Optional[str] = None,
         long_answer: bool = False,
+        provider_model_override: Optional[str] = None,
     ) -> Optional[str]:
         if self.prefers_aimodel:
             if not _aimodel_api_enabled():
@@ -558,7 +559,7 @@ class AIClient:
                 temperature=temperature,
                 max_tokens=max_tokens,
                 # Moderation must not inherit stale per-guild model overrides.
-                model=_AIMODEL_MODERATION_MODEL,
+                model=provider_model_override or _AIMODEL_MODERATION_MODEL,
                 json_mode=json_mode,
                 allow_multimodal=allow_multimodal,
             )

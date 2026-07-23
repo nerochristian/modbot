@@ -357,6 +357,26 @@ def test_aimodel_provider_routes_before_legacy_providers(monkeypatch):
     client._call_digitalocean.assert_not_awaited()
 
 
+def test_aimodel_provider_accepts_internal_execution_model_override(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client.provider = "aimodel"
+    client.config = AIConfig(provider="aimodel")
+    client._call_aimodel = AsyncMock(return_value="opus")
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
+
+    result = asyncio.run(
+        client._call(
+            [{"role": "user", "content": "retry invalid generated code"}],
+            temperature=0.0,
+            max_tokens=64,
+            provider_model_override="accounts/aimodel/models/claude-opus-4.8",
+        )
+    )
+
+    assert result == "opus"
+    assert client._call_aimodel.await_args.kwargs["model"].endswith("claude-opus-4.8")
+
+
 def test_relayrouter_timeouts_are_bounded(monkeypatch):
     monkeypatch.setenv("RELAYROUTER_TIMEOUT", "1")
     monkeypatch.setenv("RELAYROUTER_VISION_TIMEOUT", "999")
