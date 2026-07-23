@@ -2861,7 +2861,7 @@ class AIModeration(commands.Cog):
             "guild deletion, and unbounded execution. setattr is available only for boolean flags on "
             "discord.Permissions instances; prefer Permissions.update(flag=False) when changing several flags. "
             "getattr is available for public non-lifecycle attributes and rejects private or sensitive names. "
-            "The code must be self-contained discord.py 2.x code."
+            "The code must be self-contained discord.py 2.x code and remain under 16,000 characters."
         )
         user_prompt = (
             "<request>\n"
@@ -2894,7 +2894,7 @@ class AIModeration(commands.Cog):
                     {"role": "user", "content": user_prompt + validation_feedback},
                 ],
                 temperature=0.1,
-                max_tokens=3500,
+                max_tokens=6000,
                 # Managed HTTP providers resolve None through their dedicated
                 # moderation model, ignoring stale per-guild model overrides.
                 model=planner_model,
