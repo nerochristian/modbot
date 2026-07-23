@@ -122,6 +122,10 @@ def validate_python_code(code: str) -> CodeType:
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
             if node.func.attr in {"create_task", "ensure_future"}:
                 raise PythonSafetyError("Generated code cannot start detached background tasks.")
+            if node.func.attr == "threads":
+                raise PythonSafetyError(
+                    "Discord channel.threads is a list property; iterate it without calling or awaiting it."
+                )
             if node.func.attr == "delete" and isinstance(node.func.value, ast.Name):
                 if node.func.value.id == "guild":
                     raise PythonSafetyError("Generated code cannot delete the current server.")

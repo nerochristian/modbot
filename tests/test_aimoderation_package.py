@@ -440,6 +440,10 @@ class AIModerationPackageTests(unittest.IsolatedAsyncioTestCase):
             with self.subTest(code=code), self.assertRaises(PythonSafetyError):
                 validate_python_code(code)
 
+    def test_python_runtime_rejects_calling_channel_threads_property(self) -> None:
+        with self.assertRaisesRegex(PythonSafetyError, "list property"):
+            validate_python_code("items = await channel.threads()\nreturn len(items)")
+
     async def test_execute_python_runs_digest_bound_plan_and_returns_result(self) -> None:
         code = "return 'Created 3 channels.'"
         values = {
