@@ -185,7 +185,7 @@ class AIActionConfirmationView(discord.ui.LayoutView):
         result = await self.cog._execute_decision(
             self.source_message,
             self.decision,
-            send_result=True,
+            send_result=False,
         )
         if self.confirmation_message:
             status_title = "Action Completed" if result.success else "Action Failed"
@@ -3065,8 +3065,10 @@ class AIModeration(commands.Cog):
             "For threads, channel.threads is a list property (iterate it directly, never call or await it), while "
             "await guild.active_threads() returns a list of Thread objects that must also be iterated directly. "
             "channel.archived_threads(limit=...) is an async iterator. "
-            "Always use send_bounded for generated reports, exports, backups, rollback snapshots, or any variable "
-            "content that could exceed 2,000 characters; never pass such content directly to channel.send. "
+            "Return a string at the end of the code to summarize the outcome. This returned string will be displayed "
+            "directly in the confirmation embed. Always use send_bounded for generated reports, exports, backups, "
+            "rollback snapshots, or any variable content that exceeds 1,500 characters; never pass such content "
+            "directly to channel.send. Do not use send_bounded for short summaries; return them instead. "
             "For bulk mutations, catch discord.HTTPException per item, continue safely, and include the failures "
             "in the concise result so one Discord rejection cannot hide completed changes. "
             "Treat staff/protected members as including the guild owner, administrators, members with moderation "
