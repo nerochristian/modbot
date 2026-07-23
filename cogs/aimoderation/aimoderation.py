@@ -683,7 +683,7 @@ class AIModeration(commands.Cog):
             r"(?:show|summarize|export|count|find|rank|compare|identify|calculate|route|escalate|"
             r"correlate|close|assign|audit|require)\b.*\b(?:warnings?|history|timeouts?|bans?|cases?|appeals?|channels?|reports?|"
             r"tickets?|audit|moderation|permissions?|members?|roles?|emojis?|stickers?|announcements?|"
-            r"configuration|overwrites?|activity|requests?|complaints?|problems?|disputes?|actions?|settings?)\b",
+            r"threads?|suggestions?|configuration|overwrites?|activity|requests?|complaints?|problems?|disputes?|actions?|settings?)\b",
             r"mark\s+as\s+age[ -]?restricted\b",
             r"rename\b.*\b(?:channel|role|emoji|sticker|server)\b",
             r"rename\s+with\s+an?\s+archived\s+prefix\b",

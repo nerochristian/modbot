@@ -1272,6 +1272,15 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         cog.reply.assert_awaited_once()
         self.assertIn("AI moderation is disabled", cog.reply.await_args.kwargs["content"])
 
+    def test_duplicate_suggestion_thread_request_is_advanced_action(self) -> None:
+        cog = object.__new__(AIModeration)
+
+        self.assertTrue(
+            cog._looks_like_advanced_action_request(
+                "find duplicate suggestion threads, keep the oldest, and archive the duplicates"
+            )
+        )
+
     def test_purge_parser_preserves_last_message_count(self) -> None:
         cog = object.__new__(AIModeration)
 
