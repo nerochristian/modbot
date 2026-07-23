@@ -1228,6 +1228,8 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("never reinterpret public as every channel", planner_prompt)
         self.assertIn("including text, forum, media", planner_prompt)
         self.assertIn("lookback=datetime.timedelta", planner_prompt)
+        self.assertIn("guild owner, administrators", planner_prompt)
+        self.assertIn("a prose summary alone is not an export", planner_prompt)
 
         self.assertIsNotNone(plan)
         self.assertEqual(plan["summary"], "Count server members")

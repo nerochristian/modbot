@@ -2879,6 +2879,12 @@ class AIModeration(commands.Cog):
             "content that could exceed 3,800 characters; never pass such content directly to channel.send. "
             "For bulk mutations, catch discord.HTTPException per item, continue safely, and include the failures "
             "in the concise result so one Discord rejection cannot hide completed changes. "
+            "Treat staff/protected members as including the guild owner, administrators, members with moderation "
+            "permissions (manage_guild, manage_channels, manage_messages, moderate_members, kick_members, or "
+            "ban_members), explicitly protected roles, and members at or above the bot's highest role. Never warn "
+            "or punish those members in a request that excludes staff or protected roles. "
+            "If the request says export, create and attach the requested machine-readable CSV or JSON data with "
+            "send_bounded; a prose summary alone is not an export. "
             "The code must be self-contained discord.py 2.x code and remain under 16,000 characters."
         )
         user_prompt = (

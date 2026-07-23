@@ -95,7 +95,13 @@ def _make_activity_fetcher(guild: discord.Guild) -> Callable:
     return fetch_recent_activity
 
 
-async def _log_execution(ctx: ToolContext, preview: str, log_embed: discord.Embed) -> None:
+async def _log_execution(
+    ctx: ToolContext,
+    preview: str,
+    log_embed: discord.Embed,
+    *,
+    code: str = "",
+) -> None:
     await ctx.cog.log_action(
         message=ctx.message, action="execute_python",
         actor=ctx.actor, target=None,
@@ -109,6 +115,16 @@ async def _log_execution(ctx: ToolContext, preview: str, log_embed: discord.Embe
         log_channel = await logging_cog.get_log_channel(ctx.guild, "automod")
         if log_channel:
             await logging_cog.safe_send_log(log_channel, log_embed)
+            if len(code) > 1_000:
+                digest = execution_digest(code)[:12]
+                attachment = discord.File(
+                    io.BytesIO(code.encode("utf-8")),
+                    filename=f"ai-execution-{digest}.py",
+                )
+                await log_channel.send(
+                    f"Full generated code for execution `{digest}`.",
+                    file=attachment,
+                )
     except Exception:
         logger.debug("Failed to send Python execution details to automod log", exc_info=True)
 
@@ -332,7 +348,7 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
         log_embed = discord.Embed(title="Python Execution Timed Out", color=discord.Color.orange(), timestamp=_now())
         log_embed.add_field(name="Execution ID", value=f"`{digest[:12]}`", inline=True)
         log_embed.add_field(name="Code", value=f"```py\n{code[:_MAX_CODE_DISPLAY]}\n```", inline=False)
-        await _log_execution(ctx, f"Timed out after {_TIMEOUT}s", log_embed)
+        await _log_execution(ctx, f"Timed out after {_TIMEOUT}s", log_embed, code=code)
         return ToolResult.fail(f"Execution timed out after {_TIMEOUT}s. Try a smaller scope or break into steps.")
     except Exception as exc:
         logger.exception("Owner-authorized AI Python execution failed (id=%s)", digest[:12])
@@ -341,7 +357,7 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
         log_embed.add_field(name="Execution ID", value=f"`{digest[:12]}`", inline=True)
         log_embed.add_field(name="Error", value=f"```\n{error_preview[:_MAX_PREVIEW]}\n```", inline=False)
         log_embed.add_field(name="Code", value=f"```py\n{code[:_MAX_CODE_DISPLAY]}\n```", inline=False)
-        await _log_execution(ctx, error_preview, log_embed)
+        await _log_execution(ctx, error_preview, log_embed, code=code)
         return ToolResult.fail(
             f"The generated action failed during execution ({type(exc).__name__}). "
             f"Execution ID: `{digest[:12]}`. Details are in automod logs."
@@ -359,5 +375,5 @@ async def handle_execute_python(ctx: ToolContext) -> ToolResult:
     log_embed.add_field(name="Result", value=f"```\n{preview}\n```", inline=False)
     log_embed.add_field(name="Actor", value=f"{ctx.actor.mention} (`{ctx.actor.id}`)", inline=True)
 
-    await _log_execution(ctx, preview, log_embed)
+    await _log_execution(ctx, preview, log_embed, code=code)
     return ToolResult.ok(f"Done: {preview}\nExecution ID: `{digest[:12]}`.")
