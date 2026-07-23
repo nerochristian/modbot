@@ -282,6 +282,53 @@ def test_aimodel_falls_back_in_configured_order(monkeypatch):
     ]
 
 
+def test_aimodel_does_not_retry_other_models_after_balance_error(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client._block_until = None
+    client._block_reason = None
+    client._post_responses_api = AsyncMock(
+        side_effect=RuntimeError("AiModel HTTP 402: balance exhausted")
+    )
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
+
+    with pytest.raises(RuntimeError, match="HTTP 402"):
+        asyncio.run(
+            client._call_aimodel(
+                [{"role": "user", "content": "hello"}],
+                temperature=0.7,
+                max_tokens=64,
+                model="accounts/aimodel/models/glm-5.1",
+                fallback_models=("accounts/aimodel/models/minimax-m2.7",),
+            )
+        )
+
+    assert client._post_responses_api.await_count == 1
+
+
+def test_aimodel_conversation_ignores_stale_dashboard_model(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client.provider = "aimodel"
+    client.config = AIConfig(provider="aimodel", model="old-dashboard-model")
+    client._call_aimodel = AsyncMock(return_value="chat")
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
+    monkeypatch.setattr(
+        ai_client_module,
+        "_AIMODEL_CHAT_MODEL",
+        "accounts/aimodel/models/glm-5.1",
+    )
+
+    result = asyncio.run(
+        client._conversation_via_http(
+            "hello",
+            model="old-dashboard-model",
+        )
+    )
+
+    assert result == "chat"
+    assert client.conversation_model_name("old-dashboard-model") == "accounts/aimodel/models/glm-5.1"
+    assert client._call_aimodel.await_args.kwargs["model"] == "accounts/aimodel/models/glm-5.1"
+
+
 def test_aimodel_provider_routes_before_legacy_providers(monkeypatch):
     client = AIClient.__new__(AIClient)
     client.provider = "aimodel"
