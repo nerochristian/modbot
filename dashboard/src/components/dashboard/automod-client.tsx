@@ -1,18 +1,20 @@
 'use client'
 
 import { useState } from 'react'
-import { Pencil, ShieldOff, ShieldAlert, X } from 'lucide-react'
+import { LayoutTemplate, Pencil, ShieldOff, ShieldAlert, X } from 'lucide-react'
 import { PageHeader } from '@/components/dashboard/page-header'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge, severityTone, severityRail, TickMeter } from '@/components/ui/badge'
 import { Switch } from '@/components/ui/switch'
 import { Select } from '@/components/ui/select'
-import { Field, Input } from '@/components/ui/input'
+import { Field, Input, Textarea } from '@/components/ui/input'
 import { Modal, ConfirmDialog } from '@/components/ui/modal'
 import { EmptyState, ErrorState } from '@/components/ui/empty-state'
 import { Spinner } from '@/components/ui/spinner'
 import { useToast } from '@/components/ui/toast'
+import { AUTOMOD_DEFINITIONS } from '@/lib/automod-contract'
+import { AUTOMOD_TEMPLATES, type AutomodTemplate } from '@/lib/automod-templates'
 import { useConfigStore } from '@/lib/store'
 import { useApi } from '@/lib/use-api'
 import { formatNumber, cn } from '@/lib/utils'
@@ -150,6 +152,8 @@ export function AutomodClient() {
         }
       />
 
+      <TemplateGallery canWrite={canWrite} onApplied={refetch} />
+
       {error && !data ? (
         <Card>
           <ErrorState onRetry={refetch} description={error} />
@@ -167,7 +171,7 @@ export function AutomodClient() {
           />
         </Card>
       ) : data ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" data-tour="automod-rules">
           {data.data.map((rule) => (
             <Card
               key={rule.id}
