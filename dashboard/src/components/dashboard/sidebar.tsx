@@ -182,7 +182,7 @@ export function Sidebar({
   const visible = NAV_ITEMS.filter((i) => permissions.includes(i.permission));
 
   return (
-    <aside className="hidden h-screen w-[304px] shrink-0 border-r border-border bg-surface/82 shadow-[18px_0_60px_-40px_rgba(0,0,0,.8)] backdrop-blur-xl lg:flex">
+    <aside className="sticky top-0 hidden h-screen w-[304px] shrink-0 self-start border-r border-border bg-surface/82 shadow-[18px_0_60px_-40px_rgba(0,0,0,.8)] backdrop-blur-xl lg:flex">
       <ServerRail guilds={guilds} current={currentGuild} />
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Logo */}

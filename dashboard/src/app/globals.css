@@ -21,6 +21,7 @@
   --border: #d9dce2;
   --border-strong: #c2c7d0;
   --foreground: #14161c; /* cool near-black ink */
+  --ink: #12161f; /* deep ink — scrims and overlays */
   --muted: #565d6b;
   --muted-2: #878e9c;
 
@@ -113,6 +114,7 @@
   --border: rgba(148, 163, 184, 0.14);
   --border-strong: rgba(148, 163, 184, 0.24);
   --foreground: #f7f9ff;
+  --ink: #02050e;
   --muted: #9aa8c1;
   --muted-2: #66748d;
 
@@ -149,6 +151,7 @@
   --color-border: var(--border);
   --color-border-strong: var(--border-strong);
   --color-foreground: var(--foreground);
+  --color-ink: var(--ink);
   --color-muted: var(--muted);
   --color-muted-2: var(--muted-2);
   --color-accent: var(--accent);
