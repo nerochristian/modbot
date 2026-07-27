@@ -48,9 +48,9 @@ const TRIGGER_LABELS: Record<string, string> = {
   duplicates: 'Duplicate messages',
   fast_messages: 'Fast messages',
   emoji_spam: 'Emoji spam',
-  wall_spam: 'Wall spam',
+  wall_spam: 'Wall / spacer spam',
   attachments: 'Attachments',
-  unicode_spam: 'Unicode spam',
+  unicode_spam: 'Zalgo & symbol spam',
   new_accounts: 'New accounts',
   raid: 'Raid protection',
 }
@@ -58,7 +58,6 @@ const TRIGGER_LABELS: Record<string, string> = {
 const ACTION_LABELS: Record<string, string> = {
   none: 'No action',
   log: 'Log only',
-  delete: 'Delete',
   warn: 'Warn',
   timeout: 'Timeout',
   kick: 'Kick',
@@ -71,7 +70,6 @@ type Tone = 'neutral' | 'accent' | 'mint' | 'success' | 'warning' | 'danger' | '
 const ACTION_TONE: Record<string, Tone> = {
   none: 'neutral',
   log: 'neutral',
-  delete: 'neutral',
   warn: 'info',
   timeout: 'warning',
   kick: 'warning',
@@ -210,6 +208,11 @@ export function AutomodClient() {
                     <Badge tone={ACTION_TONE[rule.action] ?? 'neutral'}>
                       {ACTION_LABELS[rule.action] ?? rule.action}
                     </Badge>
+                    {rule.deleteMessage && (
+                      <span className="text-muted-2" title="Flagged messages are deleted">
+                        + deletes msgs
+                      </span>
+                    )}
                   </div>
                   <span className="tabular-nums text-xs text-muted">{formatNumber(rule.hits)} hits</span>
                 </div>

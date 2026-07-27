@@ -409,6 +409,11 @@ export async function submitAppealWithToken(token: string, answers: Record<strin
 export async function notifyAppealDecision(input: { userId: string; appealNumber: number; caseNumber: number; status: 'approved' | 'denied'; decision?: string | null; staffChannelId?: string | null }) {
   const description = input.status === 'approved' ? 'Staff approved your appeal and reversed the supported punishment.' : 'Staff denied your appeal. The original moderation action remains in place.'
   const payload = { embeds: [{ title: `Appeal ${input.status}`, description, color: input.status === 'approved' ? 0x57f287 : 0xed4245, fields: [{ name: 'Appeal', value: `APL-${String(input.appealNumber).padStart(4, '0')}`, inline: true }, { name: 'Case', value: `CASE-${String(input.caseNumber).padStart(4, '0')}`, inline: true }, ...(input.decision ? [{ name: 'Staff response', value: input.decision.slice(0, 1024), inline: false }] : [])], footer: { text: 'Docket · Appeals review queue' } }], allowed_mentions: { parse: [] } }
-  await discordMessage(await dmChannel(input.userId), payload).catch(() => undefined)
+  try {
+    const channelId = await dmChannel(input.userId)
+    await discordMessage(channelId, payload).catch(() => undefined)
+  } catch {
+    // Appellant has DMs closed — the review itself already succeeded.
+  }
   if (input.staffChannelId) await discordMessage(input.staffChannelId, { ...payload, content: `Appeal APL-${String(input.appealNumber).padStart(4, '0')} was **${input.status}**.` }).catch(() => undefined)
 }
