@@ -554,6 +554,18 @@ class AIClient:
         if self.prefers_aimodel:
             if not _aimodel_api_enabled():
                 raise RuntimeError("AiModel is missing AIMODEL_API_KEY.")
+                
+            if allow_multimodal and _deepseek_api_enabled():
+                logger.info("AiModel does not support vision yet; routing directly to DeepSea fallback.")
+                return await self._call_deepseek_api(
+                    messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    model=model,
+                    json_mode=json_mode,
+                    allow_multimodal=allow_multimodal,
+                )
+
             try:
                 return await self._call_aimodel(
                     messages,
@@ -566,21 +578,17 @@ class AIClient:
                     fallback_models=() if provider_model_override else None,
                 )
             except Exception:
-                if not _relayrouter_api_enabled():
+                if not _deepseek_api_enabled():
                     raise
                 logger.warning(
-                    "AiModel call failed; trying RelayRouter availability fallback.",
+                    "AiModel call failed; trying DeepSea (DeepSeek HTTP) availability fallback.",
                     exc_info=True,
                 )
-                return await self._call_relayrouter(
+                return await self._call_deepseek_api(
                     messages,
                     temperature=temperature,
                     max_tokens=max_tokens,
-                    model=(
-                        _RELAYROUTER_VISION_MODEL
-                        if allow_multimodal
-                        else _RELAYROUTER_MODERATION_MODEL
-                    ),
+                    model=model,
                     json_mode=json_mode,
                     allow_multimodal=allow_multimodal,
                 )
