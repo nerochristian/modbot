@@ -127,6 +127,8 @@ class LinkRule(Rule):
     name = "links"
     setting_key = "automod_links_enabled"
     priority = 80
+    # Fallback only — the live list is the configurable `automod_links_blocklist`
+    # setting (editable from the dashboard AutoMod page).
     suspicious_domains = ("bit.ly", "tinyurl.com", "tiny.one", "cutt.ly", "rb.gy", "is.gd", "grabify.link", "iplogger.org")
 
     async def check(self, message: Any, settings: dict[str, Any], *, dry_run: bool = False) -> Optional[RuleMatch]:
@@ -134,12 +136,14 @@ class LinkRule(Rule):
         if not domains:
             return None
         allowlist = list(settings.get("automod_links_whitelist", []) or []) + list(settings.get("automod_whitelisted_domains", []) or [])
+        configured = settings.get("automod_links_blocklist")
+        blocklist = [str(domain) for domain in configured] if isinstance(configured, (list, tuple)) and configured else list(self.suspicious_domains)
         mode = str(settings.get("automod_links_mode", "dangerous")).strip().lower()
         blocked: list[str] = []
         for domain in domains:
             if any(domain_matches(domain, allowed) for allowed in allowlist):
                 continue
-            if mode == "allowlist" or any(domain_matches(domain, suspicious) for suspicious in self.suspicious_domains):
+            if mode == "allowlist" or any(domain_matches(domain, suspicious) for suspicious in blocklist):
                 blocked.append(domain)
         if not blocked:
             return None
