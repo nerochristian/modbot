@@ -270,6 +270,216 @@ export function AutomodClient() {
   )
 }
 
+function TemplateGallery({ canWrite, onApplied }: { canWrite: boolean; onApplied: () => void }) {
+  const [active, setActive] = useState<AutomodTemplate | null>(null)
+
+  return (
+    <>
+      <Card className="mb-4 p-4" data-tour="automod-templates">
+        <div className="flex items-center gap-3">
+          <span className="grid size-9 place-items-center rounded-lg border border-accent-line bg-accent-soft text-accent">
+            <LayoutTemplate className="size-4" />
+          </span>
+          <div>
+            <h2 className="font-display text-sm font-semibold text-foreground">Start from a template</h2>
+            <p className="text-xs text-muted">Apply a full rule set in one click — every toggle, word list, and link list stays editable.</p>
+          </div>
+        </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+          {AUTOMOD_TEMPLATES.map((template) => {
+            const enabledCount = AUTOMOD_DEFINITIONS.filter((d) => template.settings[d.enabledKey] === true).length
+            return (
+              <button
+                key={template.id}
+                type="button"
+                onClick={() => setActive(template)}
+                className="group rounded-xl border border-border bg-surface-2/40 p-3 text-left transition hover:border-accent-line hover:bg-accent-soft/30"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-display text-sm font-semibold text-foreground">{template.name}</p>
+                  <Badge tone="accent">{enabledCount}/15 on</Badge>
+                </div>
+                <p className="mt-0.5 text-xs text-muted">{template.tagline}</p>
+              </button>
+            )
+          })}
+        </div>
+      </Card>
+      {active && (
+        <TemplateSheet
+          template={active}
+          canWrite={canWrite}
+          onClose={() => setActive(null)}
+          onApplied={() => {
+            setActive(null)
+            onApplied()
+          }}
+        />
+      )}
+    </>
+  )
+}
+
+function TemplateSheet({
+  template,
+  canWrite,
+  onClose,
+  onApplied,
+}: {
+  template: AutomodTemplate
+  canWrite: boolean
+  onClose: () => void
+  onApplied: () => void
+}) {
+  const toast = useToast()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [draft, setDraft] = useState<Record<string, unknown>>(() => structuredClone(template.settings))
+
+  const ruleActions = (draft.automod_rule_actions ?? {}) as Record<string, { action?: string; delete?: boolean }>
+
+  function setKey(key: string, value: unknown) {
+    setDraft((current) => ({ ...current, [key]: value }))
+  }
+  function setRuleAction(id: string, action: string) {
+    setDraft((current) => ({
+      ...current,
+      automod_rule_actions: { ...((current.automod_rule_actions as object) ?? {}), [id]: { action, delete: true } },
+    }))
+  }
+  const listValue = (key: string) => (Array.isArray(draft[key]) ? (draft[key] as string[]).join(', ') : '')
+  const setList = (key: string, text: string) => setKey(key, text.split(',').map((item) => item.trim()).filter(Boolean))
+
+  async function apply() {
+    setBusy(true)
+    setError(null)
+    try {
+      const res = await fetch('/api/automod/template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: template.name, settings: draft }),
+      })
+      const body = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setError(body.error ?? 'Could not apply template')
+        return
+      }
+      toast.success(`${template.name} template applied`)
+      onApplied()
+    } catch {
+      setError('Network error')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title={`${template.name} template`}
+      description={template.description}
+      size="xl"
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button onClick={apply} loading={busy} disabled={!canWrite}>
+            Apply template
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-5">
+        {error && (
+          <div className="rounded-lg border border-danger/30 bg-danger-soft px-3 py-2 text-sm text-danger">{error}</div>
+        )}
+
+        <div>
+          <p className="mb-2 font-mono text-[0.625rem] font-bold uppercase tracking-[0.18em] text-accent">Rules on / off</p>
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            {AUTOMOD_DEFINITIONS.map((definition) => {
+              const on = draft[definition.enabledKey] === true
+              return (
+                <div
+                  key={definition.id}
+                  className={cn(
+                    'flex items-center justify-between gap-2 rounded-lg border px-3 py-2 transition-colors',
+                    on ? 'border-accent-line bg-accent-soft/30' : 'border-border bg-surface-2/40 opacity-70',
+                  )}
+                  title={definition.description}
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">{definition.name}</p>
+                    {on && (
+                      <Select
+                        className="mt-1 h-7 w-32 text-xs"
+                        options={ACTION_OPTIONS}
+                        value={ruleActions[definition.id]?.action ?? 'warn'}
+                        onChange={(event) => setRuleAction(definition.id, event.target.value)}
+                      />
+                    )}
+                  </div>
+                  <Switch
+                    checked={on}
+                    disabled={!canWrite}
+                    onChange={(value) => setKey(definition.enabledKey, value)}
+                    label={`Toggle ${definition.name}`}
+                  />
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <p className="font-mono text-[0.625rem] font-bold uppercase tracking-[0.18em] text-accent">Lists & link policy</p>
+          <Field label="Blocked words" hint="Comma-separated. Matched even through leetspeak and spacing tricks.">
+            <Textarea
+              className="font-mono text-xs"
+              value={listValue('automod_badwords')}
+              onChange={(event) => setList('automod_badwords', event.target.value)}
+              placeholder="Leave empty for no word filter"
+              rows={2}
+            />
+          </Field>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Blocked domains" hint="IP grabbers, sketchy shorteners, scam lookalikes.">
+              <Textarea
+                className="font-mono text-xs"
+                value={listValue('automod_links_blocklist')}
+                onChange={(event) => setList('automod_links_blocklist', event.target.value)}
+                placeholder="grabify.link, iplogger.org, bit.ly"
+                rows={3}
+              />
+            </Field>
+            <Field label="Allowed domains (always pass)" hint="These always bypass the link filter.">
+              <Textarea
+                className="font-mono text-xs"
+                value={listValue('automod_links_whitelist')}
+                onChange={(event) => setList('automod_links_whitelist', event.target.value)}
+                placeholder="discord.com, youtube.com, github.com"
+                rows={3}
+              />
+            </Field>
+          </div>
+          <Field label="Link filter mode" hint="Dangerous blocks the list above; allowlist blocks every link except allowed domains.">
+            <Select
+              options={[
+                { label: 'Block dangerous links only', value: 'dangerous' },
+                { label: 'Allow only listed domains', value: 'allowlist' },
+              ]}
+              value={String(draft.automod_links_mode ?? 'dangerous')}
+              onChange={(event) => setKey('automod_links_mode', event.target.value)}
+            />
+          </Field>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
 function RuleBuilder({
   rule,
   onClose,
