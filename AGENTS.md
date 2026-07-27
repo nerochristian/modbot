@@ -166,31 +166,27 @@ required.** The manual commands at the bottom are only a fallback/override.
   `journalctl -u modbot-autoupdate.service -f`.
 
 ### Mahito (`/root/modbot`, PM2 `modbot`) — auto-deploys `github.com/nerochristian/guild@guild`
+- **Status: LIVE (verified 2026-07-27).** `/root/modbot` is a git checkout
+  tracking `origin/guild`, and a test push auto-deployed + restarted Mahito
+  end-to-end. Push to `guild` and Mahito self-deploys within ~a minute.
 - `mahito-autodeploy.timer` (enabled, every 60s) → `mahito-autodeploy.service`
   → `bash /usr/local/sbin/mahito-autodeploy.sh`, env from
   `/etc/mahito-autodeploy.env` (`MAHITO_APP_DIR=/root/modbot`,
   `MAHITO_BRANCH=guild`, `MAHITO_PM2_APP=modbot`).
 - On a new `origin/guild` commit it discards local tracked edits (but keeps
-  untracked `.env`/`data`/`db`/`backups`), fast-forwards, installs deps only if
-  `requirements.txt` changed, compile-checks, then `pm2 restart modbot`. It
-  rolls back on failure and never forces a non-fast-forward.
-- **One-time bootstrap (still pending):** `/root/modbot` was historically
-  deployed by hand (SCP) and is not yet a git checkout, so the timer is armed
-  but **dormant** (logs `Not a git repo yet`) until the live code is pushed to
-  the `guild` branch and the directory is linked to `origin/guild`. A
-  pre-change backup is at `/root/modbot.pre-autodeploy.tgz`. After the first
-  Live→GitHub push, link it once and verify the tree is clean before relying on
-  ff-only pulls:
-  ```bash
-  ssh root@docketbot.xyz 'cd /root/modbot && \
-    git init -b guild && \
-    git remote add origin https://github.com/nerochristian/guild.git && \
-    git fetch origin guild && \
-    git reset origin/guild && \
-    git branch --set-upstream-to=origin/guild guild && \
-    git status --porcelain'
-  ```
-  Tail it with `journalctl -u mahito-autodeploy.service -f`.
+  untracked `.env`/`data`/`db`/`backups`/media), fast-forwards, installs deps
+  only if `requirements.txt` changed, compile-checks, then `pm2 restart
+  modbot`. It rolls back on failure and never forces a non-fast-forward.
+- Tail it with `journalctl -u mahito-autodeploy.service -f`.
+- **One-time bootstrap (done 2026-07-27):** the live production code was pushed
+  to `guild` (force, baseline `2c88e91`) and `/root/modbot` linked via
+  `git init`/`fetch`/`reset --hard origin/guild` (pre-change backup at
+  `/root/modbot.pre-autodeploy.tgz`). The repo `.gitignore` keeps secrets out of
+  git: `.env`, `credentials.json`, `*.db`, and `agent.md`/`askpass.bat`/
+  `deploy.py` (which hardcode the VPS password) are intentionally untracked.
+- **If you develop Mahito on another machine:** re-sync that repo with the
+  force-updated `guild` before your next push — `git fetch origin && git reset
+  --hard origin/guild` (or re-clone), because the branch history was rewritten.
 
 ### Manual DocketBot deploy (fallback / override)
 Only if auto-deploy is unavailable, drive the same flow by hand. Commit & push
