@@ -208,7 +208,7 @@ def test_aimodel_responses_success_and_json_mode(monkeypatch):
     assert result == "HELLO"
     args, kwargs = session.requests[0]
     assert args[0] == "https://aimodel.test/v1/responses"
-    assert kwargs["json"]["model"] == "accounts/aimodel/models/claude-opus-4.8"
+    assert kwargs["json"]["model"] == "accounts/aimodel/models/claude-fable-5"
     assert kwargs["json"]["input"] == [
         {"role": "system", "content": "Return JSON."},
         {"role": "user", "content": "Hello"},
@@ -266,7 +266,7 @@ def test_aimodel_falls_back_in_configured_order(monkeypatch):
             [{"role": "user", "content": "hello"}],
             temperature=0.7,
             max_tokens=64,
-            model="accounts/aimodel/models/claude-opus-4.8",
+            model="accounts/aimodel/models/claude-fable-5",
             fallback_models=("accounts/aimodel/models/minimax-m2.7",),
         )
     )
@@ -277,7 +277,7 @@ def test_aimodel_falls_back_in_configured_order(monkeypatch):
         for call in client._post_responses_api.await_args_list
     ]
     assert models == [
-        "accounts/aimodel/models/claude-opus-4.8",
+        "accounts/aimodel/models/claude-fable-5",
         "accounts/aimodel/models/minimax-m2.7",
     ]
 
@@ -297,7 +297,7 @@ def test_aimodel_does_not_retry_other_models_after_balance_error(monkeypatch):
                 [{"role": "user", "content": "hello"}],
                 temperature=0.7,
                 max_tokens=64,
-                model="accounts/aimodel/models/claude-opus-4.8",
+                model="accounts/aimodel/models/claude-fable-5",
                 fallback_models=("accounts/aimodel/models/minimax-m2.7",),
             )
         )
@@ -314,7 +314,7 @@ def test_aimodel_conversation_ignores_stale_dashboard_model(monkeypatch):
     monkeypatch.setattr(
         ai_client_module,
         "_AIMODEL_CHAT_MODEL",
-        "accounts/aimodel/models/claude-opus-4.8",
+        "accounts/aimodel/models/claude-fable-5",
     )
 
     result = asyncio.run(
@@ -325,14 +325,14 @@ def test_aimodel_conversation_ignores_stale_dashboard_model(monkeypatch):
     )
 
     assert result == "chat"
-    assert client.conversation_model_name("old-dashboard-model") == "accounts/aimodel/models/claude-opus-4.8"
-    assert client._call_aimodel.await_args.kwargs["model"] == "accounts/aimodel/models/claude-opus-4.8"
+    assert client.conversation_model_name("old-dashboard-model") == "accounts/aimodel/models/claude-fable-5"
+    assert client._call_aimodel.await_args.kwargs["model"] == "accounts/aimodel/models/claude-fable-5"
 
 
 def test_aimodel_provider_routes_before_legacy_providers(monkeypatch):
     client = AIClient.__new__(AIClient)
     client.provider = "aimodel"
-    client.config = AIConfig(provider="aimodel", model="accounts/aimodel/models/claude-opus-4.8")
+    client.config = AIConfig(provider="aimodel", model="accounts/aimodel/models/claude-fable-5")
     client._call_aimodel = AsyncMock(return_value="aimodel")
     client._call_relayrouter = AsyncMock(return_value="relay")
     client._deepseek_web = types.SimpleNamespace(enabled=True, chat=AsyncMock())
@@ -369,12 +369,12 @@ def test_aimodel_provider_accepts_internal_execution_model_override(monkeypatch)
             [{"role": "user", "content": "retry invalid generated code"}],
             temperature=0.0,
             max_tokens=64,
-            provider_model_override="accounts/aimodel/models/claude-opus-4.8",
+            provider_model_override="accounts/aimodel/models/claude-fable-5",
         )
     )
 
     assert result == "opus"
-    assert client._call_aimodel.await_args.kwargs["model"].endswith("claude-opus-4.8")
+    assert client._call_aimodel.await_args.kwargs["model"].endswith("claude-fable-5")
     assert client._call_aimodel.await_args.kwargs["fallback_models"] == ()
 
 

@@ -1310,7 +1310,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(plan["code_sha256"]), 64)
         self.assertEqual(cog.ai._call.await_count, 2)
         self.assertTrue(
-            cog.ai._call.await_args.kwargs["provider_model_override"].endswith("claude-opus-4.8")
+            cog.ai._call.await_args.kwargs["provider_model_override"].endswith("claude-fable-5")
         )
         self.assertIsNone(cog.ai._call.await_args.kwargs["model"])
         second_prompt = cog.ai._call.await_args_list[1].args[0][1]["content"]

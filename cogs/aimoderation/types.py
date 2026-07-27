@@ -122,7 +122,7 @@ def _default_ai_model() -> str:
         return (
             os.getenv("AIMODEL_MODERATION_MODEL")
             or os.getenv("AIMODEL_MODEL")
-            or "accounts/aimodel/models/claude-opus-4.8"
+            or "accounts/aimodel/models/claude-fable-5"
         ).strip()
     if provider in {"relay", "relayrouter", "relayrouter.org"}:
         return (

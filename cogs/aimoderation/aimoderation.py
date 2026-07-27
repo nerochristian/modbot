@@ -3139,7 +3139,7 @@ class AIModeration(commands.Cog):
             if attempt and getattr(self.ai, "prefers_aimodel", False):
                 provider_model_override = os.getenv(
                     "AIMODEL_EXECUTION_FALLBACK_MODEL",
-                    "accounts/aimodel/models/claude-opus-4.8",
+                    "accounts/aimodel/models/claude-fable-5",
                 ).strip()
             raw_response = await self.ai._call(
                 [
