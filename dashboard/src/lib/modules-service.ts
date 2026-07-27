@@ -391,6 +391,9 @@ export async function updateModuleSettings(
         throw new ModuleValidationError('Select at least one lockdown channel before using the lockdown response')
       }
     }
+    if (mergedSettings.guardian_nuke_action === 'quarantine' && !isDiscordSnowflake(mergedSettings.guardian_nuke_quarantine_role)) {
+      throw new ModuleValidationError('Select an anti-nuke quarantine role before using the quarantine response')
+    }
   }
   if (def.id === 'verification' && mergedSettings.voice_verification_enabled) {
     if (!isDiscordSnowflake(mergedSettings.waiting_verify_voice_channel)) {
