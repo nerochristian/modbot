@@ -49,6 +49,21 @@ class ManagementCommands:
             send_messages_in_threads=False,
         )
 
+    @staticmethod
+    def _parse_user_id(raw: str) -> int | None:
+        """Coerce a raw user ID or <@!>ID mention into an int, else None."""
+        if not raw:
+            return None
+        raw = raw.strip()
+        if match := re.search(r"<@!?(\d{17,20})>", raw):
+            return int(match.group(1))
+        try:
+            return int(raw)
+        except ValueError:
+            if match := re.search(r"\b(\d{17,20})\b", raw):
+                return int(match.group(1))
+            return None
+
     async def _sync_quarantine_overwrites(
         self,
         guild: discord.Guild,
@@ -1278,16 +1293,19 @@ class ManagementCommands:
 
     @commands.command(name="unban")
     @is_senior_mod()
-    async def unban_prefix(self, ctx: commands.Context, user_id: int, *, reason: str = "No reason"):
-        await self._unban_logic(ctx, user_id, reason)
+    async def unban_prefix(self, ctx: commands.Context, user_id: str, *, reason: str = "No reason"):
+        uid = self._parse_user_id(user_id)
+        if uid is None:
+            return await ctx.send(embed=ModEmbed.error("Error", "Invalid user ID or @mention."), delete_after=15)
+        await self._unban_logic(ctx, uid, reason)
 
     # Slash command - registered dynamically in __init__.py
-    async def unban_slash(self, interaction: discord.Interaction, user_id: str, reason: str = "No reason"):
-        try:
-             uid = int(user_id)
-             await self._unban_logic(interaction, uid, reason)
-        except ValueError:
-             await interaction.response.send_message(embed=ModEmbed.error("Error", "Invalid User ID."), ephemeral=True)
+    @app_commands.describe(user="The user to unban (@mention or ID)", user_id="User ID if you only have a raw ID", reason="Reason for the unban")
+    async def unban_slash(self, interaction: discord.Interaction, user: Optional[discord.User] = None, user_id: Optional[str] = None, reason: str = "No reason"):
+        target = user.id if user else self._parse_user_id(user_id or "")
+        if target is None:
+            return await interaction.response.send_message(embed=ModEmbed.error("Error", "Provide a user or user ID."), ephemeral=True)
+        await self._unban_logic(interaction, target, reason)
 
     @commands.command(name="softban", description="🧹 Ban and immediately unban to delete messages")
     @is_mod()
