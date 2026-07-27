@@ -550,6 +550,7 @@ class ModBot(commands.Bot):
         "aimod": ("aimod_enabled", False),
         "automod": ("automod_enabled", True),
         "antiraid": ("antiraid_enabled", False),
+        "guardian": ("guardian_nuke_enabled", False),
         "logging": ("logging_enabled", True),
         "tickets": ("tickets_enabled", False),
         "verification": ("verification_enabled", True),
