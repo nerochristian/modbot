@@ -797,3 +797,74 @@ export function discordMemberAvatarUrl(guildId: string, member: DiscordGuildMemb
   }
   return discordAvatarUrl(member.user)
 }
+
+export type ResolvedDiscordProfile = {
+  id: string
+  username: string
+  displayName: string
+  nickname: string | null
+  avatarUrl: string
+}
+
+function defaultAvatarUrl(userId: string): string {
+  const index = /^\d{15,22}$/.test(userId) ? Number((BigInt(userId) >> BigInt(22)) % BigInt(6)) : 0
+  return `https://cdn.discordapp.com/embed/avatars/${index}.png`
+}
+
+const RESOLVED_PROFILE_TTL_MS = 5 * 60_000
+const resolvedProfileCache = new Map<string, { profile: ResolvedDiscordProfile; expiresAt: number }>()
+
+/**
+ * Resolve a guild member (or, for banned/left users, the global Discord user)
+ * into a display profile: real avatar URL, username, and guild nickname.
+ * Results are cached briefly; resolution failures fall back to placeholders.
+ */
+export async function resolveDiscordProfile(guildId: string, userId: string): Promise<ResolvedDiscordProfile> {
+  const cacheKey = `${guildId}:${userId}`
+  const cached = resolvedProfileCache.get(cacheKey)
+  if (cached && cached.expiresAt > Date.now()) return cached.profile
+
+  const fallback: ResolvedDiscordProfile = {
+    id: userId,
+    username: userId,
+    displayName: `Discord user ${userId}`,
+    nickname: null,
+    avatarUrl: defaultAvatarUrl(userId),
+  }
+  let profile = fallback
+  const token = process.env.DISCORD_TOKEN?.trim()
+  if (token) {
+    try {
+      const member = await getBotGuildMember(guildId, userId)
+      profile = {
+        id: userId,
+        username: member.user.username,
+        displayName: member.nick || member.user.global_name || member.user.username,
+        nickname: member.nick,
+        avatarUrl: discordMemberAvatarUrl(guildId, member),
+      }
+    } catch {
+      try {
+        const user = await discordRequest<DiscordUser>(`/users/${userId}`, `Bot ${token}`)
+        profile = {
+          id: userId,
+          username: user.username,
+          displayName: user.global_name || user.username,
+          nickname: null,
+          avatarUrl: discordAvatarUrl(user),
+        }
+      } catch {
+        profile = fallback
+      }
+    }
+  }
+  resolvedProfileCache.set(cacheKey, { profile, expiresAt: Date.now() + RESOLVED_PROFILE_TTL_MS })
+  return profile
+}
+
+export async function resolveDiscordProfiles(guildId: string, userIds: readonly string[]): Promise<Map<string, ResolvedDiscordProfile>> {
+  const entries = await Promise.all(
+    [...new Set(userIds)].map(async (userId) => [userId, await resolveDiscordProfile(guildId, userId)] as const),
+  )
+  return new Map(entries)
+}

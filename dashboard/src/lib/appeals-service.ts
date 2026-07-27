@@ -5,6 +5,7 @@ import { ensureDashboardBackendSchema } from '@/lib/bot-schema'
 import { recordGuildAudit } from '@/lib/bot-audit'
 import { executeModerationReversal, type ModerationActor } from '@/lib/moderation-service'
 import { notifyAppealDecision } from '@/lib/appeal-portal-service'
+import { resolveDiscordProfile, resolveDiscordProfiles, type ResolvedDiscordProfile } from '@/lib/discord'
 import type { ListQuery } from '@/lib/api'
 
 type AppealRow = {
@@ -33,7 +34,7 @@ const SORTS: Record<string, string> = {
   submittedAt: 'submitted_at',
 }
 
-function present(row: AppealRow) {
+function present(row: AppealRow, profile?: ResolvedDiscordProfile) {
   let answers: Record<string, string> = {}
   try { answers = JSON.parse(row.answers_json || '{}') as Record<string, string> } catch { answers = {} }
   return {
@@ -51,8 +52,10 @@ function present(row: AppealRow) {
     member: {
       id: row.user_id,
       discordId: row.user_id,
-      username: row.user_id,
-      displayName: `Discord user ${row.user_id}`,
+      username: profile?.username ?? row.user_id,
+      displayName: profile?.displayName ?? `Discord user ${row.user_id}`,
+      nickname: profile?.nickname ?? null,
+      avatarUrl: profile?.avatarUrl ?? null,
       avatarColor: '#5865f2',
     },
     case: {
