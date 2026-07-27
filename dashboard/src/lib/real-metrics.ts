@@ -141,22 +141,39 @@ export async function getRealAnalytics(guild: ManagedGuild, days: number) {
   }
 }
 
+type OverviewResult = Awaited<ReturnType<typeof getRealAnalytics>>
+
+const EMPTY_ANALYTICS: OverviewResult = {
+  kpis: {
+    actions: { value: 0, delta: 0 },
+    automodBlocks: { value: 0, delta: 0 },
+    members: { value: 0, delta: 0 },
+    online: { value: 0, delta: 0 },
+    joins: { value: 0, delta: 0 },
+    leaves: { value: 0, delta: 0 },
+    bans: { value: 0, delta: 0 },
+    kicks: { value: 0, delta: 0 },
+    warns: { value: 0, delta: 0 },
+  },
+  series: {
+    actions: [],
+    automodBlocks: [],
+    members: [],
+    online: [],
+    joins: [],
+    leaves: [],
+    bans: [],
+    kicks: [],
+    warns: [],
+  },
+}
+
 export async function getRealOverview(guild: ManagedGuild, days: number) {
-  await ensureDashboardBackendSchema()
-  const analyticsPromise = getRealAnalytics(guild, days)
-  const [
-    analytics,
-    openCasesRows,
-    growthRows,
-    infractionRows,
-    watchlistRows,
-    automodRules,
-    activityRows,
-    channelRows,
-    pendingAppealRows,
-    databaseOk,
-  ] = await Promise.all([
-    analyticsPromise,
+  await ensureDashboardBackendSchema().catch(() => undefined)
+  // Every widget degrades independently: one failed query must not blank the
+  // whole overview.
+  const settled = await Promise.allSettled([
+    getRealAnalytics(guild, days),
     botQuery<{ value: string }>(
       'SELECT COUNT(*) AS value FROM cases WHERE guild_id = $1::bigint AND active = 1',
       [guild.id],
@@ -177,7 +194,7 @@ export async function getRealOverview(guild: ManagedGuild, days: number) {
          ON events.guild_id = $1::bigint
         AND events.created_at >= months.month
         AND events.created_at < months.month + INTERVAL '1 month'
-       GROUP BY months.month ORDER BY months.month`,
+        GROUP BY months.month ORDER BY months.month`,
       [guild.id],
     ),
     botQuery<{ name: string; value: string }>(
@@ -223,6 +240,21 @@ export async function getRealOverview(guild: ManagedGuild, days: number) {
     ),
     botDatabaseHealthy(),
   ])
+  const partial = settled.some((result) => result.status === 'rejected')
+  const unwrap = <T,>(index: number, fallback: T): T => {
+    const result = settled[index]
+    return result.status === 'fulfilled' ? (result.value as T) : fallback
+  }
+  const analytics = unwrap(0, EMPTY_ANALYTICS)
+  const openCasesRows = unwrap<{ value: string }[]>(1, [])
+  const growthRows = unwrap<{ label: string; joined: string; left: string }[]>(2, [])
+  const infractionRows = unwrap<{ name: string; value: string }[]>(3, [])
+  const watchlistRows = unwrap<{ id: string; score: number; warnings: string; messages: string; username: string }[]>(4, [])
+  const automodRules = unwrap(5, { data: [], totalHits: 0, activeCount: 0 } as Awaited<ReturnType<typeof listAutomodRules>>)
+  const activityRows = unwrap<{ id: string; actor_name: string; action: string; target: string; created_at: Date }[]>(6, [])
+  const channelRows = unwrap<{ channel_id: string; value: string }[]>(7, [])
+  const pendingAppealRows = unwrap<{ value: string }[]>(8, [])
+  const databaseOk = unwrap(9, false)
 
   const colors: Record<string, string> = {
     warn: 'var(--sev-low)',
