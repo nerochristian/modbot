@@ -840,6 +840,7 @@ class AIClient:
         provider_label: str,
         max_retries: int = 1,
         request_timeout: int = 90,
+        search: bool = False,
     ) -> Optional[str]:
         """POST to AiModel's Responses API with bounded transient retries."""
         request_input = self._responses_input(
@@ -855,6 +856,8 @@ class AIClient:
             "temperature": temperature,
             "max_output_tokens": max_tokens,
         }
+        if search:
+            payload["search"] = True
         if json_mode:
             payload["text"] = {"format": {"type": "json_object"}}
 
@@ -942,6 +945,7 @@ class AIClient:
         allow_multimodal: bool = False,
         fallback_models: Optional[Tuple[str, ...]] = None,
         max_retries: Optional[int] = None,
+        search: bool = False,
     ) -> Optional[str]:
         """Call AiModel's Responses API with ordered provider-local failover.
 
@@ -1000,6 +1004,7 @@ class AIClient:
                         multimodal=allow_multimodal
                     ),
                     max_retries=1 if max_retries is None else max(0, max_retries),
+                    search=search,
                 )
                 if result:
                     if index:
@@ -1986,6 +1991,7 @@ class AIClient:
         uses_native_search = bool(
             signals.mode == ConversationMode.RESEARCH
             and not web_context
+            and not (self.prefers_aimodel and _aimodel_api_enabled())
             and self._deepseek_web.enabled
         )
         if (
@@ -2081,6 +2087,7 @@ class AIClient:
                                 if image_context
                                 else _AIMODEL_CHAT_FALLBACK_MODELS
                             ),
+                            search=(signals.mode == ConversationMode.RESEARCH),
                         )
                     elif relay_primary:
                         selected_model = model or (
