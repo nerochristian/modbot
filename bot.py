@@ -1765,6 +1765,7 @@ class ModBot(commands.Bot):
             "cogs.ai_scheduler",
             "cogs.automod",
             "cogs.antiraid",
+            "cogs.guardian",
             "cogs.voice",
             "cogs.settings",
             "cogs.polls",
