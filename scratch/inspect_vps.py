@@ -1,10 +1,9 @@
-"""Read-only VPS inspection probe (deleted after use). UTF-8 safe."""
+"""Read-only VPS inspection probe #2 (deleted after use). UTF-8 safe."""
 from __future__ import annotations
 
 import os
 import sys
 
-# Force UTF-8 console output so systemd "●" glyphs don't crash cp1252 consoles.
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
@@ -15,7 +14,7 @@ USER = "root"
 PASSWORD = os.environ["MODBOT_VPS_PASS"]
 
 
-def run(cmd: str, *, timeout: int = 60) -> None:
+def run(cmd: str, *, timeout: int = 90) -> None:
     print(f"\n===== $ {cmd}", flush=True)
     stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout, get_pty=False)
     out = stdout.read().decode("utf-8", "replace")
@@ -34,31 +33,28 @@ print(f"Connecting to {USER}@{HOST} ...", flush=True)
 ssh.connect(HOST, username=USER, password=PASSWORD, timeout=30, allow_agent=False, look_for_keys=False)
 print("Connected.\n", flush=True)
 
-# --- soul-update machinery (who/what does it update?) ---
-print("########## soul-update machinery ##########")
-run("systemctl cat soul-update.service 2>/dev/null || echo NO_soul-update.service")
-run("systemctl cat soul-update.timer 2>/dev/null || echo NO_soul-update.timer")
-run("cat /etc/modbot-autoupdate.env 2>/dev/null || echo NO_/etc/modbot-autoupdate.env")
-run("cat /etc/soul-update.env 2>/dev/null || echo NO_/etc/soul-update.env")
+print("########## guild repo remote HEAD (from GitHub) ##########")
+run("git ls-remote https://github.com/nerochristian/guild 2>&1 | head -20")
 
-# --- Confirm existing DocketBot autoupdate is working ---
-print("\n########## DocketBot autoupdate recent log ##########")
-run("journalctl -u modbot-autoupdate.service -n 20 --no-pager 2>/dev/null || echo NO_autoupdate_log")
-run("systemctl is-enabled modbot-autoupdate.timer 2>/dev/null; systemctl is-active modbot-autoupdate.timer 2>/dev/null")
+print("\n########## /opt/soul/guild (dead clone, git state) ##########")
+run("cd /opt/soul/guild && git remote -v 2>&1 && echo '--- branch/head ---' && git rev-parse --abbrev-ref HEAD 2>&1 && git rev-parse --short HEAD 2>&1 && echo '--- dirty ---' && git status --porcelain --untracked-files=no 2>&1 && echo '(end dirty)'")
+run("ls -la /opt/soul/guild/ 2>&1 | head -30")
+run("echo '--- deploy.sh ---' && cat /opt/soul/guild/scripts/deploy.sh 2>&1 || echo NO_deploy_sh")
+run("systemctl is-active soul-bot.service 2>&1; systemctl is-enabled soul-update.timer 2>&1; systemctl is-active soul-update.timer 2>&1")
+run("id soul 2>&1 || echo NO_soul_user")
 
-# --- Mahito (/root/modbot) ---
-print("\n########## MAHITO (/root/modbot) ##########")
-run("cd /root/modbot && echo '--- remote ---' && git remote -v && echo '--- branch ---' && git rev-parse --abbrev-ref HEAD && git rev-parse --short HEAD")
-run("cd /root/modbot && echo '--- dirty tracked ---' && git status --porcelain --untracked-files=no && echo '(end dirty)'")
-run("ls -la /root/modbot/ 2>/dev/null | head -40")
-run("test -f /root/modbot/requirements.txt && echo HAS_requirements || echo NO_requirements")
-run("test -d /root/modbot/.venv && echo HAS_.venv || echo NO_.venv")
-run("cat /root/modbot/ecosystem.config.js 2>/dev/null || cat /root/modbot/ecosystem.config.cjs 2>/dev/null || echo NO_mahito_ecosystem_in_repo")
+print("\n########## Compare /opt/soul/guild vs /root/modbot (code identity) ##########")
+run("sha256sum /opt/soul/guild/bot.py /root/modbot/bot.py 2>&1")
+run("echo '--- diff -rq (py only, excl runtime) ---' && diff -rq --exclude=.git --exclude=.env --exclude=data --exclude=db --exclude=__pycache__ --exclude=modbot.db --exclude=backups --exclude=node_modules --exclude='*.pyc' /opt/soul/guild /root/modbot 2>&1 | head -40 && echo '(end diff)'")
 
-# --- PM2 ---
-print("\n########## PM2 ##########")
-run("command -v pm2 && pm2 -v")
-run("pm2 describe modbot 2>/dev/null | sed -n '1,50p' || echo NO_pm2_modbot")
+print("\n########## /root/modbot: is any file tracked in guild repo? full listing ##########")
+run("ls -la /root/modbot/cogs 2>&1 | head -40")
+run("cat /root/modbot/deploy.py 2>&1 | head -60 || echo NO_deploy_py")
+run("cat /root/modbot/Procfile 2>&1 || echo NO_procfile")
+
+print("\n########## PM2 ecosystem / startup ##########")
+run("cat /root/.pm2/dump.pm2 2>/dev/null | python3 -c \"import sys,json; d=json.load(sys.stdin); [print(p.get('name'), p.get('pm_cwd'), p.get('pm_exec_path')) for p in d]\" 2>&1 || echo NO_dump")
+run("systemctl cat pm2-root.service 2>&1 | head -20 || echo NO_pm2-root.service")
 
 ssh.close()
-print("\nInspection complete.", flush=True)
+print("\nInspection #2 complete.", flush=True)
