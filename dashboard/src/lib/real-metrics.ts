@@ -266,6 +266,7 @@ export async function getRealOverview(guild: ManagedGuild, days: number) {
   const openCases = number(openCasesRows[0]?.value)
 
   return {
+    partial,
     kpis: {
       actions: analytics.kpis.actions,
       openCases: { value: openCases, delta: 0 },
