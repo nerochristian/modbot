@@ -1,0 +1,158 @@
+=== root-modbot-git? ===
+NO_GIT
+
+=== root-modbot-revparse ===
+not a git repo
+
+=== root-modbot-git-status ===
+
+=== soul-guild-git ===
+dd15257
+origin	https://github.com/nerochristian/guild.git (fetch)
+origin	https://github.com/nerochristian/guild.git (push)
+ M bot.py
+
+=== guild-deploy-scripts? ===
+total 24
+drwxr-xr-x  2 soul soul 4096 Jun 19 16:18 .
+drwxr-xr-x 16 soul soul 4096 Jul 22 17:33 ..
+-rw-r--r--  1 soul soul 4371 Jun 19 13:20 DIGITALOCEAN.md
+-rw-r--r--  1 soul soul  499 Jun 19 13:20 nginx-soul.conf
+-rw-r--r--  1 soul soul  622 Jun 19 16:18 soul-bot.service
+__pycache__
+deploy.sh
+setup_emojis.py
+setup_pet_emojis.py
+split_emoji_sheet.py
+/opt/soul/guild/scripts/deploy.sh
+
+=== guild-agent.md ===
+# Global Agent Rules
+
+- **No Auxiliary Scripts**: Never write throwaway or scratch scripts (like `refactor.py`, `check_vps.py`, `patch_*.py`) to bypass normal workflows. Always execute destructive, atomic edits ONLY directly onto the existing, original source files using native built-in file editing capabilities (`replace_file_content` / `multi_replace_file_content`).
+- **Direct Server Inspection**: When checking or interacting with a remote server/VPS, do not create python wrapper scripts. Use direct, raw `ssh` commands within the terminal to inspect logs, manage services, and trigger scripts.
+
+# 0. SYSTEM ROLE & CORE DIRECTIVE
+You are an elite, hyper-optimized Principal Software Engineer operating with the velocity and precision of a native IDE compilation agent. Your absolute priority is deploying flawless, production-ready code instantly. 
+
+CRITICAL: You must NEVER use patchfiles. NEVER create new files with the word "patch" in the name (e.g., creating `patch_file.py` instead of editing `file.py`), nor generate partial diffs or loose text snippets. You execute destructive, atomic edits ONLY directly onto the existing, original source files. You operate on empirical verification, not assumptions. Aggressively delete any temporary or scratchpad files generated during the process.
+
+# 1.PIPELINE
+Maximize execution speed and eliminate syntax degradation by treating the codebase as an indexed string space:
+
+- **Phase A (Keyword Indexing & Target Isolation):** Bypass sequential file reading. Treat the codebase as a searchable index. Instantly pinpoint target lines in the existing source files by searching for unique token identifiers, exact function boundaries, or error-trace anchors. 
+- **Phase B (Direct In-Place Overwriting):** Perform clean, in-place overwrites directly on the targeted lines within the original file. Do not create a separate file to hold the changes. Do not leave placeholder comments, and do not break surrounding scope.
+- **Phase C (Laser-Focused Hostile Audit):** Run an instantaneous, line-by-line internal validation exclusively on the modified scope. Explicitly scan for:
+  - Scope pollution, unchecked null/undefined pointers, or broken brackets/syntax.
+  - Asynchronous race conditions or thread-safety violations.
+  - Boundary failures, off-by-one errors, and type mismatches.
+- **Phase D (Empirical Verification & Workspace Purge):** Trigger relevant syntax checkers or test suites to verify your changes. If verified, instantly delete any local scratch files used for drafting.
+
+# 2. SEAMLESS ERROR RECOVERY LOOP
+If a compilation, linting, or runtime error occurs:
+1. Halt execution instantly. No conversational filler or repetitive code outputs.
+2. Ingest the exact error trace.
+3. Use keyword/token-targeted search to locate the exact line of the failure in the original file.
+4. Formulate an evidence-based hypothesis, apply a direct correction to the source file, and re-run verification.
+
+# 3. REMOTE TELEMETRY & VPS DEBUGGING
+When remote errors are detected, initiate a secure connection to the designated telemetry node (vps is 162.243.9.88, password: Pokem0n2020nero). Extract the raw error trace, isolate the exact point of failure on the remote environment, and deploy a surgical fix immediately.
+
+=== pm2-modbot-full-desc ===
+ Describing process with id 6 - name modbot 
+┌───────────────────┬──────────────────────────────────┐
+│ status            │ online                           │
+│ name              │ modbot                           │
+│ namespace         │ default                          │
+│ version           │ N/A                              │
+│ restarts          │ 1                                │
+│ uptime            │ 50m                              │
+│ script path       │ /root/modbot/bot.py              │
+│ script args       │ N/A                              │
+│ error log path    │ /root/.pm2/logs/modbot-error.log │
+│ out log path      │ /root/.pm2/logs/modbot-out.log   │
+│ pid path          │ /root/.pm2/pids/modbot-6.pid     │
+│ interpreter       │ python3                          │
+│ interpreter args  │ N/A                              │
+│ script id         │ 6                                │
+│ exec cwd          │ /root/modbot                     │
+│ exec mode         │ fork_mode                        │
+│ node.js version   │ N/A                              │
+│ node env          │ N/A                              │
+│ watch & reload    │ ✘                                │
+│ unstable restarts │ 0                                │
+│ created at        │ 2026-07-27T01:49:37.039Z         │
+└───────────────────┴──────────────────────────────────┘
+ Divergent env variables from local env 
+┌────────────────┬──────────────────────────────────────┐
+│ PWD            │ /root/modbot                         │
+│ SSH_CONNECTION │ 69.160.102.198 46539 162.243.9.88 22 │
+│ SHLVL          │ 0                                    │
+│ XDG_SESSION_ID │ 9342                                 │
+│ SSH_CLIENT     │ 69.160.102.198 46539 22              │
+│ OLDPWD         │ /root                                │
+└────────────────┴──────────────────────────────────────┘
+
+ Add your own code metrics: http://bit.ly/code-metrics
+ Use `pm2 logs modbot [--lines 1000]` to display logs
+ Use `pm2 env 6` to display environment variables
+ Use `pm2 monit` to monitor CPU and Memory usage modbot
+
+=== guild-requirements ===
+/opt/soul/guild/requirements.txt
+/root/modbot/requirements.txt
+
+=== guild-venv ===
+/opt/soul/guild/.venv
+
+=== root-modbot-procfile ===
+web: python bot.py
+
+=== guild-local-files-diff-vs-root-modbot ===
+Only in /root/modbot: .modbot.lock
+Only in /root/modbot: LifeSimBot
+Files /opt/soul/guild/Procfile and /root/modbot/Procfile differ
+Files /opt/soul/guild/afk_system.py and /root/modbot/afk_system.py differ
+Files /opt/soul/guild/agent.md and /root/modbot/agent.md differ
+Files /opt/soul/guild/askpass.bat and /root/modbot/askpass.bat differ
+Only in /root/modbot/assets: actions
+Only in /opt/soul/guild/assets/profile_backgrounds: 1388268039195201677_1447385186512666646_9e31224ff2665badcf5bea43.png
+Only in /opt/soul/guild/assets/profile_backgrounds: 1388268039195201677_818836134309789708_4a72e1a18a4485a051e8acd2.gif
+Files /opt/soul/guild/auto_update_launcher.vbs and /root/modbot/auto_update_launcher.vbs differ
+Files /opt/soul/guild/auto_update_watcher.ps1 and /root/modbot/auto_update_watcher.ps1 differ
+Only in /root/modbot: backups
+Only in /root/modbot: cogs
+Only in /root/modbot: config.py
+Files /opt/soul/guild/custom_help.py and /root/modbot/custom_help.py differ
+Only in /root/modbot: data
+Only in /root/modbot: database.py
+Only in /root/modbot: db
+Files /opt/soul/guild/deploy.py and /root/modbot/deploy.py differ
+Files /opt/soul/guild/economy/__init__.py and /root/modbot/economy/__init__.py differ
+Files /opt/soul/guild/economy/admin.py and /root/modbot/economy/admin.py differ
+Files /opt/soul/guild/economy/casino.py and /root/modbot/economy/casino.py differ
+Files /opt/soul/guild/economy/core.py and /root/modbot/economy/core.py differ
+Files /opt/soul/guild/economy/crime.py and /root/modbot/economy/crime.py differ
+Files /opt/soul/guild/economy/earning.py and /root/modbot/economy/earning.py differ
+Files /opt/soul/guild/economy/pets.py and /root/modbot/economy/pets.py differ
+Files /opt/soul/guild/economy/shop.py and /root/modbot/economy/shop.py differ
+Files /opt/soul/guild/economy/trading.py and /root/modbot/economy/trading.py differ
+Files /opt/soul/guild/embed_lines.txt and /root/modbot/embed_lines.txt differ
+Files /opt/soul/guild/fun_commands.py and /root/modbot/fun_commands.py differ
+
+=== systemd-docket-autoupdate-timer ===
+active
+NEXT LEFT LAST                         PASSED UNIT                    ACTIVATES
+-       - Mon 2026-07-27 02:39:51 UTC 12s ago modbot-autoupdate.timer modbot-autoupdate.service
+
+1 timers listed.
+Pass --all to see loaded but inactive timers, too.
+
+=== etc-autoupdate-env ===
+MODBOT_APP_DIR=/opt/modbot
+MODBOT_REPO_URL=https://github.com/nerochristian/modbot.git
+MODBOT_BRANCH=main
+MODBOT_SERVICE=modbot
+
+=== pm2-dump-exists ===
+-rw-r--r-- 1 root root 15682 Jul 27 02:08 /root/.pm2/dump.pm2

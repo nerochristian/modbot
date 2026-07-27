@@ -1,0 +1,66 @@
+=== soul-guild-remote-url-detail ===
+origin	https://github.com/nerochristian/guild.git (fetch)
+origin	https://github.com/nerochristian/guild.git (push)
+
+=== soul-guild-can-push? dry-run ===
+fatal: could not read Username for 'https://github.com': No such device or address
+
+=== git-credential-store-file ===
+-rw-r--r-- 1 root root 36 Jun 23 12:18 /root/.gitconfig
+[safe]
+	directory = /opt/soul/guild
+
+=== LifeSimBot-tracked-on-guild? ===
+--- root-modbot LifeSimBot:
+bot.log
+bot.py
+cogs
+config.py
+data
+db
+life_sim.db
+services
+utils
+views
+
+=== backups-tracked? ===
+
+=== modbot-lock-tracked? ===
+
+=== now-file ===
+--- root:
+
+=== root-modbot-gitignore-vs-guild ===
+1,12c1,12
+< .env
+< credentials.json
+< __pycache__/
+< *.db
+< *.db-shm
+< *.db-wal
+< *.pyc
+< scratch_test_svg.py
+< test.png
+< test2.png
+< test_out.png
+< data/
+---
+> .env
+> credentials.json
+> __pycache__/
+> *.db
+> *.db-shm
+> *.db-wal
+> *.pyc
+> scratch_test_svg.py
+> test.png
+> test2.png
+> test_out.png
+> data/
+DIFFER
+
+=== ssh-key-scan-gh ===
+
+=== root-ssh-knownhosts ===
+
+=== pm2-modbot-env-gh ===
