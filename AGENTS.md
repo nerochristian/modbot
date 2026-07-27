@@ -77,12 +77,11 @@ different bot.
   sourced from the separate repo `github.com/nerochristian/guild` (branch
   `guild` — there is no `main`). Do NOT edit `/root/modbot` from this repo.
   **Correction (2026-07-27):** `/root/modbot` is NOT byte-identical to
-  `/opt/soul/guild/`, and it is not yet a git checkout — the live Mahito carries
-  trees the dead clone and the stale GitHub repo both lack (`cogs/`,
-  `config.py`, `database.py`, `utils/`, `src/`, `welcome_card.py`). It was
-  deployed by hand (SCP); git auto-deploy is now armed via
-  `mahito-autodeploy.timer` and goes live once GitHub holds the current code
-  (see §5).
+  `/opt/soul/guild/`, and it was historically not a git checkout — the live
+  Mahito carries trees the dead clone and the stale GitHub repo both lack
+  (`cogs/`, `config.py`, `database.py`, `utils/`, `src/`, `welcome_card.py`).
+  It is NOW a git checkout tracking `origin/guild` and auto-deploys via
+  `mahito-autodeploy.timer` (see §5).
 - **`/opt/soul/guild`** is a dead/inactive duplicate of Mahito (systemd
   `soul-bot.service` is inactive). Leave it alone unless explicitly asked.
 - **Do not restart the PM2 `modbot` app** to deploy DocketBot changes — that
