@@ -147,29 +147,69 @@ def build_panel() -> discord.ui.LayoutView:
 # await interaction.response.send_message(view=build_panel())
 ```
 
-## 5. MANDATORY DEPLOYMENT WORKFLOW (DocketBot)
-Whenever you modify the DocketBot code or configuration, follow this exact
-sequence to keep the live VPS and the GitHub repo in sync.
+## 5. DEPLOYMENT — AUTO-DEPLOY IS THE PRIMARY PATH (both bots)
 
-1. **Commit & push local**: Run `.\update.bat` in the local workspace to commit
-   and push to `origin/main` (repo `github.com/nerochristian/modbot`).
-2. **Deploy to VPS**: SSH in and fast-forward `/opt/modbot` to `origin/main`,
-   compile-check, then restart the systemd service:
-   ```bash
-   ssh root@docketbot.xyz 'cd /opt/modbot && \
-     git fetch --prune origin main && \
-     git reset --hard HEAD && \
-     git merge --ff-only origin/main && \
-     /opt/modbot/.venv/bin/python -m compileall -q bot.py cogs utils database.py config.py && \
-     systemctl restart modbot && \
-     sleep 5 && systemctl is-active --quiet modbot && echo MODBOT_ACTIVE || echo MODBOT_FAILED'
-   ```
-   The canonical script `scripts/vps_deploy.sh` encodes this flow (with dep
-   installs, dashboard rebuild, rollback, and a deploy lock). Prefer driving it
-   directly when present: `MODBOT_DEPLOY_RESET_DIRTY=1 scripts/vps_deploy.sh`.
-   The deploy runner `scripts/_vps_deploy_runner.py` wraps it over paramiko.
-3. **Verify**: `journalctl -u modbot -n 25 --no-pager` — confirm all cogs load,
-   0 failures, gateway connected, `Docket Support#5577` + `ModBot` online.
+Both bots self-deploy from GitHub roughly every 60 seconds via a systemd timer.
+**To ship a change you normally just `git push`; no manual SSH deploy is
+required.** The manual commands at the bottom are only a fallback/override.
+
+### DocketBot (this repo) — auto-deploys `github.com/nerochristian/modbot@main`
+- `modbot-autoupdate.timer` (enabled, every 60s) → `modbot-autoupdate.service`
+  → `bash /opt/modbot/scripts/vps_deploy.sh`, env from
+  `/etc/modbot-autoupdate.env` (`MODBOT_APP_DIR=/opt/modbot`,
+  `MODBOT_BRANCH=main`, `MODBOT_SERVICE=modbot`).
+- On a new `origin/main` commit it fast-forwards, installs deps, compile-checks
+  (`bot.py cogs utils database.py config.py`), `systemctl restart modbot`, and
+  reloads the PM2 dashboard. It rolls back on failure and refuses a dirty
+  tracked tree unless `MODBOT_DEPLOY_RESET_DIRTY=1`.
+- **So: run `.\update.bat` (commit+push to `origin/main`) and DocketBot deploys
+  itself within ~a minute.** Tail it with
+  `journalctl -u modbot-autoupdate.service -f`.
+
+### Mahito (`/root/modbot`, PM2 `modbot`) — auto-deploys `github.com/nerochristian/guild@guild`
+- `mahito-autodeploy.timer` (enabled, every 60s) → `mahito-autodeploy.service`
+  → `bash /usr/local/sbin/mahito-autodeploy.sh`, env from
+  `/etc/mahito-autodeploy.env` (`MAHITO_APP_DIR=/root/modbot`,
+  `MAHITO_BRANCH=guild`, `MAHITO_PM2_APP=modbot`).
+- On a new `origin/guild` commit it discards local tracked edits (but keeps
+  untracked `.env`/`data`/`db`/`backups`), fast-forwards, installs deps only if
+  `requirements.txt` changed, compile-checks, then `pm2 restart modbot`. It
+  rolls back on failure and never forces a non-fast-forward.
+- **One-time bootstrap (still pending):** `/root/modbot` was historically
+  deployed by hand (SCP) and is not yet a git checkout, so the timer is armed
+  but **dormant** (logs `Not a git repo yet`) until the live code is pushed to
+  the `guild` branch and the directory is linked to `origin/guild`. A
+  pre-change backup is at `/root/modbot.pre-autodeploy.tgz`. After the first
+  Live→GitHub push, link it once and verify the tree is clean before relying on
+  ff-only pulls:
+  ```bash
+  ssh root@docketbot.xyz 'cd /root/modbot && \
+    git init -b guild && \
+    git remote add origin https://github.com/nerochristian/guild.git && \
+    git fetch origin guild && \
+    git reset origin/guild && \
+    git branch --set-upstream-to=origin/guild guild && \
+    git status --porcelain'
+  ```
+  Tail it with `journalctl -u mahito-autodeploy.service -f`.
+
+### Manual DocketBot deploy (fallback / override)
+Only if auto-deploy is unavailable, drive the same flow by hand. Commit & push
+locally with `.\update.bat`, then SSH fast-forward + restart:
+```bash
+ssh root@docketbot.xyz 'cd /opt/modbot && \
+  git fetch --prune origin main && \
+  git reset --hard HEAD && \
+  git merge --ff-only origin/main && \
+  /opt/modbot/.venv/bin/python -m compileall -q bot.py cogs utils database.py config.py && \
+  systemctl restart modbot && \
+  sleep 5 && systemctl is-active --quiet modbot && echo MODBOT_ACTIVE || echo MODBOT_FAILED'
+```
+The canonical script `scripts/vps_deploy.sh` encodes this flow (dep installs,
+dashboard rebuild, rollback, deploy lock). The runner
+`scripts/_vps_deploy_runner.py` wraps it over paramiko.
+**Verify**: `journalctl -u modbot -n 25 --no-pager` — all cogs load, 0
+failures, gateway connected, `Docket Support#5577` + `ModBot` online.
 
 ### If the VPS tree is dirty
 `/opt/modbot` sometimes drifts (auto-update edits, stale untracked files). The
@@ -187,9 +227,11 @@ ssh root@docketbot.xyz 'cd /opt/modbot && \
 `/opt/modbot/.env` is gitignored and untracked, so resets never destroy secrets.
 
 ## 6. DO NOT TOUCH OTHER BOTS UNLESS ASKED
-- Mahito (`/root/modbot`, PM2 `modbot`) is a separate product. Deploying it is
-  out of scope for this repo. If asked, remember it is restarted with
-  `pm2 restart modbot`, NOT `systemctl restart modbot`.
+- Mahito (`/root/modbot`, PM2 `modbot`) is a separate product and repo
+  (`github.com/nerochristian/guild`, branch `guild`). It is restarted with
+  `pm2 restart modbot`, NOT `systemctl restart modbot`, and auto-deploys via
+  `mahito-autodeploy.timer` (see §5). Editing/deploying it is out of scope for
+  this repo unless explicitly asked.
 - The dashboard (PM2 `modbot-dashboard`) is part of DocketBot; rebuild via
   `scripts/vps_deploy.sh` or `pm2 startOrReload ecosystem.config.cjs --only
   modbot-dashboard --update-env` after `npm run build` in `dashboard/`.
