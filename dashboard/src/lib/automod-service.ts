@@ -64,7 +64,7 @@ export async function listAutomodRules(guildId: string) {
     return {
       id: definition.id,
       name: definition.name,
-      description: `Live ${definition.name.toLowerCase()} configuration from the bot runtime.`,
+      description: definition.description,
       trigger: definition.id,
       pattern: serializeAutomodPattern(definition, definition.pattern ? settings[definition.pattern.setting] : null),
       action,
@@ -101,7 +101,7 @@ export async function updateAutomodRule(guildId: string, idOrAlias: string, inpu
       ? { ...(existing as Record<string, unknown>) }
       : {}
     const current = parseAutomodPolicy(policies[definition.id], String(settings.automod_punishment ?? 'warn'))
-    const requestedAction = input.action ?? displayAutomodAction(current)
+    const requestedAction = input.action ?? current.action
     const normalized = requestedAction === 'mute' ? 'timeout' : requestedAction === 'delete' ? 'log' : requestedAction
     const policy: Record<string, unknown> = {
       action: normalized,

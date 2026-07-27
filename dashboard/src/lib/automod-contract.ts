@@ -1,4 +1,4 @@
-export const AUTOMOD_ACTIONS = ['none', 'log', 'warn', 'mute', 'timeout', 'kick', 'ban', 'delete'] as const
+export const AUTOMOD_ACTIONS = ['none', 'log', 'warn', 'mute', 'timeout', 'kick', 'ban'] as const
 export type AutomodAction = (typeof AUTOMOD_ACTIONS)[number]
 
 export type AutomodPolicy = {
@@ -17,27 +17,28 @@ type PatternDefinition = {
 export type AutomodDefinition = {
   id: string
   name: string
+  description: string
   enabledKey: string
   pattern?: PatternDefinition
   aliases: readonly string[]
 }
 
 export const AUTOMOD_DEFINITIONS: readonly AutomodDefinition[] = [
-  { id: 'badwords', name: 'Blocked words', enabledKey: 'automod_badwords_enabled', pattern: { setting: 'automod_badwords', kind: 'list' }, aliases: ['keyword', 'keywords', 'blocked_words'] },
-  { id: 'scams', name: 'Scam protection', enabledKey: 'automod_scam_protection', aliases: ['scam', 'phishing'] },
-  { id: 'spam', name: 'Spam protection', enabledKey: 'automod_spam_enabled', pattern: { setting: 'automod_spam_threshold', kind: 'integer', min: 2, max: 20 }, aliases: [] },
-  { id: 'links', name: 'Dangerous links', enabledKey: 'automod_links_enabled', aliases: ['link'] },
-  { id: 'invites', name: 'Discord invites', enabledKey: 'automod_invites_enabled', aliases: ['invite'] },
-  { id: 'mentions', name: 'Mention spam', enabledKey: 'automod_mentions_enabled', pattern: { setting: 'automod_max_mentions', kind: 'integer', min: 1, max: 50 }, aliases: ['mention_spam'] },
-  { id: 'caps', name: 'Excessive caps', enabledKey: 'automod_caps_enabled', pattern: { setting: 'automod_caps_percentage', kind: 'integer', min: 10, max: 100 }, aliases: [] },
-  { id: 'duplicates', name: 'Duplicate messages', enabledKey: 'automod_duplicates_enabled', pattern: { setting: 'automod_duplicate_threshold', kind: 'integer', min: 2, max: 20 }, aliases: [] },
-  { id: 'fast_messages', name: 'Fast messages', enabledKey: 'automod_fast_messages_enabled', pattern: { setting: 'automod_fast_message_threshold', kind: 'integer', min: 2, max: 20 }, aliases: ['fast_message'] },
-  { id: 'emoji_spam', name: 'Emoji spam', enabledKey: 'automod_emoji_spam_enabled', pattern: { setting: 'automod_emoji_spam_threshold', kind: 'integer', min: 2, max: 100 }, aliases: ['emoji'] },
-  { id: 'wall_spam', name: 'Wall spam', enabledKey: 'automod_wall_spam_enabled', pattern: { setting: 'automod_wall_spam_max_lines', kind: 'integer', min: 2, max: 100 }, aliases: ['wall'] },
-  { id: 'attachments', name: 'Attachment spam', enabledKey: 'automod_attachments_enabled', pattern: { setting: 'automod_attachment_threshold', kind: 'integer', min: 2, max: 20 }, aliases: ['attachment'] },
-  { id: 'unicode_spam', name: 'Unicode spam', enabledKey: 'automod_unicode_spam_enabled', pattern: { setting: 'automod_unicode_symbol_ratio', kind: 'integer', min: 1, max: 100 }, aliases: ['unicode'] },
-  { id: 'new_accounts', name: 'New accounts', enabledKey: 'automod_newaccount_enabled', pattern: { setting: 'automod_newaccount_days', kind: 'integer', min: 1, max: 365 }, aliases: ['new_account', 'identity'] },
-  { id: 'raid', name: 'Raid protection', enabledKey: 'automod_raid_enabled', pattern: { setting: 'automod_raid_join_threshold', kind: 'integer', min: 2, max: 100 }, aliases: ['raids'] },
+  { id: 'badwords', name: 'Blocked words', description: 'Blocks messages containing words on your blocklist. Catches leetspeak and spaced-out attempts to dodge the filter.', enabledKey: 'automod_badwords_enabled', pattern: { setting: 'automod_badwords', kind: 'list' }, aliases: ['keyword', 'keywords', 'blocked_words'] },
+  { id: 'scams', name: 'Scam protection', description: 'Blocks known scam phrases — free nitro, airdrops, QR-code logins — when they arrive with a link or invite.', enabledKey: 'automod_scam_protection', aliases: ['scam', 'phishing'] },
+  { id: 'spam', name: 'Spam protection', description: 'Blocks message flooding (too many messages in a few seconds) and repeated-character spam.', enabledKey: 'automod_spam_enabled', pattern: { setting: 'automod_spam_threshold', kind: 'integer', min: 2, max: 20 }, aliases: [] },
+  { id: 'links', name: 'Dangerous links', description: 'Blocks domains on your dangerous-links list (IP grabbers, sketchy shorteners), or every link not on your allowlist.', enabledKey: 'automod_links_enabled', aliases: ['link'] },
+  { id: 'invites', name: 'Discord invites', description: 'Blocks Discord server invites, including disguised ones like "discord dot gg". Allowlisted invites still pass.', enabledKey: 'automod_invites_enabled', aliases: ['invite'] },
+  { id: 'mentions', name: 'Mention spam', description: 'Blocks messages that ping too many people or roles at once.', enabledKey: 'automod_mentions_enabled', pattern: { setting: 'automod_max_mentions', kind: 'integer', min: 1, max: 50 }, aliases: ['mention_spam'] },
+  { id: 'caps', name: 'Excessive caps', description: 'Blocks SHOUTED messages — long messages written mostly in capital letters.', enabledKey: 'automod_caps_enabled', pattern: { setting: 'automod_caps_percentage', kind: 'integer', min: 10, max: 100 }, aliases: [] },
+  { id: 'duplicates', name: 'Duplicate messages', description: 'Blocks the same message sent over and over again in a short window.', enabledKey: 'automod_duplicates_enabled', pattern: { setting: 'automod_duplicate_threshold', kind: 'integer', min: 2, max: 20 }, aliases: [] },
+  { id: 'fast_messages', name: 'Fast messages', description: 'Blocks users firing off messages faster than a human normally would.', enabledKey: 'automod_fast_messages_enabled', pattern: { setting: 'automod_fast_message_threshold', kind: 'integer', min: 2, max: 20 }, aliases: ['fast_message'] },
+  { id: 'emoji_spam', name: 'Emoji spam', description: 'Blocks messages overloaded with emoji, custom or standard.', enabledKey: 'automod_emoji_spam_enabled', pattern: { setting: 'automod_emoji_spam_threshold', kind: 'integer', min: 2, max: 100 }, aliases: ['emoji'] },
+  { id: 'wall_spam', name: 'Wall / spacer spam', description: 'Blocks giant text walls and blank spacer messages — anything over ~1,800 characters, too many lines, or too many line breaks. Used to push chat content off screen.', enabledKey: 'automod_wall_spam_enabled', pattern: { setting: 'automod_wall_spam_max_lines', kind: 'integer', min: 2, max: 100 }, aliases: ['wall'] },
+  { id: 'attachments', name: 'Attachment spam', description: 'Blocks messages carrying too many files, or bursts of files dumped in a few seconds.', enabledKey: 'automod_attachments_enabled', pattern: { setting: 'automod_attachment_threshold', kind: 'integer', min: 2, max: 20 }, aliases: ['attachment'] },
+  { id: 'unicode_spam', name: 'Zalgo & symbol spam', description: 'Blocks glitchy "zalgo" text (stacked accents that corrupt lines above and below) and messages flooded with symbols or invisible characters.', enabledKey: 'automod_unicode_spam_enabled', pattern: { setting: 'automod_unicode_symbol_ratio', kind: 'integer', min: 1, max: 100 }, aliases: ['unicode'] },
+  { id: 'new_accounts', name: 'New accounts', description: 'Flags or punishes members whose Discord account is younger than the age you set — the classic alt-account filter.', enabledKey: 'automod_newaccount_enabled', pattern: { setting: 'automod_newaccount_days', kind: 'integer', min: 1, max: 365 }, aliases: ['new_account', 'identity'] },
+  { id: 'raid', name: 'Raid protection', description: 'Punishes join floods — too many members joining within a few seconds. For full raid defense see the Guardian module.', enabledKey: 'automod_raid_enabled', pattern: { setting: 'automod_raid_join_threshold', kind: 'integer', min: 2, max: 100 }, aliases: ['raids'] },
 ] as const
 
 const DEFINITION_BY_ID = new Map<string, AutomodDefinition>()
@@ -75,7 +76,8 @@ export function parseAutomodPolicy(value: unknown, fallbackAction = 'warn'): Aut
 }
 
 export function displayAutomodAction(policy: AutomodPolicy): AutomodAction {
-  if (policy.action === 'log' && policy.delete) return 'delete'
+  // Deletion is an independent toggle (the "Delete matched messages" switch),
+  // not an action — the action only controls the punishment.
   return policy.action
 }
 
