@@ -101,8 +101,9 @@ export async function listGuildAppeals(guildId: string, query: ListQuery) {
       [guildId],
     ),
   ])
+  const profiles = await resolveDiscordProfiles(guildId, rows.map((row) => row.user_id))
   return {
-    data: rows.map(present),
+    data: rows.map((row) => present(row, profiles.get(row.user_id))),
     total: Number(totals[0]?.value ?? 0),
     pending: Number(pending[0]?.value ?? 0),
   }
@@ -170,10 +171,12 @@ export async function reviewGuildAppeal(input: {
     )
     return {
       kind: 'ok' as const,
-      appeal: { ...present({ ...existing, ...result.rows[0] }), status: input.status },
+      row: { ...existing, ...result.rows[0] } as AppealRow,
       notification: { userId: existing.user_id, appealNumber: existing.appeal_number, caseNumber: existing.case_number, status: input.status, decision: input.decision, staffChannelId: existing.staff_channel_id },
     }
   })
-  if (outcome.kind === 'ok') await notifyAppealDecision(outcome.notification)
-  return outcome.kind === 'ok' ? { kind: 'ok' as const, appeal: outcome.appeal } : outcome
+  if (outcome.kind !== 'ok') return outcome
+  const profile = await resolveDiscordProfile(input.guildId, outcome.notification.userId)
+  await notifyAppealDecision(outcome.notification)
+  return { kind: 'ok' as const, appeal: { ...present(outcome.row, profile), status: input.status } }
 }
