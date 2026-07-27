@@ -718,7 +718,7 @@ function SettingsSheet({
 const FIELD_HELP: Record<Module['special'] & string, string> = {
   moderation: 'Set the action policy, staff access, public responses, and warning escalation in one place.',
   aimod: 'Control how Docket interprets requests, gathers context, and confirms high-impact actions.',
-  antiraid: 'Define the join signal, automatic response, quarantine path, and incident routing.',
+  antiraid: 'Guardian covers both fronts: raid detection for join floods, and anti-nuke tripwires that strip rogue admins before they burn the server down.',
   appeals: 'Open a secure case-bound form, choose the staff review route, and shape the questions members answer.',
   verification: 'Build the member verification path, including its roles, panel channel, logs, and voice gate.',
   whitelist: 'Choose rejection behavior and maintain the exact member allowlist enforced on join.',
@@ -1347,22 +1347,40 @@ const OPERATIONAL_SECTIONS: Record<OperationalSpecial, OperationalSectionDefinit
   ],
   antiraid: [
     {
-      register: 'SIGNAL / 01',
+      register: 'RAID / 01',
       title: 'Raid signal',
-      description: 'Define the join burst that Docket treats as coordinated activity and the response cooldown.',
+      description: 'Define the join burst that Guardian treats as coordinated activity and the response cooldown.',
       keys: ['antiraid_join_threshold', 'antiraid_join_seconds', 'antiraid_cooldown_seconds'],
     },
     {
-      register: 'RESPONSE / 02',
-      title: 'Containment path',
+      register: 'RAID / 02',
+      title: 'Raid containment',
       description: 'Choose the immediate response, the policy for later joins, and the exact containment resources.',
       keys: ['antiraid_action', 'antiraid_raidmode_action', 'antiraid_quarantine_role', 'lockdown_channels'],
     },
     {
-      register: 'INTEL / 03',
-      title: 'Scoring & record',
-      description: 'Tune optional AI scoring and route the finalized incident record to staff.',
-      keys: ['antiraid_ai_enabled', 'antiraid_ai_min_confidence', 'antiraid_override_ai_action', 'antiraid_log_channel'],
+      register: 'RAID / 03',
+      title: 'AI scoring',
+      description: 'Tune optional AI scoring of coordinated join patterns before enforcement.',
+      keys: ['antiraid_ai_enabled', 'antiraid_ai_min_confidence', 'antiraid_override_ai_action'],
+    },
+    {
+      register: 'NUKE / 04',
+      title: 'Anti-nuke response',
+      description: 'Arm the rogue-admin tripwires and choose what happens when one fires. Owner and bots are always exempt.',
+      keys: ['guardian_nuke_enabled', 'guardian_nuke_action', 'guardian_nuke_quarantine_role', 'guardian_nuke_log_channel', 'guardian_nuke_cooldown_seconds'],
+    },
+    {
+      register: 'NUKE / 05',
+      title: 'Destruction tripwires',
+      description: 'How many channel/role deletions, bans, kicks, or webhook creations inside the window stop the offender.',
+      keys: ['guardian_channel_delete_threshold', 'guardian_channel_delete_window', 'guardian_channel_create_threshold', 'guardian_channel_create_window', 'guardian_role_delete_threshold', 'guardian_role_delete_window', 'guardian_ban_threshold', 'guardian_ban_window', 'guardian_kick_threshold', 'guardian_kick_window', 'guardian_webhook_create_threshold', 'guardian_webhook_create_window'],
+    },
+    {
+      register: 'NUKE / 06',
+      title: 'Permission hijack & bypass',
+      description: 'Trip on admin-level permission grants, choose which tripwires are watched, and exempt trusted roles.',
+      keys: ['guardian_dangerous_grant_threshold', 'guardian_dangerous_grant_window', 'guardian_watch_channel_delete', 'guardian_watch_channel_create', 'guardian_watch_role_delete', 'guardian_watch_ban', 'guardian_watch_kick', 'guardian_watch_webhook_create', 'guardian_watch_dangerous_grant', 'guardian_ignored_roles', 'antiraid_log_channel'],
     },
   ],
   verification: [
