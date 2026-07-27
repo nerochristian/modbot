@@ -110,5 +110,9 @@ export function handleError(error: unknown) {
     )
   }
   console.error(error)
+  if (process.env.NODE_ENV !== 'production') {
+    const detail = error instanceof Error ? error.message : String(error)
+    return NextResponse.json({ error: 'Internal server error', detail }, { status: 500 })
+  }
   return apiError('Internal server error', 500)
 }
