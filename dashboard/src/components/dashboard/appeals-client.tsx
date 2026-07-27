@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Download, Scale } from 'lucide-react'
 import { PageHeader } from '@/components/dashboard/page-header'
+import { MemberIdentity } from '@/components/dashboard/member-identity'
 import { SearchBox, SortableTH, ColumnsMenu } from '@/components/dashboard/table-toolbar'
 import { SavedViews } from '@/components/dashboard/saved-views'
 import { Card } from '@/components/ui/card'
@@ -256,15 +257,7 @@ function renderCell(a: Appeal, key: string) {
         </span>
       )
     case 'member':
-      return (
-        <div className="flex items-center gap-3">
-          <Avatar name={a.member.displayName} color={a.member.avatarColor} size="sm" />
-          <div className="min-w-0">
-            <p className="truncate font-medium text-foreground">{a.member.displayName}</p>
-            <p className="truncate text-xs text-muted">@{a.member.username}</p>
-          </div>
-        </div>
-      )
+      return <MemberIdentity member={a.member} size="sm" />
     case 'caseRef':
       return (
         <div className="min-w-0">
@@ -354,13 +347,7 @@ function AppealReview({
     >
       <div className="space-y-4">
         {/* Member */}
-        <div className="flex items-center gap-3">
-          <Avatar name={appeal.member.displayName} color={appeal.member.avatarColor} size="md" />
-          <div className="min-w-0">
-            <p className="truncate font-medium text-foreground">{appeal.member.displayName}</p>
-            <p className="mono-id truncate text-xs text-muted">{appeal.member.discordId}</p>
-          </div>
-        </div>
+        <MemberIdentity member={appeal.member} size="md" />
 
         {/* Linked case */}
         <div className="rounded-lg border border-border p-3">
