@@ -103,10 +103,10 @@ export async function updateAutomodRule(guildId: string, idOrAlias: string, inpu
       : {}
     const current = parseAutomodPolicy(policies[definition.id], String(settings.automod_punishment ?? 'warn'))
     const requestedAction = input.action ?? current.action
-    const normalized = requestedAction === 'mute' ? 'timeout' : requestedAction === 'delete' ? 'log' : requestedAction
+    const normalized = requestedAction === 'mute' ? 'timeout' : requestedAction
     const policy: Record<string, unknown> = {
       action: normalized,
-      delete: input.deleteMessage ?? (requestedAction === 'delete' ? true : current.delete),
+      delete: input.deleteMessage ?? current.delete,
     }
     const duration = input.durationSeconds ?? current.duration
     if (normalized === 'timeout' && duration) policy.duration = Math.max(60, Math.min(2_419_200, Math.trunc(duration)))
