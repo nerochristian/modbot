@@ -88,12 +88,14 @@ export async function getRealAnalytics(guild: ManagedGuild, days: number) {
     joins,
     leaves,
     bans,
+    kicks,
     warns,
     actionsSeries,
     automodSeries,
     joinsSeries,
     leavesSeries,
     bansSeries,
+    kicksSeries,
     warnsSeries,
   ] = await Promise.all([
     periodCount(guild.id, days, 'cases'),
@@ -101,12 +103,14 @@ export async function getRealAnalytics(guild: ManagedGuild, days: number) {
     periodCount(guild.id, days, 'guild_member_events', "AND event_type = 'join'"),
     periodCount(guild.id, days, 'guild_member_events', "AND event_type = 'leave'"),
     periodCount(guild.id, days, 'cases', "AND LOWER(action) = 'ban'"),
+    periodCount(guild.id, days, 'cases', "AND LOWER(action) = 'kick'"),
     periodCount(guild.id, days, 'cases', "AND LOWER(action) = 'warn'"),
     dailySeries(guild.id, days, 'cases'),
     dailySeries(guild.id, days, 'automod_events'),
     dailySeries(guild.id, days, 'guild_member_events', "AND events.event_type = 'join'"),
     dailySeries(guild.id, days, 'guild_member_events', "AND events.event_type = 'leave'"),
     dailySeries(guild.id, days, 'cases', "AND LOWER(events.action) = 'ban'"),
+    dailySeries(guild.id, days, 'cases', "AND LOWER(events.action) = 'kick'"),
     dailySeries(guild.id, days, 'cases', "AND LOWER(events.action) = 'warn'"),
   ])
   const memberCount = guild.memberCount ?? 0
@@ -120,6 +124,7 @@ export async function getRealAnalytics(guild: ManagedGuild, days: number) {
       joins,
       leaves,
       bans,
+      kicks,
       warns,
     },
     series: {
@@ -130,6 +135,7 @@ export async function getRealAnalytics(guild: ManagedGuild, days: number) {
       joins: joinsSeries,
       leaves: leavesSeries,
       bans: bansSeries,
+      kicks: kicksSeries,
       warns: warnsSeries,
     },
   }
