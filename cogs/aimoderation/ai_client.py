@@ -857,7 +857,7 @@ class AIClient:
             "max_output_tokens": max_tokens,
         }
         if search:
-            payload["search"] = True
+            payload["research"] = True
         if json_mode:
             payload["text"] = {"format": {"type": "json_object"}}
 
