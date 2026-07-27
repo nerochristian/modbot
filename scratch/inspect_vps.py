@@ -1,8 +1,12 @@
-"""Read-only VPS inspection probe (deleted after use)."""
+"""Read-only VPS inspection probe (deleted after use). UTF-8 safe."""
 from __future__ import annotations
 
 import os
 import sys
+
+# Force UTF-8 console output so systemd "●" glyphs don't crash cp1252 consoles.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 import paramiko
 
@@ -30,23 +34,17 @@ print(f"Connecting to {USER}@{HOST} ...", flush=True)
 ssh.connect(HOST, username=USER, password=PASSWORD, timeout=30, allow_agent=False, look_for_keys=False)
 print("Connected.\n", flush=True)
 
-# --- DocketBot (/opt/modbot) ---
-print("########## DOCKETBOT (/opt/modbot) ##########")
-run("cd /opt/modbot && echo '--- remote ---' && git remote -v && echo '--- branch ---' && git rev-parse --abbrev-ref HEAD && git rev-parse --short HEAD")
-run("cd /opt/modbot && echo '--- dirty tracked ---' && git status --porcelain --untracked-files=no && echo '(end dirty)'")
-run("ls -la /opt/modbot/scripts/ 2>/dev/null")
-run("test -f /opt/modbot/scripts/vps_deploy.sh && echo DEPLOY_SCRIPT_PRESENT || echo DEPLOY_SCRIPT_MISSING")
-run("systemctl cat modbot 2>/dev/null | head -40")
+# --- soul-update machinery (who/what does it update?) ---
+print("########## soul-update machinery ##########")
+run("systemctl cat soul-update.service 2>/dev/null || echo NO_soul-update.service")
+run("systemctl cat soul-update.timer 2>/dev/null || echo NO_soul-update.timer")
+run("cat /etc/modbot-autoupdate.env 2>/dev/null || echo NO_/etc/modbot-autoupdate.env")
+run("cat /etc/soul-update.env 2>/dev/null || echo NO_/etc/soul-update.env")
 
-# --- Existing auto-update machinery ---
-print("\n########## EXISTING AUTO-UPDATE MACHINERY ##########")
-run("systemctl list-timers --all --no-pager 2>/dev/null | head -40")
-run("systemctl cat modbot-autoupdate.service 2>/dev/null || echo NO_modbot-autoupdate.service")
-run("systemctl cat modbot-autoupdate.timer 2>/dev/null || echo NO_modbot-autoupdate.timer")
-run("systemctl list-units --type=service --all --no-pager 2>/dev/null | grep -i -E 'update|deploy|autodeploy|github' || echo NO_update_units")
-run("crontab -l 2>/dev/null || echo NO_root_crontab")
-run("ls -la /etc/cron.d/ 2>/dev/null")
-run("grep -rIl -E 'modbot|guild|mahito|deploy' /etc/cron.d/ /etc/cron.daily/ /etc/cron.hourly/ 2>/dev/null || echo NO_cron_matches")
+# --- Confirm existing DocketBot autoupdate is working ---
+print("\n########## DocketBot autoupdate recent log ##########")
+run("journalctl -u modbot-autoupdate.service -n 20 --no-pager 2>/dev/null || echo NO_autoupdate_log")
+run("systemctl is-enabled modbot-autoupdate.timer 2>/dev/null; systemctl is-active modbot-autoupdate.timer 2>/dev/null")
 
 # --- Mahito (/root/modbot) ---
 print("\n########## MAHITO (/root/modbot) ##########")
@@ -55,14 +53,12 @@ run("cd /root/modbot && echo '--- dirty tracked ---' && git status --porcelain -
 run("ls -la /root/modbot/ 2>/dev/null | head -40")
 run("test -f /root/modbot/requirements.txt && echo HAS_requirements || echo NO_requirements")
 run("test -d /root/modbot/.venv && echo HAS_.venv || echo NO_.venv")
+run("cat /root/modbot/ecosystem.config.js 2>/dev/null || cat /root/modbot/ecosystem.config.cjs 2>/dev/null || echo NO_mahito_ecosystem_in_repo")
 
 # --- PM2 ---
 print("\n########## PM2 ##########")
 run("command -v pm2 && pm2 -v")
-run("pm2 jlist 2>/dev/null")
-run("pm2 describe modbot 2>/dev/null | head -60 || echo NO_pm2_modbot")
-run("cat /root/modbot/ecosystem.config.* 2>/dev/null || echo NO_mahito_ecosystem")
-run("cat /opt/modbot/dashboard/ecosystem.config.cjs 2>/dev/null || echo NO_dashboard_ecosystem")
+run("pm2 describe modbot 2>/dev/null | sed -n '1,50p' || echo NO_pm2_modbot")
 
 ssh.close()
 print("\nInspection complete.", flush=True)
