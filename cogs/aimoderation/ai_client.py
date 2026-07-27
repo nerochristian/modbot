@@ -671,6 +671,71 @@ class AIClient:
             allow_multimodal=allow_multimodal,
         )
 
+    async def call_bounded_completion(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        temperature: float,
+        max_tokens: int,
+        request_timeout: int,
+        max_retries: int = 0,
+    ) -> Optional[str]:
+        """Provider-aware single-shot completion with a hard per-request budget.
+
+        Unlike ``_call`` (which applies full failover + browser fallback and is
+        built for interactive moderation), this makes ONE attempt against the
+        configured provider with ``max_retries`` (default 0) and a strict
+        ``request_timeout``. It is meant for callers that wrap it in their own
+        ``asyncio.wait_for`` (e.g. ``/profile``) and need the inner budget to
+        be strictly less than the outer cap so a degraded provider fails
+        deterministically at the request boundary instead of grinding past the
+        outer timeout and surfacing a misleading ``TimeoutError``.
+
+        Routes to the provider that ``is_available`` actually reports as ready,
+        not a hardcoded one — so a bot configured for DeepSeek/Galaxy
+        (``AI_PROVIDER=deepsea``) no longer hits a "missing AIMODEL_API_KEY"
+        RuntimeError here.
+        """
+        common_kwargs: Dict[str, Any] = {
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "max_retries": max_retries,
+            "request_timeout": request_timeout,
+        }
+
+        if self.prefers_aimodel and _aimodel_api_enabled():
+            return await self._call_aimodel(
+                messages,
+                json_mode=False,
+                fallback_models=(),
+                **common_kwargs,
+            )
+
+        if self.prefers_relayrouter and _relayrouter_api_enabled():
+            return await self._call_relayrouter(messages, **common_kwargs)
+
+        if self.prefers_deepseek_http and _deepseek_api_enabled():
+            return await self._call_deepseek_api(messages, **common_kwargs)
+
+        if _DO_API_KEY:
+            return await self._call_digitalocean(messages, **common_kwargs)
+
+        # Last resort: the authenticated DeepSeek web lane, bounded by the
+        # same per-request timeout the caller requested.
+        if self._deepseek_web.enabled:
+            prompt_parts: List[str] = []
+            for message in messages:
+                role = str(message.get("role") or "user").upper()
+                content = self._stringify_web_content(message.get("content"))
+                if content:
+                    prompt_parts.append(f"[{role}]\n{content}")
+            return await asyncio.wait_for(
+                self._deepseek_web.chat("\n\n".join(prompt_parts)),
+                timeout=float(request_timeout),
+            )
+
+        raise RuntimeError("No AI provider is available for this request.")
+
     @staticmethod
     def _canonical_aimodel_model(model: str) -> str:
         """Normalize AiModel aliases to the resource IDs required by its API."""
@@ -868,8 +933,16 @@ class AIClient:
         json_mode: bool = False,
         allow_multimodal: bool = False,
         fallback_models: Optional[Tuple[str, ...]] = None,
+        max_retries: Optional[int] = None,
     ) -> Optional[str]:
-        """Call AiModel's Responses API with ordered provider-local failover."""
+        """Call AiModel's Responses API with ordered provider-local failover.
+
+        ``max_retries`` overrides the per-model retry count inside
+        ``_post_responses_api`` (default ``1``). Callers that need a
+        deterministic upper time bound — e.g. the behavior profile command,
+        which wraps this in its own ``asyncio.wait_for`` — pass ``0`` so a
+        single failed attempt cannot blow past the outer budget.
+        """
         if not _aimodel_api_enabled():
             raise RuntimeError("AiModel is missing AIMODEL_API_KEY.")
 
@@ -918,6 +991,7 @@ class AIClient:
                     request_timeout=_aimodel_request_timeout(
                         multimodal=allow_multimodal
                     ),
+                    max_retries=1 if max_retries is None else max(0, max_retries),
                 )
                 if result:
                     if index:
@@ -1050,6 +1124,8 @@ class AIClient:
         model: Optional[str] = None,
         json_mode: bool = False,
         allow_multimodal: bool = False,
+        max_retries: Optional[int] = None,
+        request_timeout: Optional[int] = None,
     ) -> Optional[str]:
         if not _DO_API_KEY:
             raise RuntimeError("DigitalOcean inference is missing DO_API_KEY.")
@@ -1058,6 +1134,11 @@ class AIClient:
         if selected_model.lower() in {"", "deepseek-web", "digitalocean"}:
             selected_model = os.getenv("DO_PROFILE_MODEL", "deepseek-4-flash").strip()
 
+        post_kwargs: Dict[str, Any] = {"provider_label": "DigitalOcean inference"}
+        if max_retries is not None:
+            post_kwargs["max_retries"] = max_retries
+        if request_timeout is not None:
+            post_kwargs["request_timeout"] = request_timeout
         return await self._post_chat_completion(
             messages,
             base_url=_DO_BASE_URL,
@@ -1067,7 +1148,7 @@ class AIClient:
             max_tokens=max_tokens,
             json_mode=json_mode,
             allow_multimodal=allow_multimodal,
-            provider_label="DigitalOcean inference",
+            **post_kwargs,
         )
 
     async def _call_deepseek_api(
@@ -1079,6 +1160,8 @@ class AIClient:
         model: Optional[str] = None,
         json_mode: bool = False,
         allow_multimodal: bool = False,
+        max_retries: Optional[int] = None,
+        request_timeout: Optional[int] = None,
     ) -> Optional[str]:
         """Call the real DeepSeek HTTP API (OpenAI-compatible)."""
         if not _DEEPSEEK_API_KEY:
@@ -1092,6 +1175,14 @@ class AIClient:
 
         request_chat_path = "/chat/completions/cline" if allow_multimodal else _DEEPSEEK_CHAT_PATH
 
+        post_kwargs: Dict[str, Any] = {
+            "provider_label": "DeepSeek API",
+            "chat_path": request_chat_path,
+        }
+        if max_retries is not None:
+            post_kwargs["max_retries"] = max_retries
+        if request_timeout is not None:
+            post_kwargs["request_timeout"] = request_timeout
         return await self._post_chat_completion(
             messages,
             base_url=_DEEPSEEK_BASE_URL,
@@ -1101,8 +1192,7 @@ class AIClient:
             max_tokens=max_tokens,
             json_mode=json_mode,
             allow_multimodal=allow_multimodal,
-            provider_label="DeepSeek API",
-            chat_path=request_chat_path,
+            **post_kwargs,
         )
 
     async def _post_chat_completion(

@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-import os
 import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -33,9 +32,12 @@ MAX_PROFILE_WORDS = 800
 EMBED_DESCRIPTION_LIMIT = 3_800
 HISTORY_SCAN_PER_CHANNEL = 1000
 HISTORY_MATCH_LIMIT_PER_CHANNEL = 500
-HISTORY_SCAN_CONCURRENCY = 3
+HISTORY_SCAN_CONCURRENCY = 5
+HISTORY_SCAN_MAX_CHANNELS = 15
+HISTORY_SCAN_DEADLINE_SECONDS = 20
 PROFILE_AI_CONCURRENCY = 2
-PROFILE_TIMEOUT_SECONDS = 90
+PROFILE_TIMEOUT_SECONDS = 70
+PROFILE_AI_REQUEST_TIMEOUT = 60
 PROFILE_COOLDOWN_SECONDS = 30.0
 MAX_COOLDOWN_ENTRIES = 512
 
@@ -392,13 +394,41 @@ class BehaviorProfiling(commands.Cog):
         if not channels:
             return []
 
+        # Cap the number of channels scanned so a huge server cannot turn the
+        # fallback scan into an open-ended hang. _accessible_channels already
+        # sorts by recency (current channel, then last_message_id desc), so the
+        # head of the list is the most likely to hold the target's messages.
+        if len(channels) > HISTORY_SCAN_MAX_CHANNELS:
+            channels = channels[:HISTORY_SCAN_MAX_CHANNELS]
+
         limiter = asyncio.Semaphore(HISTORY_SCAN_CONCURRENCY)
-        results = await asyncio.gather(
-            *(
-                self._scan_channel_history(channel, target_id, limiter)
-                for channel in channels
+
+        async def _bounded_scan() -> list[list[ProfileMessage]]:
+            return await asyncio.gather(
+                *(
+                    self._scan_channel_history(channel, target_id, limiter)
+                    for channel in channels
+                )
             )
-        )
+
+        try:
+            results = await asyncio.wait_for(
+                _bounded_scan(),
+                timeout=HISTORY_SCAN_DEADLINE_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.info(
+                "Profile history scan hit the %ss deadline for user %s; "
+                "falling back to tracked database messages only",
+                HISTORY_SCAN_DEADLINE_SECONDS,
+                target_id,
+            )
+            # Cancelling the gather cancels the in-flight channel scans, so we
+            # cannot recover partial results here. The caller still has the
+            # database messages collected independently and will proceed with
+            # those as long as they meet MIN_PROFILE_MESSAGES.
+            return []
+
         return _merge_messages(*(result for result in results))
 
     async def _collect_messages(
@@ -451,15 +481,21 @@ class BehaviorProfiling(commands.Cog):
         )
 
     async def _generate_profile(self, ai_client: object, prompt: str) -> str:
-        call = getattr(ai_client, "_call_digitalocean", None)
+        # Route through the provider-aware entry point so /profile works with
+        # whatever provider the bot is actually configured for (aimodel,
+        # relayrouter, deepseek-http/galaxy, or DigitalOcean) instead of
+        # hardcoding the AiModel Responses API — which raises a misleading
+        # "missing AIMODEL_API_KEY" RuntimeError on a deepsea-configured bot.
+        call = getattr(ai_client, "call_bounded_completion", None)
         if not callable(call):
             raise RuntimeError(
-                "The active AI client does not expose DigitalOcean inference."
+                "The active AI client does not expose bounded inference."
             )
 
-        model = os.getenv("DO_PROFILE_MODEL", "deepseek-4-flash").strip()
-        if not model:
-            model = "deepseek-4-flash"
+        # Single attempt, strict per-request budget strictly below the outer
+        # wait_for (PROFILE_TIMEOUT_SECONDS=70s). A degraded provider fails at
+        # the request boundary (~60s) instead of grinding past the outer cap
+        # and surfacing a misleading TimeoutError.
         async with self._ai_slots:
             response = await asyncio.wait_for(
                 call(
@@ -469,7 +505,8 @@ class BehaviorProfiling(commands.Cog):
                     ],
                     temperature=0.2,
                     max_tokens=1_800,
-                    model=model,
+                    request_timeout=PROFILE_AI_REQUEST_TIMEOUT,
+                    max_retries=0,
                 ),
                 timeout=PROFILE_TIMEOUT_SECONDS,
             )
@@ -482,6 +519,24 @@ class BehaviorProfiling(commands.Cog):
         embed: discord.Embed,
     ) -> None:
         await self._send_embeds(interaction, [embed])
+
+    async def _edit_progress(
+        self,
+        interaction: discord.Interaction,
+        embed: discord.Embed,
+    ) -> None:
+        """Update the deferred thinking response with a progress embed.
+
+        Safe to call after ``defer(..., thinking=True)``: a failed edit (e.g.
+        the interaction has since been responded to) is swallowed so progress
+        feedback can never break the command itself.
+        """
+        try:
+            await interaction.edit_original_response(embed=embed)
+        except (discord.HTTPException, discord.NotFound):
+            pass
+        except Exception:
+            logger.debug("Progress edit failed", exc_info=True)
 
     async def _send_embeds(
         self,
@@ -569,6 +624,14 @@ class BehaviorProfiling(commands.Cog):
 
         await interaction.response.defer(ephemeral=False, thinking=True)
 
+        await self._edit_progress(
+            interaction,
+            ModEmbed.info(
+                "Scanning History",
+                f"Collecting recent messages for {target.mention}…",
+            ),
+        )
+
         try:
             corpus = await self._collect_messages(interaction, target.id)
             if len(corpus.messages) < MIN_PROFILE_MESSAGES:
@@ -598,6 +661,13 @@ class BehaviorProfiling(commands.Cog):
                 guild.id,
                 analyzed_count,
                 len(corpus.messages),
+            )
+            await self._edit_progress(
+                interaction,
+                ModEmbed.info(
+                    "Generating Profile",
+                    f"Analyzing {analyzed_count} messages for {target.mention}…",
+                ),
             )
             profile = await self._generate_profile(ai_client, prompt)
             if not profile:

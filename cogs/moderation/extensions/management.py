@@ -15,6 +15,7 @@ from utils.moderation_settings import (
     render_moderation_response,
 )
 from utils.time_parser import parse_time
+from utils.async_tasks import fire_and_forget
 from config import Config
 
 class ManagementCommands:
@@ -54,7 +55,15 @@ class ManagementCommands:
         quarantine_role: discord.Role,
         jail_channel_id: Optional[Union[int, str]],
     ) -> tuple[int, int]:
-        """Ensure quarantine role cannot access normal channels and can access jail."""
+        """Ensure quarantine role cannot access normal channels and can access jail.
+
+        Per-channel ``set_permissions`` calls run with a bounded concurrency
+        (5 at a time) instead of serially, so a 50-channel server no longer
+        pays 50 sequential HTTP round-trips before the member is isolated.
+        Channels whose overwrite already matches the restricted payload are
+        skipped with zero HTTP cost, so re-running quarantine on a synced
+        server is cheap.
+        """
         target_jail_id: Optional[int] = None
         if jail_channel_id:
             try:
@@ -70,28 +79,38 @@ class ManagementCommands:
             discord.ForumChannel,
         )
 
-        applied = 0
-        failed = 0
         restricted_overwrite = self._quarantine_restricted_overwrite()
         jail_overwrite = self._quarantine_jail_overwrite()
 
+        # Collect the channels that actually need an HTTP call first, so the
+        # idempotent skip (overwrite already matches) adds no concurrency cost.
+        pending: list[discord.abc.GuildChannel] = []
         for channel in guild.channels:
             if not isinstance(channel, restricted_types):
                 continue
             if target_jail_id and channel.id == target_jail_id:
                 continue
-            current_overwrite = channel.overwrites_for(quarantine_role)
-            if current_overwrite == restricted_overwrite:
+            if channel.overwrites_for(quarantine_role) == restricted_overwrite:
                 continue
-            try:
-                await channel.set_permissions(
-                    quarantine_role,
-                    overwrite=restricted_overwrite,
-                    reason="Quarantine enforcement",
-                )
-                applied += 1
-            except Exception:
-                failed += 1
+            pending.append(channel)
+
+        limiter = asyncio.Semaphore(5)
+
+        async def _apply(channel: discord.abc.GuildChannel) -> bool:
+            async with limiter:
+                try:
+                    await channel.set_permissions(
+                        quarantine_role,
+                        overwrite=restricted_overwrite,
+                        reason="Quarantine enforcement",
+                    )
+                    return True
+                except Exception:
+                    return False
+
+        results = await asyncio.gather(*(_apply(channel) for channel in pending))
+        applied = sum(1 for ok in results if ok)
+        failed = len(results) - applied
 
         if target_jail_id:
             jail_channel = guild.get_channel(target_jail_id)
@@ -977,7 +996,6 @@ class ManagementCommands:
                 expires_at = datetime.now(timezone.utc) + delta
 
         notify_user = moderation_bool(settings, "moderation_dm_users", True)
-        dm_channel = await self.prepare_dm_channel(user) if notify_user else None
         case_num = await self.bot.db.create_case(
             source.guild.id,
             user.id,
@@ -986,29 +1004,13 @@ class ManagementCommands:
             reason,
             human_duration,
         )
-        dm_embed = discord.Embed(
-            title=f"Quarantined in {source.guild.name}",
-            description=f"**Reason:** {reason}\n**Duration:** {human_duration}",
-            color=Colors.DARK_RED,
-        )
-        if notify_user:
-            await self.send_punishment_notice(
-                guild=source.guild,
-                user=user,
-                action="Quarantine",
-                reason=reason,
-                case_number=case_num,
-                settings=settings,
-                fallback_embed=dm_embed,
-                duration=human_duration,
-                punishment_expires_at=expires_at,
-                delivery_channel=dm_channel,
-            )
 
         # Backup roles
         backup_role_ids = await self._backup_roles(user, quarantine_role.id)
-        
-        # Apply quarantine
+
+        # Apply quarantine — isolation is authoritative and must land before
+        # the moderator's confirmation. The DM and jail-channel notice are
+        # side-effects and are backgrounded below so they never delay this.
         try:
             await user.edit(roles=[quarantine_role], reason=f"[QUARANTINE] {author}: {reason}")
         except discord.Forbidden:
@@ -1023,7 +1025,7 @@ class ManagementCommands:
             expires_at,
             backup_role_ids
         )
-        
+
         embed = discord.Embed(
             title="☣️ User Quarantined",
             description=f"{user.mention} has been quarantined.",
@@ -1033,7 +1035,7 @@ class ManagementCommands:
         embed.add_field(name="Duration", value=human_duration, inline=True)
         if expires_at:
              embed.add_field(name="Expires", value=f"<t:{int(expires_at.timestamp())}:R>", inline=True)
-        
+
         embed.add_field(name="Roles Removed", value=str(len(backup_role_ids)), inline=True)
         if overwrite_applied or overwrite_failed:
             embed.add_field(
@@ -1047,11 +1049,41 @@ class ManagementCommands:
                 value="Skipped: I need **Manage Channels** to enforce quarantine visibility.",
                 inline=False,
             )
-        
+
         await self._respond(source, embed=embed)
         await self.log_action(source.guild, embed)
 
-        # Auto-post notice in jail channel (if configured).
+        # Background the punishment DM + appeal-token transaction. The user is
+        # already isolated and recorded above; a closed DM or slow appeal-token
+        # DB write must never block or fail the moderator's confirmation.
+        if notify_user:
+            dm_embed = discord.Embed(
+                title=f"Quarantined in {source.guild.name}",
+                description=f"**Reason:** {reason}\n**Duration:** {human_duration}",
+                color=Colors.DARK_RED,
+            )
+
+            async def _send_quarantine_dm() -> None:
+                delivery_channel = await self.prepare_dm_channel(user)
+                await self.send_punishment_notice(
+                    guild=source.guild,
+                    user=user,
+                    action="Quarantine",
+                    reason=reason,
+                    case_number=case_num,
+                    settings=settings,
+                    fallback_embed=dm_embed,
+                    duration=human_duration,
+                    punishment_expires_at=expires_at,
+                    delivery_channel=delivery_channel,
+                )
+
+            fire_and_forget(
+                _send_quarantine_dm(),
+                name=f"quarantine-dm-{source.guild.id}-{user.id}",
+            )
+
+        # Auto-post notice in jail channel (if configured) — also backgrounded.
         jail_channel_id = settings.get("quarantine_channel")
         if jail_channel_id:
             jail_channel = source.guild.get_channel(int(jail_channel_id))
@@ -1069,15 +1101,22 @@ class ManagementCommands:
                 jail_embed.add_field(name="Duration", value=human_duration, inline=True)
                 if expires_at:
                     jail_embed.add_field(name="Expires", value=f"<t:{int(expires_at.timestamp())}:R>", inline=True)
-                try:
-                    await jail_channel.send(
-                        content=user.mention,
-                        embed=jail_embed,
-                        allowed_mentions=discord.AllowedMentions(users=True),
-                        use_v2=False,
-                    )
-                except Exception:
-                    pass
+
+                async def _post_jail_notice(channel: discord.TextChannel, mention: str, embed: discord.Embed) -> None:
+                    try:
+                        await channel.send(
+                            content=mention,
+                            embed=embed,
+                            allowed_mentions=discord.AllowedMentions(users=True),
+                            use_v2=False,
+                        )
+                    except Exception:
+                        pass
+
+                fire_and_forget(
+                    _post_jail_notice(jail_channel, user.mention, jail_embed),
+                    name=f"quarantine-jail-notice-{source.guild.id}-{user.id}",
+                )
 
     async def _unquarantine_logic(self, source, user: discord.Member, reason: str = "Quarantine lifted"):
         author = source.user if isinstance(source, discord.Interaction) else source.author

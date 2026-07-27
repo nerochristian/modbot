@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from datetime import timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
 from cogs.behavior_profiling import (
     DATABASE_MESSAGE_LIMIT,
@@ -14,6 +14,7 @@ from cogs.behavior_profiling import (
     MAX_PROMPT_MESSAGES,
     MAX_PROMPT_SAMPLES,
     MAX_PROFILE_WORDS,
+    PROFILE_AI_REQUEST_TIMEOUT,
     BehaviorProfiling,
     ProfileCorpus,
     ProfileMessage,
@@ -126,23 +127,26 @@ class BehaviorProfilingAsyncTests(unittest.IsolatedAsyncioTestCase):
     ) -> None:
         cog = BehaviorProfiling(SimpleNamespace())
         ai_client = SimpleNamespace(
-            _call_digitalocean=AsyncMock(
+            call_bounded_completion=AsyncMock(
                 return_value="```\n- Communication: calm\n```"
             ),
         )
 
-        with patch.dict("os.environ", {"DO_PROFILE_MODEL": "deepseek-4-flash"}):
-            result = await cog._generate_profile(ai_client, "prompt")
+        result = await cog._generate_profile(ai_client, "prompt")
 
         self.assertEqual(result, "- Communication: calm")
-        ai_client._call_digitalocean.assert_awaited_once()
-        self.assertEqual(
-            ai_client._call_digitalocean.await_args.kwargs["model"],
-            "deepseek-4-flash",
-        )
-        self.assertEqual(
-            ai_client._call_digitalocean.await_args.kwargs["max_tokens"], 1_800
-        )
+        ai_client.call_bounded_completion.assert_awaited_once()
+        kwargs = ai_client.call_bounded_completion.await_args.kwargs
+        # Provider-aware entry point, not a hardcoded provider method.
+        self.assertEqual(kwargs["max_tokens"], 1_800)
+        # Strict per-request budget strictly below the outer wait_for cap, and
+        # a single attempt, so a degraded provider fails at the request
+        # boundary instead of grinding past the outer timeout.
+        self.assertEqual(kwargs["max_retries"], 0)
+        self.assertEqual(kwargs["request_timeout"], PROFILE_AI_REQUEST_TIMEOUT)
+        # The system prompt must travel as the first message.
+        messages = ai_client.call_bounded_completion.await_args.args[0]
+        self.assertEqual(messages[0]["role"], "system")
 
     async def test_cooldown_blocks_immediate_repeat(self) -> None:
         cog = BehaviorProfiling(SimpleNamespace())

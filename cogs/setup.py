@@ -17,7 +17,7 @@ from discord.ext import commands
 
 from utils.checks import is_admin
 from utils.embeds import ModEmbed
-from utils.server_setup import build_setup_summary, quickstart_server
+from utils.server_setup import quickstart_server
 
 logger = logging.getLogger(__name__)
 
@@ -31,148 +31,25 @@ class Setup(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
-    @staticmethod
-    async def _safe_followup_send(
-        interaction: discord.Interaction,
-        *,
-        embed: discord.Embed,
-        view: Optional[discord.ui.View] = None,
-        ephemeral: bool = True,
-    ) -> None:
-        kwargs = {
-            "embed": embed,
-            "ephemeral": ephemeral,
-        }
-        if view is not None:
-            kwargs["view"] = view
-        await interaction.followup.send(**kwargs)
-
-    @staticmethod
-    def _section_lines(section: dict) -> str:
-        lines = []
-        for item in section.get("items", [])[:8]:
-            icon = "OK" if item.get("configured") else "MISSING"
-            label = str(item.get("label", "Item"))
-            value = str(item.get("value") or "Not configured")
-            lines.append(f"{icon} {label}: {value}")
-        return "\n".join(lines) or "No items"
-
-    def _build_status_embed(self, guild: discord.Guild, summary: dict) -> discord.Embed:
-        percent = int(summary.get("percent", 0) or 0)
-        complete = int(summary.get("complete", 0) or 0)
-        total = int(summary.get("total", 0) or 0)
-
-        if percent >= 90:
-            color = discord.Color.green()
-        elif percent >= 50:
-            color = discord.Color.gold()
-        else:
-            color = discord.Color.orange()
-
-        embed = discord.Embed(
-            title="Server Setup",
-            description=(
-                f"Setup coverage for **{guild.name}**\n\n"
-                f"**Progress:** `{percent}%` ({complete}/{total})\n"
-                f"Run `/setup` to scaffold missing defaults, or use `/setup create_missing:false` for status only."
-            ),
-            color=color,
-        )
-
-        for section in summary.get("sections", [])[:4]:
-            section_complete = int(section.get("complete", 0) or 0)
-            section_total = int(section.get("total", 0) or 0)
-            embed.add_field(
-                name=f"{section.get('label', 'Section')} ({section_complete}/{section_total})",
-                value=self._section_lines(section),
-                inline=False,
-            )
-
-        if summary.get("setupComplete"):
-            embed.set_footer(text="Setup has been marked complete for this server.")
-        else:
-            embed.set_footer(text="Setup is not complete yet.")
-
-        return embed
-
-    @app_commands.command(
-        name="setup",
-        description="Create missing baseline setup resources and show setup status",
-    )
-    @app_commands.describe(
-        create_missing="Create missing baseline roles, categories, and channels. Disable this to only view status.",
-    )
-    @is_admin()
-    async def setup_command(
-        self,
-        interaction: discord.Interaction,
-        create_missing: bool = True,
-    ) -> None:
-        guild = interaction.guild
-        if guild is None:
-            await interaction.response.send_message(
-                embed=ModEmbed.error("Server Only", "This command can only be used in a server."),
-                ephemeral=True,
-            )
-            return
-
-        await interaction.response.defer(ephemeral=True)
+    @commands.Cog.listener()
+    async def on_guild_join(self, guild: discord.Guild) -> None:
         try:
             settings = await self.bot.db.get_settings(guild.id)
-            if create_missing:
-                result = await quickstart_server(guild, settings)
-                settings = result["settings"]
-                settings["_version"] = int(settings.get("_version", 1) or 1) + 1
-                settings["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-                await self.bot.db.update_settings(guild.id, settings)
-                logging_cog = self.bot.get_cog("Logging")
+            result = await quickstart_server(guild, settings)
+            settings = result["settings"]
+            settings["_version"] = int(settings.get("_version", 1) or 1) + 1
+            settings["updatedAt"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+            await self.bot.db.update_settings(guild.id, settings)
+            
+            logging_cog = self.bot.get_cog("Logging")
+            if logging_cog is not None:
                 channel_cache = getattr(logging_cog, "_channel_cache", None)
                 if channel_cache is not None:
                     await channel_cache.clear_guild(guild.id)
-
-                summary = build_setup_summary(guild, settings)
-                embed = self._build_status_embed(guild, summary)
-                embed.description = (
-                    f"Missing baseline resources were created where possible for **{guild.name}**.\n\n"
-                    f"**Progress:** `{summary['percent']}%` ({summary['complete']}/{summary['total']})\n"
-                    "Logging is synced under `Moderation Logs`: `#audit-logs`, `#mod-logs`, `#message-logs`, `#automod-logs`, and `#voice-logs`."
-                )
-                embed.add_field(
-                    name="Created",
-                    value=(
-                        f"Roles: `{len(result.get('createdRoles', []))}`\n"
-                        f"Channels/Categories: `{len(result.get('createdChannels', []))}`\n"
-                        f"Reused Existing: `{len(result.get('reused', []))}`\n"
-                        f"Verification Access Updates: `{int(result.get('permissionUpdates', 0) or 0)}`"
-                    ),
-                    inline=False,
-                )
-                if result.get("errors"):
-                    embed.add_field(
-                        name="Errors",
-                        value="\n".join(str(item)[:150] for item in result["errors"][:5]),
-                        inline=False,
-                    )
-                await self._safe_followup_send(
-                    interaction,
-                    embed=embed,
-                    ephemeral=True,
-                )
-                return
-
-            summary = build_setup_summary(guild, settings)
-            embed = self._build_status_embed(guild, summary)
-            await self._safe_followup_send(
-                interaction,
-                embed=embed,
-                ephemeral=True,
-            )
+                    
+            logger.info("Automatically completed quickstart setup for guild %s upon join.", guild.id)
         except Exception as exc:
-            logger.exception("Setup command failed for guild %s", guild.id)
-            await interaction.followup.send(
-                embed=ModEmbed.error("Setup Failed", f"An error occurred while running setup: {exc}"),
-                ephemeral=True,
-            )
+            logger.exception("Automatic setup failed for guild %s", guild.id)
 
     @guide_group.command(
         name="updates",

@@ -6,7 +6,8 @@ from typing import Optional
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_mod, is_bot_owner_id
-from utils.warning_escalation import apply_warning_escalation
+from utils.warning_escalation import apply_warning_escalation, build_escalation_dm_embed
+from utils.async_tasks import fire_and_forget
 
 class WarningCommands:
     async def _warn_logic(self, source, user: discord.Member, reason: str):
@@ -19,34 +20,22 @@ class WarningCommands:
         )
         if not can_mod:
             return await self._respond(source, embed=ModEmbed.error("Cannot Warn", error), ephemeral=True)
-        
+
         settings = await self.bot.db.get_settings(source.guild.id)
-        existing_warnings = await self.bot.db.get_warnings(source.guild.id, user.id)
-        projected_warning_count = len(existing_warnings) + 1
         case_num = await self.bot.db.create_case(
             source.guild.id, user.id, author.id, "Warn", reason
         )
-        dm_embed = discord.Embed(
-            title=f"⚠️ Warning in {source.guild.name}",
-            description=f"**Reason:** {reason}\n**Total Warnings:** {projected_warning_count}",
-            color=Colors.WARNING
+
+        # Record the warning BEFORE any DM so the moderator's confirmation
+        # embed (and its "Total Warnings" count) reflects the authoritative
+        # state. add_warning returns the new total, so we avoid the redundant
+        # get_warnings re-read the old flow did.
+        warning_id, warn_count = await self.bot.db.add_warning(
+            source.guild.id, user.id, author.id, reason
         )
-        if settings.get("moderation_dm_users", True):
-            await self.send_punishment_notice(
-                guild=source.guild,
-                user=user,
-                action="Warn",
-                reason=reason,
-                case_number=case_num,
-                settings=settings,
-                fallback_embed=dm_embed,
-            )
 
-        # Record the warning only after the member notification is attempted.
-        warning_id, warn_count = await self.bot.db.add_warning(source.guild.id, user.id, author.id, reason)
-        warnings = await self.bot.db.get_warnings(source.guild.id, user.id)
-
-        # Create embed
+        # Confirm to the moderator immediately — the warning is recorded and
+        # the case # is real. Everything below this point is side-effect.
         embed = await self.create_mod_embed(
             title="⚠️ User Warned",
             user=user,
@@ -54,13 +43,37 @@ class WarningCommands:
             reason=reason,
             color=Colors.WARNING,
             case_num=case_num,
-            extra_fields={"Total Warnings": str(len(warnings))}
+            extra_fields={"Total Warnings": str(warn_count)},
         )
-        
         await self._respond(source, embed=embed)
         await self.log_action(source.guild, embed)
-        
-        # Apply only the highest escalation whose threshold this warning crossed.
+
+        # Background the punishment DM + appeal-token transaction. A closed-DM
+        # or appeal-token DB hiccup must never block or fail the warning, which
+        # is already recorded above.
+        if settings.get("moderation_dm_users", True):
+            dm_embed = discord.Embed(
+                title=f"⚠️ Warning in {source.guild.name}",
+                description=f"**Reason:** {reason}\n**Total Warnings:** {warn_count}",
+                color=Colors.WARNING,
+            )
+            fire_and_forget(
+                self.send_punishment_notice(
+                    guild=source.guild,
+                    user=user,
+                    action="Warn",
+                    reason=reason,
+                    case_number=case_num,
+                    settings=settings,
+                    fallback_embed=dm_embed,
+                ),
+                name=f"warn-dm-{source.guild.id}-{user.id}",
+            )
+
+        # Apply only the highest escalation whose threshold this warning
+        # crossed. The punishment (timeout/kick/ban) stays synchronous so the
+        # moderator sees the auto-action outcome inline; only its DM is
+        # backgrounded via skip_dm so it never delays the confirmation above.
         auto_action = None
 
         async def create_escalation_case(action: str, action_reason: str, duration_seconds: Optional[int]):
@@ -84,6 +97,7 @@ class WarningCommands:
                 reason_prefix="Automatic warning escalation",
                 ban_delete_days=1,
                 create_case=create_escalation_case,
+                skip_dm=True,
             )
             if escalation is not None:
                 action_labels = {
@@ -98,6 +112,24 @@ class WarningCommands:
                     f"**{action_labels[escalation.rule.action]}** {user.mention}{duration} "
                     f"— reached {warn_count} warnings"
                 )
+                # Background the escalation DM. The punishment already landed
+                # synchronously; a closed-DM or slow send must not block the
+                # moderator's already-delivered confirmation.
+                if settings.get("moderation_dm_users", True):
+                    escalation_dm_body = build_escalation_dm_embed(source.guild, escalation)
+                    if escalation_dm_body:
+                        async def _send_escalation_dm(
+                            member: discord.Member, body: str
+                        ) -> None:
+                            try:
+                                await member.send(body)
+                            except (discord.Forbidden, discord.HTTPException):
+                                pass
+
+                        fire_and_forget(
+                            _send_escalation_dm(user, escalation_dm_body),
+                            name=f"warn-escalation-dm-{source.guild.id}-{user.id}",
+                        )
         except discord.Forbidden:
             auto_action = f"Auto-punishment failed for {user.mention}: missing permissions"
         except discord.HTTPException as exc:

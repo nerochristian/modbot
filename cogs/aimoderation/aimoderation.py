@@ -2845,6 +2845,30 @@ class AIModeration(commands.Cog):
             logger.exception("Failed to write pre-confirmation generated-code review")
             return None
 
+    async def _infer_action_reason(self, message: discord.Message, decision: Decision) -> str:
+        try:
+            recent_msgs = await self.fetch_recent_messages(message.channel, limit=10)
+            if not recent_msgs:
+                return "Violation of server rules (inferred from context)."
+            
+            chat_text = "\n".join([f"{msg.author.display_name}: {self.clean_content(msg)}" for msg in recent_msgs])
+            prompt = (
+                "You are a moderation assistant. The following recent chat log resulted in a moderation action "
+                f"({decision.tool.value if decision.tool else 'action'}) against a user. "
+                "Provide a single, concise sentence explaining the exact reason for this action based ONLY on the chat log. "
+                "No preamble, just the reason.\n\n"
+                f"Chat Log:\n{chat_text}"
+            )
+            response = await self.ai._call(
+                [{"role": "user", "content": prompt}],
+                max_tokens=60,
+                temperature=0.3
+            )
+            return response.strip() if response else "Violation of server rules (inferred from context)."
+        except Exception as e:
+            logger.warning(f"Failed to infer reason: {e}")
+            return "Violation of server rules (inferred from context)."
+
     async def _request_confirmation(
         self,
         message: discord.Message,
@@ -3344,10 +3368,7 @@ class AIModeration(commands.Cog):
 
         # --- Mentioned but AI mod disabled: chat-only mode ---
         if (is_mentioned or is_reply_to_bot) and not settings.enabled:
-            if is_mod_request:
-                await self.reply(message, content="AI moderation is disabled right now. Ask a server admin to enable it with `/aimod toggle`.")
-            elif settings.chat_enabled:
-                await self._handle_conversation(message, content, settings)
+            await self._handle_conversation(message, content, settings)
             return
 
         if is_reply_to_bot and not is_mentioned and settings.chat_enabled and not is_mod_request:
@@ -3463,6 +3484,9 @@ class AIModeration(commands.Cog):
                     return
 
             if self._requires_confirmation(settings, decision):
+                if decision.tool in (ToolType.BAN, ToolType.KICK, ToolType.TIMEOUT, ToolType.WARN):
+                    if not decision.reason or decision.reason.strip().lower() in ("no reason", "none", "unknown", "n/a", ""):
+                        decision.reason = await self._infer_action_reason(message, decision)
                 await self._request_confirmation(message, decision, settings)
                 return
 
@@ -3623,6 +3647,9 @@ class AIModeration(commands.Cog):
         if self._is_ai_status_message(response):
             await self.reply(message, embed=self._build_ai_status_embed(response))
             return
+
+        if not settings.enabled:
+            response += "\n\n-# AI Moderation is disabled. Ask an admin to enable it with `/aimod toggle`."
 
         # Normal delivery
         await self._deliver_response(message, response, signals)

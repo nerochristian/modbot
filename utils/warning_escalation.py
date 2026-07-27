@@ -169,8 +169,15 @@ async def apply_warning_escalation(
     reason_prefix: str = "Automatic warning escalation",
     ban_delete_days: int = 1,
     create_case: Optional[CaseCallback] = None,
+    skip_dm: bool = False,
 ) -> Optional[WarningEscalationResult]:
-    """Apply the highest newly crossed rule and optionally persist its case."""
+    """Apply the highest newly crossed rule and optionally persist its case.
+
+    When ``skip_dm`` is True the member is not notified of the escalation here;
+    the caller is responsible for sending (and backgrounding) that notice. This
+    lets a synchronous moderation flow keep the punishment authoritative while
+    deferring the DM so it never blocks the moderator's confirmation.
+    """
 
     rule = crossed_warning_rule(settings, total_warnings, previous_count)
     if rule is None:
@@ -193,27 +200,8 @@ async def apply_warning_escalation(
     else:
         case_action = "Ban"
 
-    if moderation_bool(settings, "moderation_dm_users", True):
-        sender = getattr(member, "send", None)
-        if callable(sender):
-            action_label = {
-                "timeout": "timed out",
-                "kick": "kicked",
-                "ban": "banned",
-            }[rule.action]
-            duration_line = (
-                f"\nDuration: {rule.duration_seconds // 60} minute(s)"
-                if rule.duration_seconds
-                else ""
-            )
-            guild_name = str(getattr(guild, "name", "this server"))
-            try:
-                await sender(
-                    f"You were {action_label} in {guild_name}.\nReason: {reason}{duration_line}"
-                )
-            except Exception:
-                # Closed DMs must never prevent the configured punishment.
-                pass
+    if not skip_dm and moderation_bool(settings, "moderation_dm_users", True):
+        await _send_escalation_dm(guild, member, rule, reason)
 
     if rule.action == "timeout":
         await member.timeout(timedelta(seconds=rule.duration_seconds or MIN_TIMEOUT_SECONDS), reason=reason)
@@ -226,3 +214,53 @@ async def apply_warning_escalation(
     if create_case is not None:
         await create_case(case_action, reason, case_duration)
     return WarningEscalationResult(rule=rule, reason=reason)
+
+
+async def _send_escalation_dm(
+    guild: Any,
+    member: Any,
+    rule: WarningEscalationRule,
+    reason: str,
+) -> None:
+    """Best-effort escalation notice; closed DMs never abort the punishment."""
+    sender = getattr(member, "send", None)
+    if not callable(sender):
+        return
+    action_label = {
+        "timeout": "timed out",
+        "kick": "kicked",
+        "ban": "banned",
+    }[rule.action]
+    duration_line = (
+        f"\nDuration: {rule.duration_seconds // 60} minute(s)"
+        if rule.duration_seconds
+        else ""
+    )
+    guild_name = str(getattr(guild, "name", "this server"))
+    try:
+        await sender(
+            f"You were {action_label} in {guild_name}.\nReason: {reason}{duration_line}"
+        )
+    except Exception:
+        pass
+
+
+def build_escalation_dm_embed(
+    guild: Any,
+    rule: WarningEscalationResult,
+) -> Optional[str]:
+    """Return the plain-text escalation DM body for ``fire_and_forget`` senders."""
+    action_label = {
+        "timeout": "timed out",
+        "kick": "kicked",
+        "ban": "banned",
+    }.get(rule.rule.action)
+    if not action_label:
+        return None
+    duration_line = (
+        f"\nDuration: {rule.rule.duration_seconds // 60} minute(s)"
+        if rule.rule.duration_seconds
+        else ""
+    )
+    guild_name = str(getattr(guild, "name", "this server"))
+    return f"You were {action_label} in {guild_name}.\nReason: {rule.reason}{duration_line}"
