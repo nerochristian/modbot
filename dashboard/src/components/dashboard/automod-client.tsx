@@ -90,7 +90,7 @@ const PATTERN_CONFIG: Record<string, { label: string; placeholder: string } | nu
   new_accounts: { label: 'Account age in days', placeholder: '7' },
   raid: { label: 'Join threshold', placeholder: '10' },
   invites: null,
-  links: null,
+  links: { label: 'Blocked domains', placeholder: 'grabify.link, iplogger.org, bit.ly' },
   attachments: { label: 'Attachment threshold', placeholder: '5' },
 }
 
