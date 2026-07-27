@@ -1,4 +1,4 @@
-"""Read-only divergence check: clone origin/guild, diff vs /root/modbot. UTF-8 safe."""
+"""Read-only: Mahito identity + DocketBot autoupdate health. UTF-8 safe."""
 from __future__ import annotations
 
 import os
@@ -14,7 +14,7 @@ USER = "root"
 PASSWORD = os.environ["MODBOT_VPS_PASS"]
 
 
-def run(cmd: str, *, timeout: int = 120) -> None:
+def run(cmd: str, *, timeout: int = 60) -> None:
     print(f"\n===== $ {cmd}", flush=True)
     stdin, stdout, stderr = ssh.exec_command(cmd, timeout=timeout, get_pty=False)
     out = stdout.read().decode("utf-8", "replace")
@@ -33,19 +33,17 @@ print(f"Connecting to {USER}@{HOST} ...", flush=True)
 ssh.connect(HOST, username=USER, password=PASSWORD, timeout=30, allow_agent=False, look_for_keys=False)
 print("Connected.\n", flush=True)
 
-run("rm -rf /tmp/guild-ref && git clone --depth 1 --branch guild https://github.com/nerochristian/guild.git /tmp/guild-ref 2>&1 | tail -5 && cd /tmp/guild-ref && git rev-parse --short HEAD")
-run("echo '--- guild repo top-level ---' && ls -la /tmp/guild-ref 2>&1 | head -40")
-run("echo '--- guild repo .gitignore ---' && cat /tmp/guild-ref/.gitignore 2>&1")
-run("echo '=== DIFF origin/guild (ref) vs /root/modbot (live), excluding runtime ==='")
-run(
-    "diff -rq "
-    "--exclude=.git --exclude=.env --exclude=.venv --exclude=data --exclude=db "
-    "--exclude=modbot.db --exclude=backups --exclude=__pycache__ --exclude=node_modules "
-    "--exclude=python-embed --exclude=LifeSimBot --exclude=.modbot.lock --exclude=scratch "
-    "--exclude=assets --exclude=image.png --exclude='*.pyc' "
-    "/tmp/guild-ref /root/modbot 2>&1 | head -60; echo '(end diff)'"
-)
-run("echo '--- cleanup ref ---' && rm -rf /tmp/guild-ref && echo removed")
+print("########## Mahito identity (/root/modbot) ##########")
+run("echo '--- agent.md ---' && sed -n '1,60p' /root/modbot/agent.md 2>&1")
+run("echo '--- bot.py head ---' && sed -n '1,40p' /root/modbot/bot.py 2>&1")
+run("echo '--- .env variable NAMES only (values redacted) ---' && sed -E 's/=.*/=<redacted>/' /root/modbot/.env 2>&1")
+run("echo '--- any git/remote hints ---' && ls -la /root/modbot/.github 2>&1; cat /root/modbot/.github/workflows/* 2>/dev/null | head -40 || echo NO_workflows")
+
+print("\n########## DocketBot health ##########")
+run("systemctl is-active modbot 2>&1; systemctl is-enabled modbot 2>&1")
+run("echo '--- modbot-autoupdate last runs ---' && journalctl -u modbot-autoupdate.service -n 6 --no-pager 2>&1 | grep -E 'Already up to date|Deploying|Deploy complete|Refusing|failed|error' | tail -6")
+run("echo '--- modbot recent log ---' && journalctl -u modbot -n 8 --no-pager 2>&1 | tail -8")
+run("echo '--- pm2 dashboard ---' && pm2 describe modbot-dashboard 2>&1 | grep -E 'status|script path|uptime' || echo NO_dash")
 
 ssh.close()
-print("\nDivergence check complete.", flush=True)
+print("\nDone.", flush=True)
