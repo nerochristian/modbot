@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import { format, formatDistanceToNow } from 'date-fns'
 import { PageHeader } from '@/components/dashboard/page-header'
+import { RiskBreakdownModal } from '@/components/dashboard/risk-breakdown'
 import { SearchBox, ColumnsMenu } from '@/components/dashboard/table-toolbar'
 import { SavedViews } from '@/components/dashboard/saved-views'
 import { Card } from '@/components/ui/card'
