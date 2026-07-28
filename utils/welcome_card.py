@@ -664,10 +664,13 @@ async def _build_welcome_card_png_inner(
 
     display_name = getattr(member, "display_name", member.name) or member.name
     username     = _parse_username(full_user)  # type: ignore
+    server_name  = getattr(guild, "name", "") or ""
+    member_count = getattr(guild, "member_count", None) or 0
 
     return await asyncio.to_thread(
         _render_welcome_card_sync,
-        bg_img, avatar_img, deco_img, badges, accent, pill_text, display_name, username, options
+        bg_img, avatar_img, deco_img, badges, accent, pill_text, display_name, username,
+        server_name, member_count, options
     )
 
 def _render_welcome_card_sync(
