@@ -29,6 +29,19 @@ ESCALATION_THRESHOLD_QUARANTINE = 66
 ESCALATION_THRESHOLD_TIMEOUT = 81
 
 
+def _parse_db_timestamp(value: Any) -> Optional[datetime]:
+    """Timestamps arrive as datetime (asyncpg) or text (SQLite); normalize both."""
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+        except ValueError:
+            return None
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+    return None
+
+
 @dataclass
 class RiskResult:
     score: int
@@ -87,6 +100,22 @@ class RiskEngine:
         except Exception:
             factors["scam_history"] = 0
 
+        # AutoMod violations (last 30 days)
+        try:
+            violations = await self._count_recent_events(guild.id, member.id, "automod_events", 30)
+            factors["automod_violations"] = min(violations * 3, 30)
+            details["automod_violations_30d"] = violations
+        except Exception:
+            factors["automod_violations"] = 0
+
+        # Recent moderation cases (last 30 days)
+        try:
+            recent_cases = await self._count_recent_events(guild.id, member.id, "cases", 30)
+            factors["recent_cases"] = min(recent_cases * 8, 24)
+            details["recent_cases_30d"] = recent_cases
+        except Exception:
+            factors["recent_cases"] = 0
+
         # Default avatar
         if member.avatar is None:
             factors["default_avatar"] = 3
@@ -141,6 +170,27 @@ class RiskEngine:
                 return row[0] if row else 0
         except Exception:
             return 0
+
+    async def _count_recent_events(self, guild_id: int, user_id: int, table: str, days: int) -> int:
+        """Count a user's events in a table within `days`, dialect-safe."""
+        if table not in ("automod_events", "cases"):
+            return 0
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        async with self.bot.db.get_connection() as db:
+            cursor = await db.execute(
+                f"SELECT created_at FROM {table} WHERE guild_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 500",
+                (guild_id, user_id),
+            )
+            rows = await cursor.fetchall()
+        count = 0
+        for row in rows:
+            ts = _parse_db_timestamp(row[0])
+            if ts is None:
+                continue
+            if ts < cutoff:
+                break  # ordered newest-first
+            count += 1
+        return count
 
 
 class RiskScoring(commands.Cog):
