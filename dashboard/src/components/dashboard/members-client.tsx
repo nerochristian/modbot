@@ -317,7 +317,7 @@ export function MembersClient() {
           </>
         ) : null}
       </Card>
-      {riskMemberId && <RiskBreakdownModal memberId={riskMemberId} onClose={() => setRiskMemberId(null)} />}
+      {riskMemberId && <RiskBreakdownModal key={riskMemberId} memberId={riskMemberId} onClose={() => setRiskMemberId(null)} />}
     </>
   )
 }

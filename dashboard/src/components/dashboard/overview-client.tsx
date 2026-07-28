@@ -229,7 +229,7 @@ export function OverviewClient({ workspaceSummary, guildId }: { workspaceSummary
 
       <WidgetCustomizer open={customizing} onClose={() => setCustomizing(false)} />
       <GuidedTour steps={OVERVIEW_TOUR_STEPS} storageKey={`docket:tour:v2:${guildId}`} restartToken={walkthroughRun} />
-      {riskMemberId && <RiskBreakdownModal memberId={riskMemberId} onClose={() => setRiskMemberId(null)} />}
+      {riskMemberId && <RiskBreakdownModal key={riskMemberId} memberId={riskMemberId} onClose={() => setRiskMemberId(null)} />}
     </>
   )
 }
