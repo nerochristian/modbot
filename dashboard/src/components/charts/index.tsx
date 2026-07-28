@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import {
   Area,
   AreaChart,
@@ -17,6 +18,7 @@ import {
   YAxis,
 } from 'recharts'
 import type { ChartType } from '@/lib/dashboard-config'
+import { cn } from '@/lib/utils'
 
 const AXIS = { fontSize: 11, fill: 'var(--muted-2)' }
 
@@ -113,6 +115,85 @@ export function TrendChart({
         </AreaChart>
       )}
     </ResponsiveContainer>
+  )
+}
+
+export type MultiSeries = { key: string; label: string; color: string }
+
+/**
+ * Combined multi-metric line chart: every series on one canvas with a fixed
+ * color per metric, legend chips that toggle lines, and a tooltip listing all
+ * metrics for the hovered day.
+ */
+export function MultiLineChart({
+  data,
+  series,
+  height = 320,
+  valueFormatter,
+}: {
+  data: Record<string, number | string>[]
+  series: MultiSeries[]
+  height?: number
+  valueFormatter?: (v: number) => string
+}) {
+  const [hidden, setHidden] = useState<readonly string[]>([])
+  const visible = series.filter((s) => !hidden.includes(s.key))
+
+  return (
+    <div>
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {series.map((s) => {
+          const off = hidden.includes(s.key)
+          return (
+            <button
+              key={s.key}
+              type="button"
+              aria-pressed={!off}
+              onClick={() =>
+                setHidden((current) => (current.includes(s.key) ? current.filter((k) => k !== s.key) : [...current, s.key]))
+              }
+              className={cn(
+                'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition-all',
+                off
+                  ? 'border-border text-muted-2 opacity-50'
+                  : 'border-border bg-surface-2/60 text-foreground hover:border-accent-line hover:bg-accent-soft/30',
+              )}
+            >
+              <span className="size-2 rounded-full" style={{ background: s.color }} />
+              {s.label}
+            </button>
+          )
+        })}
+      </div>
+      <ResponsiveContainer width="100%" height={height}>
+        <LineChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
+          <XAxis dataKey="label" tick={AXIS} tickLine={false} axisLine={false} minTickGap={24} />
+          <YAxis
+            tick={AXIS}
+            tickLine={false}
+            axisLine={false}
+            width={44}
+            allowDecimals={false}
+            tickFormatter={(v) => (valueFormatter ? valueFormatter(v) : String(v))}
+          />
+          <Tooltip content={<TooltipBox formatter={valueFormatter} />} cursor={{ stroke: 'var(--border-strong)' }} />
+          {visible.map((s) => (
+            <Line
+              key={s.key}
+              type="monotone"
+              dataKey={s.key}
+              name={s.label}
+              stroke={s.color}
+              strokeWidth={2.5}
+              dot={false}
+              activeDot={{ r: 4 }}
+              isAnimationActive
+            />
+          ))}
+        </LineChart>
+      </ResponsiveContainer>
+    </div>
   )
 }
 
