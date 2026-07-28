@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { LayoutTemplate, Pencil, ShieldOff, ShieldAlert, X } from 'lucide-react'
 import { PageHeader } from '@/components/dashboard/page-header'
 import { GuidedTour, type TourStep } from '@/components/dashboard/tour-engine'
+import { Stagger, StaggerItem } from '@/components/motion/primitives'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge, severityTone, severityRail, TickMeter } from '@/components/ui/badge'
@@ -268,8 +269,9 @@ export function AutomodClient() {
                 )}
               </div>
             </Card>
+            </StaggerItem>
           ))}
-        </div>
+        </Stagger>
       ) : null}
 
       {editing && (
