@@ -1571,6 +1571,8 @@ function OperationalModuleSheet({
         </div>
       )}
 
+      {special === 'welcome_card' && <WelcomeCardPreview values={form} />}
+
       {sections.map((section) => {
         const fields = section.keys
           .map((key) => mod.fields.find((field) => field.key === key))
