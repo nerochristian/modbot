@@ -151,9 +151,11 @@ test('AutoMod aliases resolve to canonical rules and policies normalize actions'
   assert.deepEqual(timeout, { action: 'timeout', delete: false, duration: 60 })
   assert.equal(displayAutomodAction(timeout), 'timeout')
 
+  // Legacy stored {action:'delete'} still parses safely, but deletion is an
+  // independent toggle — the displayed action is 'log', never a synthetic 'delete'.
   const deletePolicy = parseAutomodPolicy('delete')
   assert.deepEqual(deletePolicy, { action: 'log', delete: true })
-  assert.equal(displayAutomodAction(deletePolicy), 'delete')
+  assert.equal(displayAutomodAction(deletePolicy), 'log')
   assert.deepEqual(parseAutomodPolicy('none'), { action: 'none', delete: false })
   assert.deepEqual(parseAutomodPolicy('unsupported'), { action: 'warn', delete: true })
 })
