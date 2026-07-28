@@ -413,7 +413,7 @@ export async function notifyAppealDecision(input: { userId: string; appealNumber
     const channelId = await dmChannel(input.userId)
     await discordMessage(channelId, payload).catch(() => undefined)
   } catch {
-    // Appellant has DMs closed — the review itself already succeeded.
+    // Appellant has DMs closed; the review itself already succeeded.
   }
   if (input.staffChannelId) await discordMessage(input.staffChannelId, { ...payload, content: `Appeal APL-${String(input.appealNumber).padStart(4, '0')} was **${input.status}**.` }).catch(() => undefined)
 }

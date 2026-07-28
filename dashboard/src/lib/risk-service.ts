@@ -92,7 +92,7 @@ const FACTOR_LABELS: Record<string, string> = {
 
 function fallbackExplanation(breakdown: RiskBreakdown): string {
   if (breakdown.factors.length === 0) {
-    return `${breakdown.member.displayName} scores ${breakdown.score}/100 — no active risk factors. This member has a clean recent record: no warnings, AutoMod violations, or cases in the last 30 days.`
+    return `${breakdown.member.displayName} scores ${breakdown.score}/100 with no active risk factors. This member has a clean recent record: no warnings, AutoMod violations, or cases in the last 30 days.`
   }
   const parts = breakdown.factors.slice(0, 4).map((factor) => {
     const label = FACTOR_LABELS[factor.name] ?? factor.name.replace(/_/g, ' ')
@@ -101,7 +101,7 @@ function fallbackExplanation(breakdown: RiskBreakdown): string {
   const advice = breakdown.score >= 80
     ? 'Staff should watch this member closely and consider preemptive restrictions.'
     : breakdown.score >= 60
-      ? 'Worth keeping an eye on — intervene early if behavior continues.'
+      ? 'Worth keeping an eye on. Intervene early if behavior continues.'
       : breakdown.score >= 35
         ? 'Moderate risk; normal monitoring is enough for now.'
         : 'Low risk; no action needed.'

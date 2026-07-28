@@ -1,5 +1,5 @@
 /**
- * Module manifest — the single source of truth for the Modules page.
+ * Module manifest: the single source of truth for the Modules page.
  *
  * Each definition maps a bot feature to (a) the flat `<id>_enabled` key the bot
  * reads in its per-guild `guild_settings` JSON blob and (b) a schema of
@@ -8,8 +8,8 @@
  * here is exactly what the running bot honors on its next `get_settings()` call.
  *
  * Resolution of "is this module enabled?" mirrors the bot's
- * `utils/server_setup.py:module_enabled()` — flat key first, then a nested
- * `modules[id].enabled`, then the field default — so dashboard and bot agree.
+ * `utils/server_setup.py:module_enabled()`: flat key first, then a nested
+ * `modules[id].enabled`, then the field default, so dashboard and bot agree.
  */
 
 export type ModuleFieldType =
@@ -272,7 +272,7 @@ export const MODULE_DEFINITIONS: readonly ModuleDefinition[] = [
   {
     id: 'automod',
     name: 'Automod',
-    description: 'Layered automatic moderation — spam, links, invites, mentions, raids, and more.',
+    description: 'Layered automatic moderation: spam, links, invites, mentions, raids, and more.',
     category: 'Moderation',
     icon: 'shield-alert',
     badge: 'standard',
@@ -284,7 +284,7 @@ export const MODULE_DEFINITIONS: readonly ModuleDefinition[] = [
   {
     id: 'aimod',
     name: 'AI Moderation',
-    description: 'Natural-language moderation and chat — mention the bot to act, ask, or pull a member’s record.',
+    description: 'Natural-language moderation and chat. Mention the bot to act, ask, or pull a member’s record.',
     category: 'Moderation',
     icon: 'bot',
     badge: 'new',
@@ -482,7 +482,7 @@ export const MODULE_DEFINITIONS: readonly ModuleDefinition[] = [
   {
     id: 'welcome',
     name: 'Welcome Card',
-    description: 'Greet new members with a fully customizable welcome image — background, blur, glow, ring, text, layout, and badges — designed live from here.',
+    description: 'Greet new members with a fully customizable welcome image: background, blur, glow, ring, text, layout, and badges, all designed live from here.',
     category: 'Engagement',
     icon: 'image-plus',
     badge: 'new',
@@ -500,7 +500,7 @@ export const MODULE_DEFINITIONS: readonly ModuleDefinition[] = [
       { key: 'welcome_card_subtitle', label: 'Subtitle line', type: 'text', maxLength: 80, placeholder: 'to {server}', hint: '{server} and {count} are replaced with live values. Empty hides the line.' },
       { key: 'welcome_server_name', label: 'Server name (welcome message)', type: 'text', maxLength: 80, placeholder: 'Use the Discord server name' },
       { key: 'welcome_system_name', label: 'System name (welcome message)', type: 'text', maxLength: 80, placeholder: 'Welcome System' },
-      { key: 'welcome_card_accent', label: 'Accent color', type: 'text', placeholder: '#5865f2', hint: 'Hex color — glow, ring, pill, and frame.' },
+      { key: 'welcome_card_accent', label: 'Accent color', type: 'text', placeholder: '#5865f2', hint: 'Hex color for the glow, ring, pill, and frame.' },
       { key: 'welcome_card_ring_color', label: 'Avatar ring color', type: 'text', placeholder: 'Same as accent' },
       { key: 'welcome_card_text_color', label: 'Text color', type: 'text', placeholder: '#ffffff' },
       { key: 'welcome_card_ring', label: 'Avatar ring', type: 'toggle', fallback: true },
@@ -546,7 +546,7 @@ function asBool(value: unknown): boolean | null {
 }
 
 /**
- * Resolve whether a module is enabled for a settings blob — mirrors the bot's
+ * Resolve whether a module is enabled for a settings blob; mirrors the bot's
  * `module_enabled()`: flat `<id>_enabled` key, then `modules[id].enabled`, then
  * a presence/field default heuristic for keyless modules (autoroles/welcome).
  */
