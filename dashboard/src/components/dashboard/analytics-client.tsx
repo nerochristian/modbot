@@ -10,6 +10,7 @@ import { SegmentedControl } from '@/components/ui/segmented'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ErrorState } from '@/components/ui/empty-state'
 import { MultiLineChart, type MultiSeries } from '@/components/charts'
+import { Stagger, StaggerItem } from '@/components/motion/primitives'
 import { useConfigStore } from '@/lib/store'
 import { useApi } from '@/lib/use-api'
 import { exportRecords } from '@/lib/export-client'
@@ -106,12 +107,12 @@ export function AnalyticsClient() {
         </div>
       ) : data ? (
         <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <StatCard label="Mod actions" value={formatCompact(data.kpis.actions.value)} delta={data.kpis.actions.delta} icon={Gavel} spark={data.series.actions} invertDelta />
-            <StatCard label="Automod blocks" value={formatCompact(data.kpis.automodBlocks.value)} delta={data.kpis.automodBlocks.delta} icon={ShieldAlert} spark={data.series.automodBlocks} />
-            <StatCard label="Total members" value={formatCompact(data.kpis.members.value)} delta={data.kpis.members.delta} icon={Users} spark={data.series.members} />
-            <StatCard label="Joins" value={formatCompact(data.kpis.joins.value)} delta={data.kpis.joins.delta} icon={UserPlus} spark={data.series.joins} />
-          </div>
+          <Stagger className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StaggerItem><StatCard label="Mod actions" value={formatCompact(data.kpis.actions.value)} delta={data.kpis.actions.delta} icon={Gavel} spark={data.series.actions} invertDelta /></StaggerItem>
+            <StaggerItem><StatCard label="Automod blocks" value={formatCompact(data.kpis.automodBlocks.value)} delta={data.kpis.automodBlocks.delta} icon={ShieldAlert} spark={data.series.automodBlocks} /></StaggerItem>
+            <StaggerItem><StatCard label="Total members" value={formatCompact(data.kpis.members.value)} delta={data.kpis.members.delta} icon={Users} spark={data.series.members} /></StaggerItem>
+            <StaggerItem><StatCard label="Joins" value={formatCompact(data.kpis.joins.value)} delta={data.kpis.joins.delta} icon={UserPlus} spark={data.series.joins} /></StaggerItem>
+          </Stagger>
 
           <Card>
             <CardHeader>
