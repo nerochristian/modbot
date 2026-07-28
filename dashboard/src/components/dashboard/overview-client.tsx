@@ -35,6 +35,7 @@ import { formatCompact, formatNumber } from '@/lib/utils'
 import { DATE_RANGES, type ChartType, type DateRange } from '@/lib/dashboard-config'
 import { formatDistanceToNow } from 'date-fns'
 import { GuidedTour, type TourStep } from '@/components/dashboard/tour-engine'
+import { RiskBreakdownModal } from '@/components/dashboard/risk-breakdown'
 
 const OVERVIEW_TOUR_STEPS: readonly TourStep[] = [
   {
@@ -142,6 +143,7 @@ export function OverviewClient({ workspaceSummary, guildId }: { workspaceSummary
   const can = useConfigStore((s) => s.can)
   const [customizing, setCustomizing] = useState(false)
   const [walkthroughRun, setWalkthroughRun] = useState(0)
+  const [riskMemberId, setRiskMemberId] = useState<string | null>(null)
 
   const { data, error, loading, refetch } = useApi<OverviewData>(
     `/api/analytics/overview?range=${dateRange}`,
@@ -226,6 +228,7 @@ export function OverviewClient({ workspaceSummary, guildId }: { workspaceSummary
 
       <WidgetCustomizer open={customizing} onClose={() => setCustomizing(false)} />
       <GuidedTour steps={OVERVIEW_TOUR_STEPS} storageKey={`docket:tour:v2:${guildId}`} restartToken={walkthroughRun} />
+      {riskMemberId && <RiskBreakdownModal memberId={riskMemberId} onClose={() => setRiskMemberId(null)} />}
     </>
   )
 }
