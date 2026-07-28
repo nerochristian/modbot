@@ -84,7 +84,7 @@ type OverviewData = {
   growth: { label: string; joined: number; left: number }[]
   infractions: { name: string; value: number; color: string }[]
   totalMembers: number
-  watchlist: { id: string; displayName: string; username: string; riskLevel: string; warnings: number; avatarColor: string }[]
+  watchlist: { id: string; displayName: string; username: string; avatarUrl: string | null; riskLevel: string; warnings: number; avatarColor: string }[]
   topRules: { id: string; name: string; trigger: string; action: string; severity: string; hits: number; enabled: boolean }[]
   recentActivity: { id: string; actorName: string; action: string; target: string | null; createdAt: string }[]
   systemStatus: { name: string; status: string; uptime: string }[]
