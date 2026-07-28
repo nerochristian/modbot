@@ -724,7 +724,7 @@ const FIELD_HELP: Record<Module['special'] & string, string> = {
   whitelist: 'Choose rejection behavior and maintain the exact member allowlist enforced on join.',
   tickets: 'Route private support channels to the right category, staff role, and transcript log.',
   logging: 'Send each class of server event to a deliberate destination instead of one noisy catch-all channel.',
-  welcome_card: 'Set the delivery channel and identity of the join card members see when they arrive.',
+  welcome_card: 'Design the join card live — every change in this sheet updates the preview instantly.',
   autoroles: 'Choose the role Docket assigns to new human members when verification is not controlling access.',
 }
 
