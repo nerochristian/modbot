@@ -34,7 +34,45 @@ import { exportRecords } from '@/lib/export-client'
 import { formatCompact, formatNumber } from '@/lib/utils'
 import { DATE_RANGES, type ChartType, type DateRange } from '@/lib/dashboard-config'
 import { formatDistanceToNow } from 'date-fns'
-import { DashboardWalkthrough } from '@/components/dashboard/dashboard-walkthrough'
+import { GuidedTour, type TourStep } from '@/components/dashboard/tour-engine'
+
+const OVERVIEW_TOUR_STEPS: readonly TourStep[] = [
+  {
+    eyebrow: 'Welcome to Docket',
+    title: 'This is your moderation desk',
+    description: 'Protection, cases, appeals, and activity all run from here. Ninety seconds now saves guesswork later.',
+  },
+  {
+    target: 'server-switcher',
+    eyebrow: 'Workspace',
+    title: 'Your servers live here',
+    description: 'Switch between the servers you manage. Every setting, case, and chart is scoped to the selected server.',
+  },
+  {
+    target: 'modules',
+    eyebrow: 'Features',
+    title: 'Modules switch features on',
+    description: 'Verification, AutoMod, Guardian, tickets, welcome cards — every switch applies to this server only.',
+  },
+  {
+    target: 'overview-widgets',
+    eyebrow: 'Signals',
+    title: 'Your server at a glance',
+    description: 'Live widgets for moderation load, member growth, the risk watchlist, and recent activity. Reorder or hide them from Customize.',
+  },
+  {
+    target: 'activity',
+    eyebrow: 'Records',
+    title: 'Every action leaves a record',
+    description: 'Activity keeps the full timeline — who was punished, what AutoMod blocked, who joined — so staff never dig through Discord.',
+  },
+  {
+    eyebrow: 'First win',
+    title: 'Start with AutoMod',
+    description: 'The fastest protection upgrade: open AutoMod and apply a template. Every rule, word list, and link list stays editable afterwards.',
+    action: { label: 'Open AutoMod', href: '/dashboard/automod' },
+  },
+]
 
 type Kpi = { value: number; delta: number }
 type OverviewData = {
@@ -159,7 +197,7 @@ export function OverviewClient({ workspaceSummary, guildId, guildName }: { works
       ) : loading && !data ? (
         <OverviewSkeleton />
       ) : data ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12" data-tour="overview-widgets">
           {ordered.map((w) => (
             <div key={w.key} className={SPAN[w.key] ?? 'lg:col-span-6'}>
               <Widget widgetKey={w.key} chartType={(w.chartType ?? 'area') as ChartType} data={data} />
@@ -187,7 +225,7 @@ export function OverviewClient({ workspaceSummary, guildId, guildName }: { works
       ) : null}
 
       <WidgetCustomizer open={customizing} onClose={() => setCustomizing(false)} />
-      <DashboardWalkthrough guildId={guildId} guildName={guildName} restartToken={walkthroughRun} />
+      <GuidedTour steps={OVERVIEW_TOUR_STEPS} storageKey={`docket:tour:v2:${guildId}`} restartToken={walkthroughRun} />
     </>
   )
 }
