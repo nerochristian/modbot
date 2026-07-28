@@ -53,7 +53,7 @@ export function Modal({
         aria-modal="true"
         aria-label={title}
         className={cn(
-          'animate-fade-in relative z-10 flex max-h-[92vh] w-full flex-col rounded-t-2xl border border-border bg-surface shadow-2xl sm:rounded-2xl',
+          'animate-modal-pop relative z-10 flex max-h-[92vh] w-full flex-col rounded-t-2xl border border-border bg-surface shadow-2xl sm:rounded-2xl',
           sizes[size],
         )}
       >

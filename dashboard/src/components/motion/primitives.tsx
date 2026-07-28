@@ -43,17 +43,17 @@ const staggerItem: Variants = {
 }
 
 /** Staggered entrance for grids/lists: children rise in one after another. */
-export function Stagger({ children, className }: { children: React.ReactNode; className?: string }) {
+export function Stagger({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <motion.div className={className} variants={staggerContainer} initial="hidden" animate="show">
+    <motion.div className={className} variants={staggerContainer} initial="hidden" animate="show" {...props}>
       {children}
     </motion.div>
   )
 }
 
-export function StaggerItem({ children, className }: { children: React.ReactNode; className?: string }) {
+export function StaggerItem({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <motion.div className={className} variants={staggerItem}>
+    <motion.div className={className} variants={staggerItem} {...props}>
       {children}
     </motion.div>
   )

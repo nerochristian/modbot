@@ -362,6 +362,16 @@ body {
     transform: translateY(0);
   }
 }
+@keyframes modal-pop {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
 @keyframes shimmer {
   0% {
     background-position: -200% 0;
@@ -396,6 +406,9 @@ body {
 
 .animate-fade-in {
   animation: fade-in 0.25s ease-out both;
+}
+.animate-modal-pop {
+  animation: modal-pop 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 .animate-toast-in {
   animation: toast-in 0.2s ease-out both;
