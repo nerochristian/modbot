@@ -1,21 +1,20 @@
 'use client'
 
-import { useState } from 'react'
-import { Gavel, Users, ShieldAlert, UserPlus, Download, UserMinus, Ban } from 'lucide-react'
+import { useMemo } from 'react'
+import { Gavel, Users, ShieldAlert, UserPlus, Download } from 'lucide-react'
 import { PageHeader } from '@/components/dashboard/page-header'
 import { StatCard } from '@/components/dashboard/stat-card'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { SegmentedControl } from '@/components/ui/segmented'
-import { Select } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import { ErrorState } from '@/components/ui/empty-state'
-import { TrendChart } from '@/components/charts'
+import { MultiLineChart, type MultiSeries } from '@/components/charts'
 import { useConfigStore } from '@/lib/store'
 import { useApi } from '@/lib/use-api'
 import { exportRecords } from '@/lib/export-client'
 import { formatCompact } from '@/lib/utils'
-import { DATE_RANGES, type ChartType, type DateRange } from '@/lib/dashboard-config'
+import { DATE_RANGES, type DateRange } from '@/lib/dashboard-config'
 
 type Kpi = { value: number; delta: number }
 type Point = { label: string; value: number }
@@ -24,18 +23,16 @@ type AnalyticsData = {
   series: Record<string, Point[]>
 }
 
-const METRIC_META: Record<string, { label: string; format: (v: number) => string; invert?: boolean }> = {
-  actions: { label: 'Mod actions', format: (v) => formatCompact(v), invert: true },
-  automodBlocks: { label: 'Automod blocks', format: (v) => formatCompact(v) },
-  members: { label: 'Total members', format: (v) => formatCompact(v) },
-  online: { label: 'Online now', format: (v) => formatCompact(v) },
-  joins: { label: 'Joins', format: (v) => formatCompact(v) },
-  leaves: { label: 'Leaves', format: (v) => formatCompact(v), invert: true },
-  bans: { label: 'Bans', format: (v) => formatCompact(v), invert: true },
-  warns: { label: 'Warnings', format: (v) => formatCompact(v), invert: true },
-}
-
-const SECONDARY = ['joins', 'leaves', 'bans', 'warns']
+/** Fixed color per metric — bans are red, joins are green, and so on. */
+const CHART_SERIES: MultiSeries[] = [
+  { key: 'actions', label: 'Mod actions', color: 'var(--accent)' },
+  { key: 'automodBlocks', label: 'Automod blocks', color: '#8b5cf6' },
+  { key: 'joins', label: 'Joins', color: 'var(--success)' },
+  { key: 'leaves', label: 'Leaves', color: 'var(--warning)' },
+  { key: 'kicks', label: 'Kicks', color: '#f97316' },
+  { key: 'bans', label: 'Bans', color: 'var(--danger)' },
+  { key: 'warns', label: 'Warnings', color: '#eab308' },
+]
 
 export function AnalyticsClient() {
   const dateRange = useConfigStore((s) => s.config.dateRange)
@@ -43,20 +40,27 @@ export function AnalyticsClient() {
   const exportFormat = useConfigStore((s) => s.config.exportFormat)
   const setDateRange = useConfigStore((s) => s.setDateRange)
 
-  const [metric, setMetric] = useState('actions')
-  const [chartType, setChartType] = useState<ChartType>('area')
-
   const { data, loading, error, refetch } = useApi<AnalyticsData>(
     `/api/analytics?range=${dateRange}`,
     { refreshInterval },
   )
 
-  const meta = METRIC_META[metric]
+  // Every metric on one canvas — merged by day label.
+  const combined = useMemo(() => {
+    if (!data) return []
+    const base = data.series.actions ?? []
+    return base.map((point, index) => {
+      const row: Record<string, number | string> = { label: point.label }
+      for (const series of CHART_SERIES) {
+        row[series.key] = data.series[series.key]?.[index]?.value ?? 0
+      }
+      return row
+    })
+  }, [data])
 
   function handleExport() {
-    if (!data) return
-    const rows = data.series[metric].map((p) => ({ period: p.label, [metric]: p.value }))
-    exportRecords(rows, exportFormat, `analytics-${metric}-${dateRange}`)
+    if (!combined.length) return
+    exportRecords(combined, exportFormat, `analytics-${dateRange}`)
   }
 
   return (
@@ -64,7 +68,7 @@ export function AnalyticsClient() {
       <PageHeader
         eyebrow="Signals"
         title="Analytics"
-        description="Deep-dive into moderation load, membership, and automod performance."
+        description="Every moderation and membership signal on one timeline — hover a day for the full picture."
         actions={
           <>
             <SegmentedControl
@@ -74,7 +78,7 @@ export function AnalyticsClient() {
               onChange={(v) => setDateRange(v as DateRange)}
               options={DATE_RANGES.map((r) => ({ label: r.value.toUpperCase(), value: r.value }))}
             />
-            <Button variant="outline" size="sm" onClick={handleExport} disabled={!data}>
+            <Button variant="outline" size="sm" onClick={handleExport} disabled={!combined.length}>
               <Download className="size-4" />
               Export
             </Button>
@@ -111,56 +115,13 @@ export function AnalyticsClient() {
 
           <Card>
             <CardHeader>
-              <div className="flex items-center gap-2">
-                <Select
-                  className="h-9 w-44"
-                  options={Object.keys(METRIC_META).map((k) => ({ label: METRIC_META[k].label, value: k }))}
-                  value={metric}
-                  onChange={(e) => setMetric(e.target.value)}
-                />
-              </div>
-              <SegmentedControl
-                size="sm"
-                aria-label="Chart type"
-                value={chartType}
-                onChange={setChartType}
-                options={[
-                  { label: 'Area', value: 'area' },
-                  { label: 'Line', value: 'line' },
-                  { label: 'Bar', value: 'bar' },
-                ]}
-              />
+              <CardTitle>Everything, one timeline</CardTitle>
+              <span className="text-xs text-muted">Toggle metrics with the chips</span>
             </CardHeader>
             <CardContent className="pt-4">
-              <TrendChart data={data.series[metric]} type={chartType} height={320} valueFormatter={meta.format} />
+              <MultiLineChart data={combined} series={CHART_SERIES} height={360} valueFormatter={(v) => formatCompact(v)} />
             </CardContent>
           </Card>
-
-          <div className="grid gap-4 lg:grid-cols-2">
-            {SECONDARY.map((m) => {
-              const mm = METRIC_META[m]
-              const Icon = m === 'bans' ? Ban : m === 'leaves' ? UserMinus : m === 'joins' ? UserPlus : ShieldAlert
-              return (
-                <Card key={m}>
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Icon className="size-4 text-muted" />
-                      {mm.label}
-                    </CardTitle>
-                    <span className="text-sm font-semibold text-foreground">{mm.format(data.kpis[m].value)}</span>
-                  </CardHeader>
-                  <CardContent className="pt-4">
-                    <TrendChart
-                      data={data.series[m]}
-                      type={m === 'joins' ? 'area' : 'bar'}
-                      height={200}
-                      valueFormatter={mm.format}
-                    />
-                  </CardContent>
-                </Card>
-              )
-            })}
-          </div>
         </div>
       ) : null}
     </>
