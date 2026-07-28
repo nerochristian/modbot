@@ -122,6 +122,7 @@ export function MembersClient() {
   const [details, setDetails] = useState<Record<string, MemberDetail>>({})
   const [detailErrors, setDetailErrors] = useState<Record<string, string>>({})
   const [loadingDetailId, setLoadingDetailId] = useState<string | null>(null)
+  const [riskMemberId, setRiskMemberId] = useState<string | null>(null)
 
   const columns = ALL_COLUMNS.filter((column) => visibleCols.includes(column.key))
   const profileColSpan = columns.length + (canCase ? 1 : 0)
@@ -314,6 +315,7 @@ export function MembersClient() {
           </>
         ) : null}
       </Card>
+      {riskMemberId && <RiskBreakdownModal memberId={riskMemberId} onClose={() => setRiskMemberId(null)} />}
     </>
   )
 }
