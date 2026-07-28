@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { botDatabaseHealthy, botQuery } from '@/lib/bot-db'
-import type { ManagedGuild } from '@/lib/discord'
+import { resolveDiscordProfiles, type ManagedGuild } from '@/lib/discord'
 import { ensureDashboardBackendSchema } from '@/lib/bot-schema'
 import { listAutomodRules } from '@/lib/automod-service'
 
@@ -255,6 +255,9 @@ export async function getRealOverview(guild: ManagedGuild, days: number) {
   const channelRows = unwrap<{ channel_id: string; value: string }[]>(7, [])
   const pendingAppealRows = unwrap<{ value: string }[]>(8, [])
   const databaseOk = unwrap(9, false)
+  const watchlistProfiles = watchlistRows.length
+    ? await resolveDiscordProfiles(guild.id, watchlistRows.map((row) => row.id)).catch(() => new Map())
+    : new Map()
 
   const colors: Record<string, string> = {
     warn: 'var(--sev-low)',
@@ -286,10 +289,12 @@ export async function getRealOverview(guild: ManagedGuild, days: number) {
     watchlist: watchlistRows.map((row) => {
       const score = number(row.score)
       const riskLevel = score >= 80 ? 'critical' : score >= 60 ? 'high' : score >= 35 ? 'medium' : 'low'
+      const profile = watchlistProfiles.get(row.id)
       return {
         id: row.id,
-        displayName: row.username,
-        username: row.id,
+        displayName: profile?.displayName ?? row.username,
+        username: profile?.username ?? row.id,
+        avatarUrl: profile?.avatarUrl ?? null,
         riskLevel,
         warnings: number(row.warnings),
         avatarColor: score >= 60 ? '#dc2f55' : '#c77700',
