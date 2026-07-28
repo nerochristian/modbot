@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { Logo } from "@/components/logo";
+import { MotionRoot } from "@/components/motion/primitives";
 import { Topbar } from "./topbar";
 import { Sidebar } from "./sidebar";
 import { NAV_ITEMS } from "@/lib/nav";
@@ -112,6 +113,7 @@ export function DashboardShell({
 }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   return (
+    <MotionRoot>
     <div className="modern-shell flex min-h-screen">
       <Sidebar
         permissions={permissions}
