@@ -37,8 +37,8 @@ export const AUTOMOD_DEFINITIONS: readonly AutomodDefinition[] = [
   { id: 'wall_spam', name: 'Wall / spacer spam', description: 'Blocks giant text walls and blank spacer messages: anything over ~1,800 characters, too many lines, or too many line breaks. Used to push chat content off screen.', enabledKey: 'automod_wall_spam_enabled', pattern: { setting: 'automod_wall_spam_max_lines', kind: 'integer', min: 2, max: 100 }, aliases: ['wall'] },
   { id: 'attachments', name: 'Attachment spam', description: 'Blocks messages carrying too many files, or bursts of files dumped in a few seconds.', enabledKey: 'automod_attachments_enabled', pattern: { setting: 'automod_attachment_threshold', kind: 'integer', min: 2, max: 20 }, aliases: ['attachment'] },
   { id: 'unicode_spam', name: 'Zalgo & symbol spam', description: 'Blocks glitchy "zalgo" text (stacked accents that corrupt lines above and below) and messages flooded with symbols or invisible characters.', enabledKey: 'automod_unicode_spam_enabled', pattern: { setting: 'automod_unicode_symbol_ratio', kind: 'integer', min: 1, max: 100 }, aliases: ['unicode'] },
-  { id: 'new_accounts', name: 'New accounts', description: 'Flags or punishes members whose Discord account is younger than the age you set — the classic alt-account filter.', enabledKey: 'automod_newaccount_enabled', pattern: { setting: 'automod_newaccount_days', kind: 'integer', min: 1, max: 365 }, aliases: ['new_account', 'identity'] },
-  { id: 'raid', name: 'Raid protection', description: 'Punishes join floods — too many members joining within a few seconds. For full raid defense see the Guardian module.', enabledKey: 'automod_raid_enabled', pattern: { setting: 'automod_raid_join_threshold', kind: 'integer', min: 2, max: 100 }, aliases: ['raids'] },
+  { id: 'new_accounts', name: 'New accounts', description: 'Flags or punishes members whose Discord account is younger than the age you set. The classic alt-account filter.', enabledKey: 'automod_newaccount_enabled', pattern: { setting: 'automod_newaccount_days', kind: 'integer', min: 1, max: 365 }, aliases: ['new_account', 'identity'] },
+  { id: 'raid', name: 'Raid protection', description: 'Punishes join floods: too many members joining within a few seconds. For full raid defense see the Guardian module.', enabledKey: 'automod_raid_enabled', pattern: { setting: 'automod_raid_join_threshold', kind: 'integer', min: 2, max: 100 }, aliases: ['raids'] },
 ] as const
 
 const DEFINITION_BY_ID = new Map<string, AutomodDefinition>()
@@ -77,7 +77,7 @@ export function parseAutomodPolicy(value: unknown, fallbackAction = 'warn'): Aut
 
 export function displayAutomodAction(policy: AutomodPolicy): AutomodAction {
   // Deletion is an independent toggle (the "Delete matched messages" switch),
-  // not an action — the action only controls the punishment.
+  // not an action; the action only controls the punishment.
   return policy.action
 }
 

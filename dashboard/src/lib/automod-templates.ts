@@ -1,5 +1,5 @@
 /**
- * AutoMod templates — curated starting points that map 1:1 onto the flat
+ * AutoMod templates: curated starting points that map 1:1 onto the flat
  * `automod_*` keys in the bot's guild_settings blob. Applying a template
  * writes the whole settings map; everything remains editable afterwards.
  */
@@ -51,7 +51,7 @@ export const AUTOMOD_TEMPLATES: readonly AutomodTemplate[] = [
     id: 'recommended',
     name: 'Recommended',
     tagline: 'Balanced cover for most servers',
-    description: 'Scam, link, invite, spam, and mention protection with warn-first actions. Nothing exotic — the set we would run ourselves.',
+    description: 'Scam, link, invite, spam, and mention protection with warn-first actions. Nothing exotic. The set we would run ourselves.',
     settings: {
       automod_badwords_enabled: false,
       automod_scam_protection: true,
@@ -81,7 +81,7 @@ export const AUTOMOD_TEMPLATES: readonly AutomodTemplate[] = [
     id: 'relaxed',
     name: 'Relaxed',
     tagline: 'Only the dangerous stuff',
-    description: 'Just scams and dangerous links. Chat stays free — only genuinely harmful posts get removed.',
+    description: 'Just scams and dangerous links. Chat stays free; only genuinely harmful posts get removed.',
     settings: {
       automod_scam_protection: true,
       automod_links_enabled: true,
@@ -162,7 +162,7 @@ export const AUTOMOD_TEMPLATES: readonly AutomodTemplate[] = [
   {
     id: 'lockdown',
     name: 'Lockdown',
-    tagline: 'Under active attack — maximum denial',
+    tagline: 'Under active attack, maximum denial',
     description: 'Allowlist-only links, every detector on, kick/ban actions, new accounts rejected under 30 days. Use while repelling a raid wave.',
     settings: {
       ...EVERY_RULE_ON,
@@ -191,7 +191,7 @@ export function automodTemplate(id: string): AutomodTemplate | null {
 
 /**
  * Keys a template apply may write. Built from the rule contract plus the
- * extra policy/list keys the templates legitimately touch — anything else
+ * extra policy/list keys the templates legitimately touch; anything else
  * in the payload is rejected.
  */
 export const TEMPLATE_ALLOWED_KEYS: ReadonlySet<string> = new Set([

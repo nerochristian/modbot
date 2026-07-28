@@ -50,18 +50,18 @@ const AUTOMOD_TOUR_STEPS: readonly TourStep[] = [
     target: 'automod-templates',
     eyebrow: 'Templates',
     title: 'One-click rule sets',
-    description: 'Open a template to see exactly which rules it turns on, which words it blocks, and which links it stops. Edit any of it before applying — and after.',
+    description: 'Open a template to see exactly which rules it turns on, which words it blocks, and which links it stops. Edit any of it before applying and after.',
   },
   {
     target: 'automod-rules',
     eyebrow: 'Rules',
     title: 'Tune each detector',
-    description: 'Flip a rule on, choose its punishment, and decide whether flagged messages get deleted. Deletion is the switch inside Edit — the action only picks the punishment.',
+    description: 'Flip a rule on, choose its punishment, and decide whether flagged messages get deleted. Deletion is the switch inside Edit. The action only picks the punishment.',
   },
   {
     eyebrow: 'After the block',
     title: 'Hits show up in Activity',
-    description: 'Every blocked message lands in Activity and your AutoMod log channel. Changes apply within about fifteen seconds — no restarts.',
+    description: 'Every blocked message lands in Activity and your AutoMod log channel. Changes apply within about fifteen seconds, no restarts.',
     action: { label: 'Open Activity', href: '/dashboard/activity' },
   },
 ]
@@ -312,7 +312,7 @@ function TemplateGallery({ canWrite, onApplied }: { canWrite: boolean; onApplied
           </span>
           <div>
             <h2 className="font-display text-sm font-semibold text-foreground">Start from a template</h2>
-            <p className="text-xs text-muted">Apply a full rule set in one click — every toggle, word list, and link list stays editable.</p>
+            <p className="text-xs text-muted">Apply a full rule set in one click. Every toggle, word list, and link list stays editable.</p>
           </div>
         </div>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
@@ -613,7 +613,7 @@ function RuleBuilder({
           </Field>
         ) : (
           <p className="text-xs text-muted">
-            No pattern needed — this trigger matches {TRIGGER_LABELS[form.trigger].toLowerCase()} automatically.
+            No pattern needed. This trigger matches {TRIGGER_LABELS[form.trigger].toLowerCase()} automatically.
           </p>
         )}
 
