@@ -51,21 +51,28 @@ function NavigationLink({ item }: { item: NavItem }) {
       href={item.href}
       data-tour={item.href === '/dashboard/modules' ? 'modules' : item.href === '/dashboard/activity' ? 'activity' : undefined}
       className={cn(
-        "group relative flex h-10 items-center gap-3 rounded-xl border px-3 text-sm font-medium transition-all duration-200",
+        "group relative flex h-10 items-center gap-3 rounded-xl px-3 text-sm font-medium transition-colors duration-200",
         isActive
-          ? "border-accent-line bg-accent-soft text-foreground shadow-[0_14px_30px_-24px_var(--accent)]"
-          : "border-transparent text-muted hover:border-border hover:bg-surface-2/70 hover:text-foreground",
+          ? "text-foreground"
+          : "text-muted hover:bg-surface-2/70 hover:text-foreground",
       )}
     >
+      {isActive && (
+        <motion.span
+          layoutId="sidebar-active-pill"
+          className="absolute inset-0 rounded-xl border border-accent-line bg-accent-soft shadow-[0_14px_30px_-24px_var(--accent)]"
+          transition={{ type: "spring", bounce: 0.18, duration: 0.5 }}
+        />
+      )}
       <Icon
         size={16}
         strokeWidth={1.8}
         className={cn(
-          "shrink-0 transition-colors",
+          "relative z-10 shrink-0 transition-colors",
           isActive ? "text-accent" : "text-muted-2 group-hover:text-foreground",
         )}
       />
-      <span className="truncate">{item.label}</span>
+      <span className="relative z-10 truncate">{item.label}</span>
       {item.badge && !isActive && <NavBadge badge={item.badge} />}
     </Link>
   );
