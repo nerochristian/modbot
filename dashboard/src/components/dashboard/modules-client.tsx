@@ -1447,10 +1447,22 @@ const OPERATIONAL_SECTIONS: Record<OperationalSpecial, OperationalSectionDefinit
       keys: ['welcome_channel'],
     },
     {
-      register: 'IDENTITY / 02',
-      title: 'Card identity',
-      description: 'Set the server label, subtitle, and optional HTTPS background used by the renderer.',
-      keys: ['welcome_server_name', 'welcome_system_name', 'welcome_bg_url'],
+      register: 'CANVAS / 02',
+      title: 'Canvas',
+      description: 'The backdrop every card starts from — image, blur, darkness, and layout.',
+      keys: ['welcome_bg_url', 'welcome_card_blur', 'welcome_card_overlay', 'welcome_card_layout'],
+    },
+    {
+      register: 'IDENTITY / 03',
+      title: 'Words on the card',
+      description: 'The pill label and subtitle drawn on the image, plus the names used in the text message.',
+      keys: ['welcome_card_label', 'welcome_card_subtitle', 'welcome_server_name', 'welcome_system_name'],
+    },
+    {
+      register: 'STYLE / 04',
+      title: 'Style & details',
+      description: 'Accent, ring, text color, and which flourishes the renderer draws.',
+      keys: ['welcome_card_accent', 'welcome_card_ring_color', 'welcome_card_text_color', 'welcome_card_ring', 'welcome_card_role_color', 'welcome_card_badges', 'welcome_card_member_count'],
     },
   ],
   autoroles: [
