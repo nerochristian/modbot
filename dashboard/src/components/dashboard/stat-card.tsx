@@ -1,5 +1,6 @@
 import { ArrowDownRight, ArrowUpRight, type LucideIcon } from 'lucide-react'
 import { Card } from '@/components/ui/card'
+import { CountUp } from '@/components/motion/primitives'
 import { Sparkline } from '@/components/charts'
 import { cn } from '@/lib/utils'
 
@@ -21,13 +22,17 @@ export function StatCard({
   const positive = delta !== undefined && delta >= 0
   // For metrics like bans, a lower value is good — invert the color meaning.
   const good = invertDelta ? !positive : positive
+  // Plain integers spring from zero; compact formats ("1.2k") render as-is.
+  const numeric = /^-?[\d,]+$/.test(value) ? Number(value.replace(/,/g, '')) : null
 
   return (
-    <Card className="p-5">
+    <Card className="lift-card p-5">
       <div className="flex items-start justify-between">
         <div className="min-w-0">
           <p className="font-mono text-[0.6875rem] font-medium uppercase tracking-[0.1em] text-muted">{label}</p>
-          <p className="mt-2 font-display text-[1.75rem] font-semibold leading-none tracking-tight text-foreground">{value}</p>
+          <p className="mt-2 font-display text-[1.75rem] font-semibold leading-none tracking-tight text-foreground">
+            {numeric !== null && Number.isFinite(numeric) ? <CountUp value={numeric} /> : value}
+          </p>
         </div>
         {Icon && (
           <span className="flex size-9 items-center justify-center rounded-md bg-accent-soft text-accent">
