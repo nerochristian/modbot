@@ -27,6 +27,7 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { PageHeader } from '@/components/dashboard/page-header'
+import { WelcomeCardPreview } from '@/components/dashboard/welcome-card-preview'
 import { Card } from '@/components/ui/card'
 import { Button, buttonVariants } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
