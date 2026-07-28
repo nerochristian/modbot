@@ -199,11 +199,11 @@ export function AutomodClient() {
           />
         </Card>
       ) : data ? (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" data-tour="automod-rules">
+        <Stagger className="grid gap-4 md:grid-cols-2 xl:grid-cols-3" data-tour="automod-rules">
           {data.data.map((rule) => (
+            <StaggerItem key={rule.id} className="contents">
             <Card
-              key={rule.id}
-              className={cn(severityRail(rule.severity), 'relative overflow-hidden', !rule.enabled && 'opacity-60')}
+              className={cn(severityRail(rule.severity), 'lift-card relative overflow-hidden', !rule.enabled && 'opacity-60')}
             >
               <div className="space-y-3 p-4 pl-5">
                 <div className="flex items-start justify-between gap-3">
