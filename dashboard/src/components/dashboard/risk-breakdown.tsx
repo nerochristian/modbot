@@ -41,8 +41,6 @@ export function RiskBreakdownModal({ memberId, onClose }: { memberId: string; on
 
   useEffect(() => {
     const controller = new AbortController()
-    setData(null)
-    setError(null)
     fetch(`/api/members/${memberId}/risk`, { method: 'POST', signal: controller.signal })
       .then(async (res) => {
         const body = await res.json().catch(() => ({}))

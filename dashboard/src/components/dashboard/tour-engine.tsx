@@ -69,10 +69,12 @@ export function GuidedTour({
 
   useLayoutEffect(() => {
     if (!open) return
-    locate()
+    // Measure on the next frame so the DOM has painted the current step.
+    const frame = window.requestAnimationFrame(locate)
     window.addEventListener('resize', locate)
     window.addEventListener('scroll', locate, true)
     return () => {
+      window.cancelAnimationFrame(frame)
       window.removeEventListener('resize', locate)
       window.removeEventListener('scroll', locate, true)
     }
