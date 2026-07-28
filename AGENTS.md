@@ -57,9 +57,9 @@ different bot.
 
 | Bot | Lives in this repo? | VPS path | Process manager | Entry point |
 |---|---|---|---|---|
-| **DocketBot** (+ Group Creator + SupportBot, all one process) | YES — this folder | `/opt/modbot` | systemd service `modbot` | `/opt/modbot/bot.py` |
-| **Mahito** | NO — separate repo `github.com/nerochristian/guild` | `/root/modbot` | PM2 app `modbot` *(name is misleading — this is mahito)* | `/root/modbot/bot.py` |
-| **DocketBot dashboard** (Next.js) | YES — `dashboard/` | `/opt/modbot/dashboard` | PM2 app `modbot-dashboard` | `dashboard/.next/standalone/server.js` |
+| **DocketBot** (+ Group Creator + SupportBot, all one process) | YES, this folder | `/opt/modbot` | systemd service `modbot` | `/opt/modbot/bot.py` |
+| **Mahito** | NO, separate repo `github.com/nerochristian/guild` | `/root/modbot` | PM2 app `modbot` *(name is misleading; this is mahito)* | `/root/modbot/bot.py` |
+| **DocketBot dashboard** (Next.js) | YES, `dashboard/` | `/opt/modbot/dashboard` | PM2 app `modbot-dashboard` | `dashboard/.next/standalone/server.js` |
 
 ### Critical facts
 - **This folder = DocketBot.** The workspace you are editing is the docket bot's
@@ -68,23 +68,23 @@ different bot.
   `bot.py` and launched as an `asyncio` task by `_run_groupbot()` in `main()`.
   DocketBot's single process runs **three** bots concurrently: ModBot (docket),
   GroupBot (group creator), and SupportBot. They share one process and one fate
-  — restarting DocketBot restarts all three. DocketBot reads three tokens from
+  restarting DocketBot restarts all three. DocketBot reads three tokens from
   `/opt/modbot/.env`: `DISCORD_TOKEN` (docket), `GROUPBOT_DISCORD_TOKEN` (group
   creator), `SUPPORTBOT_DISCORD_TOKEN` (support). `LIFESIM_DISCORD_TOKEN` is
   also present but the LifeSim runner is not started in the current `main()`.
 - **`/root/modbot` is Mahito, not DocketBot.** The PM2 app is named "modbot" for
   historical reasons but it is a *different* bot (token `MTUxMjkxNzk0...`),
   sourced from the separate repo `github.com/nerochristian/guild` (branch
-  `guild` — there is no `main`). Do NOT edit `/root/modbot` from this repo.
+  `guild`; there is no `main`). Do NOT edit `/root/modbot` from this repo.
   **Correction (2026-07-27):** `/root/modbot` is NOT byte-identical to
-  `/opt/soul/guild/`, and it was historically not a git checkout — the live
+  `/opt/soul/guild/`, and it was historically not a git checkout; the live
   Mahito carries trees the dead clone and the stale GitHub repo both lack
   (`cogs/`, `config.py`, `database.py`, `utils/`, `src/`, `welcome_card.py`).
   It is NOW a git checkout tracking `origin/guild` and auto-deploys via
   `mahito-autodeploy.timer` (see §5).
 - **`/opt/soul/guild`** is a dead/inactive duplicate of Mahito (systemd
   `soul-bot.service` is inactive). Leave it alone unless explicitly asked.
-- **Do not restart the PM2 `modbot` app** to deploy DocketBot changes — that
+- **Do not restart the PM2 `modbot` app** to deploy DocketBot changes; that
   app is Mahito. DocketBot is restarted via `systemctl restart modbot`.
 - **new-ticket-bot was removed** on 2026-07-27 (PM2 `new-ticket-website` deleted
   and `/root/new-ticket-bot` removed). Do not recreate it.
@@ -110,11 +110,11 @@ V2 UI Components Guide
 The `components_v2` helpers live in `utils/components_v2.py` and build Discord
 `LayoutView`/`Container` UIs. Use them for rich panels; plain `discord.Embed`
 is still fine for simple messages (most cogs use embeds, and a global
-monkeypatch — `patch_components_v2()`, opt-in — can auto-upgrade embeds to V2
+monkeypatch (`patch_components_v2()`, opt-in) can auto-upgrade embeds to V2
 layouts).
 
 ## Real API (verified against utils/components_v2.py)
-Only these functions exist — do not invent others:
+Only these functions exist; do not invent others:
 - `branded_panel_container(*, title, description, banner_url=None, logo_url=None, accent_color=None, banner_separated=False) -> discord.ui.Container`
 - `container_from_embed(embed) -> discord.ui.Container`
 - `layout_view_from_embeds(embed=..., ...) -> discord.ui.LayoutView` (async)
@@ -146,20 +146,20 @@ def build_panel() -> discord.ui.LayoutView:
 # await interaction.response.send_message(view=build_panel())
 ```
 
-## 4B. FEATURE MAP (added 2026-07-27 — keep current)
+## 4B. FEATURE MAP (added 2026-07-27, keep current)
 
 - **Guardian (anti-raid + anti-nuke, one dashboard module).** Anti-nuke lives
   in `cogs/guardian.py` (audit-log-attributed tripwires: channel/role deletes,
   bans, kicks, webhook creates, dangerous-perm grants; configurable response
   `guardian_nuke_action` = strip/ban/kick/quarantine, default `strip`).
   Anti-raid stays in `cogs/antiraid.py`. The dashboard module id is still
-  `antiraid` (label "Guardian") — all keys are `antiraid_*` (raid) and
+  `antiraid` (label "Guardian"); all keys are `antiraid_*` (raid) and
   `guardian_*` (nuke) in the `guild_settings` JSON blob.
 - **AutoMod defaults OFF.** Every `automod_*_enabled` detection module now
   defaults `False` in `cogs/automod/config.py`; turning the module on starts
   from a clean slate. The dashboard writes per-rule policies to
   `automod_rule_actions` as before, but **deletion is only the
-  "Delete matched messages" switch** — there is no `delete` action anymore
+  "Delete matched messages" switch**; there is no `delete` action anymore
   (legacy stored `delete` actions parse to `log`+delete-flag).
 - **Dangerous links are configurable.** `automod_links_blocklist` (ships with
   ~40 grabify/shortener/lookalike domains) replaces the old hardcoded list in
@@ -173,7 +173,7 @@ def build_panel() -> discord.ui.LayoutView:
   (`GuidedTour`, spotlight via `data-tour` anchors). Runs on Overview
   (`docket:tour:v2:{guildId}`) and AutoMod (`docket:tour:automod:v1`).
 - **Welcome card designer.** Bot renderer `utils/welcome_card.py` is
-  config-driven (`welcome_card_options_from_settings` — blur, overlay, accent,
+  config-driven (`welcome_card_options_from_settings`: blur, overlay, accent,
   ring, text color, layout center/left, badges, member count;
   `welcome_card_*` settings keys). Dashboard Modules → Welcome Card has a live
   mock preview (`welcome-card-preview.tsx`); real render via `/testwelcome`.
@@ -195,13 +195,13 @@ def build_panel() -> discord.ui.LayoutView:
   (`components/motion/primitives.tsx`, `MotionRoot` in shell), and the sidebar
   active pill (`layoutId`). `prefers-reduced-motion` is respected globally.
 
-## 5. DEPLOYMENT — AUTO-DEPLOY IS THE PRIMARY PATH (both bots)
+## 5. DEPLOYMENT: AUTO-DEPLOY IS THE PRIMARY PATH (both bots)
 
 Both bots self-deploy from GitHub roughly every 60 seconds via a systemd timer.
 **To ship a change you normally just `git push`; no manual SSH deploy is
 required.** The manual commands at the bottom are only a fallback/override.
 
-### DocketBot (this repo) — auto-deploys `github.com/nerochristian/modbot@main`
+### DocketBot (this repo) auto-deploys `github.com/nerochristian/modbot@main`
 - `modbot-autoupdate.timer` (enabled, every 60s) → `modbot-autoupdate.service`
   → `bash /opt/modbot/scripts/vps_deploy.sh`, env from
   `/etc/modbot-autoupdate.env` (`MODBOT_APP_DIR=/opt/modbot`,
@@ -214,7 +214,7 @@ required.** The manual commands at the bottom are only a fallback/override.
   itself within ~a minute.** Tail it with
   `journalctl -u modbot-autoupdate.service -f`.
 
-### Mahito (`/root/modbot`, PM2 `modbot`) — auto-deploys `github.com/nerochristian/guild@guild`
+### Mahito (`/root/modbot`, PM2 `modbot`) auto-deploys `github.com/nerochristian/guild@guild`
 - **Status: LIVE (verified 2026-07-27).** `/root/modbot` is a git checkout
   tracking `origin/guild`, and a test push auto-deployed + restarted Mahito
   end-to-end. Push to `guild` and Mahito self-deploys within ~a minute.
@@ -234,7 +234,7 @@ required.** The manual commands at the bottom are only a fallback/override.
   git: `.env`, `credentials.json`, `*.db`, and `agent.md`/`askpass.bat`/
   `deploy.py` (which hardcode the VPS password) are intentionally untracked.
 - **If you develop Mahito on another machine:** re-sync that repo with the
-  force-updated `guild` before your next push — `git fetch origin && git reset
+  force-updated `guild` before your next push: `git fetch origin && git reset
   --hard origin/guild` (or re-clone), because the branch history was rewritten.
 
 ### Manual DocketBot deploy (fallback / override)
@@ -252,7 +252,7 @@ ssh root@docketbot.xyz 'cd /opt/modbot && \
 The canonical script `scripts/vps_deploy.sh` encodes this flow (dep installs,
 dashboard rebuild, rollback, deploy lock). The runner
 `scripts/_vps_deploy_runner.py` wraps it over paramiko.
-**Verify**: `journalctl -u modbot -n 25 --no-pager` — all cogs load, 0
+**Verify**: `journalctl -u modbot -n 25 --no-pager`; all cogs load, 0
 failures, gateway connected, `Docket Support#5577` + `ModBot` online.
 
 ### If the VPS tree is dirty
