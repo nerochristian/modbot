@@ -42,8 +42,13 @@ const staggerItem: Variants = {
   show: { opacity: 1, y: 0, transition: { duration: 0.45, ease: EASE } },
 }
 
+type StaggerProps = {
+  children: React.ReactNode
+  className?: string
+} & { [key: `data-${string}`]: string | undefined }
+
 /** Staggered entrance for grids/lists: children rise in one after another. */
-export function Stagger({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+export function Stagger({ children, className, ...props }: StaggerProps) {
   return (
     <motion.div className={className} variants={staggerContainer} initial="hidden" animate="show" {...props}>
       {children}
@@ -51,7 +56,7 @@ export function Stagger({ children, className, ...props }: React.HTMLAttributes<
   )
 }
 
-export function StaggerItem({ children, className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+export function StaggerItem({ children, className, ...props }: StaggerProps) {
   return (
     <motion.div className={className} variants={staggerItem} {...props}>
       {children}
