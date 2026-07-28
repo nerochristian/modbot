@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { LayoutTemplate, Pencil, ShieldOff, ShieldAlert, X } from 'lucide-react'
 import { PageHeader } from '@/components/dashboard/page-header'
+import { GuidedTour, type TourStep } from '@/components/dashboard/tour-engine'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge, severityTone, severityRail, TickMeter } from '@/components/ui/badge'
@@ -37,6 +38,32 @@ type Rule = {
   updatedAt: string
 }
 type Payload = { data: Rule[]; totalHits: number; activeCount: number }
+
+const AUTOMOD_TOUR_STEPS: readonly TourStep[] = [
+  {
+    eyebrow: 'AutoMod, explained',
+    title: 'Fifteen detectors, all yours',
+    description: 'Every detector is off until you turn it on. Pick a template for instant cover, or build your own setup rule by rule.',
+  },
+  {
+    target: 'automod-templates',
+    eyebrow: 'Templates',
+    title: 'One-click rule sets',
+    description: 'Open a template to see exactly which rules it turns on, which words it blocks, and which links it stops. Edit any of it before applying — and after.',
+  },
+  {
+    target: 'automod-rules',
+    eyebrow: 'Rules',
+    title: 'Tune each detector',
+    description: 'Flip a rule on, choose its punishment, and decide whether flagged messages get deleted. Deletion is the switch inside Edit — the action only picks the punishment.',
+  },
+  {
+    eyebrow: 'After the block',
+    title: 'Hits show up in Activity',
+    description: 'Every blocked message lands in Activity and your AutoMod log channel. Changes apply within about fifteen seconds — no restarts.',
+    action: { label: 'Open Activity', href: '/dashboard/activity' },
+  },
+]
 type GuildRole = { id: string; name: string; position: number; color: number }
 type GuildResourcesPayload = { roles: GuildRole[] }
 
