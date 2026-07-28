@@ -4,6 +4,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { Home, Loader2, Plus } from "lucide-react";
+import { motion } from "motion/react";
 import { useState } from "react";
 import { Logo } from "@/components/logo";
 import { NAV_ITEMS, type NavItem } from "@/lib/nav";
