@@ -200,7 +200,7 @@ export function OverviewClient({ workspaceSummary, guildId }: { workspaceSummary
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12" data-tour="overview-widgets">
           {ordered.map((w) => (
             <div key={w.key} className={SPAN[w.key] ?? 'lg:col-span-6'}>
-              <Widget widgetKey={w.key} chartType={(w.chartType ?? 'area') as ChartType} data={data} />
+              <Widget widgetKey={w.key} chartType={(w.chartType ?? 'area') as ChartType} data={data} onShowRisk={(memberId) => setRiskMemberId(memberId)} />
             </div>
           ))}
           {ordered.length === 0 && (
@@ -291,10 +291,12 @@ function Widget({
   widgetKey,
   chartType,
   data,
+  onShowRisk,
 }: {
   widgetKey: string
   chartType: ChartType
   data: OverviewData
+  onShowRisk: (memberId: string) => void
 }) {
   switch (widgetKey) {
     case 'kpi-actions':
@@ -449,17 +451,24 @@ function Widget({
             ) : (
               <ul className="space-y-1">
                 {data.watchlist.map((m) => (
-                  <li key={m.id} className={`${severityRail(m.riskLevel)} flex items-center gap-3 rounded-md py-1.5 pr-1`}>
-                    <Avatar name={m.displayName} color={m.avatarColor} size="sm" />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-foreground">{m.displayName}</p>
-                      <p className="truncate text-xs text-muted">@{m.username}</p>
-                    </div>
-                    <TickMeter severity={m.riskLevel} />
-                    <Badge tone={severityTone(m.riskLevel)}>{m.riskLevel}</Badge>
-                    <span className="w-14 text-right text-sm font-medium tabular-nums text-foreground">
-                      {m.warnings} warns
-                    </span>
+                  <li key={m.id}>
+                    <button
+                      type="button"
+                      onClick={() => onShowRisk(m.id)}
+                      title="See why this member has this risk score"
+                      className={`${severityRail(m.riskLevel)} flex w-full items-center gap-3 rounded-md py-1.5 pr-1 text-left transition-colors hover:bg-surface-2/70`}
+                    >
+                      <Avatar name={m.displayName} color={m.avatarColor} src={m.avatarUrl} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-foreground">{m.displayName}</p>
+                        <p className="truncate text-xs text-muted">@{m.username}</p>
+                      </div>
+                      <TickMeter severity={m.riskLevel} />
+                      <Badge tone={severityTone(m.riskLevel)}>{m.riskLevel}</Badge>
+                      <span className="w-14 text-right text-sm font-medium tabular-nums text-foreground">
+                        {m.warnings} warns
+                      </span>
+                    </button>
                   </li>
                 ))}
               </ul>
