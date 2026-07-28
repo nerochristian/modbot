@@ -199,11 +199,11 @@ export function OverviewClient({ workspaceSummary, guildId }: { workspaceSummary
       ) : loading && !data ? (
         <OverviewSkeleton />
       ) : data ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12" data-tour="overview-widgets">
+        <Stagger className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-12" data-tour="overview-widgets">
           {ordered.map((w) => (
-            <div key={w.key} className={SPAN[w.key] ?? 'lg:col-span-6'}>
+            <StaggerItem key={w.key} className={SPAN[w.key] ?? 'lg:col-span-6'}>
               <Widget widgetKey={w.key} chartType={(w.chartType ?? 'area') as ChartType} data={data} onShowRisk={(memberId) => setRiskMemberId(memberId)} />
-            </div>
+            </StaggerItem>
           ))}
           {ordered.length === 0 && (
             <div className="lg:col-span-12">
