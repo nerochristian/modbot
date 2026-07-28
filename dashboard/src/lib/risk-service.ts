@@ -129,7 +129,7 @@ export async function explainRisk(breakdown: RiskBreakdown): Promise<{ explanati
   const apiKey = process.env.AIMODEL_API_KEY?.trim()
   if (apiKey) {
     const baseUrl = (process.env.AIMODEL_BASE_URL?.trim() || 'https://aimodel.lol/v1').replace(/\/+$/, '')
-    const model = process.env.AIMODEL_CHAT_MODEL?.trim() || process.env.AI_MODEL?.trim() || 'accounts/aimodel/models/glm-5.2'
+    const model = process.env.AIMODEL_CHAT_MODEL?.trim() || process.env.AI_MODEL?.trim() || 'accounts/aimodel/models/kimi-k3-fast'
     try {
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 20_000)

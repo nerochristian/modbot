@@ -26,10 +26,10 @@ from discord.ext import commands, tasks
 import aiohttp
 
 # Raid analysis runs on the same aimodel provider as the rest of the bot,
-# pinned to glm-5.2 (see AIMODEL_CHAT_MODEL / AI_MODEL in .env).
+# pinned to kimi-k3-fast (see AIMODEL_CHAT_MODEL / AI_MODEL in .env).
 _AI_BASE_URL = (os.getenv("AIMODEL_BASE_URL") or "https://aimodel.lol/v1").strip().rstrip("/")
 _AI_API_KEY = os.getenv("AIMODEL_API_KEY", "").strip()
-_AI_MODEL = (os.getenv("AIMODEL_CHAT_MODEL") or os.getenv("AI_MODEL") or "accounts/aimodel/models/glm-5.2").strip()
+_AI_MODEL = (os.getenv("AIMODEL_CHAT_MODEL") or os.getenv("AI_MODEL") or "accounts/aimodel/models/kimi-k3-fast").strip()
 
 from utils.embeds import ModEmbed
 from utils.logging import send_log_embed
