@@ -9,7 +9,8 @@ import socket
 import urllib.request
 from urllib.parse import urljoin, urlsplit
 from dataclasses import dataclass
-from typing import Optional
+from collections.abc import Mapping
+from typing import Any, Optional
 
 import aiohttp
 import discord
