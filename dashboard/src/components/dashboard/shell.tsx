@@ -138,5 +138,6 @@ export function DashboardShell({
         </main>
       </div>
     </div>
+    </MotionRoot>
   );
 }
