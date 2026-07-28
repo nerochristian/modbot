@@ -265,7 +265,7 @@ export function MembersClient() {
                             key={column.key}
                             className={column.key === 'warnings' || column.key === 'messages' ? 'text-right' : undefined}
                           >
-                            {renderCell(member, column.key, expanded, () => toggleProfile(member))}
+                            {renderCell(member, column.key, expanded, () => toggleProfile(member), () => setRiskMemberId(member.discordId))}
                           </TD>
                         ))}
                         {canCase && (
@@ -318,7 +318,7 @@ export function MembersClient() {
   )
 }
 
-function renderCell(member: Member, key: string, expanded: boolean, onToggle: () => void) {
+function renderCell(member: Member, key: string, expanded: boolean, onToggle: () => void, onShowRisk: () => void) {
   switch (key) {
     case 'name':
       return (
@@ -344,10 +344,15 @@ function renderCell(member: Member, key: string, expanded: boolean, onToggle: ()
         : <Badge tone="success" dot>In server</Badge>
     case 'riskLevel':
       return (
-        <span className="inline-flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onShowRisk}
+          title="See why this member has this risk score"
+          className="focus-ring -m-1 inline-flex items-center gap-2 rounded-md p-1 transition-colors hover:bg-surface-2"
+        >
           <TickMeter severity={member.riskLevel} />
           <Badge tone={severityTone(member.riskLevel)}>{member.riskLevel}</Badge>
-        </span>
+        </button>
       )
     case 'warnings':
       return <span className="font-medium tabular-nums">{member.warnings}</span>
