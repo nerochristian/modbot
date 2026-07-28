@@ -20,7 +20,7 @@ export function StatCard({
   invertDelta?: boolean
 }) {
   const positive = delta !== undefined && delta >= 0
-  // For metrics like bans, a lower value is good — invert the color meaning.
+  // For metrics like bans, a lower value is good; invert the color meaning.
   const good = invertDelta ? !positive : positive
   // Plain integers spring from zero; compact formats ("1.2k") render as-is.
   const numeric = /^-?[\d,]+$/.test(value) ? Number(value.replace(/,/g, '')) : null

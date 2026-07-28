@@ -24,7 +24,7 @@ type AnalyticsData = {
   series: Record<string, Point[]>
 }
 
-/** Fixed color per metric — bans are red, joins are green, and so on. */
+/** Fixed color per metric: bans are red, joins are green, and so on. */
 const CHART_SERIES: MultiSeries[] = [
   { key: 'actions', label: 'Mod actions', color: 'var(--accent)' },
   { key: 'automodBlocks', label: 'Automod blocks', color: '#8b5cf6' },
@@ -46,7 +46,7 @@ export function AnalyticsClient() {
     { refreshInterval },
   )
 
-  // Every metric on one canvas — merged by day label.
+  // Every metric on one canvas, merged by day label.
   const combined = useMemo(() => {
     if (!data) return []
     const base = data.series.actions ?? []
@@ -69,7 +69,7 @@ export function AnalyticsClient() {
       <PageHeader
         eyebrow="Signals"
         title="Analytics"
-        description="Every moderation and membership signal on one timeline — hover a day for the full picture."
+        description="Every moderation and membership signal on one timeline. Hover a day for the full picture."
         actions={
           <>
             <SegmentedControl

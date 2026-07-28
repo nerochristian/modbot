@@ -725,7 +725,7 @@ const FIELD_HELP: Record<Module['special'] & string, string> = {
   whitelist: 'Choose rejection behavior and maintain the exact member allowlist enforced on join.',
   tickets: 'Route private support channels to the right category, staff role, and transcript log.',
   logging: 'Send each class of server event to a deliberate destination instead of one noisy catch-all channel.',
-  welcome_card: 'Design the join card live — every change in this sheet updates the preview instantly.',
+  welcome_card: 'Design the join card live. Every change in this sheet updates the preview instantly.',
   autoroles: 'Choose the role Docket assigns to new human members when verification is not controlling access.',
 }
 
@@ -911,7 +911,7 @@ function ModerationSheet({
       <ModerationSection
         register="ROUTING / 02"
         title="Routing & immunity"
-        description="Connect the channels Docket operates in and the roles that may—or may not—be acted on."
+        description="Connect the channels Docket operates in and the roles that may or may not be acted on."
       >
         {resourcesError && (
           <div className="mb-4 flex flex-col gap-2 border border-warning/40 bg-warning-soft px-3 py-2.5 text-xs text-warning sm:flex-row sm:items-center sm:justify-between">
@@ -1450,7 +1450,7 @@ const OPERATIONAL_SECTIONS: Record<OperationalSpecial, OperationalSectionDefinit
     {
       register: 'CANVAS / 02',
       title: 'Canvas',
-      description: 'The backdrop every card starts from — image, blur, darkness, and layout.',
+      description: 'The backdrop every card starts from: image, blur, darkness, and layout.',
       keys: ['welcome_bg_url', 'welcome_card_blur', 'welcome_card_overlay', 'welcome_card_layout'],
     },
     {

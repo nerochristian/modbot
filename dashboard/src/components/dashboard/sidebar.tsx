@@ -224,7 +224,7 @@ export function Sidebar({
           })}
         </nav>
 
-        {/* Footer signal — live/online marker echoing Nova's green pip */}
+        {/* Footer signal: live/online marker echoing Nova's green pip */}
         <div className="m-3 flex h-11 items-center gap-2 rounded-xl border border-border bg-surface-2/55 px-4">
           <span className="relative flex size-2">
             <span className="absolute inline-flex size-full animate-ping rounded-full bg-success opacity-60" />

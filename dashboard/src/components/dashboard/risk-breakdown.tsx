@@ -83,12 +83,12 @@ export function RiskBreakdownModal({ memberId, onClose }: { memberId: string; on
             </div>
           </div>
 
-          {/* Why — factor rows */}
+          {/* Why: factor rows */}
           <div>
             <p className="mb-2 font-mono text-[0.625rem] font-bold uppercase tracking-[0.18em] text-accent">Why this score</p>
             {data.factors.length === 0 ? (
               <p className="rounded-lg border border-border bg-surface-2/50 px-3 py-2 text-sm text-muted">
-                No active risk factors — clean recent record.
+                No active risk factors. Clean recent record.
               </p>
             ) : (
               <ul className="space-y-2">

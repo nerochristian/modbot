@@ -54,7 +54,7 @@ const OVERVIEW_TOUR_STEPS: readonly TourStep[] = [
     target: 'modules',
     eyebrow: 'Features',
     title: 'Modules switch features on',
-    description: 'Verification, AutoMod, Guardian, tickets, welcome cards — every switch applies to this server only.',
+    description: 'Verification, AutoMod, Guardian, tickets, welcome cards. Every switch applies to this server only.',
   },
   {
     target: 'overview-widgets',
@@ -66,7 +66,7 @@ const OVERVIEW_TOUR_STEPS: readonly TourStep[] = [
     target: 'activity',
     eyebrow: 'Records',
     title: 'Every action leaves a record',
-    description: 'Activity keeps the full timeline — who was punished, what AutoMod blocked, who joined — so staff never dig through Discord.',
+    description: 'Activity keeps the full timeline: who was punished, what AutoMod blocked, who joined, so staff never dig through Discord.',
   },
   {
     eyebrow: 'First win',

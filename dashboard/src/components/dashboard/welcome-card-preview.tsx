@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils'
 /**
  * Live mock of the bot's Pillow-rendered welcome card. Mirrors the renderer's
  * layout math (1000×420 canvas, accent frame, glow, ring, pill, badges) so the
- * designer is honestly representative — final render ships via /testwelcome.
+ * designer is honestly representative; final render ships via /testwelcome.
  */
 export function WelcomeCardPreview({ values }: { values: Record<string, unknown> }) {
   const str = (key: string, fallback = '') => {
@@ -100,7 +100,7 @@ export function WelcomeCardPreview({ values }: { values: Record<string, unknown>
           </div>
         </div>
       </div>
-      <p className="mt-2 text-xs text-muted-2">Approximate mock — render the real card in Discord with /testwelcome.</p>
+      <p className="mt-2 text-xs text-muted-2">Approximate mock. Render the real card in Discord with /testwelcome.</p>
     </div>
   )
 }
