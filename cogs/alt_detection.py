@@ -106,11 +106,11 @@ class AltDetection(commands.Cog):
             result = await self.engine.check(member)
             if result.is_suspect:
                 logger.warning(
-                    "Suspected alt join: %s (%d) in guild %d — confidence %.2f",
+                    "Suspected alt join: %s (%d) in guild %d, confidence %.2f",
                     member.display_name, member.id, member.guild.id, result.confidence
                 )
                 try:
-                    # Preserve any existing score/factors — a blind upsert would
+                    # Preserve any existing score/factors; a blind upsert would
                     # wipe the member's accumulated risk back to zero.
                     existing = await self.bot.db.get_risk_score(member.guild.id, member.id)
                     score = existing["score"] if existing else 0

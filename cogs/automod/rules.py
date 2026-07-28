@@ -127,7 +127,7 @@ class LinkRule(Rule):
     name = "links"
     setting_key = "automod_links_enabled"
     priority = 80
-    # Fallback only — the live list is the configurable `automod_links_blocklist`
+    # Fallback only; the live list is the configurable `automod_links_blocklist`
     # setting (editable from the dashboard AutoMod page).
     suspicious_domains = ("bit.ly", "tinyurl.com", "tiny.one", "cutt.ly", "rb.gy", "is.gd", "grabify.link", "iplogger.org")
 

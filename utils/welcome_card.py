@@ -389,7 +389,7 @@ def _asset_url(asset: object, *, size: int = 512, fmt: str = "png") -> Optional[
 # ---------------------------------------------------------------------------
 
 # Ordered list of flag attributes to check (highest priority first).
-# Only attrs present in _DISCORD_BADGE_ICONS will render — as real images.
+# Only attrs present in _DISCORD_BADGE_ICONS will render as real images.
 _FLAG_BADGE_ATTRS: list[str] = [
     "staff",
     "partner",
@@ -456,7 +456,7 @@ def _collect_flag_badges(user: discord.abc.User) -> list["_Badge"]:
                 continue
             seen_icons.add(fname)
             result.append(_Badge(icon=icon_img.copy()))
-        # If icon failed to download we silently skip — no text fallback for profile flags
+        # If icon failed to download we silently skip; no text fallback for profile flags
     return result
 
 
@@ -515,13 +515,13 @@ class WelcomeCardOptions:
     welcome_label: str        = ""
     role_badge_fallback: bool = False
     custom_bg_url: Optional[str] = None
-    # Designer options — every one is editable from the dashboard card designer.
+    # Designer options; every one is editable from the dashboard card designer.
     bg_blur: int                = 12      # gaussian radius applied to the background
-    overlay_opacity: int        = 55      # 0-100 — how dark the background sits
+    overlay_opacity: int        = 55      # 0-100, how dark the background sits
     ring_enabled: bool          = True
     ring_color: Optional[int]   = None    # defaults to the accent
     text_color: int             = 0xFFFFFF
-    subtitle: str               = ""      # "to {server}" — {server}/{count} placeholders
+    subtitle: str               = ""      # "to {server}"; {server}/{count} placeholders
     layout: str                 = "center"  # center | left
     show_badges: bool           = True
     show_member_count: bool     = True

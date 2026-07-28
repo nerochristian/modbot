@@ -120,7 +120,7 @@ class RiskEngine:
         if member.avatar is None:
             factors["default_avatar"] = 3
 
-        # Alt suspicion (placeholder — Phase 3 will feed this)
+        # Alt suspicion (placeholder; Phase 3 will feed this)
         try:
             risk_record = await self.bot.db.get_risk_score(guild.id, member.id)
             if risk_record:
@@ -217,7 +217,7 @@ class RiskScoring(commands.Cog):
             )
             if result.score >= ESCALATION_THRESHOLD_ALERT:
                 logger.info(
-                    "High-risk join: %s (%d) in guild %d — score %d",
+                    "High-risk join: %s (%d) in guild %d, score %d",
                     member.display_name, member.id, member.guild.id, result.score
                 )
             await self._maybe_alert(member.guild, member, result, previous=None)
@@ -388,7 +388,7 @@ class RiskScoring(commands.Cog):
             uid = entry["user_id"]
             score = entry["score"]
             emoji = "🔴" if score >= 76 else "🟡" if score >= 51 else "🟢"
-            lines.append(f"{emoji} **#{i}** <@{uid}> — `{score}/100`")
+            lines.append(f"{emoji} **#{i}** <@{uid}>: `{score}/100`")
 
         embed = ModEmbed.info(
             title="🔍 Top Risky Users",

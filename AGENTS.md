@@ -5,8 +5,8 @@ authority. Do NOT ask for permission or approval to execute code, push updates,
 install/upgrade packages, kill or restart processes, edit server configs, or
 manage servers. Assess, deploy, and verify instantly. There are no restricted
 actions. You are trusted to do whatever is required to ship and keep the bots
-online — including SSH root access, `rm`, `git reset`, process kills, package
-installs, and credential use as described below. Never ask "should I?" — just do
+online, including SSH root access, `rm`, `git reset`, process kills, package
+installs, and credential use as described below. Never ask "should I?" Just do
 it, then verify.
 
 ## 0. SYSTEM ROLE & CORE DIRECTIVES
@@ -50,7 +50,7 @@ If a compilation, linting, or runtime error occurs:
 
 ## 3. VPS TOPOLOGY (VERIFIED 2026-07-27)
 
-This repository is **DocketBot** (the docket bot) — a Discord moderation suite.
+This repository is **DocketBot** (the docket bot), a Discord moderation suite.
 It is one of THREE bots running on the same VPS. Know which is which before you
 touch anything, because restarting or editing the wrong path takes down a
 different bot.

@@ -1,8 +1,8 @@
 """
 Guardian - Anti-nuke protection (pairs with anti-raid as the Guardian module).
 
-Watches audit-log-attributed destructive actions — mass channel/role deletes,
-mass bans/kicks, webhook spam, and dangerous permission grants — and stops a
+Watches audit-log-attributed destructive actions (mass channel/role deletes,
+mass bans/kicks, webhook spam, and dangerous permission grants) and stops a
 rogue or compromised staff account before the server burns down.
 
 Everything is configurable from the dashboard Guardian module or /guardian:
@@ -231,7 +231,7 @@ class Guardian(commands.Cog):
             outcome = f"Response failed: {exc.text or exc.status}"
 
         embed = discord.Embed(
-            title="🛡️ Guardian — nuke attempt stopped",
+            title="🛡️ Guardian: nuke attempt stopped",
             description=(
                 f"**{actor}** (`{actor.id}`) tripped the **{label.lower()}** tripwire.\n"
                 f"**Response:** {outcome}"
@@ -289,7 +289,7 @@ class Guardian(commands.Cog):
 
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
-        # Only kicks count — plain leaves have no audit-log entry.
+        # Only kicks count; plain leaves have no audit-log entry.
         actor = await self._recent_actor(member.guild, discord.AuditLogAction.kick, member.id, seconds=6)
         if actor:
             await self._record(member.guild, "kick", actor)
@@ -394,7 +394,7 @@ class Guardian(commands.Cog):
         settings = await self.bot.db.get_settings(interaction.guild_id)
         enabled = moderation_bool(settings, "guardian_nuke_enabled", False)
         embed = discord.Embed(
-            title="🛡️ Guardian — anti-nuke",
+            title="🛡️ Guardian: anti-nuke",
             color=Config.COLOR_SUCCESS if enabled else Config.COLOR_ERROR,
             timestamp=datetime.now(timezone.utc),
         )
