@@ -36,6 +36,7 @@ import { DATE_RANGES, type ChartType, type DateRange } from '@/lib/dashboard-con
 import { formatDistanceToNow } from 'date-fns'
 import { GuidedTour, type TourStep } from '@/components/dashboard/tour-engine'
 import { RiskBreakdownModal } from '@/components/dashboard/risk-breakdown'
+import { Stagger, StaggerItem } from '@/components/motion/primitives'
 
 const OVERVIEW_TOUR_STEPS: readonly TourStep[] = [
   {
@@ -223,7 +224,7 @@ export function OverviewClient({ workspaceSummary, guildId }: { workspaceSummary
               </Card>
             </div>
           )}
-        </div>
+        </Stagger>
       ) : null}
 
       <WidgetCustomizer open={customizing} onClose={() => setCustomizing(false)} />
