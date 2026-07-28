@@ -294,6 +294,7 @@ export function MembersClient() {
                               onRetry={() => void loadProfile(member, true)}
                               onAction={(action) => openAction(member, action)}
                               onViewCases={() => router.push(`/dashboard/cases?member=${member.id}`)}
+                              onShowRisk={() => setRiskMemberId(member.discordId)}
                             />
                           </TD>
                         </TR>
@@ -378,6 +379,7 @@ function MemberCaseFile({
   onRetry,
   onAction,
   onViewCases,
+  onShowRisk,
 }: {
   member: Member
   detail?: MemberDetail
@@ -387,6 +389,7 @@ function MemberCaseFile({
   onRetry: () => void
   onAction: (action: string) => void
   onViewCases: () => void
+  onShowRisk: () => void
 }) {
   if (loading && !detail) {
     return (
@@ -460,8 +463,15 @@ function MemberCaseFile({
             )) : <span className="text-sm text-muted">No assignable roles</span>}
           </div>
           <div className="mt-4 flex items-center gap-2 text-xs text-muted">
-            <TickMeter severity={detail.riskLevel} />
-            <span>{cap(detail.riskLevel)} risk telemetry · score {detail.riskScore}</span>
+            <button
+              type="button"
+              onClick={onShowRisk}
+              title="See why this member has this risk score"
+              className="focus-ring -m-1 flex items-center gap-2 rounded-md p-1 transition-colors hover:bg-surface-2"
+            >
+              <TickMeter severity={detail.riskLevel} />
+              <span className="underline decoration-dotted underline-offset-2">{cap(detail.riskLevel)} risk telemetry · score {detail.riskScore}</span>
+            </button>
           </div>
           {timedOut && detail.timedOutUntil && (
             <p className="mt-3 text-xs text-warning">
