@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_mod, is_admin, is_owner_only
 from utils.classic_send import send_classic_message
-from utils.welcome_card import WelcomeCardOptions, build_welcome_card_file
+from utils.welcome_card import WelcomeCardOptions, build_welcome_card_file, welcome_card_options_from_settings
 from config import Config
 from .ui import EmojiApprovalView, AddEmojiTutorialView, _fetch_addemoji_tutorial_gif_file, ADD_EMOJI_TUTORIAL_GIF_FILENAME, ADD_EMOJI_TUTORIAL_GIF_URL, EMOJI_COMMAND_CHANNEL_ID
 
