@@ -133,7 +133,7 @@ function humanAction(action: string) {
   return action.replace(/_/g, ' ').replace(/^\w/, (c) => c.toUpperCase())
 }
 
-export function OverviewClient({ workspaceSummary, guildId, guildName }: { workspaceSummary: WorkspaceSummary; guildId: string; guildName: string }) {
+export function OverviewClient({ workspaceSummary, guildId }: { workspaceSummary: WorkspaceSummary; guildId: string; guildName: string }) {
   const widgets = useConfigStore((s) => s.config.widgets)
   const dateRange = useConfigStore((s) => s.config.dateRange)
   const refreshInterval = useConfigStore((s) => s.config.refreshInterval)
