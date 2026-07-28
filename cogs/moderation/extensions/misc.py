@@ -489,11 +489,7 @@ class MiscCommands:
         except Exception:
             ts = int(datetime.now(timezone.utc).timestamp())
 
-        options = WelcomeCardOptions(
-            accent_color=card_accent,
-            welcome_label="WELCOME",
-            custom_bg_url=settings.get("welcome_bg_url")
-        )
+        options = welcome_card_options_from_settings(settings)
         member_count = member.guild.member_count or len(member.guild.members)
 
         def build_embed(image_filename: Optional[str] = None) -> discord.Embed:
