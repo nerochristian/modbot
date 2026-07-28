@@ -481,7 +481,6 @@ class MiscCommands:
         if not system_name:
             system_name = "Welcome System"
         accent = getattr(Config, "EMBED_ACCENT_COLOR", getattr(Config, "COLOR_EMBED", 0x5865F2))
-        card_accent = getattr(Config, "WELCOME_CARD_ACCENT_COLOR", accent)
 
         joined_at = member.joined_at or datetime.now(timezone.utc)
         try:
