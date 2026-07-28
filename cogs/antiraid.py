@@ -25,8 +25,11 @@ from discord.ext import commands, tasks
 
 import aiohttp
 
-DO_API_KEY = os.getenv("DO_API_KEY", "")
-DO_BASE_URL = "https://inference.do-ai.run/v1"
+# Raid analysis runs on the same aimodel provider as the rest of the bot,
+# pinned to glm-5.2 (see AIMODEL_CHAT_MODEL / AI_MODEL in .env).
+_AI_BASE_URL = (os.getenv("AIMODEL_BASE_URL") or "https://aimodel.lol/v1").strip().rstrip("/")
+_AI_API_KEY = os.getenv("AIMODEL_API_KEY", "").strip()
+_AI_MODEL = (os.getenv("AIMODEL_CHAT_MODEL") or os.getenv("AI_MODEL") or "accounts/aimodel/models/glm-5.2").strip()
 
 from utils.embeds import ModEmbed
 from utils.logging import send_log_embed
@@ -41,7 +44,8 @@ from config import Config
 
 class AIRaidAnalyzer:
     """
-    Uses DeepSeek to detect sophisticated raid patterns by analyzing:
+    Uses the bot's aimodel provider (glm-5.2) to detect sophisticated raid
+    patterns by analyzing:
     - Username similarity and bot-like patterns
     - Account ages (new accounts are suspicious)
     - Avatar/banner presence (default avatars in bulk)
@@ -49,7 +53,7 @@ class AIRaidAnalyzer:
     """
 
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = DO_API_KEY
+        self.api_key = _AI_API_KEY
         self.client = True # Dummy flag for compat
 
         self.analysis_cache: Dict[str, tuple[dict, datetime]] = {}
@@ -58,7 +62,7 @@ class AIRaidAnalyzer:
         # config
         self.cache_ttl_seconds = 180  # 3 min cache for raid analysis
         self.max_requests_per_minute = 20  # conservative for raid checks
-        self.model = os.getenv("DO_PROFILE_MODEL", "deepseek-4-flash").strip()
+        self.model = _AI_MODEL
 
     def _hash_members(self, members: List[discord.Member]) -> str:
         """Create cache key from member data"""
@@ -200,7 +204,7 @@ Guidelines:
             }
             
             async with aiohttp.ClientSession() as session:
-                async with session.post(f"{DO_BASE_URL}/chat/completions", json=payload, headers=headers, timeout=15) as resp:
+                async with session.post(f"{_AI_BASE_URL}/chat/completions", json=payload, headers=headers, timeout=15) as resp:
                     if resp.status != 200:
                         raise RuntimeError(f"API Error {resp.status}")
                     data = await resp.json()
