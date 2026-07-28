@@ -180,6 +180,7 @@ export function AutomodClient() {
       />
 
       <TemplateGallery canWrite={canWrite} onApplied={refetch} />
+      <GuidedTour steps={AUTOMOD_TOUR_STEPS} storageKey="docket:tour:automod:v1" />
 
       {error && !data ? (
         <Card>
