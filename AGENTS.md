@@ -146,6 +146,55 @@ def build_panel() -> discord.ui.LayoutView:
 # await interaction.response.send_message(view=build_panel())
 ```
 
+## 4B. FEATURE MAP (added 2026-07-27 — keep current)
+
+- **Guardian (anti-raid + anti-nuke, one dashboard module).** Anti-nuke lives
+  in `cogs/guardian.py` (audit-log-attributed tripwires: channel/role deletes,
+  bans, kicks, webhook creates, dangerous-perm grants; configurable response
+  `guardian_nuke_action` = strip/ban/kick/quarantine, default `strip`).
+  Anti-raid stays in `cogs/antiraid.py`. The dashboard module id is still
+  `antiraid` (label "Guardian") — all keys are `antiraid_*` (raid) and
+  `guardian_*` (nuke) in the `guild_settings` JSON blob.
+- **AutoMod defaults OFF.** Every `automod_*_enabled` detection module now
+  defaults `False` in `cogs/automod/config.py`; turning the module on starts
+  from a clean slate. The dashboard writes per-rule policies to
+  `automod_rule_actions` as before, but **deletion is only the
+  "Delete matched messages" switch** — there is no `delete` action anymore
+  (legacy stored `delete` actions parse to `log`+delete-flag).
+- **Dangerous links are configurable.** `automod_links_blocklist` (ships with
+  ~40 grabify/shortener/lookalike domains) replaces the old hardcoded list in
+  `cogs/automod/rules.py` `LinkRule`.
+- **AutoMod templates.** Dashboard-side presets in
+  `dashboard/src/lib/automod-templates.ts`, applied via
+  `POST /api/automod/template` (validated key allowlist, atomic settings
+  patch, arms the module). The template sheet shows/edits every toggle, word
+  list, and link list before applying.
+- **Guided tours.** `dashboard/src/components/dashboard/tour-engine.tsx`
+  (`GuidedTour`, spotlight via `data-tour` anchors). Runs on Overview
+  (`docket:tour:v2:{guildId}`) and AutoMod (`docket:tour:automod:v1`).
+- **Welcome card designer.** Bot renderer `utils/welcome_card.py` is
+  config-driven (`welcome_card_options_from_settings` — blur, overlay, accent,
+  ring, text color, layout center/left, badges, member count;
+  `welcome_card_*` settings keys). Dashboard Modules → Welcome Card has a live
+  mock preview (`welcome-card-preview.tsx`); real render via `/testwelcome`.
+- **Risk scores are live.** `cogs/risk_scoring.py` recomputes on a 5-min
+  sweeper over fresh automod_events/cases (factors now include
+  `automod_violations` + `recent_cases`) and alerts staff at
+  `risk_alert_threshold` (default 80). Alt detection no longer wipes scores.
+  Dashboard: every risk badge opens `risk-breakdown.tsx` →
+  `GET/POST /api/members/[id]/risk` (`risk-service.ts`; POST adds an AI
+  explanation via `AIMODEL_API_KEY`/`AIMODEL_BASE_URL`, deterministic
+  fallback without a key).
+- **Appeals show real users.** `resolveDiscordProfile(s)` in
+  `dashboard/src/lib/discord.ts` (member → global-user fallback, 5-min cache);
+  UI uses `member-identity.tsx` (avatar, nickname+username, hover→user ID,
+  click→copy). Post-review DM failures no longer 500 the review
+  (`appeal-portal-service.ts` guards `dmChannel`).
+- **Motion.** `motion` (v12) powers page transitions
+  (`dashboard/template.tsx`), staggered grids and `CountUp` stat cards
+  (`components/motion/primitives.tsx`, `MotionRoot` in shell), and the sidebar
+  active pill (`layoutId`). `prefers-reduced-motion` is respected globally.
+
 ## 5. DEPLOYMENT — AUTO-DEPLOY IS THE PRIMARY PATH (both bots)
 
 Both bots self-deploy from GitHub roughly every 60 seconds via a systemd timer.
