@@ -673,6 +673,28 @@ async def _build_welcome_card_png_inner(
         server_name, member_count, options
     )
 
+def _pill_size(draw: ImageDraw.ImageDraw, text: str, font: ImageFont.ImageFont) -> tuple[int, int]:
+    bb = _get_textbbox(draw, text, font)
+    return (bb[2] - bb[0]) + 28, (bb[3] - bb[1]) + 14
+
+
+def _draw_pill(
+    draw: ImageDraw.ImageDraw,
+    xy: tuple[int, int],
+    text: str,
+    font: ImageFont.ImageFont,
+    fg: tuple[int, int, int, int],
+    bg: tuple[int, int, int, int],
+) -> tuple[int, int]:
+    x, y = xy
+    bb = _get_textbbox(draw, text, font)
+    tw, th = bb[2] - bb[0], bb[3] - bb[1]
+    w, h = tw + 28, th + 14
+    draw.rounded_rectangle((x, y, x + w, y + h), radius=h // 2, fill=bg)
+    draw.text((x + 14 - bb[0], y + 7 - bb[1]), text, font=font, fill=fg)
+    return w, h
+
+
 def _render_welcome_card_sync(
     bg_img: Optional[Image.Image],
     avatar_img: Optional[Image.Image],
@@ -682,71 +704,139 @@ def _render_welcome_card_sync(
     pill_text: str,
     display_name: str,
     username: str,
-    options: WelcomeCardOptions
+    server_name: str,
+    member_count: int,
+    options: WelcomeCardOptions,
 ) -> bytes:
     W, H = options.width, options.height
-    
-    # ── Background ─────────────────────────────────────────────────────────
+    RADIUS = max(0, min(60, options.radius))
+    left = options.layout == "left"
+
+    # ── Background: cover → blur → dim → vignette ─────────────────────────
     if bg_img is None:
-        bg_img = Image.new("RGBA", (W, H), (18, 18, 18, 255))
-        
-    card = _cover_resize(bg_img, (W, H)).convert("RGBA")
-    
-    # Very subtle overlay if background is too bright, otherwise leave it mostly untouched
-    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 40))
-    card = Image.alpha_composite(card, overlay)
+        card = Image.new("RGBA", (W, H), (11, 14, 23, 255))
+    else:
+        card = _cover_resize(bg_img, (W, H)).convert("RGBA")
+    if options.bg_blur > 0:
+        card = card.filter(ImageFilter.GaussianBlur(radius=options.bg_blur))
+    dim = max(0, min(100, options.overlay_opacity))
+    card = Image.alpha_composite(card, Image.new("RGBA", (W, H), (4, 6, 12, int(255 * dim / 100))))
+    vignette_alpha = Image.new("L", (1, H))
+    for y in range(H):
+        vignette_alpha.putpixel((0, y), int(150 * (y / H) ** 2))
+    black = Image.new("L", (W, H), 0)
+    vignette = Image.merge("RGBA", (black, black, black, vignette_alpha.resize((W, H))))
+    card = Image.alpha_composite(card, vignette)
 
     draw = ImageDraw.Draw(card)
 
-    # ── Avatar ─────────────────────────────────────────────────────────────
+    # ── Accent inner frame ─────────────────────────────────────────────────
+    draw.rounded_rectangle((9, 9, W - 10, H - 10), radius=max(1, RADIUS - 6), outline=accent + (110,), width=2)
+
+    # ── Avatar with glow + accent ring ─────────────────────────────────────
     AV = options.avatar_size
-    av_x = (W - AV) // 2
-    av_y = (H - AV) // 2 - 40
-    RING = 6
+    if left:
+        av_x = 78
+        av_y = (H - AV) // 2
+    else:
+        av_x = (W - AV) // 2
+        av_y = 52
 
-    # Draw solid white border
-    draw.ellipse(
-        (av_x - RING, av_y - RING, av_x + AV + RING, av_y + AV + RING),
-        fill=(255, 255, 255, 255)
-    )
-
-    if avatar_img is not None:
-        av = _circle_crop(avatar_img, AV)
-        card.alpha_composite(av, (av_x, av_y))
-
-    # ── Fonts ──────────────────────────────────────────────────────────────
-    font_welcome = load_font(76, bold=True)
-    font_user    = load_font(34, bold=True)
-    
+    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    glow_draw = ImageDraw.Draw(glow)
+    gx, gy = av_x + AV // 2, av_y + AV // 2
+    gr = int(AV * 0.8)
+    glow_draw.ellipse((gx - gr, gy - gr, gx + gr, gy + gr), fill=accent + (95,))
+    glow = glow.filter(ImageFilter.GaussianBlur(radius=38))
+    card = Image.alpha_composite(card, glow)
     draw = ImageDraw.Draw(card)
-    
-    display_name = display_name.upper()
 
-    # ── Text WELCOME ───────────────────────────────────────────────────────
-    headline = _text_fit(draw, (pill_text or "WELCOME").upper(), font_welcome, W - 40)
-    w_bb = _get_textbbox(draw, headline, font_welcome)
-    w_w, w_h = w_bb[2] - w_bb[0], w_bb[3] - w_bb[1]
-    
-    wx = (W - w_w) // 2
-    wy = av_y + AV - (w_h // 2) + 10
-    
-    # Subtle drop shadow
-    draw.text((wx + 3, wy + 3), headline, font=font_welcome, fill=(0, 0, 0, 200))
-    # Main text
-    draw.text((wx, wy), headline, font=font_welcome, fill=(255, 255, 255, 255))
-    
-    # ── Text Username ──────────────────────────────────────────────────────
-    display_name = _text_fit(draw, display_name, font_user, W - 40)
-    u_bb = _get_textbbox(draw, display_name, font_user)
-    u_w, u_h = u_bb[2] - u_bb[0], u_bb[3] - u_bb[1]
-    
-    ux = (W - u_w) // 2
-    uy = wy + w_h + 10
-    
-    draw.text((ux + 2, uy + 2), display_name, font=font_user, fill=(0, 0, 0, 200))
-    draw.text((ux, uy), display_name, font=font_user, fill=(255, 255, 255, 255))
+    if options.ring_enabled:
+        ring_rgb = _int_to_rgb(options.ring_color) if options.ring_color is not None else accent
+        draw.ellipse((av_x - 6, av_y - 6, av_x + AV + 6, av_y + AV + 6), outline=ring_rgb + (255,), width=6)
+    if avatar_img is not None:
+        card.alpha_composite(_circle_crop(avatar_img, AV), (av_x, av_y))
+    if deco_img is not None:
+        deco = deco_img.convert("RGBA").resize((int(AV * 1.22), int(AV * 1.22)), Image.LANCZOS)
+        card.alpha_composite(deco, (int(av_x - AV * 0.11), int(av_y - AV * 0.11)))
+    draw = ImageDraw.Draw(card)
 
-    # ── Export ─────────────────────────────────────────────────────────────
+    # ── Text content ───────────────────────────────────────────────────────
+    text_rgb = _int_to_rgb(options.text_color)
+    muted_rgb = tuple(int(c * 0.72) for c in text_rgb)
+    font_label = load_font(19, bold=True)
+    font_name = load_font(48, bold=True)
+    font_meta = load_font(23)
+
+    label = (pill_text or "WELCOME").upper()
+    subtitle = (options.subtitle or "to {server}").replace("{server}", server_name).replace("{count}", f"{member_count:,}")
+    meta_parts = [f"@{username}"] if username else []
+    if options.show_member_count and member_count > 0:
+        meta_parts.append(f"Member #{member_count:,}")
+    meta_line = "  ·  ".join(meta_parts)
+
+    name_fitted = _text_fit(draw, display_name, font_name, W - (360 if left else 80))
+
+    if left:
+        tx = av_x + AV + 60
+        ty = (H - 190) // 2
+        draw.rounded_rectangle((tx, ty, tx + _pill_size(draw, label, font_label)[0], ty + _pill_size(draw, label, font_label)[1]),
+                               radius=_pill_size(draw, label, font_label)[1] // 2, fill=accent + (46,))
+        _draw_pill(draw, (tx, ty), label, font_label, accent + (255,), accent + (46,))
+        name_bb = _get_textbbox(draw, name_fitted, font_name)
+        draw.text((tx - name_bb[0] + 2, ty + 52 + 2), name_fitted, font=font_name, fill=(0, 0, 0, 190))
+        draw.text((tx - name_bb[0], ty + 52), name_fitted, font=font_name, fill=text_rgb + (255,))
+        meta_y = ty + 52 + (name_bb[3] - name_bb[1]) + 18
+        if subtitle.strip():
+            draw.text((tx, meta_y), subtitle, font=font_meta, fill=muted_rgb + (255,))
+            meta_y += 34
+        if meta_line:
+            draw.text((tx, meta_y), meta_line, font=font_meta, fill=accent + (255,))
+        badge_origin = (tx, meta_y + 42)
+    else:
+        label_w, label_h = _pill_size(draw, label, font_label)
+        ly = av_y + AV + 20
+        _draw_pill(draw, ((W - label_w) // 2, ly), label, font_label, accent + (255,), accent + (46,))
+        name_bb = _get_textbbox(draw, name_fitted, font_name)
+        name_w, name_h = name_bb[2] - name_bb[0], name_bb[3] - name_bb[1]
+        ny = ly + label_h + 16
+        draw.text(((W - name_w) // 2 - name_bb[0] + 2, ny + 2), name_fitted, font=font_name, fill=(0, 0, 0, 190))
+        draw.text(((W - name_w) // 2 - name_bb[0], ny), name_fitted, font=font_name, fill=text_rgb + (255,))
+        meta_y = ny + name_h + 12
+        if subtitle.strip():
+            sub_bb = _get_textbbox(draw, subtitle, font_meta)
+            draw.text(((W - (sub_bb[2] - sub_bb[0])) // 2 - sub_bb[0], meta_y), subtitle, font=font_meta, fill=muted_rgb + (255,))
+            meta_y += 32
+        if meta_line:
+            meta_bb = _get_textbbox(draw, meta_line, font_meta)
+            draw.text(((W - (meta_bb[2] - meta_bb[0])) // 2 - meta_bb[0], meta_y), meta_line, font=font_meta, fill=accent + (255,))
+        badge_origin = (0, meta_y + 40)  # x computed after badge widths
+
+    # ── Badge row (Discord/primary-guild badges, finally drawn) ───────────
+    if options.show_badges and badges:
+        size, gap = 26, 8
+        row = badges[:6]
+        total_w = len(row) * size + (len(row) - 1) * gap
+        bx = badge_origin[0] if left else (W - total_w) // 2
+        by = badge_origin[1]
+        for badge in row:
+            try:
+                icon = badge.icon.convert("RGBA").resize((size, size), Image.LANCZOS)
+                chip = Image.new("RGBA", (size + 6, size + 6), (0, 0, 0, 0))
+                chip_draw = ImageDraw.Draw(chip)
+                chip_draw.rounded_rectangle((0, 0, size + 5, size + 5), radius=7, fill=(255, 255, 255, 26))
+                chip.alpha_composite(icon, (3, 3))
+                card.alpha_composite(chip, (bx - 3, by - 3))
+            except Exception:
+                pass
+            bx += size + gap
+
+    # ── Rounded corners + export ───────────────────────────────────────────
+    if RADIUS:
+        mask = Image.new("L", (W, H), 0)
+        ImageDraw.Draw(mask).rounded_rectangle((0, 0, W, H), radius=RADIUS, fill=255)
+        card.putalpha(mask)
+
     out = io.BytesIO()
     card.save(out, format="PNG", optimize=True)
     return out.getvalue()
