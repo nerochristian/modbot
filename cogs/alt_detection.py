@@ -110,11 +110,17 @@ class AltDetection(commands.Cog):
                     member.display_name, member.id, member.guild.id, result.confidence
                 )
                 try:
+                    # Preserve any existing score/factors — a blind upsert would
+                    # wipe the member's accumulated risk back to zero.
+                    existing = await self.bot.db.get_risk_score(member.guild.id, member.id)
+                    score = existing["score"] if existing else 0
+                    factors = dict(existing["factors"]) if existing else {}
+                    factors["alt_suspicion"] = min(int(result.confidence * 100), 100)
                     await self.bot.db.upsert_risk_score(
                         member.guild.id,
                         member.id,
-                        0,
-                        {"alt_suspicion": min(int(result.confidence * 100), 100)},
+                        score,
+                        factors,
                     )
                 except Exception:
                     pass

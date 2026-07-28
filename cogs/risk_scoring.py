@@ -199,6 +199,12 @@ class RiskScoring(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.engine = RiskEngine(bot)
+        # (guild_id, user_id) pairs already alerted at the current threshold crossing.
+        self._alerted: set[tuple[int, int]] = set()
+        self.risk_sweeper.start()
+
+    def cog_unload(self):
+        self.risk_sweeper.cancel()
 
     @commands.Cog.listener()
     async def on_member_join(self, member: discord.Member):
@@ -214,8 +220,124 @@ class RiskScoring(commands.Cog):
                     "High-risk join: %s (%d) in guild %d — score %d",
                     member.display_name, member.id, member.guild.id, result.score
                 )
+            await self._maybe_alert(member.guild, member, result, previous=None)
         except Exception:
             logger.error("Failed to calculate risk on join for %s", member.id, exc_info=True)
+
+    # ---------- continuous recompute ----------
+
+    @tasks.loop(minutes=5)
+    async def risk_sweeper(self):
+        """Recompute scores for members with fresh violations or cases.
+
+        Risk is only meaningful if it moves: every AutoMod hit, warning, and
+        case nudges the score within minutes, so the dashboard watchlist and
+        member panels always show live signal.
+        """
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=10)
+        for guild in self.bot.guilds:
+            try:
+                offenders = await self._recent_offenders(guild.id, cutoff)
+            except Exception:
+                logger.debug("Risk sweep query failed for guild %d", guild.id, exc_info=True)
+                continue
+            for user_id in offenders:
+                member = guild.get_member(user_id)
+                if member is None or member.bot or is_bot_owner_id(member.id):
+                    continue
+                try:
+                    previous_record = await self.bot.db.get_risk_score(guild.id, member.id)
+                    previous = previous_record["score"] if previous_record else None
+                    result = await self.engine.calculate(member)
+                    await self.bot.db.upsert_risk_score(guild.id, member.id, result.score, result.factors)
+                    await self._maybe_alert(guild, member, result, previous=previous)
+                except Exception:
+                    logger.debug("Risk recalc failed for %d in guild %d", user_id, guild.id, exc_info=True)
+
+    @risk_sweeper.before_loop
+    async def before_risk_sweeper(self):
+        await self.bot.wait_until_ready()
+
+    async def _recent_offenders(self, guild_id: int, cutoff: datetime) -> set[int]:
+        offenders: set[int] = set()
+        async with self.bot.db.get_connection() as db:
+            for table in ("automod_events", "cases"):
+                cursor = await db.execute(
+                    f"SELECT user_id, created_at FROM {table} WHERE guild_id = ? ORDER BY created_at DESC LIMIT 500",
+                    (guild_id,),
+                )
+                rows = await cursor.fetchall()
+                for user_id, created in rows:
+                    ts = _parse_db_timestamp(created)
+                    if ts is None:
+                        continue
+                    if ts < cutoff:
+                        break  # ordered newest-first
+                    try:
+                        offenders.add(int(user_id))
+                    except (TypeError, ValueError):
+                        continue
+        return offenders
+
+    async def _maybe_alert(
+        self,
+        guild: discord.Guild,
+        member: discord.Member,
+        result: RiskResult,
+        *,
+        previous: Optional[int],
+    ) -> None:
+        """Ping staff once when a score crosses the configured alert threshold."""
+        try:
+            settings = await self.bot.db.get_settings(guild.id)
+        except Exception:
+            return
+        try:
+            threshold = max(1, min(100, int(settings.get("risk_alert_threshold", 80) or 80)))
+        except (TypeError, ValueError, OverflowError):
+            threshold = 80
+        key = (guild.id, member.id)
+        if result.score < threshold - 10:
+            self._alerted.discard(key)
+            return
+        if result.score < threshold or key in self._alerted:
+            return
+        if previous is not None and previous >= threshold:
+            return  # already above the line
+        self._alerted.add(key)
+
+        channel_id = settings.get("risk_alert_channel") or settings.get("mod_log_channel")
+        if not channel_id:
+            return
+        try:
+            channel = guild.get_channel(int(channel_id))
+        except (TypeError, ValueError, OverflowError):
+            channel = None
+        if channel is None:
+            return
+        top_factors = sorted(
+            ((name, points) for name, points in result.factors.items() if points > 0),
+            key=lambda item: -item[1],
+        )[:4]
+        embed = discord.Embed(
+            title="⚠️ High-risk member detected",
+            description=(
+                f"{member.mention} (`{member.id}`) crossed the risk alert threshold.\n"
+                f"**Score:** {result.score}/100 (alert at {threshold})"
+            ),
+            color=Config.COLOR_ERROR,
+            timestamp=datetime.now(timezone.utc),
+        )
+        if top_factors:
+            embed.add_field(
+                name="Top factors",
+                value="\n".join(f"• {name.replace('_', ' ').title()}: **+{points}**" for name, points in top_factors),
+                inline=False,
+            )
+        try:
+            await channel.send(embed=embed)
+        except (discord.Forbidden, discord.HTTPException):
+            pass
 
     scan_group = app_commands.Group(
         name="scan",
