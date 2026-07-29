@@ -1966,25 +1966,23 @@ class AIClient:
         research_source_urls: List[str] = []
         if (
             signals.mode == ConversationMode.RESEARCH
-            and self.has_external_web_search
         ):
             try:
-                queries = await self._generate_search_queries(user_content, num_queries=3)
-                seen_urls: Set[str] = set()
-                results: List[WebSearchResult] = []
-                for query in queries[:3]:
-                    for result in await self._web_search(query, max_results=4):
-                        if result.url in seen_urls:
-                            continue
-                        seen_urls.add(result.url)
-                        results.append(result)
-                    if len(results) >= 8:
-                        break
-                if results:
-                    web_context = self._format_web_results(results[:8])
-                    research_source_urls = [result.url for result in results[:8]]
+                pplx_messages = [
+                    {"role": "system", "content": "You are a live internet research assistant. Provide a highly detailed, factual, and up-to-date answer to the user's query."},
+                    {"role": "user", "content": user_content}
+                ]
+                research_content = await self._call_relayrouter(
+                    pplx_messages,
+                    temperature=0.3,
+                    max_tokens=self.config.max_tokens_chat,
+                    model="perplexity/sonar"
+                )
+                if research_content:
+                    web_context = f"--- LIVE RESEARCH DATA ---\n{research_content}\n--- END RESEARCH ---\n"
+                    research_source_urls = ["https://perplexity.ai/"]
             except Exception:
-                logger.warning("External web search failed", exc_info=True)
+                logger.warning("Perplexity Sonar research failed", exc_info=True)
 
         # Galaxy exposes plain chat-completions, not a documented search flag.
         # Use authenticated browser search when no provider results exist.
