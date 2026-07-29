@@ -122,7 +122,7 @@ def _default_ai_model() -> str:
         return (
             os.getenv("AIMODEL_MODERATION_MODEL")
             or os.getenv("AIMODEL_MODEL")
-            or "accounts/aimodel/models/claude-fable-5"
+            or "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
         ).strip()
     if provider in {"relay", "relayrouter", "relayrouter.org"}:
         return (

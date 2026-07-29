@@ -50,19 +50,19 @@ _RELAYROUTER_BASE_URL: Final[str] = os.getenv(
 ).strip().rstrip("/")
 _RELAYROUTER_CHAT_MODEL: Final[str] = os.getenv(
     "RELAYROUTER_CHAT_MODEL",
-    "gpt-5-6-luna",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
 _RELAYROUTER_MODERATION_MODEL: Final[str] = os.getenv(
     "RELAYROUTER_MODERATION_MODEL",
-    "gpt-5-6-terra",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
 _RELAYROUTER_VISION_MODEL: Final[str] = os.getenv(
     "RELAYROUTER_VISION_MODEL",
-    "gpt-5-6-terra",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
 _RELAYROUTER_ROUTER_MODEL: Final[str] = os.getenv(
     "RELAYROUTER_ROUTER_MODEL",
-    "gpt-5-6-luna",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
 
 _AIMODEL_API_KEY: Final[str] = os.getenv("AIMODEL_API_KEY", "").strip()
@@ -72,19 +72,19 @@ _AIMODEL_BASE_URL: Final[str] = os.getenv(
 ).strip().rstrip("/")
 _AIMODEL_CHAT_MODEL: Final[str] = os.getenv(
     "AIMODEL_CHAT_MODEL",
-    "accounts/aimodel/models/claude-fable-5",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
 _AIMODEL_MODERATION_MODEL: Final[str] = os.getenv(
     "AIMODEL_MODERATION_MODEL",
-    "accounts/aimodel/models/claude-fable-5",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
 _AIMODEL_VISION_MODEL: Final[str] = os.getenv(
     "AIMODEL_VISION_MODEL",
-    "accounts/aimodel/models/claude-fable-5",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
 _AIMODEL_ROUTER_MODEL: Final[str] = os.getenv(
     "AIMODEL_ROUTER_MODEL",
-    "accounts/aimodel/models/claude-fable-5",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
 
 
@@ -99,19 +99,19 @@ def _model_list_env(name: str, default: str) -> Tuple[str, ...]:
 
 _RELAYROUTER_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
     "RELAYROUTER_FALLBACK_MODELS",
-    "claude-sonnet-4-6,deepseek-v4-flash",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free,nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 )
 _RELAYROUTER_VISION_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
     "RELAYROUTER_VISION_FALLBACK_MODELS",
-    "gpt-5-6-luna,claude-sonnet-4-6",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free,nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 )
 _AIMODEL_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
     "AIMODEL_FALLBACK_MODELS",
-    "accounts/aimodel/models/claude-fable-5,accounts/aimodel/models/minimax-m2.7",
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free,accounts/aimodel/models/minimax-m2.7",
 )
 _AIMODEL_CHAT_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
     "AIMODEL_CHAT_FALLBACK_MODELS",
-    "accounts/aimodel/models/minimax-m2.7,accounts/aimodel/models/claude-fable-5",
+    "accounts/aimodel/models/minimax-m2.7,nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 )
 _AIMODEL_VISION_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
     "AIMODEL_VISION_FALLBACK_MODELS",
@@ -1979,7 +1979,22 @@ class AIClient:
                     model="perplexity/sonar"
                 )
                 if research_content:
-                    web_context = f"--- LIVE RESEARCH DATA ---\n{research_content}\n--- END RESEARCH ---\n"
+                    web_context = (
+                        f"--- LIVE RESEARCH DATA ---\n{research_content}\n--- END RESEARCH ---\n"
+                        "CRITICAL FORMATTING INSTRUCTION:\n"
+                        "You MUST format your answer EXACTLY like this highly-styled community announcement template:\n"
+                        "# 📢 [Catchy Headline]\n\n"
+                        "[Brief intro paragraph summarizing the news]\n\n"
+                        "• **[Topic Title]**\n"
+                        "  [Concise but informative description (1-2 sentences max) below the bullet point on a new indented line]\n\n"
+                        "• **[Topic Title]**\n"
+                        "  [Concise but informative description (1-2 sentences max) below the bullet point on a new indented line]\n\n"
+                        "[Closing/call to action if any]\n\n"
+                        "RULES:\n"
+                        "1. DO NOT include inline citations like [1] or [2][5]. Remove them completely.\n"
+                        "2. Use the exact bullet point style shown above (`• **Title**` then new line with indentation).\n"
+                        "3. DO NOT sign off at the end. (No '— Docket' or similar)."
+                    )
                     research_source_urls = ["https://perplexity.ai/"]
             except Exception:
                 logger.warning("Perplexity Sonar research failed", exc_info=True)

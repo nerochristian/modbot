@@ -3139,7 +3139,7 @@ class AIModeration(commands.Cog):
             if attempt and getattr(self.ai, "prefers_aimodel", False):
                 provider_model_override = os.getenv(
                     "AIMODEL_EXECUTION_FALLBACK_MODEL",
-                    "accounts/aimodel/models/claude-fable-5",
+                    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
                 ).strip()
             raw_response = await self.ai._call(
                 [
@@ -3699,16 +3699,12 @@ class AIModeration(commands.Cog):
 
     @staticmethod
     def _build_research_embeds(response: str, query: str) -> List[discord.Embed]:
-        heading = re.match(r"^\s*#{1,3}\s+(.+?)(?:\n|$)", response)
-        if heading:
-            title = heading.group(1).strip()
-            response = response[heading.end():].lstrip()
-        else:
-            clean_query = re.sub(r"\s+", " ", query).strip()
-            title = f"🔍 {clean_query}" if clean_query else "🔍 Research"
-        response = AIModeration._compact_research_spacing(response)
+        clean_query = re.sub(r"\s+", " ", query).strip()
+        title = f"🔍 {clean_query}" if clean_query else "🔍 Research"
+        
         if len(title) > 256:
             title = title[:253].rstrip() + "..."
+            
         chunks = AIModeration._split_response(
             response or "No research summary was returned.",
             max_len=3_900,
