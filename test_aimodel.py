@@ -1,7 +1,7 @@
 import urllib.request
 import json
 
-api_key = "sk-YSOaE1QIsyyUmwkn9EavAsRjZ0D6A63dNIe0SBZVV8R"
+api_key = "sk-KdGb0sOpgENfT95QRhDerqwGQLBZAHyA4nlJ1vGmg44"
 url = "https://aimodel.lol/v1/responses"
 
 def test_payload(payload):
