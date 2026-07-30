@@ -18,7 +18,7 @@ data = {
 
 req = urllib.request.Request(url, json.dumps(data).encode("utf-8"), headers)
 try:
-    with urllib.request.urlopen(req) as response:
+    with urllib.request.urlopen(req, timeout=10) as response:
         print(response.read().decode())
 except Exception as e:
     if hasattr(e, 'read'):
