@@ -5,7 +5,8 @@ url = "https://aimodel.lol/v1/messages"
 headers = {
     "x-api-key": "sk-KdGb0sOpgENfT95QRhDerqwGQLBZAHyA4nlJ1vGmg44",
     "anthropic-version": "2023-06-01",
-    "content-type": "application/json"
+    "content-type": "application/json",
+    "User-Agent": "Mozilla/5.0"
 }
 data = {
     "model": "claude-fable-5",
