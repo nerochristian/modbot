@@ -3,7 +3,7 @@ import json
 import time
 import os
 
-api_key = "sk-YSOaE1QIsyyUmwkn9EavAsRjZ0D6A63dNIe0SBZVV8R"
+api_key = "sk-KdGb0sOpgENfT95QRhDerqwGQLBZAHyA4nlJ1vGmg44"
 base_url = "https://aimodel.lol/v1"
 
 print("Fetching models...")
