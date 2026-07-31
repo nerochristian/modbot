@@ -2114,11 +2114,7 @@ class AIClient:
         )
         if (
             signals.mode == ConversationMode.RESEARCH
-<<<<<<< HEAD
-=======
             and not openrouter_research
-            and self.has_external_web_search
->>>>>>> e742382 (Auto-update)
         ):
             try:
                 pplx_messages = [
@@ -2157,12 +2153,13 @@ class AIClient:
         uses_native_search = bool(
             signals.mode == ConversationMode.RESEARCH
             and not web_context
-<<<<<<< HEAD
-            and not (self.prefers_aimodel and _aimodel_api_enabled())
-            and self._deepseek_web.enabled
-=======
-            and (openrouter_research or self._deepseek_web.enabled)
->>>>>>> e742382 (Auto-update)
+            and (
+                openrouter_research
+                or (
+                    not (self.prefers_aimodel and _aimodel_api_enabled())
+                    and self._deepseek_web.enabled
+                )
+            )
         )
         if (
             signals.mode == ConversationMode.RESEARCH
