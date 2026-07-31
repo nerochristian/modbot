@@ -225,8 +225,8 @@ def test_openrouter_conversation_uses_only_configured_luna_model(monkeypatch):
 
 def test_openrouter_lane_excludes_research_and_images(monkeypatch):
     monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
-    standard = ConversationSignals(mode=ConversationMode.STANDARD)
-    research = ConversationSignals(mode=ConversationMode.RESEARCH)
+    standard = ConversationSignals(mode=ConversationMode.STANDARD, confidence=1.0)
+    research = ConversationSignals(mode=ConversationMode.RESEARCH, confidence=1.0)
 
     assert AIClient._uses_openrouter_conversation_lane(standard, has_images=False) is True
     assert AIClient._uses_openrouter_conversation_lane(research, has_images=False) is False
