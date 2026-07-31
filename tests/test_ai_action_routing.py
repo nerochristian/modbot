@@ -961,6 +961,14 @@ class AIActionRoutingTests(unittest.TestCase):
 
 
 class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self) -> None:
+        openrouter_patcher = patch(
+            "cogs.aimoderation.ai_client._OPENROUTER_API_KEY",
+            "",
+        )
+        openrouter_patcher.start()
+        self.addCleanup(openrouter_patcher.stop)
+
     async def test_galaxy_classifies_search_depth_with_strict_route(self) -> None:
         client = object.__new__(AIClient)
         client.provider = "deepseek"
@@ -1119,6 +1127,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         cog.clean_content = lambda message: "show warnings for <@20>"
         cog._looks_like_mod_request = lambda content: True
         cog._looks_like_advanced_action_request = lambda content: False
+        cog._can_use_ai_tools = lambda author, settings: True
         cog.extract_mentions = lambda message: SimpleNamespace()
         decision = Decision(type=DecisionType.ERROR, reason="stop")
         cog._quick_route = lambda message, content: decision
@@ -1331,6 +1340,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         cog.clean_content = lambda message: "purge the last 50 messages sent by cherry"
         cog._looks_like_mod_request = lambda content: True
         cog._looks_like_advanced_action_request = lambda content: False
+        cog._can_use_ai_tools = lambda author, settings: True
         cog.reply = AsyncMock()
         message = SimpleNamespace(
             author=SimpleNamespace(bot=False, id=10),
