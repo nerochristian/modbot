@@ -194,6 +194,8 @@ def test_openrouter_timeout_is_bounded(monkeypatch):
 
 def test_openrouter_conversation_uses_only_configured_luna_model(monkeypatch):
     client = AIClient.__new__(AIClient)
+    client.provider = "aimodel"
+    client.config = AIConfig(provider="aimodel")
     client._post_chat_completion = AsyncMock(return_value="natural reply")
     monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
     monkeypatch.setattr(
@@ -221,6 +223,7 @@ def test_openrouter_conversation_uses_only_configured_luna_model(monkeypatch):
     assert kwargs["model"] == "openai/gpt-5.6-luna"
     assert kwargs["json_mode"] is False
     assert kwargs["allow_multimodal"] is False
+    assert client.conversation_model_name("stale-dashboard-model") == "openai/gpt-5.6-luna"
 
 
 def test_openrouter_lane_excludes_research_and_images(monkeypatch):
@@ -274,7 +277,7 @@ def test_aimodel_responses_success_and_json_mode(monkeypatch):
     assert result == "HELLO"
     args, kwargs = session.requests[0]
     assert args[0] == "https://aimodel.test/v1/responses"
-    assert kwargs["json"]["model"] == "accounts/aimodel/models/claude-fable-5"
+    assert kwargs["json"]["model"] == "accounts/aimodel/models/glm-5.1"
     assert kwargs["json"]["input"] == [
         {"role": "system", "content": "Return JSON."},
         {"role": "user", "content": "Hello"},
@@ -377,6 +380,7 @@ def test_aimodel_conversation_ignores_stale_dashboard_model(monkeypatch):
     client.config = AIConfig(provider="aimodel", model="old-dashboard-model")
     client._call_aimodel = AsyncMock(return_value="chat")
     monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
+    monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "")
     monkeypatch.setattr(
         ai_client_module,
         "_AIMODEL_CHAT_MODEL",
