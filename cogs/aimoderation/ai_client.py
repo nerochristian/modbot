@@ -65,6 +65,19 @@ _RELAYROUTER_ROUTER_MODEL: Final[str] = os.getenv(
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
 
+# OpenRouter is an intentionally isolated text-conversation lane. It must not
+# become the provider for moderation, routing, vision, research, or memory
+# curation merely because a key is configured.
+_OPENROUTER_API_KEY: Final[str] = os.getenv("OPENROUTER_API_KEY", "").strip()
+_OPENROUTER_BASE_URL: Final[str] = os.getenv(
+    "OPENROUTER_BASE_URL",
+    "https://openrouter.ai/api/v1",
+).strip().rstrip("/")
+_OPENROUTER_CHAT_MODEL: Final[str] = os.getenv(
+    "OPENROUTER_CHAT_MODEL",
+    "openai/gpt-5.6-luna",
+).strip()
+
 _AIMODEL_API_KEY: Final[str] = os.getenv("AIMODEL_API_KEY", "").strip()
 _AIMODEL_BASE_URL: Final[str] = os.getenv(
     "AIMODEL_BASE_URL",
@@ -160,6 +173,14 @@ def _relayrouter_api_enabled() -> bool:
     return _credential_is_configured(_RELAYROUTER_API_KEY)
 
 
+def _openrouter_conversation_enabled() -> bool:
+    """OpenRouter is usable only as the dedicated standard-chat lane."""
+    return bool(
+        _credential_is_configured(_OPENROUTER_API_KEY)
+        and _OPENROUTER_CHAT_MODEL
+    )
+
+
 def _aimodel_api_enabled() -> bool:
     """AiModel is usable when a non-placeholder key is configured."""
     return _credential_is_configured(_AIMODEL_API_KEY)
@@ -185,6 +206,16 @@ def _aimodel_request_timeout(*, multimodal: bool) -> int:
     except ValueError:
         configured = default
     return min(180, max(5, configured))
+
+
+def _openrouter_request_timeout() -> int:
+    """Return the bounded timeout for ordinary OpenRouter conversation turns."""
+    default = 60
+    try:
+        configured = int(os.getenv("OPENROUTER_TIMEOUT", str(default)).strip())
+    except ValueError:
+        configured = default
+    return min(120, max(5, configured))
 
 
 def _galaxy_multimodal_enabled() -> bool:
@@ -337,6 +368,8 @@ class AIClient:
 
     def conversation_model_name(self, override: Optional[str] = None) -> str:
         """Return the model this bot requests, without claiming upstream attestation."""
+        if _openrouter_conversation_enabled():
+            return _OPENROUTER_CHAT_MODEL
         if self.prefers_aimodel:
             # AiModel uses full resource IDs; ignore stale dashboard aliases.
             return _AIMODEL_CHAT_MODEL
@@ -354,8 +387,13 @@ class AIClient:
         if self.prefers_aimodel:
             if not _aimodel_api_enabled():
                 return "AiModel is missing `AIMODEL_API_KEY`."
+            conversation_route = (
+                f"OpenRouter `{_OPENROUTER_CHAT_MODEL}`"
+                if _openrouter_conversation_enabled()
+                else f"AiModel `{_AIMODEL_CHAT_MODEL}`"
+            )
             return (
-                f"AiModel is configured: chat `{_AIMODEL_CHAT_MODEL}`, "
+                f"AiModel is configured for protected AI tasks; conversation uses {conversation_route}, "
                 f"moderation `{_AIMODEL_MODERATION_MODEL}`, and vision "
                 f"`{_AIMODEL_VISION_MODEL}`."
             )
@@ -404,7 +442,8 @@ class AIClient:
             lines.extend(
                 [
                     f"AiModel configured: {'yes' if _aimodel_api_enabled() else 'no'}",
-                    f"Conversation model: `{_AIMODEL_CHAT_MODEL}`",
+                    f"Conversation provider: `{'OpenRouter' if _openrouter_conversation_enabled() else 'AiModel'}`",
+                    f"Conversation model: `{self.conversation_model_name()}`",
                     f"Moderation model: `{_AIMODEL_MODERATION_MODEL}`",
                     f"Vision model: `{_AIMODEL_VISION_MODEL}`",
                     "Transport: Responses API",
@@ -1127,6 +1166,35 @@ class AIClient:
         if last_error is not None:
             raise last_error
         return None
+
+    async def _call_openrouter_conversation(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        temperature: float,
+        max_tokens: int,
+    ) -> Optional[str]:
+        """Call OpenRouter for ordinary text conversation only.
+
+        Callers enforce the lane boundary: no moderation, routing, research,
+        memory curation, or image input is permitted through this method.
+        """
+        if not _openrouter_conversation_enabled():
+            raise RuntimeError("OpenRouter conversation is missing OPENROUTER_API_KEY.")
+
+        return await self._post_chat_completion(
+            messages,
+            base_url=_OPENROUTER_BASE_URL,
+            api_key=_OPENROUTER_API_KEY,
+            model=_OPENROUTER_CHAT_MODEL,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            json_mode=False,
+            allow_multimodal=False,
+            provider_label=f"OpenRouter conversation ({_OPENROUTER_CHAT_MODEL})",
+            max_retries=1,
+            request_timeout=_openrouter_request_timeout(),
+        )
 
     async def _call_digitalocean(
         self,
@@ -1910,7 +1978,7 @@ class AIClient:
         signals: Optional[ConversationSignals] = None,
         location_context: str = "",
     ) -> Optional[str]:
-        if not self.is_available:
+        if not self.is_available and not _openrouter_conversation_enabled():
             return self.availability_message()
 
         error = await self._preflight(author.id)
@@ -2061,6 +2129,40 @@ class AIClient:
 
         try:
             await self._rate_limiter.record_call(author.id)
+            openrouter_standard_chat = bool(
+                signals.mode == ConversationMode.STANDARD
+                and not image_context
+                and _openrouter_conversation_enabled()
+            )
+            if openrouter_standard_chat:
+                try:
+                    max_tokens = (
+                        max(plan.max_tokens, 4_800)
+                        if signals.asks_for_long_answer
+                        else plan.max_tokens
+                    )
+                    content = await self._call_openrouter_conversation(
+                        api_messages,
+                        temperature=plan.temperature,
+                        max_tokens=max_tokens,
+                    )
+                    if content:
+                        content = self._postprocess_chat_response(content)
+                        asyncio.create_task(
+                            self._update_memory_smart(
+                                author.id,
+                                user_content,
+                                content,
+                                stored_memory,
+                            )
+                        )
+                        return content
+                except Exception:
+                    logger.warning(
+                        "OpenRouter standard conversation failed; preserving the existing provider fallback.",
+                        exc_info=True,
+                    )
+
             http_primary_attempted = False
             aimodel_primary = self.prefers_aimodel and _aimodel_api_enabled()
             relay_primary = self.prefers_relayrouter and _relayrouter_api_enabled()
