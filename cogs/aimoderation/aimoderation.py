@@ -3705,12 +3705,16 @@ class AIModeration(commands.Cog):
 
     @staticmethod
     def _build_research_embeds(response: str, query: str) -> List[discord.Embed]:
-        clean_query = re.sub(r"\s+", " ", query).strip()
-        title = f"🔍 {clean_query}" if clean_query else "🔍 Research"
-        
+        heading = re.match(r"^\s*#{1,3}\s+(.+?)(?:\n|$)", response)
+        if heading:
+            title = heading.group(1).strip()
+            response = response[heading.end():].lstrip()
+        else:
+            clean_query = re.sub(r"\s+", " ", query).strip()
+            title = f"🔍 {clean_query}" if clean_query else "🔍 Research"
+        response = AIModeration._compact_research_spacing(response)
         if len(title) > 256:
             title = title[:253].rstrip() + "..."
-            
         chunks = AIModeration._split_response(
             response or "No research summary was returned.",
             max_len=3_900,
