@@ -15,7 +15,7 @@ import pytest
 
 import cogs.aimoderation.ai_client as ai_client_module
 from cogs.aimoderation.ai_client import AIClient
-from cogs.aimoderation.types import AIConfig
+from cogs.aimoderation.types import AIConfig, ConversationMode, ConversationSignals
 
 
 class _FakeResp:
@@ -183,6 +183,72 @@ def test_aimodel_timeouts_are_bounded(monkeypatch):
     monkeypatch.setenv("AIMODEL_VISION_TIMEOUT", "999")
     assert ai_client_module._aimodel_request_timeout(multimodal=False) == 5
     assert ai_client_module._aimodel_request_timeout(multimodal=True) == 180
+
+
+def test_openrouter_timeout_is_bounded(monkeypatch):
+    monkeypatch.setenv("OPENROUTER_TIMEOUT", "1")
+    assert ai_client_module._openrouter_request_timeout() == 5
+    monkeypatch.setenv("OPENROUTER_TIMEOUT", "999")
+    assert ai_client_module._openrouter_request_timeout() == 120
+
+
+def test_openrouter_conversation_uses_only_configured_luna_model(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client._post_chat_completion = AsyncMock(return_value="natural reply")
+    monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
+    monkeypatch.setattr(
+        ai_client_module,
+        "_OPENROUTER_BASE_URL",
+        "https://openrouter.test/api/v1",
+    )
+    monkeypatch.setattr(
+        ai_client_module,
+        "_OPENROUTER_CHAT_MODEL",
+        "openai/gpt-5.6-luna",
+    )
+
+    result = asyncio.run(
+        client._call_openrouter_conversation(
+            [{"role": "user", "content": "hello"}],
+            temperature=0.8,
+            max_tokens=500,
+        )
+    )
+
+    assert result == "natural reply"
+    kwargs = client._post_chat_completion.await_args.kwargs
+    assert kwargs["base_url"] == "https://openrouter.test/api/v1"
+    assert kwargs["model"] == "openai/gpt-5.6-luna"
+    assert kwargs["json_mode"] is False
+    assert kwargs["allow_multimodal"] is False
+
+
+def test_openrouter_lane_excludes_research_and_images(monkeypatch):
+    monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
+    standard = ConversationSignals(mode=ConversationMode.STANDARD)
+    research = ConversationSignals(mode=ConversationMode.RESEARCH)
+
+    assert AIClient._uses_openrouter_conversation_lane(standard, has_images=False) is True
+    assert AIClient._uses_openrouter_conversation_lane(research, has_images=False) is False
+    assert AIClient._uses_openrouter_conversation_lane(standard, has_images=True) is False
+
+
+def test_memory_curator_does_not_use_openrouter(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client.provider = "aimodel"
+    client.config = AIConfig(provider="aimodel")
+    client._call_aimodel = AsyncMock(return_value="- Likes concise replies")
+    client._call_openrouter_conversation = AsyncMock(return_value="wrong lane")
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
+    monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
+
+    result = asyncio.run(
+        client._summarize_memory("", "keep it short", "Sure.")
+    )
+
+    assert result == "- Likes concise replies"
+    client._call_aimodel.assert_awaited_once()
+    client._call_openrouter_conversation.assert_not_awaited()
 
 
 def test_aimodel_responses_success_and_json_mode(monkeypatch):

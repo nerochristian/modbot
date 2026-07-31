@@ -382,6 +382,19 @@ class AIClient:
             return _DEEPSEEK_API_MODEL
         return str(self.config.model or "deepseek-web").strip()
 
+    @staticmethod
+    def _uses_openrouter_conversation_lane(
+        signals: ConversationSignals,
+        *,
+        has_images: bool,
+    ) -> bool:
+        """Keep OpenRouter limited to ordinary text conversation."""
+        return bool(
+            _openrouter_conversation_enabled()
+            and signals.mode == ConversationMode.STANDARD
+            and not has_images
+        )
+
     def availability_message(self) -> str:
         provider = str(getattr(self, "provider", "") or "").strip().lower()
         if self.prefers_aimodel:
@@ -446,7 +459,12 @@ class AIClient:
                     f"Conversation model: `{self.conversation_model_name()}`",
                     f"Moderation model: `{_AIMODEL_MODERATION_MODEL}`",
                     f"Vision model: `{_AIMODEL_VISION_MODEL}`",
-                    "Transport: Responses API",
+                    "Protected-task transport: Responses API",
+                    (
+                        "Conversation transport: OpenRouter Chat Completions"
+                        if _openrouter_conversation_enabled()
+                        else "Conversation transport: Responses API"
+                    ),
                     f"Available now: {'yes' if self.is_available else 'no'}",
                     self.availability_message(),
                 ]
@@ -2129,10 +2147,9 @@ class AIClient:
 
         try:
             await self._rate_limiter.record_call(author.id)
-            openrouter_standard_chat = bool(
-                signals.mode == ConversationMode.STANDARD
-                and not image_context
-                and _openrouter_conversation_enabled()
+            openrouter_standard_chat = self._uses_openrouter_conversation_lane(
+                signals,
+                has_images=bool(image_context),
             )
             if openrouter_standard_chat:
                 try:
