@@ -10,7 +10,16 @@ async def test_latency():
     async with aiohttp.ClientSession() as session:
         headers = {"Authorization": f"Bearer {AIMODEL_API_KEY}"}
         
-        target_models = ['claude-3.5-sonnet', 'claude-3.5-sonnet-20240620', 'claude-3-opus', 'claude-3-sonnet', 'gpt-4o', 'gpt-4-turbo', 'glm-4', 'glm-4-flash', 'minimax']
+        target_models = [
+            'gpt-5.3-codex-spark',
+            'gpt-5.4',
+            'gpt-5.4-mini',
+            'gpt-5.5',
+            'gpt-5.5-fast',
+            'gpt-5.6-luna',
+            'gpt-5.6-sol',
+            'gpt-5.6-terra'
+        ]
         print("Testing models:", target_models)
         
         results = {}
