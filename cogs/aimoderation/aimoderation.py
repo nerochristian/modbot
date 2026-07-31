@@ -3368,7 +3368,13 @@ class AIModeration(commands.Cog):
 
         # --- Mentioned but AI mod disabled: chat-only mode ---
         if (is_mentioned or is_reply_to_bot) and not settings.enabled:
-            await self._handle_conversation(message, content, settings)
+            if is_mod_request:
+                await self.reply(
+                    message,
+                    content="AI moderation is disabled right now. Enable it before requesting moderation actions.",
+                )
+            elif settings.chat_enabled:
+                await self._handle_conversation(message, content, settings)
             return
 
         if is_reply_to_bot and not is_mentioned and settings.chat_enabled and not is_mod_request:

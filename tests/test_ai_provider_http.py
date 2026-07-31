@@ -519,15 +519,14 @@ def test_aimodel_provider_accepts_internal_execution_model_override(monkeypatch)
     assert client._call_aimodel.await_args.kwargs["fallback_models"] == ()
 
 
-def test_aimodel_provider_falls_back_to_relayrouter_on_outage(monkeypatch):
+def test_aimodel_provider_falls_back_to_deepseek_http_on_outage(monkeypatch):
     client = AIClient.__new__(AIClient)
     client.provider = "aimodel"
     client.config = AIConfig(provider="aimodel")
     client._call_aimodel = AsyncMock(side_effect=RuntimeError("HTTP 521"))
-    client._call_relayrouter = AsyncMock(return_value="relay-opus")
+    client._call_deepseek_api = AsyncMock(return_value="deepseek-fallback")
     monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
-    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "relay-test-key")
-    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_MODERATION_MODEL", "claude-test-opus-4-8")
+    monkeypatch.setattr(ai_client_module, "_DEEPSEEK_API_KEY", "deepseek-test-key")
 
     result = asyncio.run(
         client._call(
@@ -537,8 +536,8 @@ def test_aimodel_provider_falls_back_to_relayrouter_on_outage(monkeypatch):
         )
     )
 
-    assert result == "relay-opus"
-    assert client._call_relayrouter.await_args.kwargs["model"] == "claude-test-opus-4-8"
+    assert result == "deepseek-fallback"
+    client._call_deepseek_api.assert_awaited_once()
 
 
 def test_relayrouter_timeouts_are_bounded(monkeypatch):

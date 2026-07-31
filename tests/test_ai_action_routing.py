@@ -1319,7 +1319,9 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(plan["code_sha256"]), 64)
         self.assertEqual(cog.ai._call.await_count, 2)
         self.assertTrue(
-            cog.ai._call.await_args.kwargs["provider_model_override"].endswith("claude-fable-5")
+            cog.ai._call.await_args.kwargs["provider_model_override"].endswith(
+                "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+            )
         )
         self.assertIsNone(cog.ai._call.await_args.kwargs["model"])
         second_prompt = cog.ai._call.await_args_list[1].args[0][1]["content"]
