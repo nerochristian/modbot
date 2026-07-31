@@ -226,14 +226,85 @@ def test_openrouter_conversation_uses_only_configured_luna_model(monkeypatch):
     assert client.conversation_model_name("stale-dashboard-model") == "openai/gpt-5.6-luna"
 
 
-def test_openrouter_lane_excludes_research_and_images(monkeypatch):
+def test_openrouter_lane_includes_research_and_images(monkeypatch):
     monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
     standard = ConversationSignals(mode=ConversationMode.STANDARD, confidence=1.0)
     research = ConversationSignals(mode=ConversationMode.RESEARCH, confidence=1.0)
 
     assert AIClient._uses_openrouter_conversation_lane(standard, has_images=False) is True
-    assert AIClient._uses_openrouter_conversation_lane(research, has_images=False) is False
-    assert AIClient._uses_openrouter_conversation_lane(standard, has_images=True) is False
+    assert AIClient._uses_openrouter_conversation_lane(research, has_images=False) is True
+    assert AIClient._uses_openrouter_conversation_lane(standard, has_images=True) is True
+
+
+def test_openrouter_research_enables_server_search_and_citations(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client._post_chat_completion = AsyncMock(return_value="researched reply")
+    monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
+    monkeypatch.setattr(
+        ai_client_module,
+        "_OPENROUTER_CHAT_MODEL",
+        "openai/gpt-5.6-luna",
+    )
+
+    result = asyncio.run(
+        client._call_openrouter_conversation(
+            [{"role": "user", "content": "what happened today?"}],
+            temperature=0.4,
+            max_tokens=800,
+            allow_multimodal=True,
+            web_search=True,
+        )
+    )
+
+    assert result == "researched reply"
+    kwargs = client._post_chat_completion.await_args.kwargs
+    assert kwargs["allow_multimodal"] is True
+    assert kwargs["include_citations"] is True
+    assert kwargs["extra_payload"] == {
+        "tools": [
+            {
+                "type": "openrouter:web_search",
+                "parameters": {
+                    "engine": "auto",
+                    "max_results": 5,
+                    "max_total_results": 10,
+                },
+            }
+        ]
+    }
+
+
+def test_openrouter_citations_are_preserved_for_research_output():
+    response = {
+        "choices": [
+            {
+                "message": {
+                    "content": "Current answer.",
+                    "annotations": [
+                        {
+                            "type": "url_citation",
+                            "url_citation": {
+                                "url": "https://example.com/source",
+                                "title": "Source",
+                            },
+                        }
+                    ],
+                }
+            }
+        ]
+    }
+    client, session, _ = _make_client([_FakeResp(200, response)])
+
+    result = _post(
+        client,
+        include_citations=True,
+        extra_payload={"tools": [{"type": "openrouter:web_search"}]},
+    )
+
+    assert result == "Current answer.\n\n__BOT_SOURCES__\n- https://example.com/source"
+    assert session.requests[0][1]["json"]["tools"] == [
+        {"type": "openrouter:web_search"}
+    ]
 
 
 def test_memory_curator_does_not_use_openrouter(monkeypatch):

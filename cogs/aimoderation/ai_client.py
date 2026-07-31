@@ -65,9 +65,9 @@ _RELAYROUTER_ROUTER_MODEL: Final[str] = os.getenv(
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
 
-# OpenRouter is an intentionally isolated text-conversation lane. It must not
-# become the provider for moderation, routing, vision, research, or memory
-# curation merely because a key is configured.
+# OpenRouter is an intentionally isolated conversation lane. It handles text,
+# conversational vision, and sourced research, but never moderation, action
+# routing, or memory curation merely because a key is configured.
 _OPENROUTER_API_KEY: Final[str] = os.getenv("OPENROUTER_API_KEY", "").strip()
 _OPENROUTER_BASE_URL: Final[str] = os.getenv(
     "OPENROUTER_BASE_URL",
