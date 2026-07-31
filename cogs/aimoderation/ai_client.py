@@ -388,11 +388,11 @@ class AIClient:
         *,
         has_images: bool,
     ) -> bool:
-        """Keep OpenRouter limited to ordinary text conversation."""
+        """Use OpenRouter only inside conversation, including vision/research."""
+        del has_images  # Luna accepts text, image, and file input.
         return bool(
             _openrouter_conversation_enabled()
-            and signals.mode == ConversationMode.STANDARD
-            and not has_images
+            and signals.mode in {ConversationMode.STANDARD, ConversationMode.RESEARCH}
         )
 
     def availability_message(self) -> str:
@@ -1191,14 +1191,29 @@ class AIClient:
         *,
         temperature: float,
         max_tokens: int,
+        allow_multimodal: bool = False,
+        web_search: bool = False,
     ) -> Optional[str]:
-        """Call OpenRouter for ordinary text conversation only.
+        """Call Luna for conversation, conversational vision, or research.
 
-        Callers enforce the lane boundary: no moderation, routing, research,
-        memory curation, or image input is permitted through this method.
+        Callers enforce the lane boundary: moderation, action routing, and
+        memory curation never use this method.
         """
         if not _openrouter_conversation_enabled():
             raise RuntimeError("OpenRouter conversation is missing OPENROUTER_API_KEY.")
+
+        extra_payload: Dict[str, Any] = {}
+        if web_search:
+            extra_payload["tools"] = [
+                {
+                    "type": "openrouter:web_search",
+                    "parameters": {
+                        "engine": "auto",
+                        "max_results": 5,
+                        "max_total_results": 10,
+                    },
+                }
+            ]
 
         return await self._post_chat_completion(
             messages,
@@ -1208,10 +1223,12 @@ class AIClient:
             temperature=temperature,
             max_tokens=max_tokens,
             json_mode=False,
-            allow_multimodal=False,
+            allow_multimodal=allow_multimodal,
             provider_label=f"OpenRouter conversation ({_OPENROUTER_CHAT_MODEL})",
             max_retries=1,
             request_timeout=_openrouter_request_timeout(),
+            extra_payload=extra_payload,
+            include_citations=web_search,
         )
 
     async def _call_digitalocean(
@@ -1309,6 +1326,8 @@ class AIClient:
         chat_path: str = "/chat/completions",
         max_retries: int = 2,
         request_timeout: int = 60,
+        extra_payload: Optional[Dict[str, Any]] = None,
+        include_citations: bool = False,
     ) -> Optional[str]:
         """Shared OpenAI-compatible chat-completions POST with bounded retries.
 
@@ -1327,6 +1346,8 @@ class AIClient:
         }
         if json_mode:
             payload["response_format"] = {"type": "json_object"}
+        if extra_payload:
+            payload.update(extra_payload)
 
         last_error: Optional[Exception] = None
         for attempt in range(max_retries + 1):
@@ -1358,7 +1379,13 @@ class AIClient:
                         last_error = RuntimeError(f"{provider_label} HTTP {resp.status}: {str(detail)[:500]}")
                     else:
                         if isinstance(data, dict):
-                            return self._extract_completion_content(data)
+                            content = self._extract_completion_content(data)
+                            if content and include_citations:
+                                urls = self._extract_openrouter_citation_urls(data)
+                                if urls:
+                                    sources = "\n".join(f"- {url}" for url in urls)
+                                    content = f"{content}\n\n__BOT_SOURCES__\n{sources}"
+                            return content
                         return self._extract_sse_completion_content(raw_body)
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 last_error = exc
@@ -1412,6 +1439,37 @@ class AIClient:
         if isinstance(content, list):
             return AIClient._stringify_web_content(content)
         return None
+
+    @staticmethod
+    def _extract_openrouter_citation_urls(data: Any) -> List[str]:
+        """Extract ordered URL citations from an OpenRouter assistant message."""
+        if not isinstance(data, dict):
+            return []
+        choices = data.get("choices") or []
+        if not choices or not isinstance(choices[0], dict):
+            return []
+        message = choices[0].get("message") or {}
+        urls: List[str] = []
+
+        def visit(node: Any) -> None:
+            if isinstance(node, dict):
+                if str(node.get("type") or "").lower() == "url_citation":
+                    citation = node.get("url_citation")
+                    if not isinstance(citation, dict):
+                        citation = node
+                    url = str(citation.get("url") or "").strip()
+                    if url.startswith(("https://", "http://")) and url not in urls:
+                        urls.append(url)
+                for value in node.values():
+                    visit(value)
+            elif isinstance(node, list):
+                for value in node:
+                    visit(value)
+
+        visit(message.get("annotations") or [])
+        if isinstance(message.get("content"), list):
+            visit(message["content"])
+        return urls
 
     async def _call_digitalocean_conversation(
         self,
@@ -2050,8 +2108,17 @@ class AIClient:
 
         web_context = ""
         research_source_urls: List[str] = []
+        openrouter_research = bool(
+            signals.mode == ConversationMode.RESEARCH
+            and _openrouter_conversation_enabled()
+        )
         if (
             signals.mode == ConversationMode.RESEARCH
+<<<<<<< HEAD
+=======
+            and not openrouter_research
+            and self.has_external_web_search
+>>>>>>> e742382 (Auto-update)
         ):
             try:
                 pplx_messages = [
@@ -2090,8 +2157,12 @@ class AIClient:
         uses_native_search = bool(
             signals.mode == ConversationMode.RESEARCH
             and not web_context
+<<<<<<< HEAD
             and not (self.prefers_aimodel and _aimodel_api_enabled())
             and self._deepseek_web.enabled
+=======
+            and (openrouter_research or self._deepseek_web.enabled)
+>>>>>>> e742382 (Auto-update)
         )
         if (
             signals.mode == ConversationMode.RESEARCH
@@ -2159,12 +2230,18 @@ class AIClient:
                         else plan.max_tokens
                     )
                     content = await self._call_openrouter_conversation(
-                        api_messages,
+                        multimodal_api_messages,
                         temperature=plan.temperature,
                         max_tokens=max_tokens,
+                        allow_multimodal=bool(image_context),
+                        web_search=signals.mode == ConversationMode.RESEARCH,
                     )
                     if content:
                         content = self._postprocess_chat_response(content)
+                        if signals.mode == ConversationMode.RESEARCH:
+                            content = self._finalize_research_response(content)
+                            if not content:
+                                return _RESEARCH_UNAVAILABLE
                         asyncio.create_task(
                             self._update_memory_smart(
                                 author.id,
