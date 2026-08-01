@@ -1579,6 +1579,36 @@ class ModBot(commands.Bot):
             return False
         return any(ModBot._is_member_like_annotation(arg) for arg in get_args(annotation))
 
+    @staticmethod
+    def _member_lookup_error(error: commands.CommandError) -> Optional[commands.CommandError]:
+        """Find a member/user lookup failure, including failures wrapped by Union converters."""
+        pending: list[commands.CommandError] = [error]
+        visited: set[int] = set()
+
+        while pending:
+            current = pending.pop(0)
+            identity = id(current)
+            if identity in visited:
+                continue
+            visited.add(identity)
+
+            if isinstance(current, (commands.MemberNotFound, commands.UserNotFound)):
+                return current
+
+            nested_errors = getattr(current, "errors", None)
+            if isinstance(nested_errors, (list, tuple)):
+                pending.extend(
+                    nested
+                    for nested in nested_errors
+                    if isinstance(nested, commands.CommandError)
+                )
+
+            original = getattr(current, "original", None)
+            if isinstance(original, commands.CommandError):
+                pending.append(original)
+
+        return None
+
     def _extract_first_argument_and_tail(self, ctx: commands.Context) -> tuple[str, str]:
         content = (getattr(ctx.message, "content", "") or "").strip()
         prefix = str(getattr(ctx, "prefix", "") or "")
@@ -2350,12 +2380,15 @@ class ModBot(commands.Bot):
             )
             return await _send_error_response(embed)
 
-        if isinstance(error, (commands.MemberNotFound, commands.UserNotFound)):
+        member_lookup_error = self._member_lookup_error(error)
+        if member_lookup_error is not None:
             if ctx.guild is not None and ctx.command is not None:
                 params = list(ctx.command.clean_params.values())
                 if params and self._is_member_like_annotation(params[0].annotation):
                     first_arg, tail = self._extract_first_argument_and_tail(ctx)
-                    unresolved = str(getattr(error, "argument", "") or first_arg).strip()
+                    unresolved = str(
+                        getattr(member_lookup_error, "argument", "") or first_arg
+                    ).strip()
                     candidate = self._find_best_member_match(ctx.guild, unresolved)
                     if candidate is not None:
                         confirm_icon = getattr(Config, "EMOJI_SUCCESS", "\u2705")

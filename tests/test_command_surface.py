@@ -173,7 +173,7 @@ def test_missing_prefix_arguments_open_the_command_help_card() -> None:
     handler = source[handler_start:handler_end]
     branch = handler[
         handler.index("if isinstance(error, commands.MissingRequiredArgument)"):
-        handler.index("if isinstance(error, (commands.MemberNotFound, commands.UserNotFound))")
+        handler.index("member_lookup_error = self._member_lookup_error(error)")
     ]
 
     assert 'self.get_cog("Help")' in branch
