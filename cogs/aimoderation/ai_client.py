@@ -66,11 +66,13 @@ _RELAYROUTER_ROUTER_MODEL: Final[str] = os.getenv(
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
 
-# OpenRouter has exactly two approved models. Luna handles conversation,
-# conversational vision, and sourced research. Nemotron handles protected
-# moderation, routing, and memory work when the legacy RelayRouter-named
-# gateway is pointed at OpenRouter. No other OpenRouter model is permitted.
+# OpenRouter has exactly three approved models. Luna handles conversation,
+# conversational vision, and sourced research. Ling performs the low-cost
+# conversation route classification. Nemotron handles protected moderation
+# and memory work when the legacy RelayRouter-named gateway points at
+# OpenRouter. No other OpenRouter model is permitted.
 _OPENROUTER_LUNA_MODEL: Final[str] = "openai/gpt-5.6-luna"
+_OPENROUTER_LING_ROUTER_MODEL: Final[str] = "inclusionai/ling-2.6-flash"
 _OPENROUTER_NEMOTRON_MODEL: Final[str] = (
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
 )
@@ -1983,114 +1985,87 @@ class AIClient:
             return Decision.error("AI encountered an unexpected error.")
 
     async def classify_research_route(self, user_content: str) -> Optional[Dict[str, Any]]:
-        """Ask the configured fast model whether a turn needs live research."""
+        """Use Ling to choose normal, searched, or long-form research output."""
         text = re.sub(r"\s+", " ", user_content or "").strip()
-        aimodel_ready = self.prefers_aimodel and _aimodel_api_enabled()
-        relay_ready = self.prefers_relayrouter and _relayrouter_api_enabled()
-        deepseek_ready = self.prefers_deepseek_http and _deepseek_api_enabled()
-        if not text or not (aimodel_ready or relay_ready or deepseek_ready):
+        if not text or not _openrouter_conversation_enabled():
             return None
 
         system_prompt = (
-            "You are a strict routing classifier for a Discord assistant. Output exactly "
-            "one minified JSON object and nothing else. No markdown. No explanation outside "
-            "JSON. Schema: {\"route\":\"normal_chat|search|search_deepthink\","
-            "\"confidence\":0.0,\"current_info\":false,\"reason\":\"short\"}. "
-            "Use normal_chat for casual conversation, creative writing, timeless "
-            "explanations, local Discord context, and moderation commands. Use search "
-            "when a concise answer needs fresh or externally verified facts, including "
-            "current/latest/recent/today questions, game versions and patches, prices, "
-            "schedules, releases, news, weather, laws, officeholders, product availability, "
-            "or recommendations. Use search_deepthink only when live evidence also needs "
-            "substantial analysis: broad world briefs, investigations, comparisons across "
-            "sources, conflicting reports, technical deep dives, or an explicitly requested "
-            "detailed breakdown. Do not choose deepthink merely because a fact is current. "
-            "current_info must be true or false only."
+            "Classify a Discord assistant request into exactly one route. "
+            "normal: casual conversation, creative or writing tasks, stable timeless "
+            "knowledge, math, coding, local Discord context, or questions answerable "
+            "without current external facts. search: a concise answer needs current, "
+            "recent, changing, externally verified, high-stakes, recommended, niche, or "
+            "explicitly requested web information. Searching does not make the answer "
+            "long. research: the user explicitly asks for research, a deep dive, an "
+            "investigation, a comprehensive report, or substantial multi-source analysis "
+            "or comparison. Current information alone is search, not research. Return "
+            "exactly one JSON object: {\"route\":\"normal|search|research\"}. Do not explain."
         )
-        user_prompt = (
-            f"Current UTC time: {_now().isoformat()}\n"
-            f"Classify this request:\n{_sanitize_untrusted_text(text, limit=4_000)}"
-        )
+        user_prompt = _sanitize_untrusted_text(text, limit=4_000)
         try:
-            try:
-                timeout = float(os.getenv("GALAXY_ROUTER_TIMEOUT", "5").strip())
-            except ValueError:
-                timeout = 5.0
             messages = [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ]
-            if aimodel_ready:
-                call = self._call_aimodel(
-                    messages,
-                    temperature=0.0,
-                    max_tokens=220,
-                    model=_AIMODEL_ROUTER_MODEL,
-                    json_mode=True,
-                    fallback_models=(),
-                )
-            elif relay_ready:
-                call = self._call_relayrouter(
-                    messages,
-                    temperature=0.0,
-                    max_tokens=220,
-                    model=_RELAYROUTER_ROUTER_MODEL,
-                    json_mode=True,
-                )
-            else:
-                call = self._call_deepseek_api(
-                    messages,
-                    temperature=0.0,
-                    max_tokens=220,
-                    model=os.getenv("GALAXY_ROUTER_MODEL", "gemini-3-5-flash").strip(),
-                    json_mode=True,
-                )
             raw = await asyncio.wait_for(
-                call,
-                timeout=min(10.0, max(1.0, timeout)),
+                self._post_chat_completion(
+                    messages,
+                    base_url=_OPENROUTER_BASE_URL,
+                    api_key=_OPENROUTER_API_KEY,
+                    model=_OPENROUTER_LING_ROUTER_MODEL,
+                    temperature=0.0,
+                    max_tokens=40,
+                    json_mode=True,
+                    provider_label=(
+                        "OpenRouter conversation router "
+                        f"({_OPENROUTER_LING_ROUTER_MODEL})"
+                    ),
+                    max_retries=0,
+                    request_timeout=2,
+                ),
+                timeout=2.0,
             )
-            data = self._parse_research_route_payload(raw or "")
-            if not data:
-                return None
-            return data
+            return self._parse_research_route_payload(raw or "")
         except asyncio.TimeoutError:
-            logger.warning("Galaxy research-route classification timed out")
+            logger.warning("Ling conversation-route classification timed out")
             return None
         except Exception:
-            logger.warning("Galaxy research-route classification failed", exc_info=True)
+            logger.warning("Ling conversation-route classification failed", exc_info=True)
             return None
 
     def _parse_research_route_payload(self, raw: str) -> Optional[Dict[str, Any]]:
-        """Parse Gemini's route JSON, with a narrow recovery path for loose output."""
+        """Parse Ling's route JSON, with compatibility for older route names."""
         payload = self._extract_json(raw or "")
         try:
             data = json.loads(payload)
         except json.JSONDecodeError:
             data = self._parse_loose_research_route_payload(payload)
         if not isinstance(data, dict):
-            logger.debug("Galaxy research-route classifier returned invalid JSON: %r", (raw or "")[:500])
+            logger.debug("Ling conversation-route classifier returned invalid JSON: %r", (raw or "")[:500])
             return None
 
         route = str(data.get("route") or "").strip().lower()
-        if route not in {"normal_chat", "search", "search_deepthink"}:
+        route = {
+            "normal_chat": "normal",
+            "search_deepthink": "research",
+        }.get(route, route)
+        if route not in {"normal", "search", "research"}:
             return None
         try:
             confidence = float(data.get("confidence", 0.0))
         except (TypeError, ValueError):
             confidence = 0.0
-        current_raw = data.get("current_info", False)
+        current_raw = data.get("current_info", route in {"search", "research"})
         if isinstance(current_raw, bool):
             current_info = current_raw
         elif isinstance(current_raw, (int, float)):
             current_info = bool(current_raw)
         else:
-            current_info = str(current_raw or "").strip().lower() in {"true", "yes", "1"} or route in {
-                "search",
-                "search_deepthink",
-            }
+            current_info = str(current_raw or "").strip().lower() in {"true", "yes", "1"}
         return {
             "route": route,
-            "confidence": min(1.0, max(0.0, confidence)),
+            "confidence": min(1.0, max(0.0, confidence or 1.0)),
             "current_info": current_info,
             "reason": str(data.get("reason") or "")[:200],
         }
@@ -2098,7 +2073,7 @@ class AIClient:
     @staticmethod
     def _parse_loose_research_route_payload(payload: str) -> Optional[Dict[str, Any]]:
         route_match = re.search(
-            r'["\']?route["\']?\s*:\s*["\']?(normal_chat|search_deepthink|search)["\']?',
+            r'["\']?route["\']?\s*:\s*["\']?(normal_chat|search_deepthink|normal|research|search)["\']?',
             payload or "",
             re.IGNORECASE,
         )
@@ -2111,8 +2086,12 @@ class AIClient:
             re.IGNORECASE,
         )
         reason_match = re.search(r'["\']?reason["\']?\s*:\s*["\']([^"\']{0,200})', payload or "", re.IGNORECASE)
+        route = {
+            "normal_chat": "normal",
+            "search_deepthink": "research",
+        }.get(route_match.group(1).lower(), route_match.group(1).lower())
         return {
-            "route": route_match.group(1).lower(),
+            "route": route,
             "confidence": float(confidence_match.group(1)) if confidence_match else 0.0,
             "current_info": current_match.group(1).lower() in {"true", "yes", "1"} if current_match else False,
             "reason": reason_match.group(1) if reason_match else "loose classifier output",

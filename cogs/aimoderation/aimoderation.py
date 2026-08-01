@@ -920,20 +920,46 @@ class AIModeration(commands.Cog):
         ))
         mentions_moderation = self._looks_like_mod_request(content)
         asks_for_sources = bool(re.search(r"\b(sources?|citations?|proof|links?)\b", low))
-        research_request = bool(
-            explicit_research and not casual_followup and not mentions_moderation
+        fallback_route = (
+            "research"
+            if explicit_research and not casual_followup and not mentions_moderation
+            else "search"
+            if explicit_search or current_hint or asks_for_sources
+            else "normal"
         )
+        route = fallback_route
+        confidence = 0.95 if route == "research" else 0.9 if route == "search" else 0.0
+
+        classifier = getattr(self.ai, "classify_research_route", None)
+        should_classify = bool(
+            callable(classifier)
+            and not casual_followup
+            and not mentions_moderation
+            and not explicit_research
+            and not explicit_search
+            and not asks_for_sources
+        )
+        if should_classify:
+            decision = await classifier(content)
+            if isinstance(decision, dict):
+                candidate = str(decision.get("route") or "").strip().lower()
+                candidate = {
+                    "normal_chat": "normal",
+                    "search_deepthink": "research",
+                }.get(candidate, candidate)
+                if candidate in {"normal", "search", "research"}:
+                    route = candidate
+                    try:
+                        confidence = float(decision.get("confidence", 1.0))
+                    except (TypeError, ValueError):
+                        confidence = 1.0
+
+        research_request = route == "research"
+        search_request = route in {"search", "research"}
         mode = (
             ConversationMode.RESEARCH
             if research_request
             else ConversationMode.STANDARD
-        )
-        confidence = (
-            0.95
-            if research_request
-            else 0.9
-            if explicit_search or current_hint or asks_for_sources
-            else 0.0
         )
 
         show_indicator = getattr(self.ai, "has_web_search", True) and mode == ConversationMode.RESEARCH
@@ -947,9 +973,7 @@ class AIModeration(commands.Cog):
             asks_for_long_answer=research_request,
             mentions_moderation=mentions_moderation,
             use_deepthink=research_request,
-            requires_web_search=(
-                explicit_search or research_request or asks_for_sources
-            ),
+            requires_web_search=search_request,
         )
 
     def _friendly_error_reply(self, content: str, reason: str) -> str:
@@ -3572,7 +3596,6 @@ class AIModeration(commands.Cog):
         """Handle AI conversation with research indicator and smart response delivery."""
         recent = await self.fetch_recent_messages(message.channel, limit=settings.context_messages)
         recent = await self._include_referenced_message(message, recent)
-        signals = await self._build_conversation_signals(content)
         lookup_reply = await self._answer_recent_user_message_lookup(message, content, settings)
         if lookup_reply:
             await self.reply(message, content=lookup_reply)
@@ -3583,6 +3606,7 @@ class AIModeration(commands.Cog):
             await self.reply(message, content=quick_reply)
             self._mark_chat_active(message.channel.id)
             return
+        signals = await self._build_conversation_signals(content)
 
         # --- Research indicator ---
         research_msg: Optional[discord.Message] = None
