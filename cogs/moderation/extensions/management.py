@@ -1041,29 +1041,30 @@ class ManagementCommands:
             backup_role_ids
         )
 
-        embed = discord.Embed(
-            title="☣️ User Quarantined",
-            description=f"{user.mention} has been quarantined.",
-            color=Colors.DARK_RED
-        )
-        embed.add_field(name="Reason", value=reason, inline=False)
-        embed.add_field(name="Duration", value=human_duration, inline=True)
+        quarantine_details = {
+            "Duration": human_duration,
+            "Roles removed": str(len(backup_role_ids)),
+        }
         if expires_at:
-             embed.add_field(name="Expires", value=f"<t:{int(expires_at.timestamp())}:R>", inline=True)
-
-        embed.add_field(name="Roles Removed", value=str(len(backup_role_ids)), inline=True)
+            quarantine_details["Expires"] = f"<t:{int(expires_at.timestamp())}:R>"
         if overwrite_applied or overwrite_failed:
-            embed.add_field(
-                name="Channel Sync",
-                value=f"Updated {overwrite_applied} channels (failed: {overwrite_failed})",
-                inline=False,
+            quarantine_details["Channel sync"] = (
+                f"Updated {overwrite_applied} channels (failed: {overwrite_failed})"
             )
         elif not (bot_member and bot_member.guild_permissions.manage_channels):
-            embed.add_field(
-                name="Channel Sync",
-                value="Skipped: I need **Manage Channels** to enforce quarantine visibility.",
-                inline=False,
+            quarantine_details["Channel sync"] = (
+                "Skipped: I need **Manage Channels** to enforce quarantine visibility."
             )
+
+        embed = await self.create_mod_embed(
+            title="Member quarantined",
+            user=user,
+            moderator=author,
+            reason=reason,
+            color=Colors.DARK_RED,
+            case_num=case_num,
+            extra_fields=quarantine_details,
+        )
 
         await self._respond(source, embed=embed)
         await self.log_action(source.guild, embed)
@@ -1072,10 +1073,14 @@ class ManagementCommands:
         # already isolated and recorded above; a closed DM or slow appeal-token
         # DB write must never block or fail the moderator's confirmation.
         if notify_user:
-            dm_embed = discord.Embed(
+            dm_embed = await self.create_mod_embed(
                 title=f"Quarantined in {source.guild.name}",
-                description=f"**Reason:** {reason}\n**Duration:** {human_duration}",
+                user=user,
+                moderator=author,
+                reason=reason,
                 color=Colors.DARK_RED,
+                case_num=case_num,
+                extra_fields={"Duration": human_duration},
             )
 
             async def _send_quarantine_dm() -> None:
@@ -1103,19 +1108,21 @@ class ManagementCommands:
         if jail_channel_id:
             jail_channel = source.guild.get_channel(int(jail_channel_id))
             if isinstance(jail_channel, discord.TextChannel):
-                jail_embed = discord.Embed(
-                    title="Quarantine Notice",
-                    description=(
-                        f"{user.mention}, you are quarantined.\n"
-                        "Please wait for staff instructions here."
-                    ),
-                    color=Colors.DARK_RED,
-                    timestamp=datetime.now(timezone.utc),
-                )
-                jail_embed.add_field(name="Reason", value=reason, inline=False)
-                jail_embed.add_field(name="Duration", value=human_duration, inline=True)
+                jail_details = {
+                    "Duration": human_duration,
+                    "Instructions": "Please wait for staff instructions in this channel.",
+                }
                 if expires_at:
-                    jail_embed.add_field(name="Expires", value=f"<t:{int(expires_at.timestamp())}:R>", inline=True)
+                    jail_details["Expires"] = f"<t:{int(expires_at.timestamp())}:R>"
+                jail_embed = await self.create_mod_embed(
+                    title="Member quarantined",
+                    user=user,
+                    moderator=author,
+                    reason=reason,
+                    color=Colors.DARK_RED,
+                    case_num=case_num,
+                    extra_fields=jail_details,
+                )
 
                 async def _post_jail_notice(channel: discord.TextChannel, mention: str, embed: discord.Embed) -> None:
                     try:
@@ -1166,13 +1173,22 @@ class ManagementCommands:
         # DB update
         await self.bot.db.remove_quarantine(source.guild.id, user.id)
         
-        embed = discord.Embed(
-            title="✅ User Unquarantined",
-            description=f"{user.mention} has been released from quarantine.",
-            color=Colors.SUCCESS
+        case_num = await self.bot.db.create_case(
+            source.guild.id,
+            user.id,
+            author.id,
+            "Unquarantine",
+            reason,
         )
-        embed.add_field(name="Restored Roles", value=f"{restored} (Failed: {failed})", inline=False)
-        embed.add_field(name="Reason", value=reason, inline=False)
+        embed = await self.create_mod_embed(
+            title="Quarantine lifted",
+            user=user,
+            moderator=author,
+            reason=reason,
+            color=Colors.SUCCESS,
+            case_num=case_num,
+            extra_fields={"Restored roles": f"{restored} (failed: {failed})"},
+        )
         
         await self._respond(source, embed=embed)
         await self.log_action(source.guild, embed)
