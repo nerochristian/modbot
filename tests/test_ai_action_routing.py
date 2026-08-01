@@ -327,7 +327,7 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertIn("fallback", reply.lower())
         self.assertNotIn("gpt-4o", reply.lower())
 
-    def test_world_news_routes_to_research_when_classifier_returns_nothing(self) -> None:
+    def test_world_news_stays_plain_for_luna_auto_search(self) -> None:
         self.cog.ai = SimpleNamespace(
             classify_research_route=AsyncMock(return_value=None),
             has_web_search=True,
@@ -337,9 +337,10 @@ class AIActionRoutingTests(unittest.TestCase):
             self.cog._build_conversation_signals("What's going on in the world?")
         )
 
-        self.assertEqual(signals.mode, ConversationMode.RESEARCH)
+        self.assertEqual(signals.mode, ConversationMode.STANDARD)
         self.assertTrue(signals.asks_for_current_info)
-        self.assertTrue(signals.show_research_indicator)
+        self.assertFalse(signals.show_research_indicator)
+        self.cog.ai.classify_research_route.assert_not_awaited()
 
     def test_reply_target_timeout_shortcut_keeps_reason_and_duration(self) -> None:
         message = SimpleNamespace(mentions=[])

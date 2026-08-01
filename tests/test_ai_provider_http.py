@@ -236,7 +236,7 @@ def test_openrouter_lane_includes_research_and_images(monkeypatch):
     assert AIClient._uses_openrouter_conversation_lane(standard, has_images=True) is True
 
 
-def test_openrouter_always_forces_one_search_and_preserves_citations(monkeypatch):
+def test_openrouter_lets_luna_decide_when_search_is_needed(monkeypatch):
     client = AIClient.__new__(AIClient)
     client._post_chat_completion = AsyncMock(return_value="researched reply")
     monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
@@ -271,9 +271,30 @@ def test_openrouter_always_forces_one_search_and_preserves_citations(monkeypatch
                 },
             }
         ],
-        "tool_choice": "required",
+        "tool_choice": "auto",
         "max_tool_calls": 1,
     }
+
+
+def test_openrouter_requires_search_for_explicit_search_or_research(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client._post_chat_completion = AsyncMock(return_value="researched reply")
+    monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
+
+    result = asyncio.run(
+        client._call_openrouter_conversation(
+            [{"role": "user", "content": "research the latest release"}],
+            temperature=0.3,
+            max_tokens=1200,
+            require_search=True,
+        )
+    )
+
+    assert result == "researched reply"
+    assert (
+        client._post_chat_completion.await_args.kwargs["extra_payload"]["tool_choice"]
+        == "required"
+    )
 
 
 def test_openrouter_citations_are_preserved_for_research_output():

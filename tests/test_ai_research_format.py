@@ -177,7 +177,7 @@ class ResearchFormattingTests(unittest.TestCase):
 
 
 class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
-    async def test_latest_game_update_routes_to_search_without_deepthink(self) -> None:
+    async def test_latest_game_update_stays_plain_while_luna_decides_to_search(self) -> None:
         classifier = AsyncMock(
             return_value={
                 "route": "search",
@@ -195,11 +195,13 @@ class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
             "latest genshin update?"
         )
 
-        self.assertEqual(signals.mode, ConversationMode.RESEARCH)
+        self.assertEqual(signals.mode, ConversationMode.STANDARD)
         self.assertTrue(signals.asks_for_current_info)
         self.assertFalse(signals.use_deepthink)
         self.assertFalse(signals.asks_for_long_answer)
-        classifier.assert_awaited_once_with("latest genshin update?")
+        self.assertFalse(signals.show_research_indicator)
+        self.assertFalse(signals.requires_web_search)
+        classifier.assert_not_awaited()
 
     async def test_timeless_question_stays_normal_when_galaxy_says_chat(self) -> None:
         cog = object.__new__(AIModeration)
@@ -220,8 +222,9 @@ class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(signals.mode, ConversationMode.STANDARD)
         self.assertFalse(signals.use_deepthink)
+        cog.ai.classify_research_route.assert_not_awaited()
 
-    async def test_current_role_question_falls_back_to_fast_search_when_classifier_fails(self) -> None:
+    async def test_current_role_question_stays_plain_for_luna_auto_search(self) -> None:
         cog = object.__new__(AIModeration)
         cog.ai = SimpleNamespace(
             has_web_search=True,
@@ -232,9 +235,24 @@ class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
             "who is the current CEO of Discord?"
         )
 
-        self.assertEqual(signals.mode, ConversationMode.RESEARCH)
+        self.assertEqual(signals.mode, ConversationMode.STANDARD)
         self.assertTrue(signals.asks_for_current_info)
         self.assertFalse(signals.use_deepthink)
+        self.assertFalse(signals.show_research_indicator)
+        cog.ai.classify_research_route.assert_not_awaited()
+
+    async def test_explicit_search_is_plain_but_requires_the_web_tool(self) -> None:
+        cog = object.__new__(AIModeration)
+        cog.ai = SimpleNamespace(has_web_search=True)
+
+        signals = await cog._build_conversation_signals(
+            "search the latest Genshin update"
+        )
+
+        self.assertEqual(signals.mode, ConversationMode.STANDARD)
+        self.assertTrue(signals.requires_web_search)
+        self.assertFalse(signals.show_research_indicator)
+        self.assertFalse(signals.asks_for_long_answer)
 
     async def test_explicit_research_request_builds_a_complete_plan(self) -> None:
         cog = object.__new__(AIModeration)
@@ -259,7 +277,8 @@ class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(signals.asks_for_long_answer)
         self.assertTrue(signals.use_deepthink)
         self.assertEqual(signals.focus_entities, ())
-        classifier.assert_awaited_once()
+        self.assertTrue(signals.requires_web_search)
+        classifier.assert_not_awaited()
 
         client = object.__new__(AIClient)
         client.config = SimpleNamespace(max_tokens_chat=1200)
