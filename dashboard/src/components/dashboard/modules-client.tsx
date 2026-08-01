@@ -725,7 +725,7 @@ const FIELD_HELP: Record<Module['special'] & string, string> = {
   whitelist: 'Choose rejection behavior and maintain the exact member allowlist enforced on join.',
   tickets: 'Route private support channels to the right category, staff role, and transcript log.',
   logging: 'Send each class of server event to a deliberate destination instead of one noisy catch-all channel.',
-  welcome_card: 'Design the join card live. Every change in this sheet updates the preview instantly.',
+  welcome_card: 'Choose the welcome channel and background. The reference-style layout stays consistent for every member.',
   autoroles: 'Choose the role Docket assigns to new human members when verification is not controlling access.',
 }
 
@@ -1448,22 +1448,10 @@ const OPERATIONAL_SECTIONS: Record<OperationalSpecial, OperationalSectionDefinit
       keys: ['welcome_channel'],
     },
     {
-      register: 'CANVAS / 02',
-      title: 'Canvas',
-      description: 'The backdrop every card starts from: image, blur, darkness, and layout.',
-      keys: ['welcome_bg_url', 'welcome_card_blur', 'welcome_card_overlay', 'welcome_card_layout'],
-    },
-    {
-      register: 'IDENTITY / 03',
-      title: 'Words on the card',
-      description: 'The pill label and subtitle drawn on the image, plus the names used in the text message.',
-      keys: ['welcome_card_label', 'welcome_card_subtitle', 'welcome_server_name', 'welcome_system_name'],
-    },
-    {
-      register: 'STYLE / 04',
-      title: 'Style & details',
-      description: 'Accent, ring, text color, and which flourishes the renderer draws.',
-      keys: ['welcome_card_accent', 'welcome_card_ring_color', 'welcome_card_text_color', 'welcome_card_ring', 'welcome_card_role_color', 'welcome_card_badges', 'welcome_card_member_count'],
+      register: 'BACKGROUND / 02',
+      title: 'Background image',
+      description: 'Choose the edge-to-edge image behind the fixed avatar, WELCOME heading, and member name.',
+      keys: ['welcome_bg_url'],
     },
   ],
   autoroles: [

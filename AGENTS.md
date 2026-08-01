@@ -172,11 +172,11 @@ def build_panel() -> discord.ui.LayoutView:
 - **Guided tours.** `dashboard/src/components/dashboard/tour-engine.tsx`
   (`GuidedTour`, spotlight via `data-tour` anchors). Runs on Overview
   (`docket:tour:v2:{guildId}`) and AutoMod (`docket:tour:automod:v1`).
-- **Welcome card designer.** Bot renderer `utils/welcome_card.py` is
-  config-driven (`welcome_card_options_from_settings`: blur, overlay, accent,
-  ring, text color, layout center/left, badges, member count;
-  `welcome_card_*` settings keys). Dashboard Modules → Welcome Card has a live
-  mock preview (`welcome-card-preview.tsx`); real render via `/testwelcome`.
+- **Welcome card designer.** Bot renderer `utils/welcome_card.py` uses a fixed
+  1024x500 reference-style composition (centered circular avatar, white ring,
+  `WELCOME`, uppercase display name). Only `welcome_bg_url` changes the visual;
+  Dashboard Modules → Welcome Card mirrors it in `welcome-card-preview.tsx`.
+  Render the real card with `/welcome preview`.
 - **Risk scores are live.** `cogs/risk_scoring.py` recomputes on a 5-min
   sweeper over fresh automod_events/cases (factors now include
   `automod_violations` + `recent_cases`) and alerts staff at
