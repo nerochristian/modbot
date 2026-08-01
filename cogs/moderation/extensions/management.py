@@ -180,7 +180,7 @@ class ManagementCommands:
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not kick: {e}"), ephemeral=True)
             
-        embed = await self.create_mod_embed(title="👢 User Kicked", user=user, moderator=moderator, reason=reason, color=Colors.ERROR, case_num=case_num)
+        embed = await self.create_mod_embed(title="Member kicked", user=user, moderator=moderator, reason=reason, color=Colors.ERROR, case_num=case_num)
         response = render_moderation_response(
             settings,
             "kick",
@@ -231,7 +231,7 @@ class ManagementCommands:
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not ban: {e}"), ephemeral=True)
             
-        embed = await self.create_mod_embed(title="🔨 User Banned", user=user, moderator=moderator, reason=reason, color=Colors.DARK_RED, case_num=case_num)
+        embed = await self.create_mod_embed(title="Member banned", user=user, moderator=moderator, reason=reason, color=Colors.DARK_RED, case_num=case_num)
         response = render_moderation_response(
             settings,
             "ban",
@@ -268,7 +268,7 @@ class ManagementCommands:
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Unban", reason)
 
         settings = await self.bot.db.get_settings(guild.id)
-        embed = await self.create_mod_embed(title="🔓 User Unbanned", user=user, moderator=moderator, reason=reason, color=Colors.SUCCESS, case_num=case_num)
+        embed = await self.create_mod_embed(title="Member unbanned", user=user, moderator=moderator, reason=reason, color=Colors.SUCCESS, case_num=case_num)
         response = render_moderation_response(
             settings,
             "unban",
@@ -312,7 +312,7 @@ class ManagementCommands:
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not softban: {e}"), ephemeral=True)
             
-        embed = await self.create_mod_embed(title="🧹 User Softbanned", user=user, moderator=moderator, reason=reason, color=Colors.ERROR, case_num=case_num)
+        embed = await self.create_mod_embed(title="Member softbanned", user=user, moderator=moderator, reason=reason, color=Colors.ERROR, case_num=case_num)
         embed.set_footer(text=f"Case #{case_num} | 7 days of messages deleted")
         response = render_moderation_response(
             settings,
@@ -371,7 +371,7 @@ class ManagementCommands:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not tempban: {e}"), ephemeral=True)
         await self.bot.db.add_tempban(guild.id, user.id, moderator.id, reason, expires_at)
             
-        embed = await self.create_mod_embed(title="⏰ User Temporarily Banned", user=user, moderator=moderator, reason=reason, color=Colors.DARK_RED, case_num=case_num, extra_fields={"Duration": human_duration, "Expires": f"<t:{int(expires_at.timestamp())}:R>"})
+        embed = await self.create_mod_embed(title="Member temporarily banned", user=user, moderator=moderator, reason=reason, color=Colors.DARK_RED, case_num=case_num, extra_fields={"Duration": human_duration, "Expires": f"<t:{int(expires_at.timestamp())}:R>"})
         await self._respond(source, embed=embed, delete_command_message=True)
         await self.log_action(guild, embed)
 
@@ -440,7 +440,7 @@ class ManagementCommands:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not timeout: {e}"), ephemeral=True)
 
         log_embed = await self.create_mod_embed(
-            title=f"Mute {user.display_name}",
+            title="Member muted",
             user=user,
             moderator=moderator,
             reason=reason,
@@ -497,7 +497,7 @@ class ManagementCommands:
         settings = await self.bot.db.get_settings(guild.id)
 
         log_embed = await self.create_mod_embed(
-            title=f"Unmute {user.display_name}",
+            title="Member unmuted",
             user=user,
             moderator=moderator,
             reason=reason,
