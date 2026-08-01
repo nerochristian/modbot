@@ -297,6 +297,50 @@ def test_openrouter_requires_search_for_explicit_search_or_research(monkeypatch)
     )
 
 
+def test_conversation_forwards_explicit_search_requirement_to_luna(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client.provider = "relayrouter"
+    client.config = AIConfig(provider="relayrouter")
+    client._block_until = None
+    client._block_reason = None
+    client._brave_search_api_key = None
+    client._tavily_api_key = None
+    client._serpapi_api_key = None
+    client._rate_limiter = types.SimpleNamespace(
+        is_rate_limited=AsyncMock(return_value=(False, 0)),
+        record_call=AsyncMock(),
+    )
+    client._deepseek_web = types.SimpleNamespace(enabled=False)
+    client._collect_image_context = AsyncMock(return_value=[])
+    client._call_openrouter_conversation = AsyncMock(return_value="searched answer")
+    client._update_memory_smart = AsyncMock()
+    client.bot = types.SimpleNamespace(
+        user=types.SimpleNamespace(id=999),
+        db=types.SimpleNamespace(
+            get_ai_memory=AsyncMock(return_value=""),
+            get_guild_memory=AsyncMock(return_value=""),
+        ),
+    )
+    monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
+
+    result = asyncio.run(
+        client.converse(
+            user_content="search for the latest patch",
+            guild=types.SimpleNamespace(id=1, name="Guild", member_count=10),
+            author=types.SimpleNamespace(id=2, name="User"),
+            recent_messages=[],
+            signals=ConversationSignals(
+                mode=ConversationMode.STANDARD,
+                confidence=1.0,
+                requires_web_search=True,
+            ),
+        )
+    )
+
+    assert result == "searched answer"
+    assert client._call_openrouter_conversation.await_args.kwargs["require_search"] is True
+
+
 def test_openrouter_citations_are_preserved_for_research_output():
     response = {
         "choices": [
