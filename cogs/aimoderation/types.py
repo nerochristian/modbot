@@ -370,6 +370,7 @@ class ConversationSignals:
     mentions_moderation: bool = False
     focus_entities: Tuple[str, ...] = ()
     use_deepthink: bool = False
+    requires_web_search: bool = False
 
     @property
     def research(self) -> bool:

@@ -19,6 +19,22 @@ from utils.async_tasks import fire_and_forget
 from config import Config
 
 class ManagementCommands:
+    _DEFAULT_QUARANTINE_REASON = "No reason provided"
+
+    @staticmethod
+    def _normalize_prefix_quarantine_args(
+        duration: Optional[str],
+        reason: str,
+    ) -> tuple[Optional[str], str]:
+        """Disambiguate the optional duration from a prefix-command reason."""
+        if duration and parse_time(duration) is None:
+            trailing_reason = (reason or "").strip()
+            if trailing_reason == ManagementCommands._DEFAULT_QUARANTINE_REASON:
+                trailing_reason = ""
+            combined_reason = " ".join(part for part in (duration.strip(), trailing_reason) if part)
+            return None, combined_reason or ManagementCommands._DEFAULT_QUARANTINE_REASON
+        return duration, reason
+
     @staticmethod
     def _quarantine_restricted_overwrite() -> discord.PermissionOverwrite:
         """Permissions quarantine role should have outside the jail channel."""
@@ -1011,9 +1027,17 @@ class ManagementCommands:
         human_duration = "Indefinite"
         if duration_str:
             parsed = parse_time(duration_str)
-            if parsed:
-                delta, human_duration = parsed
-                expires_at = datetime.now(timezone.utc) + delta
+            if not parsed:
+                return await self._respond(
+                    source,
+                    embed=ModEmbed.error(
+                        "Invalid Duration",
+                        "Use a duration such as `30m`, `2h`, `3d`, or omit it for an indefinite quarantine.",
+                    ),
+                    ephemeral=True,
+                )
+            delta, human_duration = parsed
+            expires_at = datetime.now(timezone.utc) + delta
 
         notify_user = moderation_bool(settings, "moderation_dm_users", True)
         case_num = await self.bot.db.create_case(
@@ -1465,6 +1489,7 @@ class ManagementCommands:
     @commands.command(name="quarantine", aliases=["quar", "jail"])
     @is_senior_mod()
     async def quarantine(self, ctx: commands.Context, user: discord.Member, duration: Optional[str] = None, *, reason: str = "No reason provided"):
+        duration, reason = self._normalize_prefix_quarantine_args(duration, reason)
         await self._quarantine_logic(ctx, user, duration, reason)
 
     # Slash command - registered dynamically in __init__.py

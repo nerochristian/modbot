@@ -2,6 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 
 from cogs.moderation.extensions.helpers import HelperCommands
+from cogs.moderation.extensions.management import ManagementCommands
 from utils.embeds import Colors, sapphire_log_embed
 from utils.status_emojis import _semantic_status_kind
 
@@ -96,3 +97,21 @@ def test_quarantine_titles_resolve_to_the_intended_status_emojis() -> None:
     assert _semantic_status_kind("Member quarantined") == "lock"
     assert _semantic_status_kind("Quarantine lifted") == "success"
     assert _semantic_status_kind("Quarantine expired") == "warning"
+
+
+def test_prefix_quarantine_preserves_reason_without_duration() -> None:
+    assert ManagementCommands._normalize_prefix_quarantine_args(
+        "gay.",
+        "No reason provided",
+    ) == (None, "gay.")
+    assert ManagementCommands._normalize_prefix_quarantine_args(
+        "repeated",
+        "raid attempts",
+    ) == (None, "repeated raid attempts")
+
+
+def test_prefix_quarantine_keeps_valid_duration_separate() -> None:
+    assert ManagementCommands._normalize_prefix_quarantine_args(
+        "2h",
+        "Repeated raid attempts",
+    ) == ("2h", "Repeated raid attempts")

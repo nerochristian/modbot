@@ -892,13 +892,14 @@ class AIModeration(commands.Cog):
     async def _build_conversation_signals(self, content: str) -> ConversationSignals:
         low = self._normalize_chat_text(content)
 
-        explicit_search = bool(re.search(
-            r"\b(research|fact[\s-]?check|verify|look\s*up|search|investigate|deep dive|full breakdown|details?)\b",
+        explicit_research = bool(re.search(
+            r"\b(research|deep\s*(?:dive|research|analysis|think)|investigate|"
+            r"full\s+breakdown|comprehensive|in[-\s]?depth|detailed\s+analysis|"
+            r"compare\s+(?:sources|reports))\b",
             low,
         ))
-        deep_request = bool(re.search(
-            r"\b(deep\s*(?:dive|research|analysis|think)|investigate|full\s+breakdown|"
-            r"comprehensive|in[-\s]?depth|detailed\s+analysis|compare\s+(?:sources|reports))\b",
+        explicit_search = bool(re.search(
+            r"\b(fact[\s-]?check|verify|look\s*up|search|browse|check\s+(?:online|the\s+web))\b",
             low,
         ))
         current_hint = bool(
@@ -918,46 +919,22 @@ class AIModeration(commands.Cog):
             low,
         ))
         mentions_moderation = self._looks_like_mod_request(content)
-        factual_candidate = bool(
-            explicit_search
-            or current_hint
-            or "?" in content
-            or re.match(
-                r"^(?:what|who|when|where|which|how|is|are|was|were|does|do|did|"
-                r"can|could|should|will|tell\s+me|explain|give\s+me)\b",
-                low,
-            )
+        asks_for_sources = bool(re.search(r"\b(sources?|citations?|proof|links?)\b", low))
+        research_request = bool(
+            explicit_research and not casual_followup and not mentions_moderation
         )
-
-        mode = ConversationMode.STANDARD
-        confidence = 0.0
-        route = "normal_chat"
-        current_info = current_hint
-
-        classifier = getattr(self.ai, "classify_research_route", None)
-        if (
-            not casual_followup
-            and not mentions_moderation
-            and factual_candidate
-            and callable(classifier)
-        ):
-            decision = await classifier(content)
-            if isinstance(decision, dict):
-                route = str(decision.get("route") or "normal_chat")
-                confidence = float(decision.get("confidence") or 0.0)
-                current_info = bool(decision.get("current_info", current_info))
-
-        if route == "normal_chat" and not casual_followup:
-            if deep_request:
-                route = "search_deepthink"
-                confidence = max(confidence, 0.9)
-            elif explicit_search or current_hint:
-                route = "search"
-                confidence = max(confidence, 0.85)
-
-        use_deepthink = route == "search_deepthink"
-        if route in {"search", "search_deepthink"}:
-            mode = ConversationMode.RESEARCH
+        mode = (
+            ConversationMode.RESEARCH
+            if research_request
+            else ConversationMode.STANDARD
+        )
+        confidence = (
+            0.95
+            if research_request
+            else 0.9
+            if explicit_search or current_hint or asks_for_sources
+            else 0.0
+        )
 
         show_indicator = getattr(self.ai, "has_web_search", True) and mode == ConversationMode.RESEARCH
 
@@ -965,11 +942,14 @@ class AIModeration(commands.Cog):
             mode=mode,
             confidence=confidence,
             show_research_indicator=show_indicator,
-            asks_for_current_info=current_info,
-            asks_for_sources=bool(re.search(r"\b(sources?|citations?|proof|links?)\b", low)),
-            asks_for_long_answer=use_deepthink,
+            asks_for_current_info=current_hint,
+            asks_for_sources=asks_for_sources,
+            asks_for_long_answer=research_request,
             mentions_moderation=mentions_moderation,
-            use_deepthink=use_deepthink,
+            use_deepthink=research_request,
+            requires_web_search=(
+                explicit_search or research_request or asks_for_sources
+            ),
         )
 
     def _friendly_error_reply(self, content: str, reason: str) -> str:
@@ -3785,9 +3765,9 @@ class AIModeration(commands.Cog):
             )
             return
 
-        # Luna searches on every conversation turn. Whenever OpenRouter
-        # supplies citations, keep them accessible even for a normal chat
-        # response instead of silently discarding them.
+        # When Luna chooses to search during ordinary chat, keep OpenRouter's
+        # citations accessible without turning the concise answer into a
+        # research embed.
         view = self._SourcesView(sources_text) if sources_text else None
 
         if is_research:

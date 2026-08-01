@@ -1231,11 +1231,13 @@ class AIClient:
         temperature: float,
         max_tokens: int,
         allow_multimodal: bool = False,
+        require_search: bool = False,
     ) -> Optional[str]:
-        """Call Luna with one mandatory web search on every conversation turn.
+        """Call Luna with bounded web search that the model normally invokes as needed.
 
         Callers enforce the lane boundary: moderation, action routing, and
-        memory curation never use this method.
+        memory curation never use this method. Explicit search/research requests
+        can require the tool without changing ordinary conversation behavior.
         """
         if not _openrouter_conversation_enabled():
             raise RuntimeError("OpenRouter conversation is missing OPENROUTER_API_KEY.")
@@ -1252,10 +1254,7 @@ class AIClient:
                     },
                 }
             ],
-            # This is the only tool in the request, so requiring a tool call
-            # guarantees that Luna searches rather than answering solely from
-            # model knowledge. Keep the per-turn budget at one search.
-            "tool_choice": "required",
+            "tool_choice": "required" if require_search else "auto",
             "max_tool_calls": 1,
         }
 
@@ -2311,7 +2310,7 @@ class AIClient:
                                     "content": (
                                         "Independent visual candidate pass:\n"
                                         f"{visual_candidates.strip()}\n\n"
-                                        "Now use the mandatory web search to verify the plausible "
+                                        "Now use web search to verify the plausible "
                                         "candidates against reliable visual descriptions or official "
                                         "reference material. Compare the visible features before naming "
                                         "the subject. Reject candidates whose defining anatomy does not "
@@ -2330,6 +2329,9 @@ class AIClient:
                         temperature=plan.temperature,
                         max_tokens=max_tokens,
                         allow_multimodal=bool(image_context),
+                        require_search=(
+                            signals.requires_web_search or image_identification
+                        ),
                     )
                     if content:
                         content = self._postprocess_chat_response(content)
