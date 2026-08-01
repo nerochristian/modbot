@@ -32,6 +32,11 @@ class _User:
         return self.name
 
 
+class _Guild:
+    name = "Luxury Guild"
+    icon = _Avatar("https://cdn.example/guild.png")
+
+
 def test_moderation_action_cards_match_sapphire_log_style() -> None:
     target = _User(
         name="target_user",
@@ -115,3 +120,39 @@ def test_prefix_quarantine_keeps_valid_duration_separate() -> None:
         "2h",
         "Repeated raid attempts",
     ) == ("2h", "Repeated raid attempts")
+
+
+def test_member_quarantine_notice_is_not_an_audit_card() -> None:
+    target = _User(
+        name="target_user",
+        mention="<@100>",
+        avatar_url="https://cdn.example/target.png",
+        created_at=datetime(2024, 1, 2, tzinfo=timezone.utc),
+    )
+    moderator = _User(
+        name="staff_user",
+        mention="<@200>",
+        avatar_url="https://cdn.example/staff.png",
+        created_at=datetime(2020, 1, 2, tzinfo=timezone.utc),
+    )
+
+    embed = ManagementCommands._build_quarantine_member_notice(
+        guild=_Guild(),
+        user=target,
+        moderator=moderator,
+        reason="Repeated raid attempts",
+        duration="2 hours",
+        case_number=77,
+        expires_at=datetime(2026, 8, 1, 3, 30, tzinfo=timezone.utc),
+    )
+
+    assert "You are in quarantine" in embed.title
+    assert "Why you are here" in embed.description
+    assert "What happens next" in embed.description
+    assert "Account created" not in embed.description
+    assert "Bot:" not in embed.description
+    assert [field.name for field in embed.fields] == ["Duration", "Case", "Review window"]
+    assert embed.author.name == "Luxury Guild • Restricted access"
+    assert embed.footer.text == "@staff_user"
+    assert embed.footer.icon_url == "https://cdn.example/staff.png"
+    assert embed.timestamp is not None

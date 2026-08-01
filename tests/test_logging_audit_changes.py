@@ -1,10 +1,12 @@
 import unittest
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import discord
 
 from cogs.logging_cog import Logging
+from utils.logging import normalize_log_embed
 
 
 class AuditChangeFormattingTests(unittest.TestCase):
@@ -59,8 +61,8 @@ class AuditChangeFormattingTests(unittest.TestCase):
         self.assertEqual(lines, ["**Color:** #e74c3c → #2ecc71"])
 
 
-class LoggingComponentsV2Tests(unittest.IsolatedAsyncioTestCase):
-    async def test_safe_send_log_sends_layout_view_instead_of_embed(self) -> None:
+class LoggingNativeFooterTests(unittest.IsolatedAsyncioTestCase):
+    async def test_safe_send_log_preserves_native_embed_footer(self) -> None:
         logging_cog = object.__new__(Logging)
         channel = SimpleNamespace(
             guild=SimpleNamespace(name="Test Guild"),
@@ -77,8 +79,23 @@ class LoggingComponentsV2Tests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(sent)
         kwargs = channel.send.await_args.kwargs
-        self.assertIsInstance(kwargs["view"], discord.ui.LayoutView)
-        self.assertNotIn("embed", kwargs)
+        self.assertIs(kwargs["embed"], embed)
+        self.assertIsNone(kwargs["view"])
+        self.assertFalse(kwargs["use_v2"])
+
+    def test_normalizer_keeps_timestamp_in_native_footer_area(self) -> None:
+        logged_at = datetime(2026, 8, 1, 1, 30, tzinfo=timezone.utc)
+        guild = SimpleNamespace(name="Test Guild", icon=None)
+        channel = SimpleNamespace(guild=guild)
+        embed = discord.Embed(title="Member banned", timestamp=logged_at)
+        embed.set_footer(text="@moderator", icon_url="https://cdn.example/mod.png")
+
+        normalized = normalize_log_embed(channel, embed)
+
+        self.assertEqual(normalized.timestamp, logged_at)
+        self.assertEqual(normalized.footer.text, "@moderator")
+        self.assertEqual(normalized.footer.icon_url, "https://cdn.example/mod.png")
+        self.assertNotIn("Time", [field.name for field in normalized.fields])
 
 
 if __name__ == "__main__":

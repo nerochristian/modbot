@@ -36,6 +36,55 @@ class ManagementCommands:
         return duration, reason
 
     @staticmethod
+    def _build_quarantine_member_notice(
+        *,
+        guild: discord.Guild,
+        user: discord.Member,
+        moderator: discord.Member,
+        reason: str,
+        duration: str,
+        case_number: int,
+        expires_at: Optional[datetime],
+    ) -> discord.Embed:
+        """Build the member-facing jail notice, deliberately separate from audit logs."""
+        lock_icon = ModEmbed._emoji("EMOJI_LOCK", "🔒")
+        embed = discord.Embed(
+            title=f"{lock_icon} You are in quarantine",
+            description=(
+                f"{user.mention}, your server access is temporarily restricted while staff review your case.\n\n"
+                "**Why you are here**\n"
+                f"{reason or 'No reason provided'}\n\n"
+                "**What happens next**\n"
+                "• Use this channel to speak directly with staff.\n"
+                "• Explain your side clearly and wait for a response.\n"
+                "• Do not ping unrelated members or evade the quarantine."
+            ),
+            color=Colors.GOLD,
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.add_field(name="Duration", value=duration, inline=True)
+        embed.add_field(name="Case", value=f"#{case_number}", inline=True)
+        if expires_at is not None:
+            embed.add_field(
+                name="Review window",
+                value=f"Ends <t:{int(expires_at.timestamp())}:R>",
+                inline=False,
+            )
+        else:
+            embed.add_field(
+                name="Release",
+                value="A staff member will release you when the review is complete.",
+                inline=False,
+            )
+
+        guild_icon = getattr(getattr(guild, "icon", None), "url", None)
+        embed.set_author(name=f"{guild.name} • Restricted access", icon_url=guild_icon)
+        moderator_name = getattr(moderator, "name", str(moderator))
+        moderator_icon = getattr(getattr(moderator, "display_avatar", None), "url", None)
+        embed.set_footer(text=f"@{moderator_name}", icon_url=moderator_icon)
+        return embed
+
+    @staticmethod
     def _quarantine_restricted_overwrite() -> discord.PermissionOverwrite:
         """Permissions quarantine role should have outside the jail channel."""
         return discord.PermissionOverwrite(
@@ -643,7 +692,20 @@ class ManagementCommands:
             thumbnail_url=guild_icon_url,
         )
         
-        await self._respond(source, embed=embed)
+        confirmation = ModEmbed.moderation_response(
+            "quarantine",
+            (
+                f"**Quarantine applied to {user.mention}**\n"
+                f"> **Case:** #{case_num}\n"
+                f"> **Duration:** {human_duration}\n"
+                f"> **Reason:** {reason}"
+            ),
+        )
+        await self._respond(
+            source,
+            embed=confirmation,
+            allowed_mentions=discord.AllowedMentions.none(),
+        )
         await self.log_action(source.guild, embed)
 
     async def _mass_kick_role(self, source, role: discord.Role, reason: str):
@@ -1137,20 +1199,14 @@ class ManagementCommands:
         if jail_channel_id:
             jail_channel = source.guild.get_channel(int(jail_channel_id))
             if isinstance(jail_channel, discord.TextChannel):
-                jail_details = {
-                    "Duration": human_duration,
-                    "Instructions": "Please wait for staff instructions in this channel.",
-                }
-                if expires_at:
-                    jail_details["Expires"] = f"<t:{int(expires_at.timestamp())}:R>"
-                jail_embed = await self.create_mod_embed(
-                    title="Member quarantined",
+                jail_embed = self._build_quarantine_member_notice(
+                    guild=source.guild,
                     user=user,
                     moderator=author,
                     reason=reason,
-                    color=Colors.DARK_RED,
-                    case_num=case_num,
-                    extra_fields=jail_details,
+                    duration=human_duration,
+                    case_number=case_num,
+                    expires_at=expires_at,
                 )
 
                 async def _post_jail_notice(channel: discord.TextChannel, mention: str, embed: discord.Embed) -> None:
