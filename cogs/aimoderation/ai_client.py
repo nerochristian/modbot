@@ -2174,9 +2174,9 @@ class AIClient:
                 if research_content:
                     web_context = (
                         f"--- LIVE RESEARCH DATA ---\n{research_content}\n--- END RESEARCH ---\n"
-                        "Format the final response with the exact Discord community-announcement "
+                        "Format the final response with the clean, topic-appropriate Discord "
                         "structure required by the research system prompt. Keep citations and raw "
-                        "source URLs out of the announcement body."
+                        "source URLs out of the response body."
                     )
                     research_source_urls = ["https://perplexity.ai/"]
             except Exception:
@@ -3292,8 +3292,9 @@ class AIClient:
                     "- If search does not verify a claim, say it was not confirmed.\n"
                 )
             turn_instructions += (
-                "- Return a Discord-ready community announcement using the exact heading, greeting, bold-topic bullet, spacing, and closing structure from the system prompt.\n"
-                "- Preserve verified Discord mentions and channel references exactly; never invent IDs.\n"
+                "- Return a Discord-ready answer with a direct topic heading, brief summary, and spaced bold-topic bullets when useful.\n"
+                "- Do not call it a community announcement, greet @everyone, or add audience pings unless the user explicitly requested them.\n"
+                "- Preserve Discord mentions and channel references supplied by the user; never invent IDs.\n"
                 "- Keep citations and raw source URLs out of the body because the source button displays them separately.\n"
                 "- Keep it concise and do not use markdown tables.\n"
             )

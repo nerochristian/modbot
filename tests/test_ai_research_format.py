@@ -61,7 +61,7 @@ class ResearchFormattingTests(unittest.TestCase):
             "• Checking patients.",
         )
 
-    def test_bold_wrapped_discord_heading_becomes_embed_title(self) -> None:
+    def test_explicit_announcement_heading_is_supported_when_user_requests_it(self) -> None:
         embed = AIModeration._build_research_embed(
             None,
             "**# 📢 Community Announcement: Moving Forward**\n\n"
@@ -75,11 +75,12 @@ class ResearchFormattingTests(unittest.TestCase):
         self.assertIn("Hey @everyone,\n\n• **Bot Usage Rules**", embed.description)
         self.assertIn("<#123456789012345678>", embed.description)
 
-    def test_research_prompt_requires_discord_announcement_shape(self) -> None:
-        self.assertIn("# 📢 Community Announcement:", DEEP_RESEARCH_SYSTEM_PROMPT)
-        self.assertIn("Hey @everyone,", DEEP_RESEARCH_SYSTEM_PROMPT)
+    def test_research_prompt_uses_generic_discord_shape_without_forced_ping(self) -> None:
+        self.assertIn("# [Direct Topic or Answer]", DEEP_RESEARCH_SYSTEM_PROMPT)
         self.assertIn("• **[Topic Title]**", DEEP_RESEARCH_SYSTEM_PROMPT)
         self.assertIn("<#channel_id>", DEEP_RESEARCH_SYSTEM_PROMPT)
+        self.assertIn("Never add `Community Announcement`", DEEP_RESEARCH_SYSTEM_PROMPT)
+        self.assertIn("`Hey @everyone`", DEEP_RESEARCH_SYSTEM_PROMPT)
 
     def test_long_research_uses_multiple_embeds_without_truncation(self) -> None:
         response = "# Global Brief\n\n" + "\n\n".join(
