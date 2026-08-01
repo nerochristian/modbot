@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from discord.ext import tasks
 
-from utils.embeds import ModEmbed, Colors, compact_kv_lines
+from utils.embeds import ModEmbed, Colors, compact_kv_lines, sapphire_log_embed
 from utils.checks import is_admin
 from utils.cache import ChannelCache
 from utils.transcript import generate_html_transcript, EphemeralTranscriptView
@@ -1372,32 +1372,21 @@ class Logging(commands.Cog):
         footer_user: Optional[discord.abc.User] = None,
         footer_text: Optional[str] = None,
     ) -> discord.Embed:
-        embed = discord.Embed(
+        resolved_footer_text = footer_text
+        resolved_footer_icon = None
+        if footer_user is not None:
+            resolved_footer_text = f"@{getattr(footer_user, 'name', str(footer_user))}"
+            resolved_footer_icon = getattr(getattr(footer_user, "display_avatar", None), "url", None)
+
+        return sapphire_log_embed(
             title=title,
             color=color,
-            timestamp=datetime.now(timezone.utc),
+            detail_lines=details_lines,
+            message_text=message_text,
+            thumbnail_url=thumbnail_url,
+            footer_text=resolved_footer_text,
+            footer_icon_url=resolved_footer_icon,
         )
-
-        if details_lines:
-            embed.description = self._quote_lines(details_lines)
-
-        if message_text is not None:
-            value = (message_text or "").strip() or "*No content*"
-            if len(value) > 1024:
-                value = value[:1021].rstrip() + "..."
-            embed.add_field(name="Message", value=value, inline=False)
-
-        if thumbnail_url:
-            embed.set_thumbnail(url=thumbnail_url)
-
-        if footer_user is not None:
-            footer_name = f"@{getattr(footer_user, 'name', str(footer_user))}"
-            footer_icon = getattr(getattr(footer_user, "display_avatar", None), "url", None)
-            embed.set_footer(text=footer_name, icon_url=footer_icon)
-        elif footer_text:
-            embed.set_footer(text=footer_text)
-
-        return embed
 
     def _add_channel_details_fields(self, embed: discord.Embed, channel: discord.abc.GuildChannel) -> None:
         category = getattr(channel, "category", None)
@@ -2184,16 +2173,16 @@ class Logging(commands.Cog):
         channel_line: str,
         detail_line: str,
     ) -> discord.Embed:
-        description = (
-            f"**User:** {member.mention}\n"
-            f"**Channel:** {channel_line}\n"
-            f"**Details:** {detail_line}"
-        )
-        return discord.Embed(
+        return self._build_sapphire_log_embed(
             title=title,
-            description=description,
             color=color,
-            timestamp=datetime.now(timezone.utc),
+            details_lines=[
+                f"**User:** {self._format_user_reference(member)}",
+                f"**Channel:** {channel_line}",
+                f"**Details:** {detail_line}",
+            ],
+            thumbnail_url=member.display_avatar.url,
+            footer_user=member,
         )
 
     @commands.Cog.listener()

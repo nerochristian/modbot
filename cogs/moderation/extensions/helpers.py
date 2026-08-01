@@ -5,7 +5,7 @@ from typing import Optional, Union, Tuple
 import logging
 import json
 
-from utils.embeds import ModEmbed, Colors, compact_kv_lines
+from utils.embeds import ModEmbed, Colors, compact_kv_lines, sapphire_log_embed
 from utils.checks import is_bot_owner_id, get_owner_ids
 from utils.logging import send_log_embed
 from utils.status_emojis import apply_status_emoji_overrides
@@ -333,12 +333,6 @@ class HelperCommands:
         extra_fields: Optional[dict[str, str]] = None
     ) -> discord.Embed:
         """Create Sapphire-style moderation embed."""
-        embed = discord.Embed(
-            title=title,
-            color=color,
-            timestamp=datetime.now(timezone.utc)
-        )
-
         user_primary = str(user)
         user_mention = getattr(user, "mention", None)
         if user_mention:
@@ -346,24 +340,33 @@ class HelperCommands:
         else:
             user_ref = user_primary
 
-        details_rows: list[tuple[str, object]] = [
-            ("User", user_ref),
-            ("Reason", reason or "No reason provided"),
-        ]
+        details_rows: list[tuple[str, object]] = [("User", user_ref)]
+        created_at = getattr(user, "created_at", None)
+        if created_at is not None:
+            details_rows.append(("Account created", f"<t:{int(created_at.timestamp())}:R>"))
+        details_rows.extend(
+            [
+                ("Bot", "Yes" if bool(getattr(user, "bot", False)) else "No"),
+                ("Reason", reason or "No reason provided"),
+            ]
+        )
         if case_num is not None:
             details_rows.append(("Case", f"#{case_num}"))
         if extra_fields:
             for field_name, field_value in extra_fields.items():
                 details_rows.append((field_name, field_value))
 
-        embed.description = compact_kv_lines(details_rows)
-        embed.set_thumbnail(url=user.display_avatar.url)
-
         moderator_name = getattr(moderator, "name", str(moderator))
         moderator_icon = getattr(getattr(moderator, "display_avatar", None), "url", None)
-        embed.set_footer(text=f"@{moderator_name}", icon_url=moderator_icon)
-
-        return embed
+        thumbnail_url = getattr(getattr(user, "display_avatar", None), "url", None)
+        return sapphire_log_embed(
+            title=title,
+            color=color,
+            detail_lines=compact_kv_lines(details_rows).splitlines(),
+            thumbnail_url=thumbnail_url,
+            footer_text=f"@{moderator_name}",
+            footer_icon_url=moderator_icon,
+        )
 
     async def _is_bot_owner(self, user: discord.abc.User) -> bool:
         """Return True when a user should be treated as the bot owner."""

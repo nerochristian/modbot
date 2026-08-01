@@ -49,6 +49,47 @@ def compact_kv_lines(
     return "\n".join(lines)
 
 
+def quoted_lines(lines: Iterable[object]) -> str:
+    """Render compact log details as a single Discord blockquote."""
+    return "\n".join(f"> {line}" for line in lines if str(line or "").strip())
+
+
+def sapphire_log_embed(
+    *,
+    title: str,
+    color: int,
+    detail_lines: Iterable[object],
+    message_text: Optional[str] = None,
+    thumbnail_url: Optional[str] = None,
+    footer_text: Optional[str] = None,
+    footer_icon_url: Optional[str] = None,
+) -> discord.Embed:
+    """Build the shared compact card used by Docket's modern log surfaces."""
+    embed = discord.Embed(
+        title=title,
+        color=color,
+        timestamp=datetime.now(timezone.utc),
+    )
+
+    rendered_details = quoted_lines(detail_lines)
+    if rendered_details:
+        embed.description = rendered_details
+
+    if message_text is not None:
+        value = (message_text or "").strip() or "*No content*"
+        if len(value) > 1024:
+            value = value[:1021].rstrip() + "..."
+        embed.add_field(name="Message", value=value, inline=False)
+
+    if thumbnail_url:
+        embed.set_thumbnail(url=thumbnail_url)
+
+    if footer_text:
+        embed.set_footer(text=footer_text, icon_url=footer_icon_url)
+
+    return embed
+
+
 def _strip_existing_log_padding(description: Optional[str]) -> Optional[str]:
     if not description:
         return description
