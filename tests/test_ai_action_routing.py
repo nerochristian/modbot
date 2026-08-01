@@ -327,7 +327,7 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertIn("fallback", reply.lower())
         self.assertNotIn("gpt-4o", reply.lower())
 
-    def test_world_news_stays_plain_for_luna_auto_search(self) -> None:
+    def test_world_news_stays_plain_with_local_search_fallback(self) -> None:
         self.cog.ai = SimpleNamespace(
             classify_research_route=AsyncMock(return_value=None),
             has_web_search=True,
@@ -340,7 +340,33 @@ class AIActionRoutingTests(unittest.TestCase):
         self.assertEqual(signals.mode, ConversationMode.STANDARD)
         self.assertTrue(signals.asks_for_current_info)
         self.assertFalse(signals.show_research_indicator)
-        self.cog.ai.classify_research_route.assert_not_awaited()
+        self.assertTrue(signals.requires_web_search)
+        self.cog.ai.classify_research_route.assert_awaited_once_with(
+            "What's going on in the world?"
+        )
+
+    def test_quick_reply_bypasses_ling_and_luna(self) -> None:
+        self.cog.fetch_recent_messages = AsyncMock(return_value=[])
+        self.cog._include_referenced_message = AsyncMock(return_value=[])
+        self.cog._answer_recent_user_message_lookup = AsyncMock(return_value=None)
+        self.cog._build_conversation_signals = AsyncMock()
+        self.cog._quick_conversation_reply = lambda content, model=None: "quick reply"
+        self.cog.reply = AsyncMock()
+        marked = []
+        self.cog._mark_chat_active = marked.append
+        message = SimpleNamespace(channel=SimpleNamespace(id=123))
+
+        asyncio.run(
+            self.cog._handle_conversation(
+                message,
+                "hello",
+                SimpleNamespace(context_messages=5, model=None),
+            )
+        )
+
+        self.cog._build_conversation_signals.assert_not_awaited()
+        self.cog.reply.assert_awaited_once_with(message, content="quick reply")
+        self.assertEqual(marked, [123])
 
     def test_reply_target_timeout_shortcut_keeps_reason_and_duration(self) -> None:
         message = SimpleNamespace(mentions=[])
@@ -970,20 +996,15 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         openrouter_patcher.start()
         self.addCleanup(openrouter_patcher.stop)
 
-    async def test_galaxy_classifies_search_depth_with_strict_route(self) -> None:
+    async def test_ling_classifies_search_with_strict_route(self) -> None:
         client = object.__new__(AIClient)
-        client.provider = "deepseek"
-        client.config = AIConfig(provider="deepseek")
-        client._call_deepseek_api = AsyncMock(
-            return_value=(
-                '{"route":"search","confidence":0.96,'
-                '"current_info":true,"reason":"current game patch"}'
-            )
+        client._post_chat_completion = AsyncMock(
+            return_value='{"route":"search"}'
         )
 
         with patch(
-            "cogs.aimoderation.ai_client._deepseek_api_enabled",
-            return_value=True,
+            "cogs.aimoderation.ai_client._OPENROUTER_API_KEY",
+            "openrouter-test-key",
         ):
             decision = await client.classify_research_route(
                 "latest genshin update?"
@@ -991,44 +1012,40 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(decision["route"], "search")
         self.assertTrue(decision["current_info"])
-        messages = client._call_deepseek_api.await_args.args[0]
-        self.assertIn("search_deepthink", messages[0]["content"])
+        messages = client._post_chat_completion.await_args.args[0]
+        self.assertIn("normal|search|research", messages[0]["content"])
         self.assertIn("latest genshin update", messages[1]["content"])
-        self.assertEqual(
-            client._call_deepseek_api.await_args.kwargs["model"],
-            "gemini-3-5-flash",
-        )
+        kwargs = client._post_chat_completion.await_args.kwargs
+        self.assertEqual(kwargs["model"], "inclusionai/ling-2.6-flash")
+        self.assertEqual(kwargs["request_timeout"], 2)
+        self.assertEqual(kwargs["max_retries"], 0)
+        self.assertTrue(kwargs["json_mode"])
 
-    async def test_galaxy_loose_json_classifier_is_recovered(self) -> None:
+    async def test_ling_loose_json_classifier_is_recovered(self) -> None:
         client = object.__new__(AIClient)
-        client.provider = "deepseek"
-        client.config = AIConfig(provider="deepseek")
-        client._call_deepseek_api = AsyncMock(
-            return_value="{ route: search, confidence: 0.9, current_info: true }"
+        client._post_chat_completion = AsyncMock(
+            return_value="{ route: research, confidence: 0.9 }"
         )
 
         with patch(
-            "cogs.aimoderation.ai_client._deepseek_api_enabled",
-            return_value=True,
+            "cogs.aimoderation.ai_client._OPENROUTER_API_KEY",
+            "openrouter-test-key",
         ):
             decision = await client.classify_research_route(
-                "latest genshin update?"
+                "deep research this topic"
             )
 
-        self.assertEqual(decision["route"], "search")
-        self.assertTrue(decision["current_info"])
+        self.assertEqual(decision["route"], "research")
 
-    async def test_galaxy_invalid_json_classifier_falls_back_quietly(self) -> None:
+    async def test_ling_invalid_json_classifier_falls_back_quietly(self) -> None:
         client = object.__new__(AIClient)
-        client.provider = "deepseek"
-        client.config = AIConfig(provider="deepseek")
-        client._call_deepseek_api = AsyncMock(
+        client._post_chat_completion = AsyncMock(
             return_value="{ confidence: 0.9, current_info: maybe }"
         )
 
         with patch(
-            "cogs.aimoderation.ai_client._deepseek_api_enabled",
-            return_value=True,
+            "cogs.aimoderation.ai_client._OPENROUTER_API_KEY",
+            "openrouter-test-key",
         ):
             decision = await client.classify_research_route(
                 "latest genshin update?"
@@ -1036,26 +1053,23 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertIsNone(decision)
 
-    async def test_galaxy_string_current_info_counts_as_current_for_search_route(self) -> None:
+    async def test_ling_legacy_route_names_remain_compatible(self) -> None:
         client = object.__new__(AIClient)
-        client.provider = "deepseek"
-        client.config = AIConfig(provider="deepseek")
-        client._call_deepseek_api = AsyncMock(
+        client._post_chat_completion = AsyncMock(
             return_value=(
-                '```json\n{"route":"search","confidence":0.91,'
-                '"current_info":"latest patch lookup","reason":"fresh info"}\n```'
+                '```json\n{"route":"search_deepthink","confidence":0.91}\n```'
             )
         )
 
         with patch(
-            "cogs.aimoderation.ai_client._deepseek_api_enabled",
-            return_value=True,
+            "cogs.aimoderation.ai_client._OPENROUTER_API_KEY",
+            "openrouter-test-key",
         ):
             decision = await client.classify_research_route(
-                "latest genshin update?"
+                "research this deeply"
             )
 
-        self.assertEqual(decision["route"], "search")
+        self.assertEqual(decision["route"], "research")
         self.assertTrue(decision["current_info"])
 
     async def test_disabled_ai_mod_hard_gates_explicit_owner_request(self) -> None:

@@ -177,7 +177,7 @@ class ResearchFormattingTests(unittest.TestCase):
 
 
 class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
-    async def test_latest_game_update_stays_plain_while_luna_decides_to_search(self) -> None:
+    async def test_latest_game_update_stays_plain_when_ling_selects_search(self) -> None:
         classifier = AsyncMock(
             return_value={
                 "route": "search",
@@ -200,16 +200,16 @@ class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(signals.use_deepthink)
         self.assertFalse(signals.asks_for_long_answer)
         self.assertFalse(signals.show_research_indicator)
-        self.assertFalse(signals.requires_web_search)
-        classifier.assert_not_awaited()
+        self.assertTrue(signals.requires_web_search)
+        classifier.assert_awaited_once_with("latest genshin update?")
 
-    async def test_timeless_question_stays_normal_when_galaxy_says_chat(self) -> None:
+    async def test_timeless_question_stays_normal_when_ling_says_normal(self) -> None:
         cog = object.__new__(AIModeration)
         cog.ai = SimpleNamespace(
             has_web_search=True,
             classify_research_route=AsyncMock(
                 return_value={
-                    "route": "normal_chat",
+                    "route": "normal",
                     "confidence": 0.94,
                     "current_info": False,
                 }
@@ -222,9 +222,12 @@ class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(signals.mode, ConversationMode.STANDARD)
         self.assertFalse(signals.use_deepthink)
-        cog.ai.classify_research_route.assert_not_awaited()
+        self.assertFalse(signals.requires_web_search)
+        cog.ai.classify_research_route.assert_awaited_once_with(
+            "what is a Python list?"
+        )
 
-    async def test_current_role_question_stays_plain_for_luna_auto_search(self) -> None:
+    async def test_current_role_question_uses_local_search_fallback_when_ling_fails(self) -> None:
         cog = object.__new__(AIModeration)
         cog.ai = SimpleNamespace(
             has_web_search=True,
@@ -239,7 +242,10 @@ class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(signals.asks_for_current_info)
         self.assertFalse(signals.use_deepthink)
         self.assertFalse(signals.show_research_indicator)
-        cog.ai.classify_research_route.assert_not_awaited()
+        self.assertTrue(signals.requires_web_search)
+        cog.ai.classify_research_route.assert_awaited_once_with(
+            "who is the current CEO of Discord?"
+        )
 
     async def test_explicit_search_is_plain_but_requires_the_web_tool(self) -> None:
         cog = object.__new__(AIModeration)
@@ -258,7 +264,7 @@ class DeepSeekModerationSessionTests(unittest.IsolatedAsyncioTestCase):
         cog = object.__new__(AIModeration)
         classifier = AsyncMock(
             return_value={
-                "route": "search_deepthink",
+                "route": "research",
                 "confidence": 0.97,
                 "current_info": True,
             }
