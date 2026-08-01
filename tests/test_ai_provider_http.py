@@ -236,7 +236,7 @@ def test_openrouter_lane_includes_research_and_images(monkeypatch):
     assert AIClient._uses_openrouter_conversation_lane(standard, has_images=True) is True
 
 
-def test_openrouter_research_enables_server_search_and_citations(monkeypatch):
+def test_openrouter_always_forces_one_search_and_preserves_citations(monkeypatch):
     client = AIClient.__new__(AIClient)
     client._post_chat_completion = AsyncMock(return_value="researched reply")
     monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
@@ -252,7 +252,6 @@ def test_openrouter_research_enables_server_search_and_citations(monkeypatch):
             temperature=0.4,
             max_tokens=800,
             allow_multimodal=True,
-            web_search=True,
         )
     )
 
@@ -267,10 +266,13 @@ def test_openrouter_research_enables_server_search_and_citations(monkeypatch):
                 "parameters": {
                     "engine": "auto",
                     "max_results": 5,
+                    "max_uses": 1,
                     "max_total_results": 10,
                 },
             }
-        ]
+        ],
+        "tool_choice": "required",
+        "max_tool_calls": 1,
     }
 
 

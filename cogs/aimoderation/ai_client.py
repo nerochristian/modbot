@@ -1231,9 +1231,8 @@ class AIClient:
         temperature: float,
         max_tokens: int,
         allow_multimodal: bool = False,
-        web_search: bool = False,
     ) -> Optional[str]:
-        """Call Luna for conversation, conversational vision, or research.
+        """Call Luna with one mandatory web search on every conversation turn.
 
         Callers enforce the lane boundary: moderation, action routing, and
         memory curation never use this method.
@@ -1241,18 +1240,24 @@ class AIClient:
         if not _openrouter_conversation_enabled():
             raise RuntimeError("OpenRouter conversation is missing OPENROUTER_API_KEY.")
 
-        extra_payload: Dict[str, Any] = {}
-        if web_search:
-            extra_payload["tools"] = [
+        extra_payload: Dict[str, Any] = {
+            "tools": [
                 {
                     "type": "openrouter:web_search",
                     "parameters": {
                         "engine": "auto",
                         "max_results": 5,
+                        "max_uses": 1,
                         "max_total_results": 10,
                     },
                 }
-            ]
+            ],
+            # This is the only tool in the request, so requiring a tool call
+            # guarantees that Luna searches rather than answering solely from
+            # model knowledge. Keep the per-turn budget at one search.
+            "tool_choice": "required",
+            "max_tool_calls": 1,
+        }
 
         return await self._post_chat_completion(
             messages,
@@ -1267,7 +1272,7 @@ class AIClient:
             max_retries=1,
             request_timeout=_openrouter_request_timeout(),
             extra_payload=extra_payload,
-            include_citations=web_search,
+            include_citations=True,
         )
 
     async def _call_digitalocean(
@@ -2260,7 +2265,6 @@ class AIClient:
                         temperature=plan.temperature,
                         max_tokens=max_tokens,
                         allow_multimodal=bool(image_context),
-                        web_search=signals.mode == ConversationMode.RESEARCH,
                     )
                     if content:
                         content = self._postprocess_chat_response(content)
@@ -2268,11 +2272,15 @@ class AIClient:
                             content = self._finalize_research_response(content)
                             if not content:
                                 return _RESEARCH_UNAVAILABLE
+                        memory_content = content.split(
+                            "\n\n__BOT_SOURCES__\n",
+                            1,
+                        )[0].strip()
                         asyncio.create_task(
                             self._update_memory_smart(
                                 author.id,
                                 user_content,
-                                content,
+                                memory_content,
                                 stored_memory,
                             )
                         )

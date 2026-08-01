@@ -3785,7 +3785,10 @@ class AIModeration(commands.Cog):
             )
             return
 
-        view = self._SourcesView(sources_text) if sources_text and is_research else None
+        # Luna searches on every conversation turn. Whenever OpenRouter
+        # supplies citations, keep them accessible even for a normal chat
+        # response instead of silently discarding them.
+        view = self._SourcesView(sources_text) if sources_text else None
 
         if is_research:
             embeds = self._build_research_embeds(response, message.content or "")
