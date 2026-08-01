@@ -16,7 +16,9 @@ import ast
 import pathlib
 import unittest
 from types import SimpleNamespace
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
+
+import discord
 
 from cogs.moderation.extensions.management import ManagementCommands
 from cogs.moderation.extensions.misc import MiscCommands
@@ -92,6 +94,55 @@ def test_dynamic_slash_registration_attaches_permission_checks():
     source = moderation_init.read_text(encoding="utf-8")
     assert "command.add_check(checks[access])" in source
     assert "cleanup_command.add_check(moderator_predicate)" in source
+
+
+class BanFailureTests(unittest.IsolatedAsyncioTestCase):
+    async def test_forbidden_ban_does_not_create_case_or_send_punishment_dm(self):
+        cog = object.__new__(ManagementCommands)
+        cog.bot = SimpleNamespace(
+            db=SimpleNamespace(
+                get_settings=AsyncMock(return_value={"moderation_dm_users": True}),
+                create_case=AsyncMock(),
+            )
+        )
+        cog.can_moderate = AsyncMock(return_value=(True, ""))
+        cog.can_bot_moderate = AsyncMock(return_value=(True, ""))
+        cog.prepare_dm_channel = AsyncMock(return_value=SimpleNamespace())
+        cog.send_punishment_notice = AsyncMock()
+        cog._respond = AsyncMock()
+        cog._suppress_duplicate_member_action_log = Mock()
+
+        bot_role = SimpleNamespace(mention="<@&10>")
+        guild = SimpleNamespace(
+            id=1,
+            name="Guild",
+            me=SimpleNamespace(
+                top_role=bot_role,
+                guild_permissions=SimpleNamespace(ban_members=True),
+            ),
+        )
+        moderator = SimpleNamespace(id=2)
+        source = SimpleNamespace(guild=guild, author=moderator)
+        response = SimpleNamespace(status=403, reason="Forbidden")
+        target = SimpleNamespace(
+            id=3,
+            mention="<@3>",
+            top_role=SimpleNamespace(mention="<@&30>"),
+            ban=AsyncMock(
+                side_effect=discord.Forbidden(
+                    response,
+                    {"code": 50013, "message": "Missing Permissions"},
+                )
+            ),
+        )
+
+        await cog._ban_logic(source, target, "No reason")
+
+        cog.bot.db.create_case.assert_not_awaited()
+        cog.send_punishment_notice.assert_not_awaited()
+        error_embed = cog._respond.await_args.kwargs["embed"]
+        self.assertIn("I don't have permission to ban", error_embed.description)
+        self.assertIn("move it above", error_embed.description)
 
 
 class WelcomeCommandPermissionTests(unittest.IsolatedAsyncioTestCase):
