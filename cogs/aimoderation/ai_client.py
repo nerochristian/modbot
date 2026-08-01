@@ -2169,19 +2169,9 @@ class AIClient:
                 if research_content:
                     web_context = (
                         f"--- LIVE RESEARCH DATA ---\n{research_content}\n--- END RESEARCH ---\n"
-                        "CRITICAL FORMATTING INSTRUCTION:\n"
-                        "You MUST format your answer EXACTLY like this highly-styled community announcement template:\n"
-                        "# 📢 [Catchy Headline]\n\n"
-                        "[Brief intro paragraph summarizing the news]\n\n"
-                        "• **[Topic Title]**\n"
-                        "  [Concise but informative description (1-2 sentences max) below the bullet point on a new indented line]\n\n"
-                        "• **[Topic Title]**\n"
-                        "  [Concise but informative description (1-2 sentences max) below the bullet point on a new indented line]\n\n"
-                        "[Closing/call to action if any]\n\n"
-                        "RULES:\n"
-                        "1. DO NOT include inline citations like [1] or [2][5]. Remove them completely.\n"
-                        "2. Use the exact bullet point style shown above (`• **Title**` then new line with indentation).\n"
-                        "3. DO NOT sign off at the end. (No '— Docket' or similar)."
+                        "Format the final response with the exact Discord community-announcement "
+                        "structure required by the research system prompt. Keep citations and raw "
+                        "source URLs out of the announcement body."
                     )
                     research_source_urls = ["https://perplexity.ai/"]
             except Exception:
@@ -3294,9 +3284,10 @@ class AIClient:
                     "- If search does not verify a claim, say it was not confirmed.\n"
                 )
             turn_instructions += (
-                "- Provide a brief, direct answer.\n"
-                "- If there are key points, use a short bulleted list. Do not use markdown tables.\n"
-                "- Keep it extremely concise.\n"
+                "- Return a Discord-ready community announcement using the exact heading, greeting, bold-topic bullet, spacing, and closing structure from the system prompt.\n"
+                "- Preserve verified Discord mentions and channel references exactly; never invent IDs.\n"
+                "- Keep citations and raw source URLs out of the body because the source button displays them separately.\n"
+                "- Keep it concise and do not use markdown tables.\n"
             )
             if signals.asks_for_current_info:
                 turn_instructions += (

@@ -3693,11 +3693,11 @@ class AIModeration(commands.Cog):
 
     @staticmethod
     def _compact_research_spacing(response: str) -> str:
-        """Remove redundant blank lines without altering fenced code blocks."""
+        """Keep one visual blank line between blocks without altering code fences."""
         sections = re.split(r"(```[\s\S]*?```)", response)
         for index in range(0, len(sections), 2):
             section = re.sub(r"[ \t]+\n", "\n", sections[index])
-            sections[index] = re.sub(r"\n[ \t]*\n+", "\n", section)
+            sections[index] = re.sub(r"\n[ \t]*\n(?:[ \t]*\n)+", "\n\n", section)
         return "".join(sections).strip()
 
     def _build_research_embed(self, response: str, query: str) -> discord.Embed:
@@ -3705,7 +3705,10 @@ class AIModeration(commands.Cog):
 
     @staticmethod
     def _build_research_embeds(response: str, query: str) -> List[discord.Embed]:
-        heading = re.match(r"^\s*#{1,3}\s+(.+?)(?:\n|$)", response)
+        heading = re.match(
+            r"^\s*(?:\*\*)?#{1,3}\s+(.+?)(?:\*\*)?\s*(?:\n|$)",
+            response,
+        )
         if heading:
             title = heading.group(1).strip()
             response = response[heading.end():].lstrip()

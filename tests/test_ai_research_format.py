@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from cogs.aimoderation.aimoderation import AIClient, AIModeration
+from cogs.aimoderation.prompts import DEEP_RESEARCH_SYSTEM_PROMPT
 from cogs.aimoderation.types import ConversationMode
 from utils.deepseek_web import DeepSeekWebError
 
@@ -51,14 +52,34 @@ class ResearchFormattingTests(unittest.TestCase):
 
         self.assertEqual(
             embed.description,
-            "Released in early 2026.\n"
-            "## Key Context\n"
-            "• First detail.\n"
-            "• Second detail.\n"
-            "## Game Overview\n"
-            "The core loop involves:\n"
+            "Released in early 2026.\n\n"
+            "## Key Context\n\n"
+            "• First detail.\n\n"
+            "• Second detail.\n\n"
+            "## Game Overview\n\n"
+            "The core loop involves:\n\n"
             "• Checking patients.",
         )
+
+    def test_bold_wrapped_discord_heading_becomes_embed_title(self) -> None:
+        embed = AIModeration._build_research_embed(
+            None,
+            "**# 📢 Community Announcement: Moving Forward**\n\n"
+            "Hey @everyone,\n\n"
+            "• **Bot Usage Rules**\n"
+            "  Use bots only in designated <#123456789012345678> channels.",
+            "community update",
+        )
+
+        self.assertEqual(embed.title, "📢 Community Announcement: Moving Forward")
+        self.assertIn("Hey @everyone,\n\n• **Bot Usage Rules**", embed.description)
+        self.assertIn("<#123456789012345678>", embed.description)
+
+    def test_research_prompt_requires_discord_announcement_shape(self) -> None:
+        self.assertIn("# 📢 Community Announcement:", DEEP_RESEARCH_SYSTEM_PROMPT)
+        self.assertIn("Hey @everyone,", DEEP_RESEARCH_SYSTEM_PROMPT)
+        self.assertIn("• **[Topic Title]**", DEEP_RESEARCH_SYSTEM_PROMPT)
+        self.assertIn("<#channel_id>", DEEP_RESEARCH_SYSTEM_PROMPT)
 
     def test_long_research_uses_multiple_embeds_without_truncation(self) -> None:
         response = "# Global Brief\n\n" + "\n\n".join(
@@ -82,7 +103,7 @@ class ResearchFormattingTests(unittest.TestCase):
 
         self.assertEqual(
             result,
-            "Intro.\n```py\nfirst = 1\n\nsecond = 2\n```\nDone.",
+            "Intro.\n\n```py\nfirst = 1\n\nsecond = 2\n```\n\nDone.",
         )
 
     def test_topic_words_match_related_inflections(self) -> None:
