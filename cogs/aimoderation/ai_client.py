@@ -14,6 +14,7 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 from typing import Any, ClassVar, Dict, Final, List, Optional, Set, Tuple, Union
+from urllib.parse import urlparse
 
 import aiohttp
 import discord
@@ -65,18 +66,20 @@ _RELAYROUTER_ROUTER_MODEL: Final[str] = os.getenv(
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
 
-# OpenRouter is an intentionally isolated conversation lane. It handles text,
-# conversational vision, and sourced research, but never moderation, action
-# routing, or memory curation merely because a key is configured.
+# OpenRouter has exactly two approved models. Luna handles conversation,
+# conversational vision, and sourced research. Nemotron handles protected
+# moderation, routing, and memory work when the legacy RelayRouter-named
+# gateway is pointed at OpenRouter. No other OpenRouter model is permitted.
+_OPENROUTER_LUNA_MODEL: Final[str] = "openai/gpt-5.6-luna"
+_OPENROUTER_NEMOTRON_MODEL: Final[str] = (
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+)
 _OPENROUTER_API_KEY: Final[str] = os.getenv("OPENROUTER_API_KEY", "").strip()
 _OPENROUTER_BASE_URL: Final[str] = os.getenv(
     "OPENROUTER_BASE_URL",
     "https://openrouter.ai/api/v1",
 ).strip().rstrip("/")
-_OPENROUTER_CHAT_MODEL: Final[str] = os.getenv(
-    "OPENROUTER_CHAT_MODEL",
-    "openai/gpt-5.6-luna",
-).strip()
+_OPENROUTER_CHAT_MODEL: Final[str] = _OPENROUTER_LUNA_MODEL
 
 _AIMODEL_API_KEY: Final[str] = os.getenv("AIMODEL_API_KEY", "").strip()
 _AIMODEL_BASE_URL: Final[str] = os.getenv(
@@ -168,9 +171,19 @@ def _deepseek_api_enabled() -> bool:
     return _credential_is_configured(_DEEPSEEK_API_KEY)
 
 
+def _relayrouter_routes_to_openrouter() -> bool:
+    """Return whether the legacy protected-task gateway targets OpenRouter."""
+    return (urlparse(_RELAYROUTER_BASE_URL).hostname or "").lower() == "openrouter.ai"
+
+
 def _relayrouter_api_enabled() -> bool:
-    """RelayRouter is usable when a non-placeholder key is configured."""
-    return _credential_is_configured(_RELAYROUTER_API_KEY)
+    """Return whether the configured protected-task gateway has a valid key."""
+    api_key = (
+        _OPENROUTER_API_KEY
+        if _relayrouter_routes_to_openrouter()
+        else _RELAYROUTER_API_KEY
+    )
+    return _credential_is_configured(api_key)
 
 
 def _openrouter_conversation_enabled() -> bool:
@@ -1105,9 +1118,14 @@ class AIClient:
         allow_multimodal: bool = False,
         fallback_models: Optional[Tuple[str, ...]] = None,
     ) -> Optional[str]:
-        """Call RelayRouter with ordered, de-duplicated model failover."""
+        """Call the protected-task gateway with bounded model failover."""
         if not _relayrouter_api_enabled():
-            raise RuntimeError("RelayRouter is missing RELAYROUTER_API_KEY.")
+            required_key = (
+                "OPENROUTER_API_KEY"
+                if _relayrouter_routes_to_openrouter()
+                else "RELAYROUTER_API_KEY"
+            )
+            raise RuntimeError(f"Protected AI gateway is missing {required_key}.")
 
         selected_model = (model or "").strip()
         if selected_model.lower() in {
@@ -1138,19 +1156,38 @@ class AIClient:
             if normalized and normalized not in candidates:
                 candidates.append(normalized)
 
+        routes_to_openrouter = _relayrouter_routes_to_openrouter()
+        if routes_to_openrouter:
+            rejected = [
+                candidate
+                for candidate in candidates
+                if candidate != _OPENROUTER_NEMOTRON_MODEL
+            ]
+            if rejected:
+                logger.warning(
+                    "Ignored non-Nemotron model(s) on the protected OpenRouter lane: %s",
+                    ", ".join(rejected),
+                )
+            candidates = [_OPENROUTER_NEMOTRON_MODEL]
+
+        gateway_api_key = (
+            _OPENROUTER_API_KEY if routes_to_openrouter else _RELAYROUTER_API_KEY
+        )
+        gateway_label = "OpenRouter protected" if routes_to_openrouter else "RelayRouter"
+
         last_error: Optional[Exception] = None
         for index, candidate in enumerate(candidates):
             try:
                 result = await self._post_chat_completion(
                     messages,
                     base_url=_RELAYROUTER_BASE_URL,
-                    api_key=_RELAYROUTER_API_KEY,
+                    api_key=gateway_api_key,
                     model=candidate,
                     temperature=temperature,
                     max_tokens=max_tokens,
                     json_mode=json_mode,
                     allow_multimodal=allow_multimodal,
-                    provider_label=f"RelayRouter ({candidate})",
+                    provider_label=f"{gateway_label} ({candidate})",
                     # Each candidate is itself a retry route. Retrying a dead
                     # route first made multi-model failover take over a minute.
                     max_retries=0,
@@ -1161,7 +1198,8 @@ class AIClient:
                 if result:
                     if index:
                         logger.info(
-                            "RelayRouter fallback model %s succeeded after %d failed route(s)",
+                            "%s fallback model %s succeeded after %d failed route(s)",
+                            gateway_label,
                             candidate,
                             index,
                         )
@@ -1169,12 +1207,13 @@ class AIClient:
                     self._block_reason = None
                     return result
                 last_error = RuntimeError(
-                    f"RelayRouter ({candidate}) returned no assistant content."
+                    f"{gateway_label} ({candidate}) returned no assistant content."
                 )
             except Exception as exc:
                 last_error = exc
                 logger.warning(
-                    "RelayRouter model %s failed (%d/%d): %s",
+                    "%s model %s failed (%d/%d): %s",
+                    gateway_label,
                     candidate,
                     index + 1,
                     len(candidates),
@@ -1219,12 +1258,12 @@ class AIClient:
             messages,
             base_url=_OPENROUTER_BASE_URL,
             api_key=_OPENROUTER_API_KEY,
-            model=_OPENROUTER_CHAT_MODEL,
+            model=_OPENROUTER_LUNA_MODEL,
             temperature=temperature,
             max_tokens=max_tokens,
             json_mode=False,
             allow_multimodal=allow_multimodal,
-            provider_label=f"OpenRouter conversation ({_OPENROUTER_CHAT_MODEL})",
+            provider_label=f"OpenRouter conversation ({_OPENROUTER_LUNA_MODEL})",
             max_retries=1,
             request_timeout=_openrouter_request_timeout(),
             extra_payload=extra_payload,

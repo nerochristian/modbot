@@ -610,6 +610,57 @@ def test_relayrouter_falls_back_in_configured_order(monkeypatch):
     assert models == ["gpt-5-6-luna", "claude-sonnet-4-6"]
 
 
+def test_openrouter_protected_lane_allows_only_nemotron(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client._block_until = None
+    client._block_reason = None
+    client._post_chat_completion = AsyncMock(return_value="protected answer")
+    monkeypatch.setattr(
+        ai_client_module,
+        "_RELAYROUTER_BASE_URL",
+        "https://openrouter.ai/api/v1",
+    )
+    monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
+    monkeypatch.setattr(ai_client_module, "_RELAYROUTER_API_KEY", "legacy-unused-key")
+
+    result = asyncio.run(
+        client._call_relayrouter(
+            [{"role": "user", "content": "moderate this"}],
+            temperature=0.0,
+            max_tokens=64,
+            model="deepseek-v4-flash",
+            fallback_models=("perplexity/sonar", "openai/gpt-5.6-luna"),
+        )
+    )
+
+    assert result == "protected answer"
+    kwargs = client._post_chat_completion.await_args.kwargs
+    assert kwargs["api_key"] == "openrouter-test-key"
+    assert kwargs["model"] == ai_client_module._OPENROUTER_NEMOTRON_MODEL
+    assert kwargs["provider_label"].startswith("OpenRouter protected")
+
+
+def test_openrouter_conversation_ignores_stale_model_override(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client._post_chat_completion = AsyncMock(return_value="luna answer")
+    monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
+    monkeypatch.setattr(ai_client_module, "_OPENROUTER_CHAT_MODEL", "deepseek-v4-flash")
+
+    result = asyncio.run(
+        client._call_openrouter_conversation(
+            [{"role": "user", "content": "hello"}],
+            temperature=0.8,
+            max_tokens=64,
+        )
+    )
+
+    assert result == "luna answer"
+    assert (
+        client._post_chat_completion.await_args.kwargs["model"]
+        == ai_client_module._OPENROUTER_LUNA_MODEL
+    )
+
+
 def test_relayrouter_provider_routes_before_legacy_providers(monkeypatch):
     client = AIClient.__new__(AIClient)
     client.provider = "relayrouter"
