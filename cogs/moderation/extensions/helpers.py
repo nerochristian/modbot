@@ -558,6 +558,7 @@ class HelperCommands:
         target: discord.Member,
         *,
         moderator: Optional[discord.Member] = None,
+        action: str = "moderate",
     ) -> Tuple[bool, str]:
         """Check if the bot has permission to moderate target (role hierarchy)."""
         guild = target.guild
@@ -573,16 +574,14 @@ class HelperCommands:
         if bot_member is None:
             return True, ""
 
-        # Let the bot owner attempt actions even if the pre-check thinks hierarchy blocks it.
-        if moderator is not None and await self._is_bot_owner(moderator):
-            return True, ""
-
         if target.top_role >= bot_member.top_role:
+            action_text = str(action or "moderate").strip().lower() or "moderate"
             return (
                 False,
-                "I cannot moderate this user. Their highest role "
-                f"({target.top_role.mention}) is higher than or equal to mine "
-                f"({bot_member.top_role.mention}).",
+                f"I don't have permission to {action_text} {target.mention} because "
+                f"their highest role ({target.top_role.mention}) is above or equal "
+                f"to my highest role ({bot_member.top_role.mention}). Please move "
+                f"my bot role above {target.top_role.mention}, then try again.",
             )
 
         return True, ""

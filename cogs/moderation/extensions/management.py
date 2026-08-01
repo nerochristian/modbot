@@ -228,9 +228,17 @@ class ManagementCommands:
         if not can_mod:
             return await self._respond(source, embed=ModEmbed.error("Cannot Kick", error), ephemeral=True)
             
-        can_bot, bot_error = await self.can_bot_moderate(user, moderator=moderator)
+        can_bot, bot_error = await self.can_bot_moderate(
+            user,
+            moderator=moderator,
+            action="kick",
+        )
         if not can_bot:
-            return await self._respond(source, embed=ModEmbed.error("Bot Permission Error", bot_error), ephemeral=True)
+            return await self._respond(
+                source,
+                embed=ModEmbed.error("Cannot Kick", bot_error),
+                ephemeral=True,
+            )
 
         settings = await self.bot.db.get_settings(guild.id)
         notify_user = moderation_bool(settings, "moderation_dm_users", True)
@@ -269,9 +277,29 @@ class ManagementCommands:
         if not can_mod:
             return await self._respond(source, embed=ModEmbed.error("Cannot Ban", error), ephemeral=True)
             
-        can_bot, bot_error = await self.can_bot_moderate(user, moderator=moderator)
+        can_bot, bot_error = await self.can_bot_moderate(
+            user,
+            moderator=moderator,
+            action="ban",
+        )
         if not can_bot:
-            return await self._respond(source, embed=ModEmbed.error("Bot Permission Error", bot_error), ephemeral=True)
+            return await self._respond(
+                source,
+                embed=ModEmbed.error("Cannot Ban", bot_error),
+                ephemeral=True,
+            )
+
+        bot_member = guild.me
+        if bot_member is not None and not bot_member.guild_permissions.ban_members:
+            return await self._respond(
+                source,
+                embed=ModEmbed.error(
+                    "Cannot Ban",
+                    "I don't have the **Ban Members** permission. Please enable it "
+                    "for my bot role, then try again.",
+                ),
+                ephemeral=True,
+            )
 
         settings = await self.bot.db.get_settings(guild.id)
         notify_user = moderation_bool(settings, "moderation_dm_users", True)
@@ -285,16 +313,49 @@ class ManagementCommands:
         )
         effective_delete_days = 0 if preserve_messages else max(0, min(7, delete_days))
         self._suppress_duplicate_member_action_log(guild.id, user.id, "ban")
-        case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Ban", reason)
-        if notify_user:
-            await self.send_punishment_notice(guild=guild, user=user, action="Ban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, delivery_channel=dm_channel)
         try:
             await user.ban(
                 reason=f"{moderator}: {reason}",
                 delete_message_days=effective_delete_days,
             )
-        except Exception as e:
-            return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not ban: {e}"), ephemeral=True)
+        except discord.Forbidden:
+            bot_role = getattr(getattr(guild, "me", None), "top_role", None)
+            bot_role_mention = getattr(bot_role, "mention", "my bot role")
+            return await self._respond(
+                source,
+                embed=ModEmbed.error(
+                    "Cannot Ban",
+                    f"I don't have permission to ban {user.mention}. Give "
+                    f"{bot_role_mention} the **Ban Members** permission and move it "
+                    f"above {user.top_role.mention}, then try again.",
+                ),
+                ephemeral=True,
+            )
+        except discord.HTTPException as e:
+            return await self._respond(
+                source,
+                embed=ModEmbed.error("Cannot Ban", f"Discord rejected the ban: {e}"),
+                ephemeral=True,
+            )
+
+        case_num = await self.bot.db.create_case(
+            guild.id,
+            user.id,
+            moderator.id,
+            "Ban",
+            reason,
+        )
+        if notify_user:
+            await self.send_punishment_notice(
+                guild=guild,
+                user=user,
+                action="Ban",
+                reason=reason,
+                case_number=case_num,
+                settings=settings,
+                fallback_embed=dm_embed,
+                delivery_channel=dm_channel,
+            )
             
         embed = await self.create_mod_embed(title="Member banned", user=user, moderator=moderator, reason=reason, color=Colors.DARK_RED, case_num=case_num)
         response = render_moderation_response(

@@ -52,16 +52,16 @@ def test_primary_ban_path_preopens_dm_before_removing_member() -> None:
 
     assert function.index("await self.prepare_dm_channel(user)") < function.index("await user.ban(")
     assert "delivery_channel=dm_channel" in function
-    assert function.index("await self.send_punishment_notice(") < function.index("await user.ban(")
+    assert function.index("await user.ban(") < function.index("await self.send_punishment_notice(")
+    assert function.index("await user.ban(") < function.index("await self.bot.db.create_case(")
 
 
-def test_every_primary_departure_or_timeout_notifies_before_enforcement() -> None:
+def test_other_primary_departure_or_timeout_paths_preopen_notice_before_enforcement() -> None:
     source = (ROOT / "cogs" / "moderation" / "extensions" / "management.py").read_text(
         encoding="utf-8-sig"
     )
     boundaries = [
         ("_kick_logic", "_ban_logic", "await user.kick("),
-        ("_ban_logic", "_unban_logic", "await user.ban("),
         ("_softban_logic", "_tempban_logic", "await user.ban("),
         ("_tempban_logic", "_mute_logic", "await user.ban("),
         ("_mute_logic", "_unmute_logic", "await user.timeout("),

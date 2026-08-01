@@ -100,7 +100,7 @@ def build_punishment_notice(
         if punishment_expires_at is not None
         else ""
     )
-    header = f"## {member_name} !!” 🥢\n{action_line}{expiry_line}"
+    header = f"## {member_name}\n{action_line}{expiry_line}"
     reason_text = str(reason or "No reason provided")[:700]
     id_emoji = get_app_emoji("id")
     identity = f"user:{user.id} " if user is not None else ""
