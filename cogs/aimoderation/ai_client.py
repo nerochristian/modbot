@@ -2293,9 +2293,16 @@ class AIClient:
                         and self._looks_like_image_identification_request(user_content)
                     )
                     if image_identification:
-                        visual_candidates = await self._call_openrouter_visual_candidates(
-                            multimodal_api_messages,
-                        )
+                        try:
+                            visual_candidates = await self._call_openrouter_visual_candidates(
+                                multimodal_api_messages,
+                            )
+                        except Exception:
+                            visual_candidates = None
+                            logger.warning(
+                                "OpenRouter visual candidate pass failed; continuing with searched verification.",
+                                exc_info=True,
+                            )
                         if visual_candidates:
                             multimodal_api_messages = [
                                 *multimodal_api_messages,

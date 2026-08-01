@@ -281,29 +281,29 @@ class ChatCommands:
                 self._serialize_lockdown_restore_state(restore_state),
             )
 
-        embed = discord.Embed(
-            title=f"{get_app_emoji('error')} Server Lockdown Initiated",
-            description=f"Locked **{len(locked)}** channels.",
-            color=Colors.DARK_RED,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.add_field(name="Reason", value=reason, inline=False)
-        embed.add_field(name="Moderator", value=author.mention, inline=False)
-
+        lockdown_details = {
+            "Channels locked": str(len(locked)),
+            "Reason": reason,
+        }
         if unchanged:
-            embed.add_field(
-                name=f"Already locked ({len(unchanged)})",
-                value=", ".join(unchanged[:10]) + (f" ...and {len(unchanged) - 10} more" if len(unchanged) > 10 else ""),
-                inline=False,
+            lockdown_details[f"Already locked ({len(unchanged)})"] = (
+                ", ".join(unchanged[:10])
+                + (f"; and {len(unchanged) - 10} more" if len(unchanged) > 10 else "")
+            )
+        if failed:
+            lockdown_details[f"Failed ({len(failed)})"] = (
+                ", ".join(failed[:10])
+                + (f"; and {len(failed) - 10} more" if len(failed) > 10 else "")
             )
 
-        if failed:
-            embed.add_field(
-                name=f"{get_app_emoji('error')} Failed ({len(failed)})",
-                value=", ".join(failed[:10]) + (f" ...and {len(failed) - 10} more" if len(failed) > 10 else ""),
-                inline=False
-            )
+        guild_icon_url = getattr(getattr(source.guild, "icon", None), "url", None)
+        embed = await self.create_summary_log_embed(
+            title="Server lockdown initiated",
+            moderator=author,
+            color=Colors.DARK_RED,
+            details=lockdown_details,
+            thumbnail_url=guild_icon_url,
+        )
         
         await self._respond(source, embed=embed, delete_command_message=True)
         await self.log_action(source.guild, embed)
@@ -344,28 +344,28 @@ class ChatCommands:
             self._serialize_lockdown_restore_state(restore_state),
         )
 
-        embed = discord.Embed(
-            title=f"{get_app_emoji('success')} Lockdown Lifted",
-            description=f"Unlocked **{len(unlocked)}** channels.",
-            color=Colors.SUCCESS,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.add_field(name="Moderator", value=author.mention, inline=False)
-
+        unlock_details = {
+            "Channels unlocked": str(len(unlocked)),
+            "Reason": reason,
+        }
         if missing:
-            embed.add_field(
-                name=f"Channels no longer available ({len(missing)})",
-                value=", ".join(f"`{channel_id}`" for channel_id in missing[:10]),
-                inline=False,
+            unlock_details[f"Channels no longer available ({len(missing)})"] = ", ".join(
+                f"`{channel_id}`" for channel_id in missing[:10]
+            )
+        if failed:
+            unlock_details[f"Failed ({len(failed)})"] = (
+                ", ".join(failed[:10])
+                + (f"; and {len(failed) - 10} more" if len(failed) > 10 else "")
             )
 
-        if failed:
-            embed.add_field(
-                name=f"{get_app_emoji('error')} Failed ({len(failed)})",
-                value=", ".join(failed[:10]) + (f" ...and {len(failed) - 10} more" if len(failed) > 10 else ""),
-                inline=False
-            )
+        guild_icon_url = getattr(getattr(source.guild, "icon", None), "url", None)
+        embed = await self.create_summary_log_embed(
+            title="Lockdown lifted",
+            moderator=author,
+            color=Colors.SUCCESS,
+            details=unlock_details,
+            thumbnail_url=guild_icon_url,
+        )
         
         await self._respond(source, embed=embed, delete_command_message=True)
         await self.log_action(source.guild, embed)
@@ -664,17 +664,24 @@ class ChatCommands:
                     await logging_cog.safe_send_log(message_log_channel, log_embed, view=view)
 
                 # Purges are moderation actions, so also emit a dedicated mod-log card.
-                mod_log_embed = discord.Embed(
-                    title="Moderator Purge",
-                    description=(
-                        f"{author.mention} purged **{count}** message(s) in {channel.mention}.\n"
-                        f"**Breakdown:** {count - bot_count} human · {bot_count} bot · "
+                purge_details = {
+                    "Source channel": channel.mention,
+                    "Messages": str(count),
+                    "Breakdown": (
+                        f"{count - bot_count} human · {bot_count} bot · "
                         f"{len(authors)} author(s)"
                     ),
-                    color=Colors.ERROR,
-                )
+                    "Preview": preview_text,
+                }
                 if user:
-                    mod_log_embed.description += f"\n**Filter:** {user.mention}"
+                    purge_details["Filter"] = user.mention
+                mod_log_embed = await self.create_summary_log_embed(
+                    title="Moderator Purge",
+                    moderator=author,
+                    color=Colors.ERROR,
+                    details=purge_details,
+                    thumbnail_url=getattr(getattr(author, "display_avatar", None), "url", None),
+                )
 
                 mod_view = None
                 if transcript_bytes and transcript_name:
