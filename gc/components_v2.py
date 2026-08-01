@@ -29,6 +29,8 @@ How to use:
 This file is standalone. It does not depend on any other project file.
 """
 
+from collections import OrderedDict
+from contextvars import ContextVar
 from typing import Any, Iterable, Optional
 
 import discord
@@ -38,6 +40,12 @@ from discord.utils import MISSING
 _INSTALLED = False
 _ORIGINALS: dict[str, Any] = {}
 _V2_TOP_LEVEL_TYPES = {1, 9, 10, 12, 13, 14, 17}
+_ACTIVE_ACTOR: ContextVar[Optional[Any]] = ContextVar(
+    "docket_components_v2_actor",
+    default=None,
+)
+_INTERACTION_ACTORS: OrderedDict[str, Any] = OrderedDict()
+_MAX_INTERACTION_ACTORS = 2048
 
 
 def _is_missing(value: Any) -> bool:
@@ -312,6 +320,68 @@ def _target_guild(target: Any) -> Optional[discord.Guild]:
     return getattr(parent, "guild", None)
 
 
+def _remember_interaction_actor(interaction: Any) -> Optional[Any]:
+    actor = getattr(interaction, "user", None)
+    token = _clean_text(getattr(interaction, "token", None))
+    if actor is None or not token:
+        return actor
+
+    _INTERACTION_ACTORS[token] = actor
+    _INTERACTION_ACTORS.move_to_end(token)
+    while len(_INTERACTION_ACTORS) > _MAX_INTERACTION_ACTORS:
+        _INTERACTION_ACTORS.popitem(last=False)
+    return actor
+
+
+def _actor_for_target(target: Any) -> Optional[Any]:
+    interaction = getattr(target, "interaction", None)
+    if interaction is not None:
+        actor = _remember_interaction_actor(interaction)
+        if actor is not None:
+            return actor
+
+    parent = getattr(target, "_parent", None)
+    if parent is not None and getattr(parent, "user", None) is not None:
+        return _remember_interaction_actor(parent)
+
+    author = getattr(target, "author", None)
+    if author is not None:
+        return author
+
+    token = _clean_text(getattr(target, "token", None))
+    if token:
+        actor = _INTERACTION_ACTORS.get(token)
+        if actor is not None:
+            _INTERACTION_ACTORS.move_to_end(token)
+            return actor
+
+    return _ACTIVE_ACTOR.get()
+
+
+def _stamp_actor_payload(kwargs: dict[str, Any], actor: Any) -> bool:
+    try:
+        from utils.embeds import stamp_actor_footer
+    except Exception:
+        return False
+
+    stamped = False
+    embed = kwargs.get("embed", MISSING)
+    if isinstance(embed, discord.Embed):
+        kwargs["embed"] = stamp_actor_footer(embed, actor)
+        stamped = True
+
+    embeds = kwargs.get("embeds", MISSING)
+    if isinstance(embeds, (list, tuple)):
+        formatted: list[Any] = []
+        for candidate in embeds:
+            if isinstance(candidate, discord.Embed):
+                candidate = stamp_actor_footer(candidate, actor)
+                stamped = True
+            formatted.append(candidate)
+        kwargs["embeds"] = formatted
+    return stamped
+
+
 async def _apply_shared_status_emojis(target: Any, kwargs: dict[str, Any]) -> None:
     guild = _target_guild(target)
     if guild is None:
@@ -347,9 +417,21 @@ def _patch_async_method(owner: Any, name: str, key: str, *, edit: bool = False) 
         return
 
     async def wrapper(self: Any, *args: Any, **kwargs: Any) -> Any:
+        actor = _actor_for_target(self)
+        actor_token = None
+        if actor is not None:
+            actor_token = _ACTIVE_ACTOR.set(actor)
+            if _stamp_actor_payload(kwargs, actor):
+                # Components V2 cannot render Discord's native avatar/timestamp
+                # footer. Invocation responses with an actor therefore stay classic.
+                kwargs.setdefault("use_v2", False)
         await _apply_shared_status_emojis(self, kwargs)
-        normalized_args, normalized_kwargs = _normalize_v2_payload(args, kwargs, edit=edit)
-        return await original(self, *normalized_args, **normalized_kwargs)
+        try:
+            normalized_args, normalized_kwargs = _normalize_v2_payload(args, kwargs, edit=edit)
+            return await original(self, *normalized_args, **normalized_kwargs)
+        finally:
+            if actor_token is not None:
+                _ACTIVE_ACTOR.reset(actor_token)
 
     wrapper._universal_components_v2 = True  # type: ignore[attr-defined]
     _ORIGINALS[key] = original
@@ -364,10 +446,12 @@ def install_universal_components_v2() -> None:
 
     _patch_async_method(discord.abc.Messageable, "send", "messageable_send")
     _patch_async_method(discord.InteractionResponse, "send_message", "interaction_send_message")
+    _patch_async_method(discord.InteractionResponse, "defer", "interaction_defer")
     _patch_async_method(discord.InteractionResponse, "edit_message", "interaction_edit_message", edit=True)
     _patch_async_method(discord.Interaction, "edit_original_response", "interaction_edit_original", edit=True)
     _patch_async_method(discord.Webhook, "send", "webhook_send")
     _patch_async_method(discord.WebhookMessage, "edit", "webhook_message_edit", edit=True)
+    _patch_async_method(discord.Message, "reply", "message_reply")
     _patch_async_method(discord.Message, "edit", "message_edit", edit=True)
     try:
         from discord.ext import commands
