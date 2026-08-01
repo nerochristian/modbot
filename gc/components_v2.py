@@ -347,17 +347,6 @@ def _remember_interaction_actor(interaction: Any) -> Optional[Any]:
 
 
 def _actor_for_target(target: Any) -> Optional[Any]:
-    target_module = getattr(target.__class__, "__module__", "")
-    interaction = (
-        getattr(target, "interaction", None)
-        if target_module.startswith("discord.ext.commands")
-        else None
-    )
-    if interaction is not None:
-        actor = _remember_interaction_actor(interaction)
-        if actor is not None:
-            return actor
-
     parent = getattr(target, "_parent", None)
     if parent is not None and getattr(parent, "user", None) is not None:
         return _remember_interaction_actor(parent)
