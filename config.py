@@ -64,8 +64,6 @@ class Config:
     WELCOME_CHANNEL_ID = int(os.getenv("WELCOME_CHANNEL_ID", "0"))
     WELCOME_SERVER_NAME = os.getenv("WELCOME_SERVER_NAME", "")
     WELCOME_SYSTEM_NAME = os.getenv("WELCOME_SYSTEM_NAME", "Welcome System")
-    # Welcome card accent (border/pill); set to a hex like `#D9D1B2`
-    WELCOME_CARD_ACCENT_COLOR = _parse_hex_color(os.getenv("WELCOME_CARD_ACCENT_COLOR"), 0xD9D1B2)
 
     # Branding (Components v2 panels)
     SERVER_LOGO_URL = os.getenv(

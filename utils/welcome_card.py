@@ -19,8 +19,6 @@ log = logging.getLogger(__name__)
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
-from config import Config
-
 # ---------------------------------------------------------------------------
 # Font loading
 # ---------------------------------------------------------------------------
