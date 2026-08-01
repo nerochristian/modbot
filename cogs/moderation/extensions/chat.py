@@ -7,7 +7,7 @@ import io
 import re
 from typing import Optional, Union
 
-from utils.embeds import ModEmbed, Colors
+from utils.embeds import ModEmbed, Colors, stamp_actor_footer
 from utils.checks import is_mod, is_admin, is_bot_owner_id
 from utils.moderation_settings import moderation_id_set
 from utils.time_parser import parse_time
@@ -429,6 +429,7 @@ class ChatCommands:
             description=f"This channel has been nuked by {user.mention}.\n**Reason:** {reason}",
             color=Colors.ERROR
         )
+        stamp_actor_footer(embed, user)
         await new_channel.send(embed=embed)
         await new_channel.send(self.NUKE_SOURCE_URL)
 

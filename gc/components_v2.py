@@ -270,14 +270,27 @@ def _normalize_v2_payload(
     edit: bool = False,
 ) -> tuple[tuple[Any, ...], dict[str, Any]]:
     use_v2 = kwargs.pop("use_v2", None)
-    if use_v2 is False or (
-        isinstance(use_v2, str)
-        and use_v2.strip().lower() in {"0", "false", "no", "off"}
-    ):
+    normalized_use_v2 = use_v2.strip().lower() if isinstance(use_v2, str) else use_v2
+    if normalized_use_v2 is False or normalized_use_v2 in {"0", "false", "no", "off"}:
         return args, kwargs
 
     embeds = _extract_embeds(kwargs)
     view = kwargs.get("view", MISSING)
+
+    explicitly_v2 = normalized_use_v2 is True or normalized_use_v2 in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if not explicitly_v2 and any(
+        embed.timestamp is not None
+        and bool(_clean_text(getattr(embed.footer, "text", None)))
+        for embed in embeds
+    ):
+        # A v2 container can only imitate footer text. Keep native Discord
+        # embeds whenever a real footer/timestamp has already been supplied.
+        return args, kwargs
 
     if not embeds:
         if not _is_missing(view) and isinstance(view, discord.ui.LayoutView):
