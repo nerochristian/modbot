@@ -244,7 +244,8 @@ def _prefetch_badge_icons() -> None:
                 log.warning("Could not load badge icon %s: %s", path, exc)
 
 
-_prefetch_badge_icons()
+# The fixed welcome design does not render profile badges, so do not perform
+# badge CDN work during module import.
 
 
 # ---------------------------------------------------------------------------
@@ -511,6 +512,23 @@ class WelcomeCardOptions:
     height: int = 500
     avatar_size: int = 248
     custom_bg_url: Optional[str] = None
+    # Retained as internal compatibility fields for older call sites. Guild
+    # settings no longer populate them and the fixed renderer ignores them.
+    radius: int = 0
+    margin: int = 0
+    accent_color: int = 0xFFFFFF
+    use_role_color: bool = False
+    welcome_label: str = "WELCOME"
+    role_badge_fallback: bool = False
+    bg_blur: int = 0
+    overlay_opacity: int = 0
+    ring_enabled: bool = True
+    ring_color: Optional[int] = 0xFFFFFF
+    text_color: int = 0xFFFFFF
+    subtitle: str = ""
+    layout: str = "center"
+    show_badges: bool = False
+    show_member_count: bool = False
 
 
 def _parse_hex_color(value: object, fallback: int) -> int:
@@ -576,17 +594,16 @@ async def _build_welcome_card_png_inner(
             if banner_url:
                 bg_img = await _fetch(session, banner_url)
         if bg_img is None and avatar_img is not None:
-            bg_img = avatar_img.copy()
+            bg_img = avatar_img.copy().filter(ImageFilter.GaussianBlur(radius=18))
 
         # Avatar decoration
-        deco_url = _asset_url(getattr(full_user, "avatar_decoration", None), size=256)
-        deco_img = await _fetch(session, deco_url) if deco_url else None
+        deco_img = None
 
         # ── Badges ──────────────────────────────────────────────────────────
         badges: list[_Badge] = []
 
         # 1. Clan / primary guild badge
-        pgb_url = _primary_guild_badge_url(full_user)
+        pgb_url = None
         if pgb_url:
             pgb = await _fetch(session, pgb_url)
             if pgb:
@@ -659,7 +676,7 @@ def _draw_pill(
     return w, h
 
 
-def _render_welcome_card_sync(
+def _render_welcome_card_legacy_sync(
     bg_img: Optional[Image.Image],
     avatar_img: Optional[Image.Image],
     deco_img: Optional[Image.Image],
@@ -804,6 +821,94 @@ def _render_welcome_card_sync(
     out = io.BytesIO()
     card.save(out, format="PNG", optimize=True)
     return out.getvalue()
+
+
+def _render_welcome_card_sync(
+    bg_img: Optional[Image.Image],
+    avatar_img: Optional[Image.Image],
+    _deco_img: Optional[Image.Image],
+    _badges: list[_Badge],
+    _accent: tuple[int, int, int],
+    _pill_text: str,
+    display_name: str,
+    _username: str,
+    _server_name: str,
+    _member_count: int,
+    options: WelcomeCardOptions,
+) -> bytes:
+    """Render the fixed 1024x500 reference-style welcome composition."""
+    width, height = options.width, options.height
+
+    if bg_img is None:
+        card = Image.new("RGBA", (width, height), (22, 31, 48, 255))
+        draw = ImageDraw.Draw(card)
+        for y in range(height):
+            ratio = y / max(1, height - 1)
+            draw.line(
+                (0, y, width, y),
+                fill=(
+                    int(70 - 44 * ratio),
+                    int(101 - 68 * ratio),
+                    int(146 - 91 * ratio),
+                    255,
+                ),
+            )
+    else:
+        card = _cover_resize(bg_img, (width, height)).convert("RGBA")
+
+    draw = ImageDraw.Draw(card)
+
+    avatar_size = max(96, min(min(width, height) - 40, options.avatar_size))
+    avatar_x = (width - avatar_size) // 2
+    avatar_y = 51
+    ring_width = 7
+    draw.ellipse(
+        (
+            avatar_x - ring_width,
+            avatar_y - ring_width,
+            avatar_x + avatar_size + ring_width,
+            avatar_y + avatar_size + ring_width,
+        ),
+        fill=(255, 255, 255, 255),
+    )
+    if avatar_img is not None:
+        card.alpha_composite(_circle_crop(avatar_img, avatar_size), (avatar_x, avatar_y))
+    else:
+        draw.ellipse(
+            (avatar_x, avatar_y, avatar_x + avatar_size, avatar_y + avatar_size),
+            fill=(78, 91, 116, 255),
+        )
+    draw = ImageDraw.Draw(card)
+
+    def fitted_font(text: str, start: int, minimum: int, max_width: int) -> ImageFont.ImageFont:
+        for size in range(start, minimum - 1, -1):
+            candidate = load_font(size, bold=True)
+            bb = _get_textbbox(draw, text, candidate)
+            if bb[2] - bb[0] <= max_width:
+                return candidate
+        return load_font(minimum, bold=True)
+
+    def draw_centered(text: str, top: int, font: ImageFont.ImageFont, shadow_offset: int) -> None:
+        bb = _get_textbbox(draw, text, font)
+        text_width = bb[2] - bb[0]
+        x = (width - text_width) // 2 - bb[0]
+        y = top - bb[1]
+        draw.text(
+            (x + shadow_offset, y + shadow_offset),
+            text,
+            font=font,
+            fill=(0, 0, 0, 205),
+        )
+        draw.text((x, y), text, font=font, fill=(255, 255, 255, 255))
+
+    headline = "WELCOME"
+    member_name = (display_name or "MEMBER").strip().upper()
+    draw_centered(headline, 319, fitted_font(headline, 76, 58, width - 100), 5)
+    draw_centered(member_name, 390, fitted_font(member_name, 39, 24, width - 96), 3)
+
+    output = io.BytesIO()
+    card.save(output, format="PNG", optimize=True)
+    return output.getvalue()
 
 
 async def build_welcome_card_file(
