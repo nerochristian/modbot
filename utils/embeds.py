@@ -14,6 +14,42 @@ _LOG_PAD_MARKER = _ZWS * 5
 _LOG_PAD_FIELD_NAME = _LOG_PAD_MARKER
 
 
+def stamp_actor_footer(
+    embed: discord.Embed,
+    actor: object,
+    *,
+    timestamp: Optional[datetime] = None,
+) -> discord.Embed:
+    """Add Discord's native actor avatar/name/time footer to a response embed."""
+    if actor is None:
+        return embed
+
+    actor_name = str(getattr(actor, "name", None) or actor).strip()
+    if not actor_name:
+        return embed
+
+    actor_label = f"@{actor_name}"
+    existing_text = str(
+        getattr(getattr(embed, "footer", None), "text", None) or ""
+    ).strip()
+    if existing_text == actor_label or existing_text.startswith(f"{actor_label} •"):
+        footer_text = existing_text
+    elif existing_text:
+        footer_text = f"{actor_label} • {existing_text}"
+    else:
+        footer_text = actor_label
+
+    actor_icon = getattr(getattr(actor, "display_avatar", None), "url", None)
+    footer_kwargs = {"text": footer_text}
+    if actor_icon:
+        footer_kwargs["icon_url"] = str(actor_icon)
+    embed.set_footer(**footer_kwargs)
+
+    if embed.timestamp is None:
+        embed.timestamp = timestamp or datetime.now(timezone.utc)
+    return embed
+
+
 def _count_lines(text: Optional[str]) -> int:
     if not text:
         return 0

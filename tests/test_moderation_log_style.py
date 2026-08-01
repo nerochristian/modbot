@@ -7,7 +7,7 @@ import discord
 
 from cogs.moderation.extensions.helpers import HelperCommands
 from cogs.moderation.extensions.management import ManagementCommands
-from utils.embeds import Colors, sapphire_log_embed
+from utils.embeds import Colors, sapphire_log_embed, stamp_actor_footer
 from utils.status_emojis import _semantic_status_kind
 
 
@@ -183,3 +183,21 @@ def test_moderation_responses_get_native_actor_timestamp_footer() -> None:
     assert kwargs["embed"].footer.icon_url == "https://cdn.example/staff.png"
     assert kwargs["embed"].timestamp is not None
     assert kwargs["use_v2"] is False
+
+
+def test_actor_footer_is_idempotent_and_preserves_existing_metadata() -> None:
+    moderator = _User(
+        name="staff_user",
+        mention="<@200>",
+        avatar_url="https://cdn.example/staff.png",
+        created_at=datetime(2020, 1, 2, tzinfo=timezone.utc),
+    )
+    embed = discord.Embed(title="Action complete")
+    embed.set_footer(text="Case #77")
+
+    stamp_actor_footer(embed, moderator)
+    stamp_actor_footer(embed, moderator)
+
+    assert embed.footer.text == "@staff_user • Case #77"
+    assert embed.footer.icon_url == "https://cdn.example/staff.png"
+    assert embed.timestamp is not None

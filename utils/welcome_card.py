@@ -505,26 +505,12 @@ DEFAULT_WELCOME_LABEL = "WELCOME!"
 
 @dataclass(frozen=True)
 class WelcomeCardOptions:
-    width: int        = 1000
-    height: int       = 420
-    radius: int       = 28
-    avatar_size: int  = 168
-    margin: int       = 0
-    accent_color: int = getattr(Config, "EMBED_ACCENT_COLOR", Config.COLOR_EMBED)
-    use_role_color: bool      = False
-    welcome_label: str        = ""
-    role_badge_fallback: bool = False
+    """Fixed welcome-card composition with a guild-configurable background."""
+
+    width: int = 1024
+    height: int = 500
+    avatar_size: int = 248
     custom_bg_url: Optional[str] = None
-    # Designer options; every one is editable from the dashboard card designer.
-    bg_blur: int                = 12      # gaussian radius applied to the background
-    overlay_opacity: int        = 55      # 0-100, how dark the background sits
-    ring_enabled: bool          = True
-    ring_color: Optional[int]   = None    # defaults to the accent
-    text_color: int             = 0xFFFFFF
-    subtitle: str               = ""      # "to {server}"; {server}/{count} placeholders
-    layout: str                 = "center"  # center | left
-    show_badges: bool           = True
-    show_member_count: bool     = True
 
 
 def _parse_hex_color(value: object, fallback: int) -> int:
@@ -540,32 +526,9 @@ def _parse_hex_color(value: object, fallback: int) -> int:
 
 
 def welcome_card_options_from_settings(settings: Mapping[str, Any]) -> WelcomeCardOptions:
-    """Map the dashboard card-designer keys in guild_settings to render options."""
-    from utils.moderation_settings import moderation_bool
-
-    def _clamped(key: str, default: int, lo: int, hi: int) -> int:
-        try:
-            return max(lo, min(hi, int(settings.get(key, default))))
-        except (TypeError, ValueError, OverflowError):
-            return default
-
-    accent_default = getattr(Config, "WELCOME_CARD_ACCENT_COLOR", getattr(Config, "EMBED_ACCENT_COLOR", 0x5865F2))
-    label = str(settings.get("welcome_card_label") or "WELCOME").strip() or "WELCOME"
-    layout = str(settings.get("welcome_card_layout") or "center").strip().lower()
+    """Map the sole visual setting retained by the fixed welcome-card design."""
     return WelcomeCardOptions(
-        accent_color=_parse_hex_color(settings.get("welcome_card_accent"), accent_default),
-        use_role_color=moderation_bool(settings, "welcome_card_role_color", False),
-        welcome_label=label[:24],
         custom_bg_url=(str(settings.get("welcome_bg_url")).strip() or None) if settings.get("welcome_bg_url") else None,
-        bg_blur=_clamped("welcome_card_blur", 12, 0, 40),
-        overlay_opacity=_clamped("welcome_card_overlay", 55, 0, 90),
-        ring_enabled=moderation_bool(settings, "welcome_card_ring", True),
-        ring_color=_parse_hex_color(settings.get("welcome_card_ring_color"), accent_default) if settings.get("welcome_card_ring_color") else None,
-        text_color=_parse_hex_color(settings.get("welcome_card_text_color"), 0xFFFFFF),
-        subtitle=str(settings.get("welcome_card_subtitle") or "")[:80],
-        layout=layout if layout in ("center", "left") else "center",
-        show_badges=moderation_bool(settings, "welcome_card_badges", True),
-        show_member_count=moderation_bool(settings, "welcome_card_member_count", True),
     )
 
 
