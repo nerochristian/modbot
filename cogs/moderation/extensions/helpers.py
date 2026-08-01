@@ -9,7 +9,6 @@ from utils.embeds import ModEmbed, Colors, compact_kv_lines, sapphire_log_embed
 from utils.checks import is_bot_owner_id, get_owner_ids
 from utils.logging import send_log_embed
 from utils.status_emojis import apply_status_emoji_overrides
-from utils.components_v2 import ensure_layout_view_action_rows, layout_view_from_embeds
 from utils.moderation_settings import moderation_bool, moderation_id_set
 
 logger = logging.getLogger(__name__)
@@ -108,20 +107,21 @@ class HelperCommands:
     ):
         """Send a response or followup depending on whether the interaction/context is already acknowledged."""
         if embed is not None:
+            if embed.timestamp is None:
+                embed.timestamp = datetime.now(timezone.utc)
+
+            actor = getattr(source, "user", None) or getattr(source, "author", None)
+            footer_text = (getattr(getattr(embed, "footer", None), "text", "") or "").strip()
+            if actor is not None and not footer_text:
+                actor_name = getattr(actor, "name", str(actor))
+                actor_icon = getattr(getattr(actor, "display_avatar", None), "url", None)
+                embed.set_footer(text=f"@{actor_name}", icon_url=actor_icon)
+
             try:
                 embed = await apply_status_emoji_overrides(embed, getattr(source, "guild", None))
             except Exception:
                 pass
-
-            existing_view = kwargs.pop("view", None)
-            layout = await layout_view_from_embeds(
-                content=content,
-                embed=embed,
-                existing_view=existing_view,
-            )
-            kwargs["view"] = ensure_layout_view_action_rows(layout)
-            content = None
-            embed = None
+            kwargs["use_v2"] = False
 
         try:
             if isinstance(source, discord.Interaction):

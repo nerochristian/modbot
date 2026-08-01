@@ -328,6 +328,7 @@ class ModEmbed:
             "mute": ("EMOJI_MUTE", "\U0001f507", Colors.ERROR),
             "unban": ("EMOJI_UNLOCK", "\U0001f513", Colors.SUCCESS),
             "unmute": ("EMOJI_UNLOCK", "\U0001f513", Colors.SUCCESS),
+            "quarantine": ("EMOJI_LOCK", "\U0001f512", Colors.WARNING),
         }
         config_attr, fallback, color = presentation.get(
             normalized,

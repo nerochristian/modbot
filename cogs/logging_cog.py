@@ -22,7 +22,6 @@ from utils.checks import is_admin
 from utils.cache import ChannelCache
 from utils.transcript import generate_html_transcript, EphemeralTranscriptView
 from utils.logging import prepare_log_embed
-from utils.components_v2 import ensure_layout_view_action_rows, layout_view_from_embeds
 from utils.server_setup import module_enabled
 
 CACHE_DIR = Path(tempfile.gettempdir()) / "modbot_images"
@@ -496,7 +495,8 @@ class Logging(commands.Cog):
         Args:
             channel: The channel to send to
             embed: The embed to send
-            use_v2: Retained for API compatibility; logs always use Components V2
+            use_v2: Retained for API compatibility; logs use native embeds so
+                Discord can render the actor avatar and timestamp footer.
             view: Optional view to attach to the log message
             mirror_to_audit: Also send this log to the configured audit log channel
         """
@@ -542,13 +542,11 @@ class Logging(commands.Cog):
         sent_primary = False
         try:
             normalized = await prepare_log_embed(routed_channel, embed)
-            layout = await layout_view_from_embeds(
-                embed=normalized,
-                existing_view=view,
-            )
             await routed_channel.send(
-                view=ensure_layout_view_action_rows(layout),
+                embed=normalized,
+                view=view,
                 allowed_mentions=discord.AllowedMentions.none(),
+                use_v2=False,
             )
             sent_primary = True
         except discord.Forbidden:
@@ -574,10 +572,10 @@ class Logging(commands.Cog):
                 try:
                     # Do not reuse the same View object across multiple messages.
                     normalized_audit = await prepare_log_embed(audit_channel, embed)
-                    layout = await layout_view_from_embeds(embed=normalized_audit)
                     await audit_channel.send(
-                        view=ensure_layout_view_action_rows(layout),
+                        embed=normalized_audit,
                         allowed_mentions=discord.AllowedMentions.none(),
+                        use_v2=False,
                     )
                     sent_audit = True
                 except discord.Forbidden:
@@ -1332,13 +1330,11 @@ class Logging(commands.Cog):
                 await prepare_log_embed(destination_channel, embed)
                 for embed in message.embeds[:10]
             ]
-            layout = await layout_view_from_embeds(
+            await destination_channel.send(
                 content=message.content or None,
                 embeds=normalized_embeds,
-            )
-            await destination_channel.send(
-                view=ensure_layout_view_action_rows(layout),
                 allowed_mentions=discord.AllowedMentions.none(),
+                use_v2=False,
             )
             await message.delete()
         except discord.Forbidden:
