@@ -1,5 +1,9 @@
 import asyncio
 from datetime import datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import discord
 
 from cogs.moderation.extensions.helpers import HelperCommands
 from cogs.moderation.extensions.management import ManagementCommands
@@ -156,3 +160,26 @@ def test_member_quarantine_notice_is_not_an_audit_card() -> None:
     assert embed.footer.text == "@staff_user"
     assert embed.footer.icon_url == "https://cdn.example/staff.png"
     assert embed.timestamp is not None
+
+
+def test_moderation_responses_get_native_actor_timestamp_footer() -> None:
+    moderator = _User(
+        name="staff_user",
+        mention="<@200>",
+        avatar_url="https://cdn.example/staff.png",
+        created_at=datetime(2020, 1, 2, tzinfo=timezone.utc),
+    )
+    source = SimpleNamespace(author=moderator, guild=None, reply=AsyncMock())
+
+    asyncio.run(
+        HelperCommands()._respond(
+            source,
+            embed=discord.Embed(title="Action complete"),
+        )
+    )
+
+    kwargs = source.reply.await_args.kwargs
+    assert kwargs["embed"].footer.text == "@staff_user"
+    assert kwargs["embed"].footer.icon_url == "https://cdn.example/staff.png"
+    assert kwargs["embed"].timestamp is not None
+    assert kwargs["use_v2"] is False
