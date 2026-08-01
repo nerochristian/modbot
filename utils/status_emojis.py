@@ -112,7 +112,7 @@ _SEMANTIC_KIND_RULES: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("kick", ("kicked", "kick member", "user kick")),
     ("mute", ("muted", "timed out", "timeout member", "user timeout")),
     ("warn", ("warned", "warning", "warn member", "automod")),
-    ("lock", ("locked", "lockdown", "channel lock")),
+    ("lock", ("quarantined", "locked", "lockdown", "channel lock")),
     (
         "error",
         (

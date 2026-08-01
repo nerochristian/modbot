@@ -1275,6 +1275,39 @@ class AIClient:
             include_citations=True,
         )
 
+    async def _call_openrouter_visual_candidates(
+        self,
+        messages: List[Dict[str, Any]],
+    ) -> Optional[str]:
+        """Generate visual-only candidates before the searched verification pass."""
+        candidate_messages = [
+            *messages,
+            {
+                "role": "user",
+                "content": (
+                    "Perform an independent visual-identification pass on the attached image. "
+                    "Do not search and do not commit to one answer yet. List 2-4 plausible "
+                    "candidates in confidence order and cite the visible colors, silhouette, "
+                    "anatomy, markings, and distinctive parts that support or contradict each "
+                    "candidate. Nearby captions may describe a previous item, so treat them as "
+                    "context rather than proof. Keep this under 500 words."
+                ),
+            },
+        ]
+        return await self._post_chat_completion(
+            candidate_messages,
+            base_url=_OPENROUTER_BASE_URL,
+            api_key=_OPENROUTER_API_KEY,
+            model=_OPENROUTER_LUNA_MODEL,
+            temperature=0.1,
+            max_tokens=900,
+            json_mode=False,
+            allow_multimodal=True,
+            provider_label=f"OpenRouter visual candidates ({_OPENROUTER_LUNA_MODEL})",
+            max_retries=1,
+            request_timeout=_openrouter_request_timeout(),
+        )
+
     async def _call_digitalocean(
         self,
         messages: List[Dict[str, Any]],
@@ -2255,6 +2288,31 @@ class AIClient:
             )
             if openrouter_standard_chat:
                 try:
+                    image_identification = bool(
+                        image_context
+                        and self._looks_like_image_identification_request(user_content)
+                    )
+                    if image_identification:
+                        visual_candidates = await self._call_openrouter_visual_candidates(
+                            multimodal_api_messages,
+                        )
+                        if visual_candidates:
+                            multimodal_api_messages = [
+                                *multimodal_api_messages,
+                                {
+                                    "role": "user",
+                                    "content": (
+                                        "Independent visual candidate pass:\n"
+                                        f"{visual_candidates.strip()}\n\n"
+                                        "Now use the mandatory web search to verify the plausible "
+                                        "candidates against reliable visual descriptions or official "
+                                        "reference material. Compare the visible features before naming "
+                                        "the subject. Reject candidates whose defining anatomy does not "
+                                        "match. If the evidence is ambiguous, say that clearly and give "
+                                        "the top candidates instead of making a confident guess."
+                                    ),
+                                },
+                            ]
                     max_tokens = (
                         max(plan.max_tokens, 4_800)
                         if signals.asks_for_long_answer
@@ -2268,6 +2326,14 @@ class AIClient:
                     )
                     if content:
                         content = self._postprocess_chat_response(content)
+                        if (
+                            image_identification
+                            and "__BOT_SOURCES__" not in content
+                        ):
+                            return (
+                                "I can inspect the image, but I couldn't verify the identity "
+                                "against a reliable source, so I won't make another confident guess."
+                            )
                         if signals.mode == ConversationMode.RESEARCH:
                             content = self._finalize_research_response(content)
                             if not content:
@@ -2583,6 +2649,43 @@ class AIClient:
             session_name += " [Research]"
         return session_key, session_name
 
+    @staticmethod
+    def _looks_like_image_identification_request(text: str) -> bool:
+        """Detect turns that ask the model to name an attached subject."""
+        normalized = re.sub(r"\s+", " ", text or "").strip().lower()
+        return bool(
+            re.search(
+                r"\b(?:who|what)\s+(?:is\s+)?(?:this|that|it)\b|"
+                r"\b(?:identify|name)\s+(?:this|that|it|the\s+(?:image|picture|photo))\b|"
+                r"\b(?:which|what)\s+(?:pokemon|pokémon|character|animal|person|object)\b",
+                normalized,
+            )
+        )
+
+    @staticmethod
+    def _record_text_context(record: Any, *, limit: int = 1_500) -> str:
+        """Extract visible text from a Discord message or forwarded snapshot."""
+        def field(obj: Any, name: str, default: Any = None) -> Any:
+            if isinstance(obj, dict):
+                return obj.get(name, default)
+            return getattr(obj, name, default)
+
+        parts: List[str] = []
+        content = re.sub(r"\s+", " ", str(field(record, "content", "") or "")).strip()
+        if content:
+            parts.append(content)
+        for embed in field(record, "embeds", []) or []:
+            title = re.sub(r"\s+", " ", str(field(embed, "title", "") or "")).strip()
+            description = re.sub(
+                r"\s+",
+                " ",
+                str(field(embed, "description", "") or ""),
+            ).strip()
+            embed_text = " — ".join(part for part in (title, description) if part)
+            if embed_text:
+                parts.append(embed_text)
+        return " | ".join(parts)[:limit]
+
     def _format_conversation_history(
         self, recent_messages: List[discord.Message]
     ) -> str:
@@ -2628,6 +2731,9 @@ class AIClient:
             if m.stickers:
                 extras.append(f"[sticker: {m.stickers[0].name}]")
             for snapshot in getattr(m, "message_snapshots", []) or []:
+                snapshot_text = self._record_text_context(snapshot)
+                if snapshot_text:
+                    extras.append(f'[forwarded message text: "{snapshot_text}"]')
                 snapshot_attachments = record_field(snapshot, "attachments", []) or []
                 snapshot_images = [
                     str(record_field(a, "filename", "image") or "image")
@@ -2636,7 +2742,6 @@ class AIClient:
                 ]
                 if snapshot_images:
                     extras.append(f"[forwarded image attachment(s): {', '.join(snapshot_images[:3])}]")
-                    continue
                 snapshot_embeds = record_field(snapshot, "embeds", []) or []
                 if any(record_field(embed, "image") or record_field(embed, "thumbnail") for embed in snapshot_embeds):
                     extras.append("[forwarded embed image]")
@@ -3159,6 +3264,9 @@ class AIClient:
             if msg.stickers:
                 extras.append(f"sticker: {msg.stickers[0].name}")
             for snapshot in getattr(msg, "message_snapshots", []) or []:
+                snapshot_text = AIClient._record_text_context(snapshot)
+                if snapshot_text:
+                    extras.append(f'forwarded message text: "{snapshot_text}"')
                 snapshot_attachments = record_field(snapshot, "attachments", []) or []
                 snapshot_images = [
                     str(record_field(a, "filename", "image") or "image")
@@ -3167,7 +3275,6 @@ class AIClient:
                 ]
                 if snapshot_images:
                     extras.append(f"forwarded image attachment(s): {', '.join(snapshot_images[:3])}")
-                    continue
                 snapshot_embeds = record_field(snapshot, "embeds", []) or []
                 if any(record_field(embed, "image") or record_field(embed, "thumbnail") for embed in snapshot_embeds):
                     extras.append("forwarded embed image")

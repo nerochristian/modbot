@@ -14,6 +14,7 @@ from utils.checks import (
 )
 from utils.moderation_settings import moderation_bool
 from utils.server_setup import module_enabled
+from utils.embeds import Colors
 
 # Mixins
 from .extensions.helpers import HelperCommands
@@ -272,9 +273,11 @@ class Moderation(
                     await conn.commit()
                 
                 if user:
+                    restored = 0
+                    failed = 0
                     try:
                         role_ids = json.loads(roles_backup)
-                        await self._restore_roles(user, role_ids)
+                        restored, failed = await self._restore_roles(user, role_ids)
                     except (json.JSONDecodeError, discord.HTTPException) as e:
                         logger.warning(f"Failed to restore roles for {user_id}: {e}")
                         
@@ -289,7 +292,18 @@ class Moderation(
                                 logger.warning(f"Failed to remove quarantine role: {e}")
                     
                     try:
-                        embed = discord.Embed(title="✅ Quarantine Expired", description=f"{user.mention} released.", color=0x00ff00)
+                        bot_actor = guild.me or self.bot.user
+                        embed = await self.create_mod_embed(
+                            title="Quarantine expired",
+                            user=user,
+                            moderator=bot_actor,
+                            reason="The configured quarantine duration elapsed.",
+                            color=Colors.SUCCESS,
+                            extra_fields={
+                                "Restored roles": f"{restored} (failed: {failed})",
+                                "Original moderator": f"<@{mod_id}>",
+                            },
+                        )
                         await self.log_action(guild, embed)
                     except Exception as e:
                         logger.debug(f"Failed to log quarantine expiry: {e}")
@@ -711,8 +725,14 @@ class Moderation(
                 try:
                     await member.kick(reason="Whitelist mode active - User not whitelisted")
                     # Log it
-                    embed = discord.Embed(title="🔒 User Kicked (Whitelist)", color=0xff0000)
-                    embed.add_field(name="User", value=f"{member} ({member.id})")
+                    embed = await self.create_mod_embed(
+                        title="Member kicked",
+                        user=member,
+                        moderator=member.guild.me or self.bot.user,
+                        reason="Whitelist mode active - user not whitelisted",
+                        color=Colors.ERROR,
+                        extra_fields={"Source": "Automatic whitelist enforcement"},
+                    )
                     await self.log_action(member.guild, embed)
                     return # Stop processing
                 except Exception as e:

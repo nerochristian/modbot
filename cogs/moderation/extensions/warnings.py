@@ -37,7 +37,7 @@ class WarningCommands:
         # Confirm to the moderator immediately — the warning is recorded and
         # the case # is real. Everything below this point is side-effect.
         embed = await self.create_mod_embed(
-            title="⚠️ User Warned",
+            title="Member warned",
             user=user,
             moderator=author,
             reason=reason,
@@ -182,9 +182,14 @@ class WarningCommands:
     async def _clearwarnings_logic(self, source, user: discord.Member, reason: str):
         count = await self.bot.db.clear_warnings(source.guild.id, user.id)
         
-        embed = ModEmbed.success(
-            "Warnings Cleared",
-            f"Cleared **{count}** warning(s) from {user.mention}.\n**Reason:** {reason}"
+        author = source.user if isinstance(source, discord.Interaction) else source.author
+        embed = await self.create_mod_embed(
+            title="Member warnings cleared",
+            user=user,
+            moderator=author,
+            reason=reason,
+            color=Colors.SUCCESS,
+            extra_fields={"Warnings cleared": str(count)},
         )
         
         await self._respond(source, embed=embed)

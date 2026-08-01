@@ -1257,7 +1257,9 @@ class Logging(commands.Cog):
             "user muted",
             "user unmuted",
             "user quarantined",
+            "member quarantined",
             "quarantine lifted",
+            "quarantine expired",
             "mass ban",
             "moderator purge",
         )

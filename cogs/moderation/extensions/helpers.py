@@ -56,7 +56,9 @@ class HelperCommands:
             "user muted",
             "user unmuted",
             "user quarantined",
+            "member quarantined",
             "quarantine lifted",
+            "quarantine expired",
             "mass ban",
             "moderator purge",
         )
@@ -363,6 +365,27 @@ class HelperCommands:
             title=title,
             color=color,
             detail_lines=compact_kv_lines(details_rows).splitlines(),
+            thumbnail_url=thumbnail_url,
+            footer_text=f"@{moderator_name}",
+            footer_icon_url=moderator_icon,
+        )
+
+    async def create_summary_log_embed(
+        self,
+        *,
+        title: str,
+        moderator: Union[discord.User, discord.Member],
+        color: int,
+        details: dict[str, object],
+        thumbnail_url: Optional[str] = None,
+    ) -> discord.Embed:
+        """Create a Sapphire-style action card when an action has no single target."""
+        moderator_name = getattr(moderator, "name", str(moderator))
+        moderator_icon = getattr(getattr(moderator, "display_avatar", None), "url", None)
+        return sapphire_log_embed(
+            title=title,
+            color=color,
+            detail_lines=compact_kv_lines(details.items()).splitlines(),
             thumbnail_url=thumbnail_url,
             footer_text=f"@{moderator_name}",
             footer_icon_url=moderator_icon,

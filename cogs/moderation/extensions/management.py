@@ -604,29 +604,28 @@ class ManagementCommands:
             except discord.HTTPException as e:
                 failed.append(f"`{uid}` ({str(e)})")
         
-        embed = discord.Embed(
-            title="🔨 Mass Ban Complete",
-            color=Colors.DARK_RED,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.add_field(name="✅ Banned", value=f"**{len(banned)}** users", inline=True)
-        embed.add_field(name="❌ Failed", value=f"**{len(failed)}** users", inline=True)
-        embed.add_field(name="Reason", value=reason, inline=False)
-        
+        massban_details = {
+            "Banned": f"{len(banned)} users",
+            "Failed": f"{len(failed)} users",
+        }
         if banned:
-            embed.add_field(
-                name="Banned Users",
-                value="\n".join(banned[:10]) + (f"\n*...and {len(banned) - 10} more*" if len(banned) > 10 else ""),
-                inline=False
+            massban_details["Banned users"] = ", ".join(banned[:10]) + (
+                f"; and {len(banned) - 10} more" if len(banned) > 10 else ""
             )
-        
         if failed:
-            embed.add_field(
-                name="Failed Users",
-                value="\n".join(failed[:10]) + (f"\n*...and {len(failed) - 10} more*" if len(failed) > 10 else ""),
-                inline=False
+            massban_details["Failed users"] = ", ".join(failed[:10]) + (
+                f"; and {len(failed) - 10} more" if len(failed) > 10 else ""
             )
+
+        guild_icon_url = getattr(getattr(source.guild, "icon", None), "url", None)
+        massban_details = {"Reason": reason, **massban_details}
+        embed = await self.create_summary_log_embed(
+            title="Mass ban complete",
+            moderator=moderator,
+            color=Colors.DARK_RED,
+            details=massban_details,
+            thumbnail_url=guild_icon_url,
+        )
         
         await self._respond(source, embed=embed)
         await self.log_action(source.guild, embed)
@@ -787,8 +786,14 @@ class ManagementCommands:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not rename: {e}"), ephemeral=True)
             
         action = f"Renamed to `{nickname}`" if nickname else "Reset nickname"
-        embed = ModEmbed.success("User Renamed", f"{user.mention} {action}.")
-        embed.set_footer(text=f"Old: {old_nick}")
+        embed = await self.create_mod_embed(
+            title="Member renamed",
+            user=user,
+            moderator=moderator,
+            reason=action,
+            color=Colors.SUCCESS,
+            extra_fields={"Previous nickname": old_nick},
+        )
         
         await self._respond(source, embed=embed)
         await self.log_action(guild, embed)

@@ -1806,6 +1806,43 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("marker-0", history)
         self.assertIn("earlier message(s) omitted", history)
 
+    def test_forwarded_snapshot_embed_text_is_preserved_for_vision_context(self) -> None:
+        client = object.__new__(AIClient)
+        client.config = AIConfig(memory_window=20, context_char_budget=8_000)
+        client.bot = SimpleNamespace(user=SimpleNamespace(id=999))
+        snapshot = SimpleNamespace(
+            content="",
+            attachments=[],
+            embeds=[
+                SimpleNamespace(
+                    title="Wild Naclstack fled. A new wild Pokémon has appeared!",
+                    description="Guess the Pokémon shown below.",
+                    image=SimpleNamespace(url="https://cdn.example/pokemon.png"),
+                    thumbnail=None,
+                )
+            ],
+        )
+        message = SimpleNamespace(
+            author=SimpleNamespace(id=2, bot=False, display_name="Cherry"),
+            content="who this",
+            attachments=[],
+            embeds=[],
+            stickers=[],
+            message_snapshots=[snapshot],
+            reference=None,
+        )
+
+        history = client._format_conversation_history([message])
+
+        self.assertIn("Wild Naclstack fled", history)
+        self.assertIn("A new wild Pokémon has appeared", history)
+        self.assertIn("[forwarded embed image]", history)
+
+    def test_image_identification_request_detection_is_narrow(self) -> None:
+        self.assertTrue(AIClient._looks_like_image_identification_request("who this"))
+        self.assertTrue(AIClient._looks_like_image_identification_request("which Pokémon is shown?"))
+        self.assertFalse(AIClient._looks_like_image_identification_request("summarize this chart"))
+
     async def test_research_does_not_feed_saved_memory_or_continue_chat(self) -> None:
         client = object.__new__(AIClient)
         client.provider = "deepseek-web"
