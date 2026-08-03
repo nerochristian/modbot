@@ -12,7 +12,6 @@ from utils.embeds import (
     ModEmbed,
     compact_kv_lines,
     sapphire_log_embed,
-    stamp_actor_footer,
 )
 from utils.checks import is_mod, is_admin, is_bot_owner_id
 from utils.moderation_settings import moderation_id_set
