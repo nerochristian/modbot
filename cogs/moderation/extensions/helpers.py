@@ -410,15 +410,26 @@ class HelperCommands:
         except Exception:
             return False
 
-    async def get_user_level(self, guild_id: int, member: discord.Member) -> int:
+    async def get_user_level(
+        self,
+        guild_id: int,
+        member: discord.Member,
+        *,
+        as_target: bool = False,
+    ) -> int:
         """
         Get the hierarchy level of a user based on roles
         Returns: int (0-999, higher = more power)
+
+        When ``as_target`` is True the bot-owner authority bonus is skipped so
+        that the bot owner can still be moderated by users with a higher
+        role/staff level. The bot owner is *not* Discord-protected (unlike the
+        server owner), so they should be subject to the normal hierarchy.
         """
         if not hasattr(self, "_hierarchy_cache"):
              self._hierarchy_cache = {}
 
-        cache_key = f"{guild_id}:{member.id}"
+        cache_key = f"{guild_id}:{member.id}:{'t' if as_target else 'm'}"
         
         # Check cache first
         if cache_key in self._hierarchy_cache:
@@ -432,8 +443,10 @@ class HelperCommands:
             self._hierarchy_cache[cache_key] = (datetime.now(), 999)
             return 999
         
-        # Bot owner = max level
-        if await self._is_bot_owner(member):
+        # Bot owner = max level (but only when acting as moderator; as a
+        # target they fall through to the normal role-based hierarchy so
+        # higher-ranked staff can still moderate them).
+        if not as_target and await self._is_bot_owner(member):
             self._hierarchy_cache[cache_key] = (datetime.now(), 100)
             return 100
         
@@ -540,7 +553,7 @@ class HelperCommands:
         
         # Hierarchy level check - THIS IS THE MAIN CHECK
         mod_level = await self.get_user_level(guild_id, moderator)
-        target_level = await self.get_user_level(guild_id, target)
+        target_level = await self.get_user_level(guild_id, target, as_target=True)
         
         # Higher level staff can moderate lower level staff
         if mod_level > target_level:
