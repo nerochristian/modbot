@@ -7,7 +7,13 @@ import discord
 
 from cogs.moderation.extensions.helpers import HelperCommands
 from cogs.moderation.extensions.management import ManagementCommands
-from utils.embeds import Colors, sapphire_log_embed, stamp_actor_footer
+from utils.embeds import (
+    Colors,
+    ModEmbed,
+    moderation_list_embed,
+    sapphire_log_embed,
+    stamp_actor_footer,
+)
 from utils.status_emojis import _semantic_status_kind
 
 
@@ -200,4 +206,48 @@ def test_actor_footer_is_idempotent_and_preserves_existing_metadata() -> None:
 
     assert embed.footer.text == "@staff_user • Case #77"
     assert embed.footer.icon_url == "https://cdn.example/staff.png"
+    assert embed.timestamp is not None
+
+
+def test_moderation_lists_use_compact_description_instead_of_field_stacks() -> None:
+    embed = moderation_list_embed(
+        title="Moderation history · target_user",
+        color=Colors.MOD,
+        summary_rows=(("Cases", 12), ("Showing", "Newest 2")),
+        entries=(
+            "**Case #12 · Ban** · <t:1704153600:R>\n> Repeated spam\n-# by staff_user",
+            "**Case #11 · Warn** · <t:1704067200:R>\n> Flooding chat\n-# by staff_user",
+        ),
+        thumbnail_url="https://cdn.example/target.png",
+        footer_text="Showing 2 of 12 cases",
+    )
+
+    assert embed.title == "Moderation history · target_user"
+    assert embed.description.startswith("> **Cases:** 12\n> **Showing:** Newest 2")
+    assert "**Case #12 · Ban**" in embed.description
+    assert list(embed.fields) == []
+    assert embed.thumbnail.url == "https://cdn.example/target.png"
+    assert embed.footer.text == "Showing 2 of 12 cases"
+    assert embed.timestamp is not None
+
+
+def test_fallback_punishment_notice_matches_private_moderation_style() -> None:
+    expires_at = datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc)
+    embed = ModEmbed.punishment_notice(
+        guild=_Guild(),
+        action="Tempban",
+        reason="Repeated raid attempts",
+        case_number=77,
+        duration="2 days",
+        expires_at=expires_at,
+    )
+
+    assert "Temporary ban applied" in embed.title
+    assert embed.description == "> **Reason:** Repeated raid attempts"
+    assert [field.name for field in embed.fields] == ["Server", "Case", "Duration", "Ends"]
+    assert embed.fields[0].value == "Luxury Guild"
+    assert embed.fields[1].value == "#77"
+    assert embed.fields[3].value == f"<t:{int(expires_at.timestamp())}:R>"
+    assert embed.footer.text == "Luxury Guild moderation"
+    assert embed.footer.icon_url == "https://cdn.example/guild.png"
     assert embed.timestamp is not None
