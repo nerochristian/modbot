@@ -129,6 +129,67 @@ class ManagementCommands:
                 return int(match.group(1))
             return None
 
+    async def _ensure_jail_channel(
+        self,
+        guild: discord.Guild,
+        settings: dict,
+        quarantine_role: Optional[discord.Role],
+    ) -> Optional[int]:
+        """Resolve the configured jail channel id, recreating it if it was deleted.
+
+        Returns the usable jail channel id, or ``None`` if jail isn't configured
+        (no ``quarantine_channel`` setting). When the configured channel no longer
+        exists, a new ``jail`` text channel is created with the quarantine role
+        granted jail-level access and everyone else denied view access, and the
+        ``quarantine_channel`` setting is updated to point at the new channel.
+        """
+        raw = settings.get("quarantine_channel")
+        jail_id: Optional[int] = None
+        if raw:
+            try:
+                jail_id = int(raw)
+            except (TypeError, ValueError):
+                jail_id = None
+
+        if jail_id:
+            existing = guild.get_channel(jail_id)
+            if isinstance(existing, discord.TextChannel):
+                return jail_id
+
+        bot_member = guild.me
+        if not (bot_member and bot_member.guild_permissions.manage_channels):
+            return jail_id if jail_id else None
+
+        overwrites: dict = {
+            guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        }
+        if quarantine_role is not None:
+            overwrites[quarantine_role] = self._quarantine_jail_overwrite()
+        if bot_member is not None:
+            overwrites[bot_member] = discord.PermissionOverwrite(
+                view_channel=True,
+                send_messages=True,
+                read_message_history=True,
+                manage_messages=True,
+            )
+
+        try:
+            channel = await guild.create_text_channel(
+                name="jail",
+                overwrites=overwrites,
+                topic="Channel for quarantined users.",
+                reason="Quarantine jail channel recreation (configured channel missing)",
+            )
+        except Exception:
+            return jail_id if jail_id else None
+
+        try:
+            await self.bot.db.set_setting(guild.id, "quarantine_channel", channel.id)
+        except Exception:
+            pass
+        settings["quarantine_channel"] = channel.id
+        return channel.id
+
     async def _sync_quarantine_overwrites(
         self,
         guild: discord.Guild,
@@ -1175,6 +1236,11 @@ class ManagementCommands:
         overwrite_failed = 0
         bot_member = source.guild.me
         if bot_member and bot_member.guild_permissions.manage_channels:
+            await self._ensure_jail_channel(
+                source.guild,
+                settings,
+                quarantine_role,
+            )
             overwrite_applied, overwrite_failed = await self._sync_quarantine_overwrites(
                 source.guild,
                 quarantine_role,
