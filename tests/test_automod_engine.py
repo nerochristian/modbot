@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import os
 import unittest
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, patch
 
 import discord
 
@@ -441,7 +443,8 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn("for **7 days**", embed.description)
         self.assertEqual(embed.fields[0].name, "Reason :")
         self.assertIn("> Repeated scam links", embed.fields[0].value)
-        self.assertIn("`user:55 date:", embed.fields[0].value)
+        self.assertIn("`55`", embed.fields[0].value)
+        self.assertNotIn("date:", embed.fields[0].value)
         self.assertEqual(embed.fields[1].value, "**Unbanned in 7 days**")
         self.assertEqual(embed.footer.text, "@surreny")
         self.assertEqual(embed.footer.icon_url, "https://example.com/moderator.png")
@@ -551,7 +554,53 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(delivered)
         dm_channel.send.assert_awaited_once()
+        self.assertIsInstance(dm_channel.send.await_args.kwargs["embed"], discord.Embed)
+        self.assertNotIn("view", dm_channel.send.await_args.kwargs)
         user.send.assert_not_awaited()
+
+    async def test_punishment_dm_sends_before_slow_appeal_enrichment(self) -> None:
+        enrichment_started = asyncio.Event()
+        release_enrichment = asyncio.Event()
+
+        async def delayed_case_lookup(*_args):
+            enrichment_started.set()
+            await release_enrichment.wait()
+            return None
+
+        db = SimpleNamespace(get_case=AsyncMock(side_effect=delayed_case_lookup))
+        bot = SimpleNamespace(db=db)
+        appeals = Appeals(bot)
+        sent_message = SimpleNamespace(edit=AsyncMock())
+        dm_channel = SimpleNamespace(send=AsyncMock(return_value=sent_message))
+        user = SimpleNamespace(id=55, display_name="Kayrozaa", send=AsyncMock())
+        guild = SimpleNamespace(id=1, name="Guild", icon=None)
+        moderator = SimpleNamespace(
+            name="surreny",
+            display_avatar=SimpleNamespace(url="https://example.com/moderator.png"),
+        )
+
+        with patch.dict(os.environ, {"DASHBOARD_PUBLIC_URL": "https://docketbot.xyz"}):
+            delivered = await asyncio.wait_for(
+                appeals.notify_punishment(
+                    guild=guild,
+                    user=user,
+                    action="Ban",
+                    reason="Test",
+                    case_number=4,
+                    settings={"appeals_enabled": True, "appeals_open": True},
+                    delivery_channel=dm_channel,
+                    moderator=moderator,
+                ),
+                timeout=0.2,
+            )
+            await asyncio.wait_for(enrichment_started.wait(), timeout=0.2)
+
+            self.assertTrue(delivered)
+            dm_channel.send.assert_awaited_once()
+            self.assertFalse(release_enrichment.is_set())
+
+            release_enrichment.set()
+            await asyncio.sleep(0)
 
 
 class AutoModPanelTests(unittest.IsolatedAsyncioTestCase):
