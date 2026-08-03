@@ -126,6 +126,42 @@ def sapphire_log_embed(
     return embed
 
 
+def moderation_list_embed(
+    *,
+    title: str,
+    color: int,
+    entries: Iterable[object],
+    summary_rows: Iterable[tuple[str, object]] = (),
+    thumbnail_url: Optional[str] = None,
+    footer_text: Optional[str] = None,
+) -> discord.Embed:
+    """Build a compact moderation history/list card without stacked fields."""
+    sections: list[str] = []
+    summary = compact_kv_lines(summary_rows, max_value_length=120)
+    if summary:
+        sections.append(quoted_lines(summary.splitlines()))
+
+    clean_entries = [str(entry).strip() for entry in entries if str(entry).strip()]
+    if clean_entries:
+        sections.append("\n\n".join(clean_entries))
+
+    description = "\n\n".join(sections) or "*Nothing to show.*"
+    if len(description) > 4096:
+        description = description[:4093].rstrip() + "..."
+
+    embed = discord.Embed(
+        title=title,
+        description=description,
+        color=color,
+        timestamp=datetime.now(timezone.utc),
+    )
+    if thumbnail_url:
+        embed.set_thumbnail(url=thumbnail_url)
+    if footer_text:
+        embed.set_footer(text=footer_text)
+    return embed
+
+
 def _strip_existing_log_padding(description: Optional[str]) -> Optional[str]:
     if not description:
         return description
@@ -373,6 +409,62 @@ class ModEmbed:
         icon = ModEmbed._emoji(config_attr, fallback)
         body = str(content or "Action completed.").strip()
         return discord.Embed(description=f"{icon} {body}", color=color)
+
+    @staticmethod
+    def punishment_notice(
+        *,
+        guild: discord.Guild,
+        action: str,
+        reason: str,
+        case_number: int,
+        duration: Optional[str] = None,
+        expires_at: Optional[datetime] = None,
+        guidance: Optional[str] = None,
+    ) -> discord.Embed:
+        """Build the classic fallback for private punishment notifications."""
+        normalized = str(action or "Moderation action").strip().casefold()
+        presentation = {
+            "warn": ("EMOJI_WARN", "⚠️", "Warning issued", Colors.WARNING),
+            "kick": ("EMOJI_KICK", "👢", "Removed from server", Colors.ERROR),
+            "ban": ("EMOJI_BAN", "🔨", "Banned from server", Colors.DARK_RED),
+            "softban": ("EMOJI_BAN", "🔨", "Softban applied", Colors.ERROR),
+            "tempban": ("EMOJI_BAN", "🔨", "Temporary ban applied", Colors.DARK_RED),
+            "mute": ("EMOJI_MUTE", "🔇", "Timeout applied", Colors.ERROR),
+            "quarantine": ("EMOJI_LOCK", "🔒", "Quarantine applied", Colors.WARNING),
+        }
+        config_attr, fallback, title, color = presentation.get(
+            normalized,
+            ("EMOJI_WARNING", "⚠️", "Moderation action", Colors.WARNING),
+        )
+        icon = ModEmbed._emoji(config_attr, fallback)
+        clean_reason = compact_text(reason or "No reason provided", max_length=900)
+        description = f"> **Reason:** {clean_reason}"
+        if guidance:
+            description += f"\n\n{str(guidance).strip()}"
+
+        embed = discord.Embed(
+            title=f"{icon} {title}",
+            description=description,
+            color=color,
+            timestamp=datetime.now(timezone.utc),
+        )
+        embed.add_field(name="Server", value=guild.name, inline=True)
+        embed.add_field(name="Case", value=f"#{case_number}", inline=True)
+        if duration:
+            embed.add_field(name="Duration", value=duration, inline=True)
+        if expires_at is not None:
+            embed.add_field(
+                name="Ends",
+                value=f"<t:{int(expires_at.timestamp())}:R>",
+                inline=True,
+            )
+
+        guild_icon = getattr(getattr(guild, "icon", None), "url", None)
+        footer_kwargs = {"text": f"{guild.name} moderation"}
+        if guild_icon:
+            footer_kwargs["icon_url"] = str(guild_icon)
+        embed.set_footer(**footer_kwargs)
+        return embed
 
     @staticmethod
     def case(case_number: int, action: str, user, moderator, reason: str) -> discord.Embed:
