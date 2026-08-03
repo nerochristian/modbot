@@ -14,7 +14,7 @@ from utils.checks import (
 )
 from utils.moderation_settings import moderation_bool
 from utils.server_setup import module_enabled
-from utils.embeds import Colors
+from utils.embeds import Colors, ModEmbed, moderation_list_embed
 
 # Mixins
 from .extensions.helpers import HelperCommands
@@ -171,42 +171,30 @@ class Moderation(
 
     async def guide_slash(self, interaction: discord.Interaction):
         """Show a compact moderation guide focused on day-to-day commands."""
-        embed = discord.Embed(
+        embed = moderation_list_embed(
             title="Moderation Guide",
-            description="Use `/mod` for common actions and `/moderation` when you need the full toolbox.",
             color=Config.COLOR_INFO,
-            timestamp=datetime.now(timezone.utc),
-        )
-        embed.add_field(
-            name="Fast Actions",
-            value=(
-                "`/mod warn user reason`\n"
-                "`/mod mute user duration reason`\n"
-                "`/mod kick user reason`\n"
-                "`/mod ban user reason`\n"
-                "`/mod purge amount user`"
+            summary_rows=((
+                "Start here",
+                "Use `/mod` for everyday actions and `/moderation` for the full toolbox.",
+            ),),
+            entries=(
+                "**Fast actions**\n"
+                "> `/mod warn user reason`\n"
+                "> `/mod mute user duration reason`\n"
+                "> `/mod kick user reason`\n"
+                "> `/mod ban user reason`\n"
+                "> `/mod purge amount user`",
+                "**Channel control**\n> `/mod lock` · `/mod unlock` · `/mod slowmode`",
+                "**Records**\n"
+                "> `/mod warnings` · `/mod case` · `/mod history`\n"
+                "> `/moderation cases note`",
+                "**Reply shortcuts**\n"
+                "> Reply to a member with `warn`, `mute`, `kick`, or `ban`.\n"
+                "> Reply to a bot moderation card with `undo` when supported.",
             ),
-            inline=False,
         )
-        embed.add_field(
-            name="Channel Control",
-            value="`/mod lock`, `/mod unlock`, `/mod slowmode`",
-            inline=False,
-        )
-        embed.add_field(
-            name="Records",
-            value="`/mod warnings`, `/mod case`, `/mod history`, `/moderation cases note`",
-            inline=False,
-        )
-        embed.add_field(
-            name="Reply Shortcuts",
-            value=(
-                "Reply to a user's message with `warn`, `mute`, `kick`, or `ban`.\n"
-                "Reply to a bot moderation embed with `undo` where the action supports it."
-            ),
-            inline=False,
-        )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+        await self._respond(interaction, embed=embed, ephemeral=True)
 
     def cog_check(self, ctx: commands.Context) -> bool:
         return True
@@ -523,11 +511,11 @@ class Moderation(
         )
         if mod_level < 4 and not has_discord_staff_perm:  # At least Mod level (or fallback Discord perm)
             try:
-                await message.reply(
-                    embed=discord.Embed(
-                        title="❌ Permission Denied",
-                        description="You need at least **Moderator** level to use reply actions.",
-                        color=discord.Color.red()
+                await self._respond(
+                    message,
+                    embed=ModEmbed.error(
+                        "Permission Denied",
+                        "You need at least **Moderator** level to use reply actions.",
                     ),
                     delete_after=10
                 )
@@ -540,11 +528,11 @@ class Moderation(
         if requested == "undo":
             if original_action is None:
                 try:
-                    await message.reply(
-                        embed=discord.Embed(
-                            title="⚠️ Cannot Undo",
-                            description="Reply to a **bot moderation embed** to use undo.",
-                            color=discord.Color.orange()
+                    await self._respond(
+                        message,
+                        embed=ModEmbed.warning(
+                            "Cannot Undo",
+                            "Reply to a **bot moderation embed** to use undo.",
                         ),
                         delete_after=10
                     )
@@ -554,11 +542,11 @@ class Moderation(
             action_to_take = self._UNDO_MAP.get(original_action)
             if action_to_take is None:
                 try:
-                    await message.reply(
-                        embed=discord.Embed(
-                            title="⚠️ Cannot Undo",
-                            description=f"**{original_action.title()}** actions cannot be automatically undone.",
-                            color=discord.Color.orange()
+                    await self._respond(
+                        message,
+                        embed=ModEmbed.warning(
+                            "Cannot Undo",
+                            f"**{original_action.title()}** actions cannot be automatically undone.",
                         ),
                         delete_after=10
                     )
@@ -577,12 +565,9 @@ class Moderation(
         except Exception as e:
             logger.error(f"Reply action error: {e}", exc_info=True)
             try:
-                await message.reply(
-                    embed=discord.Embed(
-                        title="❌ Error",
-                        description=f"Failed to execute: `{e}`",
-                        color=discord.Color.red()
-                    ),
+                await self._respond(
+                    message,
+                    embed=ModEmbed.error("Reply Action Failed", f"Failed to execute: `{e}`"),
                     delete_after=15
                 )
             except discord.HTTPException:
@@ -616,29 +601,24 @@ class Moderation(
                         reason=f"[Reply Action] {message.author}: {reason}",
                         delete_message_days=0 if preserve_messages else 1,
                     )
-                    await message.reply(
-                        embed=discord.Embed(
-                            title="🔨 User Banned",
-                            description=f"<@{target_id}> has been banned.",
-                            color=discord.Color.red()
-                        )
+                    await self._respond(
+                        message,
+                        embed=ModEmbed.moderation_response(
+                            "ban",
+                            f"<@{target_id}> has been banned.",
+                        ),
+                        allowed_mentions=discord.AllowedMentions.none(),
                     )
                 except Exception as e:
-                    await message.reply(
-                        embed=discord.Embed(
-                            title="❌ Failed",
-                            description=f"Could not ban: {e}",
-                            color=discord.Color.red()
-                        ),
+                    await self._respond(
+                        message,
+                        embed=ModEmbed.error("Cannot Ban", f"Could not ban: {e}"),
                         delete_after=10
                     )
                 return
-            await message.reply(
-                embed=discord.Embed(
-                    title="⚠️ User Not Found",
-                    description="That user is no longer in the server.",
-                    color=discord.Color.orange()
-                ),
+            await self._respond(
+                message,
+                embed=ModEmbed.warning("User Not Found", "That user is no longer in the server."),
                 delete_after=10
             )
             return
@@ -661,11 +641,11 @@ class Moderation(
         if handler:
             await handler()
         else:
-            await message.reply(
-                embed=discord.Embed(
-                    title="⚠️ Unknown Action",
-                    description=f"Action `{action}` is not supported as a reply action.",
-                    color=discord.Color.orange()
+            await self._respond(
+                message,
+                embed=ModEmbed.warning(
+                    "Unknown Action",
+                    f"Action `{action}` is not supported as a reply action.",
                 ),
                 delete_after=10
             )
@@ -675,11 +655,11 @@ class Moderation(
         try:
             warnings = await self.bot.db.get_warnings(source.guild.id, user.id)
             if not warnings:
-                await source.reply(
-                    embed=discord.Embed(
-                        title="ℹ️ No Warnings",
-                        description=f"{user.mention} has no warnings to remove.",
-                        color=discord.Color.blue()
+                await self._respond(
+                    source,
+                    embed=ModEmbed.info(
+                        "No Warnings",
+                        f"{user.mention} has no warnings to remove.",
                     ),
                     delete_after=10
                 )
@@ -688,20 +668,17 @@ class Moderation(
             warn_id = latest.get("id") or latest.get("warning_id")
             if warn_id:
                 await self.bot.db.delete_warning(source.guild.id, warn_id)
-            await source.reply(
-                embed=discord.Embed(
-                    title="✅ Warning Removed",
-                    description=f"Removed the latest warning from {user.mention}.",
-                    color=discord.Color.green()
-                )
+            await self._respond(
+                source,
+                embed=ModEmbed.success(
+                    "Warning Removed",
+                    f"Removed the latest warning from {user.mention}.",
+                ),
             )
         except Exception as e:
-            await source.reply(
-                embed=discord.Embed(
-                    title="❌ Error",
-                    description=f"Could not remove warning: {e}",
-                    color=discord.Color.red()
-                ),
+            await self._respond(
+                source,
+                embed=ModEmbed.error("Warning Removal Failed", f"Could not remove warning: {e}"),
                 delete_after=10
             )
 
