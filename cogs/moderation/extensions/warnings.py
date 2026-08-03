@@ -4,7 +4,7 @@ from discord.ext import commands
 from datetime import datetime, timezone
 from typing import Optional
 
-from utils.embeds import ModEmbed, Colors
+from utils.embeds import Colors, ModEmbed, compact_text, moderation_list_embed
 from utils.checks import is_mod, is_bot_owner_id
 from utils.warning_escalation import apply_warning_escalation, build_escalation_dm_embed
 from utils.async_tasks import fire_and_forget
@@ -52,10 +52,12 @@ class WarningCommands:
         # or appeal-token DB hiccup must never block or fail the warning, which
         # is already recorded above.
         if settings.get("moderation_dm_users", True):
-            dm_embed = discord.Embed(
-                title=f"⚠️ Warning in {source.guild.name}",
-                description=f"**Reason:** {reason}\n**Total Warnings:** {warn_count}",
-                color=Colors.WARNING,
+            dm_embed = ModEmbed.punishment_notice(
+                guild=source.guild,
+                action="Warn",
+                reason=reason,
+                case_number=case_num,
+                guidance=f"You now have **{warn_count}** active warning(s).",
             )
             fire_and_forget(
                 self.send_punishment_notice(
@@ -136,7 +138,10 @@ class WarningCommands:
             auto_action = f"Auto-punishment failed for {user.mention}: {exc}"
 
         if auto_action:
-            auto_embed = discord.Embed(description=auto_action, color=Colors.ERROR, timestamp=datetime.now(timezone.utc))
+            if "failed" in auto_action.casefold():
+                auto_embed = ModEmbed.error("Automatic escalation failed", auto_action)
+            else:
+                auto_embed = ModEmbed.warning("Automatic escalation", auto_action)
             await self._respond(source, embed=auto_embed)
 
     async def _warnings_logic(self, source, user: discord.Member):
@@ -145,27 +150,26 @@ class WarningCommands:
         if not warnings:
             return await self._respond(source, embed=ModEmbed.info("No Warnings", f"{user.mention} has no warnings."), ephemeral=True)
         
-        embed = discord.Embed(
-            title=f"⚠️ Warnings for {user.display_name}",
-            description=f"Total: **{len(warnings)}** warning(s)",
-            color=Colors.WARNING,
-            timestamp=datetime.now(timezone.utc)
-        )
-        embed.set_thumbnail(url=user.display_avatar.url)
-        
+        entries = []
         for warn in warnings[:10]:  # Limit to 10 most recent
             moderator = source.guild.get_member(warn['moderator_id'])
             mod_display = moderator.display_name if moderator else f"ID: {warn['moderator_id']}"
-            timestamp = warn.get('created_at', 'Unknown time')
-            
-            embed.add_field(
-                name=f"Warning #{warn['id']}",
-                value=f"**Reason:** {warn['reason'][:100]}\n**By:** {mod_display}\n**When:** {timestamp}",
-                inline=False
+            timestamp = self._warning_timestamp(warn.get('created_at'))
+            entries.append(
+                f"**Warning #{warn['id']}** · {timestamp}\n"
+                f"> {compact_text(warn.get('reason') or 'No reason provided', max_length=200)}\n"
+                f"-# by {discord.utils.escape_markdown(mod_display)}"
             )
-        
-        if len(warnings) > 10:
-            embed.set_footer(text=f"Showing 10 of {len(warnings)} warnings")
+
+        shown = min(10, len(warnings))
+        embed = moderation_list_embed(
+            title=f"Warnings · {user.display_name}",
+            color=Colors.WARNING,
+            summary_rows=(("Active warnings", len(warnings)), ("Showing", f"Newest {shown}")),
+            entries=entries,
+            thumbnail_url=user.display_avatar.url,
+            footer_text=f"Showing {shown} of {len(warnings)} warnings",
+        )
         
         await self._respond(source, embed=embed)
 
@@ -178,6 +182,16 @@ class WarningCommands:
             embed = ModEmbed.error("Not Found", f"Warning `#{warning_id}` does not exist.")
         
         await self._respond(source, embed=embed, ephemeral=True)
+
+    @staticmethod
+    def _warning_timestamp(value: object) -> str:
+        try:
+            parsed = datetime.fromisoformat(str(value).replace(" ", "T"))
+            if parsed.tzinfo is None:
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return f"<t:{int(parsed.timestamp())}:R>"
+        except (TypeError, ValueError, OverflowError):
+            return "Unknown time"
 
     async def _clearwarnings_logic(self, source, user: discord.Member, reason: str):
         count = await self.bot.db.clear_warnings(source.guild.id, user.id)
