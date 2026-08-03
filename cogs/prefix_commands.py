@@ -40,6 +40,30 @@ class PrefixCommands(commands.Cog):
             return prefix
         return default
 
+    async def _resolve_role_parts(
+        self,
+        ctx: commands.Context,
+        role_parts: tuple[str, ...],
+        *,
+        usage: str,
+    ) -> Optional[discord.Role]:
+        role_query = " ".join(role_parts).strip()
+        if not role_query:
+            await self._send_role_embed(ctx, ModEmbed.error("Missing Role", usage))
+            return None
+
+        try:
+            return await commands.RoleConverter().convert(ctx, role_query)
+        except commands.RoleNotFound:
+            await self._send_role_embed(
+                ctx,
+                ModEmbed.error(
+                    "Role Not Found",
+                    f"I couldn't find a role named `{role_query}`. You can use the role name, mention, or ID.",
+                ),
+            )
+            return None
+
     def _role_edit_error(
         self,
         ctx: commands.Context,
@@ -355,11 +379,14 @@ class PrefixCommands(commands.Cog):
         self,
         ctx: commands.Context,
         member: Optional[discord.Member] = None,
-        *,
-        role: Optional[discord.Role] = None,
+        *role_parts: str,
     ):
         """Role management commands."""
-        if member is not None and role is not None:
+        if member is not None:
+            usage = f"Usage: `{PrefixCommands._ctx_prefix(ctx)}role <member> <role>`"
+            role = await self._resolve_role_parts(ctx, role_parts, usage=usage)
+            if role is None:
+                return
             await self._toggle_role(ctx, member, role)
             return
 
@@ -378,13 +405,12 @@ class PrefixCommands(commands.Cog):
         self,
         ctx: commands.Context,
         member: discord.Member,
-        *,
-        role: Optional[discord.Role] = None,
+        *role_parts: str,
     ):
         """Add a role to a user."""
+        usage = f"Usage: `{PrefixCommands._ctx_prefix(ctx)}role add <member> <role>`"
+        role = await self._resolve_role_parts(ctx, role_parts, usage=usage)
         if role is None:
-            usage = f"Usage: `{PrefixCommands._ctx_prefix(ctx)}role add <member> <role>`"
-            await self._send_role_embed(ctx, ModEmbed.error("Missing Role", usage))
             return
 
         error_embed = self._role_edit_error(ctx, member, role)
@@ -408,13 +434,12 @@ class PrefixCommands(commands.Cog):
         self,
         ctx: commands.Context,
         member: discord.Member,
-        *,
-        role: Optional[discord.Role] = None,
+        *role_parts: str,
     ):
         """Remove a role from a user."""
+        usage = f"Usage: `{PrefixCommands._ctx_prefix(ctx)}role remove <member> <role>`"
+        role = await self._resolve_role_parts(ctx, role_parts, usage=usage)
         if role is None:
-            usage = f"Usage: `{PrefixCommands._ctx_prefix(ctx)}role remove <member> <role>`"
-            await self._send_role_embed(ctx, ModEmbed.error("Missing Role", usage))
             return
 
         error_embed = self._role_edit_error(ctx, member, role)
@@ -438,13 +463,12 @@ class PrefixCommands(commands.Cog):
         self,
         ctx: commands.Context,
         member: discord.Member,
-        *,
-        role: Optional[discord.Role] = None,
+        *role_parts: str,
     ):
         """Toggle a role on a user."""
+        usage = f"Usage: `{PrefixCommands._ctx_prefix(ctx)}role toggle <member> <role>`"
+        role = await self._resolve_role_parts(ctx, role_parts, usage=usage)
         if role is None:
-            usage = f"Usage: `{PrefixCommands._ctx_prefix(ctx)}role toggle <member> <role>`"
-            await self._send_role_embed(ctx, ModEmbed.error("Missing Role", usage))
             return
 
         await self._toggle_role(ctx, member, role)

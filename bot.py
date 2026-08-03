@@ -1618,8 +1618,15 @@ class ModBot(commands.Bot):
         if not content:
             return "", ""
 
-        command_name, _, arg_text = content.partition(" ")
-        if not command_name or not arg_text:
+        command = getattr(ctx, "command", None)
+        command_depth = len(str(getattr(command, "qualified_name", "") or "").split())
+        arg_text = content
+        for _ in range(max(1, command_depth)):
+            command_name, separator, arg_text = arg_text.partition(" ")
+            if not command_name or not separator:
+                return "", ""
+
+        if not arg_text:
             return "", ""
         first_arg, _, tail = arg_text.strip().partition(" ")
         return first_arg.strip(), tail.strip()
@@ -1699,8 +1706,8 @@ class ModBot(commands.Bot):
         if not params:
             return False, "Command has no usable parameters."
 
-        first_name, _ = params[0]
-        kwargs: dict[str, Any] = {first_name: target}
+        invoke_args: list[Any] = [target]
+        kwargs: dict[str, Any] = {}
         tokens = self._split_tokens(args_tail)
 
         async def _convert_param(param: inspect.Parameter, raw_value: str) -> Any:
@@ -1710,7 +1717,9 @@ class ModBot(commands.Bot):
 
         for name, param in params[1:]:
             if param.kind is inspect.Parameter.VAR_POSITIONAL:
-                return False, "This command format is not supported by the quick resolver."
+                while tokens:
+                    invoke_args.append(await _convert_param(param, tokens.pop(0)))
+                continue
 
             if param.kind is inspect.Parameter.KEYWORD_ONLY:
                 raw_value = " ".join(tokens).strip()
@@ -1725,9 +1734,9 @@ class ModBot(commands.Bot):
 
             if tokens:
                 raw_value = tokens.pop(0)
-                kwargs[name] = await _convert_param(param, raw_value)
+                invoke_args.append(await _convert_param(param, raw_value))
             elif param.default is not inspect.Parameter.empty:
-                kwargs[name] = param.default
+                invoke_args.append(param.default)
             else:
                 return False, f"Missing required argument `{name}`."
 
@@ -1735,7 +1744,7 @@ class ModBot(commands.Bot):
             extra = " ".join(tokens)
             return False, f"Too many arguments: `{extra}`."
 
-        await ctx.invoke(command, **kwargs)
+        await ctx.invoke(command, *invoke_args, **kwargs)
         return True, ""
 
     # ─── Setup & Lifecycle ────────────────────────────────────────────────

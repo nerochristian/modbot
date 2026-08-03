@@ -2,11 +2,13 @@ import ast
 import asyncio
 import collections
 import inspect
+import types
 from pathlib import Path
 
 import discord
 from discord import app_commands
 from discord.ext import commands
+from discord.ext.commands.view import StringView
 
 from cogs.moderation import Moderation
 from cogs.prefix_commands import PrefixCommands
@@ -25,16 +27,47 @@ REQUIRED_MODERATION_SLASH = {"ban", "kick", "mute", "timeout", "warn"}
 
 
 def test_prefix_role_commands_accept_unmentioned_multiword_role_names() -> None:
-    commands_to_check = (
+    async def parse_role_add() -> tuple[list[object], dict[str, object]]:
+        bot = commands.Bot(command_prefix=",", intents=discord.Intents.none())
+        cog = PrefixCommands(bot)
+        await bot.add_cog(cog)
+        command = bot.get_command("role add")
+        assert command is not None
+
+        member = object()
+
+        async def transform(command_self, ctx, parameter, attachments):
+            ctx.view.skip_ws()
+            argument = ctx.view.get_quoted_word()
+            return member if parameter.name == "member" else argument
+
+        command.transform = types.MethodType(transform, command)
+        ctx = types.SimpleNamespace(
+            message=types.SimpleNamespace(attachments=[]),
+            view=StringView("<@123456789012345678> role maker"),
+            args=[],
+            kwargs={},
+            current_parameter=None,
+        )
+        try:
+            await command._parse_arguments(ctx)
+            return ctx.args[2:], ctx.kwargs
+        finally:
+            await bot.close()
+
+    args, kwargs = asyncio.run(parse_role_add())
+    assert len(args) == 3
+    assert args[1:] == ["role", "maker"]
+    assert kwargs == {}
+
+    for command in (
         PrefixCommands.role_cmd,
         PrefixCommands.role_add_cmd,
         PrefixCommands.role_remove_cmd,
         PrefixCommands.role_toggle_cmd,
-    )
-
-    for command in commands_to_check:
-        role_parameter = inspect.signature(command.callback).parameters["role"]
-        assert role_parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    ):
+        role_parameter = inspect.signature(command.callback).parameters["role_parts"]
+        assert role_parameter.kind is inspect.Parameter.VAR_POSITIONAL
 
 
 def test_cog_classes_do_not_override_command_lifecycle_methods() -> None:
