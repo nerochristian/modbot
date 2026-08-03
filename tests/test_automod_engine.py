@@ -369,7 +369,7 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("**Action:** Timed out", embed.description)
         self.assertIn("**Case:** #63", embed.description)
         self.assertEqual([field.name for field in embed.fields], ["Message"])
-        self.assertEqual(embed.fields[0].value, "> @everyone")
+        self.assertEqual(embed.fields[0].value, "@everyone")
         self.assertEqual(embed.thumbnail.url, "https://example.com/member.png")
 
     async def test_user_notice_is_a_clean_server_branded_embed(self) -> None:
