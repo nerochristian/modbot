@@ -11,6 +11,7 @@ from discord import app_commands
 from discord.ext import commands, tasks
 
 from config import Config
+from utils.embeds import moderation_list_embed
 from .config import AUTOMOD_PRESETS, MODULE_SETTING_KEYS, MODULES, PUNISHMENTS, apply_preset, default_settings, get_preset_description
 from .engine import AutoModEngine
 from .health import build_automod_health_report
@@ -331,13 +332,15 @@ class AutoMod(commands.Cog):
             return
         profile = profile.lower().strip()
         if profile not in AUTOMOD_PRESETS:
-            embed = discord.Embed(
+            embed = moderation_list_embed(
                 title="Available Presets",
-                description="Choose a preset profile for quick AutoMod configuration:",
                 color=getattr(Config, "COLOR_INFO", 0x2563EB),
+                summary_rows=(("Choose one", "Run `/automod preset profile:<name>`"),),
+                entries=tuple(
+                    f"**`{name}`**\n> {data.get('description', 'No description')}"
+                    for name, data in AUTOMOD_PRESETS.items()
+                ),
             )
-            for name, data in AUTOMOD_PRESETS.items():
-                embed.add_field(name=f"`{name}`", value=data.get("description", "No description"), inline=False)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         settings = await self._settings(interaction.guild.id)
@@ -403,68 +406,31 @@ class AutoMod(commands.Cog):
 
     @automod.command(name="help", description="Show AutoMod setup and command help")
     async def help_command(self, interaction: discord.Interaction) -> None:
-        embed = discord.Embed(
+        embed = moderation_list_embed(
             title="AutoMod Help",
-            description="Use `/automod setup` first, then tune modules, thresholds, whitelists, and punishments as needed.",
             color=getattr(Config, "COLOR_INFO", 0x2563EB),
-        )
-        embed.add_field(
-            name="Start Here",
-            value=(
-                "`/automod wizard` - full private guided setup\n"
-                "`/automod doctor` - check permissions and config health\n"
-                "`/automod setup log_channel:#logs`\n"
-                "`/automod status`\n"
-                "`/automod enable module:all`\n"
-                "`/automod disable module:links`"
+            summary_rows=(("Start here", "Run `/automod wizard`, then `/automod doctor`."),),
+            entries=(
+                "**Setup**\n"
+                "> `/automod setup log_channel:#logs`\n"
+                "> `/automod status`\n"
+                "> `/automod enable module:all` · `/automod disable module:links`",
+                "**Modules**\n> " + " · ".join(f"`{module}`" for module in MODULES),
+                "**Thresholds and punishment**\n"
+                "> `/automod thresholds set module:spam value:5/5`\n"
+                "> `/automod thresholds set module:duplicates value:3/30`\n"
+                "> `/automod punishment set default_action:warn security_action:timeout mute_duration:1h`",
+                "**Whitelists and logs**\n"
+                "> `/automod whitelist add role:@Staff`\n"
+                "> `/automod whitelist add channel:#bot-commands`\n"
+                "> `/automod logs set channel:#automod-logs`",
+                "**Blocked words and advanced tools**\n"
+                "> `/automod badwords add phrase:blocked phrase`\n"
+                "> `/automod badwords list`\n"
+                "> `/automod scan channel:#general amount:100` · `/automod reset`",
             ),
-            inline=False,
+            footer_text="Admin or moderator permission required to change settings",
         )
-        embed.add_field(
-            name="Modules",
-            value=", ".join(f"`{module}`" for module in MODULES),
-            inline=False,
-        )
-        embed.add_field(
-            name="Tuning",
-            value=(
-                "`/automod thresholds set module:spam value:5/5`\n"
-                "`/automod thresholds set module:duplicates value:3/30`\n"
-                "`/automod thresholds set module:mentions value:5`\n"
-                "`/automod thresholds set module:attachments value:4/15`\n"
-                "`/automod punishment set default_action:warn security_action:timeout mute_duration:1h`"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="Whitelists And Logs",
-            value=(
-                "`/automod whitelist add role:@Staff`\n"
-                "`/automod whitelist add channel:#bot-commands`\n"
-                "`/automod whitelist remove user:@Member`\n"
-                "`/automod logs set channel:#automod-logs`"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="Bad Words",
-            value=(
-                "`/automod badwords add phrase:blocked phrase`\n"
-                "`/automod badwords remove phrase:blocked phrase`\n"
-                "`/automod badwords list`"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="Advanced",
-            value=(
-                "`/automod scan channel:#general amount:100`\n"
-                "`/automod config key:automod_spam_threshold value:6`\n"
-                "`/automod reset`"
-            ),
-            inline=False,
-        )
-        embed.set_footer(text="Changing AutoMod settings requires admin or moderator permissions.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @automod.command(name="enable", description="Enable AutoMod or one module")

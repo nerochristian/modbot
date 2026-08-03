@@ -2689,13 +2689,12 @@ class Logging(commands.Cog):
 
                 rows.append((f"{log_type.title()} Logs", value))
 
-            embed = discord.Embed(
-                title="📋 Logging Configuration",
-                description=compact_kv_lines(rows),
+            embed = sapphire_log_embed(
+                title="Logging configuration",
                 color=Colors.INFO,
-                timestamp=datetime.now(timezone.utc)
+                detail_lines=compact_kv_lines(rows).splitlines(),
+                thumbnail_url=getattr(getattr(interaction.guild, "icon", None), "url", None),
             )
-            mod_embed.timestamp = None
 
             await interaction.response.send_message(embed=embed)
             

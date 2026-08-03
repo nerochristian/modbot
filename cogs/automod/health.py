@@ -13,6 +13,7 @@ from typing import Any, Iterable
 import discord
 
 from config import Config
+from utils.embeds import moderation_list_embed
 from .config import MODULE_SETTING_KEYS, PUNISHMENTS
 
 
@@ -40,19 +41,19 @@ class AutoModHealthReport:
             color = getattr(Config, "COLOR_WARNING", 0xF59E0B)
         if self.score < 55:
             color = getattr(Config, "COLOR_ERROR", 0xEF4444)
-        embed = discord.Embed(
-            title=f"AutoMod Doctor — {self.score}/100 ({self.grade})",
-            description="Configuration health, permission safety, and setup recommendations.",
-            color=color,
-        )
-        embed.add_field(name="Passing", value=_bullet(self.passed, "No passing checks yet."), inline=False)
+        entries = [f"**Passing checks**\n{_quoted(self.passed, 'No passing checks yet.')}"]
         if self.failures:
-            embed.add_field(name="Fix Now", value=_bullet(self.failures), inline=False)
+            entries.append(f"**Fix now**\n{_quoted(self.failures)}")
         if self.warnings:
-            embed.add_field(name="Warnings", value=_bullet(self.warnings), inline=False)
+            entries.append(f"**Warnings**\n{_quoted(self.warnings)}")
         if self.recommendations:
-            embed.add_field(name="Recommended Next Steps", value=_bullet(self.recommendations), inline=False)
-        return embed
+            entries.append(f"**Recommended next steps**\n{_quoted(self.recommendations)}")
+        return moderation_list_embed(
+            title=f"AutoMod Doctor — {self.score}/100 ({self.grade})",
+            color=color,
+            summary_rows=(("Health score", f"{self.score}/100"), ("Grade", self.grade)),
+            entries=entries,
+        )
 
 
 def _bullet(items: Iterable[str], empty: str = "None") -> str:
@@ -60,6 +61,10 @@ def _bullet(items: Iterable[str], empty: str = "None") -> str:
     if not values:
         return empty
     return "\n".join(f"• {item}" for item in values[:8])[:1024]
+
+
+def _quoted(items: Iterable[str], empty: str = "None") -> str:
+    return "\n".join(f"> {line.removeprefix('• ')}" for line in _bullet(items, empty).splitlines())
 
 
 def _valid_action(value: Any) -> bool:
