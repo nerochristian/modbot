@@ -1620,14 +1620,11 @@ class ModBot(commands.Bot):
 
         command = getattr(ctx, "command", None)
         command_depth = len(str(getattr(command, "qualified_name", "") or "").split())
-        arg_text = content
-        for _ in range(max(1, command_depth)):
-            command_name, separator, arg_text = arg_text.partition(" ")
-            if not command_name or not separator:
-                return "", ""
-
-        if not arg_text:
+        command_depth = max(1, command_depth)
+        content_parts = content.split(maxsplit=command_depth)
+        if len(content_parts) <= command_depth:
             return "", ""
+        arg_text = content_parts[command_depth]
         first_arg, _, tail = arg_text.strip().partition(" ")
         return first_arg.strip(), tail.strip()
 
