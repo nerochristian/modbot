@@ -19,7 +19,12 @@ from cogs.automod import AutoModEngine, Category, domain_matches, normalize_doma
 from cogs.automod.logging import AutoModLogger
 from cogs.automod.models import Action, RuleMatch, Severity
 from cogs.automod.storage import AutoModStorage
-from cogs.appeals import Appeals, _database_timestamp, build_punishment_notice
+from cogs.appeals import (
+    Appeals,
+    _database_timestamp,
+    build_punishment_notice,
+    build_release_notice,
+)
 
 
 class FakePermissions:
@@ -419,6 +424,8 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
             duration="7 days",
             punishment_expires_at=punishment_expires_at,
             appeal_url="https://docketbot.xyz/appeal/token",
+            moderator=SimpleNamespace(name="surreny"),
+            issued_at=datetime(2026, 8, 3, 1, 16, tzinfo=timezone.utc),
         )
 
         self.assertIsInstance(view, discord.ui.LayoutView)
@@ -430,14 +437,59 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
         details = next(item.content for item in container.children if isinstance(item, discord.ui.TextDisplay))
         self.assertIn("## Kayrozaa", header)
         self.assertNotIn("!!” 🥢", header)
-        self.assertIn("You have been **banned** for **7 days**", header)
-        self.assertIn(f"until <t:{int(punishment_expires_at.timestamp())}:R>", header)
+        self.assertIn(
+            f"You have been **banned** until <t:{int(punishment_expires_at.timestamp())}:R>",
+            header,
+        )
+        self.assertNotIn("for **7 days**", header)
         self.assertIn("**Reason :**\n> Repeated scam links", details)
         self.assertIn("`user:55 date:", details)
         self.assertIsInstance(container.children[1], discord.ui.Separator)
-        self.assertIsInstance(view.children[1], discord.ui.TextDisplay)
-        self.assertIn(f"Available again <t:{int(punishment_expires_at.timestamp())}:R>", view.children[1].content)
-        self.assertIsInstance(view.children[2], discord.ui.ActionRow)
+        footer_section = container.children[4]
+        self.assertIsInstance(footer_section, discord.ui.Section)
+        footer = next(item.content for item in footer_section.children if isinstance(item, discord.ui.TextDisplay))
+        self.assertIn("@surreny", footer)
+        self.assertEqual(footer_section.accessory.label, "Unbanned in 7 days")
+        self.assertTrue(footer_section.accessory.disabled)
+        self.assertEqual(len(view.children), 2)
+        self.assertIsInstance(view.children[1], discord.ui.ActionRow)
+
+    async def test_kick_notice_has_right_side_rejoin_link(self) -> None:
+        guild = SimpleNamespace(name="The Supreme People", icon=None)
+        user = SimpleNamespace(id=55, display_name="Kayrozaa")
+        view = build_punishment_notice(
+            guild=guild,
+            user=user,
+            action="Kick",
+            reason="Repeated disruption",
+            case_number=13,
+            rejoin_url="https://discord.gg/example",
+        )
+
+        footer_section = view.children[0].children[4]
+        self.assertIsInstance(footer_section, discord.ui.Section)
+        self.assertEqual(footer_section.accessory.label, "Rejoin server")
+        self.assertEqual(footer_section.accessory.url, "https://discord.gg/example")
+
+    async def test_expired_tempban_notice_has_rejoin_link(self) -> None:
+        guild = SimpleNamespace(
+            name="The Supreme People",
+            icon=SimpleNamespace(url="https://example.com/guild.png"),
+        )
+        user = SimpleNamespace(id=55, display_name="Kayrozaa")
+        view = build_release_notice(
+            guild=guild,
+            user=user,
+            rejoin_url="https://discord.com/invite/example",
+        )
+
+        container = view.children[0]
+        header_section = container.children[0]
+        header = next(item.content for item in header_section.children if isinstance(item, discord.ui.TextDisplay))
+        footer_section = container.children[4]
+        self.assertIn("You have been **unbanned**", header)
+        self.assertEqual(footer_section.accessory.label, "Rejoin server")
+        self.assertEqual(footer_section.accessory.url, "https://discord.com/invite/example")
 
     async def test_appeal_expiry_is_stored_as_naive_utc_for_postgres(self) -> None:
         source = datetime(2026, 7, 18, 16, 30, tzinfo=timezone(timedelta(hours=-5)))

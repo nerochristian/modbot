@@ -56,7 +56,7 @@ def test_primary_ban_path_preopens_dm_before_removing_member() -> None:
     assert function.index("await user.ban(") < function.index("await self.bot.db.create_case(")
 
 
-def test_other_primary_departure_or_timeout_paths_preopen_notice_before_enforcement() -> None:
+def test_other_primary_departure_or_timeout_paths_notify_only_after_enforcement() -> None:
     source = (ROOT / "cogs" / "moderation" / "extensions" / "management.py").read_text(
         encoding="utf-8-sig"
     )
@@ -68,10 +68,11 @@ def test_other_primary_departure_or_timeout_paths_preopen_notice_before_enforcem
     ]
     for current, following, enforcement in boundaries:
         function = source[source.index(f"    async def {current}("):source.index(f"    async def {following}(")]
-        assert function.index("await self.send_punishment_notice(") < function.index(enforcement)
+        assert function.index("await self.prepare_dm_channel(user)") < function.index(enforcement)
+        assert function.index(enforcement) < function.index("await self.send_punishment_notice(")
 
 
-def test_automod_notifies_before_timeout_kick_or_ban() -> None:
+def test_automod_notifies_only_after_timeout_kick_or_ban_succeeds() -> None:
     source = (ROOT / "cogs" / "automod" / "punishments.py").read_text(encoding="utf-8-sig")
     apply = source[source.index("    async def apply("):source.index("    async def _notify_appeal(")]
 
@@ -81,7 +82,7 @@ def test_automod_notifies_before_timeout_kick_or_ban() -> None:
         ("if action is Action.BAN:", "await guild.ban("),
     ):
         branch = apply[apply.index(marker):]
-        assert branch.index("await self._notify_appeal(") < branch.index(enforcement)
+        assert branch.index(enforcement) < branch.index("await self._notify_appeal(")
 
 
 def test_gateway_ban_listener_consumes_suppression_before_logging() -> None:
