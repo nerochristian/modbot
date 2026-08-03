@@ -24,6 +24,7 @@ from cogs.automod.storage import AutoModStorage
 from cogs.appeals import (
     Appeals,
     _database_timestamp,
+    _release_status_label,
     build_punishment_notice,
     build_release_notice,
 )
@@ -334,6 +335,12 @@ class AutoModStorageTests(unittest.IsolatedAsyncioTestCase):
 
 
 class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
+    def test_release_status_uses_future_tense_and_compact_duration(self) -> None:
+        self.assertEqual(
+            _release_status_label("Mute", "1 hour"),
+            "You will be unmuted in 1h",
+        )
+
     def _message(self):
         guild = SimpleNamespace(id=1, name="The Supreme People", icon=SimpleNamespace(url="https://example.com/guild.png"))
         author = SimpleNamespace(
@@ -445,7 +452,7 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("> Repeated scam links", embed.fields[0].value)
         self.assertIn("`55`", embed.fields[0].value)
         self.assertNotIn("date:", embed.fields[0].value)
-        self.assertEqual(embed.fields[1].value, "**Unbanned in 7 days**")
+        self.assertEqual(embed.fields[1].value, "**You will be unbanned in 7d**")
         self.assertEqual(embed.footer.text, "@surreny")
         self.assertEqual(embed.footer.icon_url, "https://example.com/moderator.png")
         self.assertEqual(embed.timestamp, datetime(2026, 8, 3, 1, 16, tzinfo=timezone.utc))

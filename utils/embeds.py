@@ -32,6 +32,12 @@ def stamp_actor_footer(
     existing_text = str(
         getattr(getattr(embed, "footer", None), "text", None) or ""
     ).strip()
+    existing_icon = getattr(getattr(embed, "footer", None), "icon_url", None)
+    if existing_text.startswith("@") and existing_icon and embed.timestamp is not None:
+        # A complete native actor footer is already authoritative. Process-wide
+        # send wrappers may see a different active actor (often the bot itself);
+        # never turn a moderator identity into "@Bot • @Moderator".
+        return embed
     if existing_text == actor_label or existing_text.startswith(f"{actor_label} •"):
         footer_text = existing_text
     elif existing_text:

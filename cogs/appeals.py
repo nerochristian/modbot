@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Any, Optional
@@ -102,18 +103,36 @@ def _safe_rejoin_url(value: object) -> Optional[str]:
 def _release_status_label(action: str, duration: Optional[str]) -> Optional[str]:
     normalized = str(action or "").strip().casefold()
     release_verbs = {
-        "mute": "Unmuted",
-        "timeout": "Unmuted",
-        "ban": "Unbanned",
-        "tempban": "Unbanned",
-        "quarantine": "Released",
+        "mute": "unmuted",
+        "timeout": "unmuted",
+        "ban": "unbanned",
+        "tempban": "unbanned",
+        "quarantine": "released",
     }
     verb = release_verbs.get(normalized)
     if verb is None:
         return None
     clean_duration = " ".join(str(duration or "soon").split())
-    label = f"{verb} in {clean_duration}"
-    return label if len(label) <= 80 else f"{verb} when timer ends"
+    unit_suffixes = {
+        "second": "s",
+        "seconds": "s",
+        "minute": "m",
+        "minutes": "m",
+        "hour": "h",
+        "hours": "h",
+        "day": "d",
+        "days": "d",
+        "week": "w",
+        "weeks": "w",
+    }
+    clean_duration = re.sub(
+        r"\b(\d+)\s+(seconds?|minutes?|hours?|days?|weeks?)\b",
+        lambda match: f"{match.group(1)}{unit_suffixes[match.group(2).casefold()]}",
+        clean_duration,
+        flags=re.IGNORECASE,
+    )
+    label = f"You will be {verb} in {clean_duration}"
+    return label if len(label) <= 80 else f"You will be {verb} when the timer ends"
 
 
 def build_punishment_notice(

@@ -209,6 +209,28 @@ def test_actor_footer_is_idempotent_and_preserves_existing_metadata() -> None:
     assert embed.timestamp is not None
 
 
+def test_native_moderator_footer_cannot_be_prefixed_by_bot_actor() -> None:
+    moderator = _User(
+        name="surreny",
+        mention="<@200>",
+        avatar_url="https://cdn.example/surreny.png",
+        created_at=datetime(2020, 1, 2, tzinfo=timezone.utc),
+    )
+    bot_actor = _User(
+        name="Docket",
+        mention="<@999>",
+        avatar_url="https://cdn.example/docket.png",
+        created_at=datetime(2020, 1, 2, tzinfo=timezone.utc),
+    )
+    embed = discord.Embed(title="Punishment notice")
+
+    stamp_actor_footer(embed, moderator)
+    stamp_actor_footer(embed, bot_actor)
+
+    assert embed.footer.text == "@surreny"
+    assert embed.footer.icon_url == "https://cdn.example/surreny.png"
+
+
 def test_moderation_lists_use_compact_description_instead_of_field_stacks() -> None:
     embed = moderation_list_embed(
         title="Moderation history · target_user",
