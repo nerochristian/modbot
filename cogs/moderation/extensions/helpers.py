@@ -303,6 +303,7 @@ class HelperCommands:
         duration: Optional[str] = None,
         punishment_expires_at: Optional[datetime] = None,
         delivery_channel: Optional[discord.abc.Messageable] = None,
+        moderator: Optional[discord.abc.User] = None,
     ) -> bool:
         """Send the case-bound appeal DM, falling back to the legacy notice."""
         appeals = self.bot.get_cog("Appeals")
@@ -318,6 +319,7 @@ class HelperCommands:
                     punishment_expires_at=punishment_expires_at,
                     settings=settings,
                     delivery_channel=delivery_channel,
+                    moderator=moderator,
                 )
             except Exception:
                 logger.exception("Appeal-aware punishment DM failed for case %s", case_number)

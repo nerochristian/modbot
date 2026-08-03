@@ -257,7 +257,7 @@ class ManagementCommands:
             case_number=case_num,
         )
         if notify_user:
-            await self.send_punishment_notice(guild=guild, user=user, action="Kick", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, delivery_channel=dm_channel)
+            await self.send_punishment_notice(guild=guild, user=user, action="Kick", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, delivery_channel=dm_channel, moderator=moderator)
             
         embed = await self.create_mod_embed(title="Member kicked", user=user, moderator=moderator, reason=reason, color=Colors.ERROR, case_num=case_num)
         response = render_moderation_response(
@@ -367,6 +367,7 @@ class ManagementCommands:
                 settings=settings,
                 fallback_embed=dm_embed,
                 delivery_channel=dm_channel,
+                moderator=moderator,
             )
             
         embed = await self.create_mod_embed(title="Member banned", user=user, moderator=moderator, reason=reason, color=Colors.DARK_RED, case_num=case_num)
@@ -455,7 +456,7 @@ class ManagementCommands:
             guidance="You may rejoin the server immediately.",
         )
         if notify_user:
-            await self.send_punishment_notice(guild=guild, user=user, action="Softban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, delivery_channel=dm_channel)
+            await self.send_punishment_notice(guild=guild, user=user, action="Softban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, delivery_channel=dm_channel, moderator=moderator)
             
         embed = await self.create_mod_embed(title="Member softbanned", user=user, moderator=moderator, reason=reason, color=Colors.ERROR, case_num=case_num)
         embed.set_footer(text=f"Case #{case_num} | 7 days of messages deleted")
@@ -522,7 +523,7 @@ class ManagementCommands:
             expires_at=expires_at,
         )
         if notify_user:
-            await self.send_punishment_notice(guild=guild, user=user, action="Tempban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, duration=human_duration, punishment_expires_at=expires_at, delivery_channel=dm_channel)
+            await self.send_punishment_notice(guild=guild, user=user, action="Tempban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, duration=human_duration, punishment_expires_at=expires_at, delivery_channel=dm_channel, moderator=moderator)
             
         embed = await self.create_mod_embed(title="Member temporarily banned", user=user, moderator=moderator, reason=reason, color=Colors.DARK_RED, case_num=case_num, extra_fields={"Duration": human_duration, "Expires": f"<t:{int(expires_at.timestamp())}:R>"})
         await self._respond(source, embed=embed, delete_command_message=True)
@@ -598,7 +599,7 @@ class ManagementCommands:
             expires_at=expires_at,
         )
         if notify_user:
-            await self.send_punishment_notice(guild=guild, user=user, action="Mute", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, duration=human_duration, punishment_expires_at=expires_at, delivery_channel=dm_channel)
+            await self.send_punishment_notice(guild=guild, user=user, action="Mute", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, duration=human_duration, punishment_expires_at=expires_at, delivery_channel=dm_channel, moderator=moderator)
 
         log_embed = await self.create_mod_embed(
             title="Member muted",
@@ -1283,6 +1284,7 @@ class ManagementCommands:
                     duration=human_duration,
                     punishment_expires_at=expires_at,
                     delivery_channel=delivery_channel,
+                    moderator=author,
                 )
 
             fire_and_forget(

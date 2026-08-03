@@ -145,6 +145,7 @@ class PunishmentManager:
                 punishment_expires_at=punishment_expires_at,
                 settings=settings,
                 delivery_channel=delivery_channel,
+                moderator=getattr(guild, "me", None) or getattr(self.bot, "user", None),
             )
         except Exception:
             return False

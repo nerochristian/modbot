@@ -68,6 +68,7 @@ class WarningCommands:
                     case_number=case_num,
                     settings=settings,
                     fallback_embed=dm_embed,
+                    moderator=author,
                 ),
                 name=f"warn-dm-{source.guild.id}-{user.id}",
             )

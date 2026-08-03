@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 import discord
 from discord.ext import commands
 
+from utils.async_tasks import fire_and_forget
 from utils.embeds import Colors, moderation_list_embed, stamp_actor_footer
 from utils.status_emojis import get_app_emoji
 
@@ -141,10 +142,10 @@ def build_punishment_notice(
     )[:80]
     reason_text = str(reason or "No reason provided")[:700]
     id_emoji = get_app_emoji("id")
-    identity = f"user:{user.id} " if user is not None else ""
+    identity = str(user.id) if user is not None else "Unknown"
     details = (
         f"> {reason_text}\n"
-        f"-# {id_emoji + ' ' if id_emoji else ''}`{identity}date:{datetime.now(timezone.utc):%Y-%m-%d}`"
+        f"-# {id_emoji + ' ' if id_emoji else ''}`{identity}`"
     )
     accent_color = 0xED4245 if normalized_action in {"ban", "tempban", "softban"} else 0xF0B232
     action_time = issued_at or datetime.now(timezone.utc)
@@ -339,6 +340,103 @@ class Appeals(commands.Cog):
                     moderator = None
         return moderator
 
+    async def _enrich_punishment_notice(
+        self,
+        *,
+        message: discord.Message,
+        guild: discord.Guild,
+        user: discord.abc.User,
+        action: str,
+        reason: str,
+        case_number: int,
+        duration: Optional[str],
+        punishment_expires_at: Optional[datetime],
+        settings: dict[str, Any],
+        moderator: Optional[discord.abc.User],
+        eligible: bool,
+        base_url: str,
+    ) -> None:
+        """Add appeal/rejoin controls after the core DM is already visible."""
+        moderation_case: Optional[dict[str, Any]] = None
+        get_case = getattr(getattr(self.bot, "db", None), "get_case", None)
+        if callable(get_case):
+            try:
+                moderation_case = await get_case(guild.id, case_number)
+            except Exception:
+                logger.debug("Could not resolve moderation case %s for DM metadata", case_number)
+
+        resolved_moderator = moderator or await self._resolve_case_moderator(
+            guild,
+            moderation_case,
+        )
+        normalized_action = action.strip().lower()
+        rejoin_url: Optional[str] = None
+        if normalized_action in {"kick", "softban"}:
+            rejoin_url = await self._resolve_rejoin_url(guild, settings)
+
+        appeal_url: Optional[str] = None
+        token_row_id: Optional[int] = None
+        if eligible and moderation_case:
+            token = secrets.token_urlsafe(32)
+            token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
+            expiry_days = max(1, min(30, int(settings.get("appeal_expiry_days") or 7)))
+            expires_at = datetime.now(timezone.utc) + timedelta(days=expiry_days)
+            async with self.bot.db.transaction() as db:
+                cursor = await db.execute(
+                    """
+                    INSERT INTO dashboard_appeal_tokens
+                    (token_hash, guild_id, case_id, user_id, expires_at, used_at, appeal_id,
+                     delivery_status, delivery_error, questions_json)
+                    VALUES (?, ?, ?, ?, ?, NULL, NULL, 'pending', NULL, ?)
+                    ON CONFLICT (guild_id, case_id) DO UPDATE SET
+                      token_hash = excluded.token_hash, user_id = excluded.user_id,
+                      expires_at = excluded.expires_at, used_at = NULL, appeal_id = NULL,
+                      delivery_status = 'pending', delivery_error = NULL,
+                      questions_json = excluded.questions_json, created_at = CURRENT_TIMESTAMP
+                    RETURNING id
+                    """,
+                    (
+                        token_hash,
+                        guild.id,
+                        moderation_case["id"],
+                        user.id,
+                        _database_timestamp(expires_at),
+                        json.dumps(_questions(settings.get("appeal_questions"))),
+                    ),
+                )
+                row = await cursor.fetchone()
+                token_row_id = int(row[0]) if row else None
+            appeal_url = f"{base_url}/appeal/{token}"
+
+        delivery_error: Optional[str] = None
+        if appeal_url or rejoin_url or resolved_moderator is not moderator:
+            embed, view = build_punishment_notice(
+                guild=guild,
+                user=user,
+                action=action,
+                reason=reason,
+                case_number=case_number,
+                duration=duration,
+                punishment_expires_at=punishment_expires_at,
+                appeal_url=appeal_url,
+                rejoin_url=rejoin_url,
+                moderator=resolved_moderator,
+            )
+            edit_kwargs: dict[str, Any] = {"embed": embed}
+            if view is not None:
+                edit_kwargs["view"] = view
+            try:
+                await message.edit(**edit_kwargs)
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                delivery_error = str(exc)[:500]
+
+        if token_row_id is not None:
+            async with self.bot.db.transaction() as db:
+                await db.execute(
+                    "UPDATE dashboard_appeal_tokens SET delivery_status = 'sent', delivery_error = ? WHERE id = ?",
+                    (delivery_error, token_row_id),
+                )
+
     @commands.group(name="appeals", invoke_without_command=True)
     @commands.guild_only()
     @commands.has_guild_permissions(manage_guild=True)
@@ -400,6 +498,7 @@ class Appeals(commands.Cog):
         punishment_expires_at: Optional[datetime] = None,
         settings: Optional[dict[str, Any]] = None,
         delivery_channel: Optional[discord.abc.Messageable] = None,
+        moderator: Optional[discord.abc.User] = None,
     ) -> bool:
         settings = settings or await self.bot.db.get_settings(guild.id)
         normalized_action = action.strip().lower()
@@ -408,56 +507,7 @@ class Appeals(commands.Cog):
         accepting = _as_bool(settings.get("appeals_open"), True)
         eligible = enabled and accepting and normalized_action in APPEALABLE_ACTIONS and base_url.startswith(("https://", "http://"))
 
-        moderation_case: Optional[dict[str, Any]] = None
-        get_case = getattr(getattr(self.bot, "db", None), "get_case", None)
-        if callable(get_case):
-            try:
-                moderation_case = await get_case(guild.id, case_number)
-            except Exception:
-                logger.debug("Could not resolve moderation case %s for DM metadata", case_number)
-        moderator = await self._resolve_case_moderator(guild, moderation_case)
-
-        rejoin_url: Optional[str] = None
-        if normalized_action in {"kick", "softban"}:
-            rejoin_url = await self._resolve_rejoin_url(guild, settings)
-
-        appeal_url: Optional[str] = None
-        expires_at: Optional[datetime] = None
-        token_row_id: Optional[int] = None
-        if eligible:
-            if moderation_case:
-                token = secrets.token_urlsafe(32)
-                token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-                expiry_days = max(1, min(30, int(settings.get("appeal_expiry_days") or 7)))
-                expires_at = datetime.now(timezone.utc) + timedelta(days=expiry_days)
-                async with self.bot.db.transaction() as db:
-                    cursor = await db.execute(
-                        """
-                        INSERT INTO dashboard_appeal_tokens
-                        (token_hash, guild_id, case_id, user_id, expires_at, used_at, appeal_id,
-                         delivery_status, delivery_error, questions_json)
-                        VALUES (?, ?, ?, ?, ?, NULL, NULL, 'pending', NULL, ?)
-                        ON CONFLICT (guild_id, case_id) DO UPDATE SET
-                          token_hash = excluded.token_hash, user_id = excluded.user_id,
-                          expires_at = excluded.expires_at, used_at = NULL, appeal_id = NULL,
-                          delivery_status = 'pending', delivery_error = NULL,
-                          questions_json = excluded.questions_json, created_at = CURRENT_TIMESTAMP
-                        RETURNING id
-                        """,
-                        (
-                            token_hash,
-                            guild.id,
-                            moderation_case["id"],
-                            user.id,
-                            _database_timestamp(expires_at),
-                            json.dumps(_questions(settings.get("appeal_questions"))),
-                        ),
-                    )
-                    row = await cursor.fetchone()
-                    token_row_id = int(row[0]) if row else None
-                appeal_url = f"{base_url}/appeal/{token}"
-
-        embed, view = build_punishment_notice(
+        embed, _ = build_punishment_notice(
             guild=guild,
             user=user,
             action=action,
@@ -465,27 +515,33 @@ class Appeals(commands.Cog):
             case_number=case_number,
             duration=duration,
             punishment_expires_at=punishment_expires_at,
-            appeal_url=appeal_url,
-            rejoin_url=rejoin_url,
             moderator=moderator,
         )
-        delivery_status = "sent"
-        delivery_error: Optional[str] = None
         try:
-            message_kwargs: dict[str, Any] = {"embed": embed}
-            if view is not None:
-                message_kwargs["view"] = view
-            await (delivery_channel or user).send(**message_kwargs)
-        except (discord.Forbidden, discord.HTTPException) as exc:
-            delivery_status = "failed"
-            delivery_error = str(exc)[:500]
-        if token_row_id is not None:
-            async with self.bot.db.transaction() as db:
-                await db.execute(
-                    "UPDATE dashboard_appeal_tokens SET delivery_status = ?, delivery_error = ? WHERE id = ?",
-                    (delivery_status, delivery_error, token_row_id),
-                )
-        return delivery_status == "sent"
+            message = await (delivery_channel or user).send(embed=embed)
+        except (discord.Forbidden, discord.HTTPException):
+            return False
+
+        if eligible or normalized_action in {"kick", "softban"}:
+            fire_and_forget(
+                self._enrich_punishment_notice(
+                    message=message,
+                    guild=guild,
+                    user=user,
+                    action=action,
+                    reason=reason,
+                    case_number=case_number,
+                    duration=duration,
+                    punishment_expires_at=punishment_expires_at,
+                    settings=settings,
+                    moderator=moderator,
+                    eligible=eligible,
+                    base_url=base_url,
+                ),
+                name=f"punishment-dm-enrichment-{guild.id}-{case_number}",
+                log=logger,
+            )
+        return True
 
     async def notify_tempban_expired(
         self,
