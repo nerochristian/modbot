@@ -355,6 +355,7 @@ class PrefixCommands(commands.Cog):
         self,
         ctx: commands.Context,
         member: Optional[discord.Member] = None,
+        *,
         role: Optional[discord.Role] = None,
     ):
         """Role management commands."""
@@ -377,6 +378,7 @@ class PrefixCommands(commands.Cog):
         self,
         ctx: commands.Context,
         member: discord.Member,
+        *,
         role: Optional[discord.Role] = None,
     ):
         """Add a role to a user."""
@@ -406,6 +408,7 @@ class PrefixCommands(commands.Cog):
         self,
         ctx: commands.Context,
         member: discord.Member,
+        *,
         role: Optional[discord.Role] = None,
     ):
         """Remove a role from a user."""
@@ -435,6 +438,7 @@ class PrefixCommands(commands.Cog):
         self,
         ctx: commands.Context,
         member: discord.Member,
+        *,
         role: Optional[discord.Role] = None,
     ):
         """Toggle a role on a user."""

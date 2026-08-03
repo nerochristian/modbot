@@ -1,6 +1,7 @@
 import ast
 import asyncio
 import collections
+import inspect
 from pathlib import Path
 
 import discord
@@ -8,6 +9,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from cogs.moderation import Moderation
+from cogs.prefix_commands import PrefixCommands
 from cogs.admin import Admin
 from cogs.aimoderation.aimoderation import AIModeration
 from cogs.court import Court
@@ -20,6 +22,19 @@ from cogs.utility import Utility
 ROOT = Path(__file__).resolve().parent.parent
 COGS = ROOT / "cogs"
 REQUIRED_MODERATION_SLASH = {"ban", "kick", "mute", "timeout", "warn"}
+
+
+def test_prefix_role_commands_accept_unmentioned_multiword_role_names() -> None:
+    commands_to_check = (
+        PrefixCommands.role_cmd,
+        PrefixCommands.role_add_cmd,
+        PrefixCommands.role_remove_cmd,
+        PrefixCommands.role_toggle_cmd,
+    )
+
+    for command in commands_to_check:
+        role_parameter = inspect.signature(command.callback).parameters["role"]
+        assert role_parameter.kind is inspect.Parameter.KEYWORD_ONLY
 
 
 def test_cog_classes_do_not_override_command_lifecycle_methods() -> None:
