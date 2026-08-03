@@ -7,7 +7,7 @@ import re
 import json
 import asyncio
 
-from utils.embeds import ModEmbed, Colors
+from utils.embeds import Colors, ModEmbed, compact_text, moderation_list_embed
 from utils.checks import is_mod, is_senior_mod, is_admin, is_bot_owner_id
 from utils.moderation_settings import (
     moderation_bool,
@@ -244,8 +244,13 @@ class ManagementCommands:
         notify_user = moderation_bool(settings, "moderation_dm_users", True)
         dm_channel = await self.prepare_dm_channel(user) if notify_user else None
         
-        dm_embed = discord.Embed(title=f"👢 Kicked from {guild.name}", description=f"**Reason:** {reason}", color=Colors.ERROR)
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Kick", reason)
+        dm_embed = ModEmbed.punishment_notice(
+            guild=guild,
+            action="Kick",
+            reason=reason,
+            case_number=case_num,
+        )
         if notify_user:
             await self.send_punishment_notice(guild=guild, user=user, action="Kick", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, delivery_channel=dm_channel)
         try:
@@ -305,7 +310,6 @@ class ManagementCommands:
         notify_user = moderation_bool(settings, "moderation_dm_users", True)
         dm_channel = await self.prepare_dm_channel(user) if notify_user else None
         
-        dm_embed = discord.Embed(title=f"🔨 Banned from {guild.name}", description=f"**Reason:** {reason}\n\nYou have been permanently banned.", color=Colors.DARK_RED)
         preserve_messages = moderation_bool(
             settings,
             "moderation_preserve_ban_messages",
@@ -344,6 +348,13 @@ class ManagementCommands:
             moderator.id,
             "Ban",
             reason,
+        )
+        dm_embed = ModEmbed.punishment_notice(
+            guild=guild,
+            action="Ban",
+            reason=reason,
+            case_number=case_num,
+            guidance="This ban is permanent unless staff approve an appeal.",
         )
         if notify_user:
             await self.send_punishment_notice(
@@ -426,10 +437,16 @@ class ManagementCommands:
         notify_user = moderation_bool(settings, "moderation_dm_users", True)
         dm_channel = await self.prepare_dm_channel(user) if notify_user else None
         
-        dm_embed = discord.Embed(title=f"🧹 Softbanned from {guild.name}", description=f"**Reason:** {reason}\n\nYou can rejoin the server.", color=Colors.ERROR)
         self._suppress_duplicate_member_action_log(guild.id, user.id, "ban")
         self._suppress_duplicate_member_action_log(guild.id, user.id, "unban")
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Softban", reason)
+        dm_embed = ModEmbed.punishment_notice(
+            guild=guild,
+            action="Softban",
+            reason=reason,
+            case_number=case_num,
+            guidance="You may rejoin the server immediately.",
+        )
         if notify_user:
             await self.send_punishment_notice(guild=guild, user=user, action="Softban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, delivery_channel=dm_channel)
         try:
@@ -478,7 +495,6 @@ class ManagementCommands:
         notify_user = moderation_bool(settings, "moderation_dm_users", True)
         dm_channel = await self.prepare_dm_channel(user) if notify_user else None
         
-        dm_embed = discord.Embed(title=f"⏰ Temporarily Banned from {guild.name}", description=f"**Reason:** {reason}\n**Duration:** {human_duration}\n**Expires:** <t:{int(expires_at.timestamp())}:F>", color=Colors.DARK_RED)
         preserve_messages = moderation_bool(
             settings,
             "moderation_preserve_ban_messages",
@@ -486,6 +502,14 @@ class ManagementCommands:
         )
         self._suppress_duplicate_member_action_log(guild.id, user.id, "ban")
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Tempban", reason, human_duration)
+        dm_embed = ModEmbed.punishment_notice(
+            guild=guild,
+            action="Tempban",
+            reason=reason,
+            case_number=case_num,
+            duration=human_duration,
+            expires_at=expires_at,
+        )
         if notify_user:
             await self.send_punishment_notice(guild=guild, user=user, action="Tempban", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, duration=human_duration, punishment_expires_at=expires_at, delivery_channel=dm_channel)
         try:
@@ -542,7 +566,14 @@ class ManagementCommands:
         notify_user = moderation_bool(settings, "moderation_dm_users", True)
         dm_channel = await self.prepare_dm_channel(user) if notify_user else None
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Mute", reason, human_duration)
-        dm_embed = discord.Embed(title=f"🔇 Muted in {guild.name}", description=f"**Reason:** {reason}\n**Duration:** {human_duration}", color=Colors.ERROR)
+        dm_embed = ModEmbed.punishment_notice(
+            guild=guild,
+            action="Mute",
+            reason=reason,
+            case_number=case_num,
+            duration=human_duration,
+            expires_at=expires_at,
+        )
         if notify_user:
             await self.send_punishment_notice(guild=guild, user=user, action="Mute", reason=reason, case_number=case_num, settings=settings, fallback_embed=dm_embed, duration=human_duration, punishment_expires_at=expires_at, delivery_channel=dm_channel)
 
@@ -861,21 +892,23 @@ class ManagementCommands:
         if not bans:
             return await self._respond(source, embed=ModEmbed.info("No Bans", "No users are currently banned."))
         
-        embed = discord.Embed(
-            title=f"🔨 Ban List ({len(bans)} total)",
-            color=Colors.ERROR,
-            timestamp=datetime.now(timezone.utc)
-        )
-        
         ban_list = []
         for ban in bans[:20]:
-            reason = ban.reason or "*No reason provided*"
-            ban_list.append(f"**{ban.user}** (`{ban.user.id}`)\n└ {reason[:80]}")
-        
-        embed.description = "\n\n".join(ban_list)
-        
-        if len(bans) > 20:
-            embed.set_footer(text=f"Showing 20 of {len(bans)} bans")
+            reason = compact_text(ban.reason or "No reason provided", max_length=150)
+            ban_list.append(
+                f"**{discord.utils.escape_markdown(str(ban.user))}** · `{ban.user.id}`\n"
+                f"> {reason}"
+            )
+
+        shown = min(20, len(bans))
+        embed = moderation_list_embed(
+            title="Server ban list",
+            color=Colors.DARK_RED,
+            summary_rows=(("Banned users", len(bans)), ("Showing", shown)),
+            entries=ban_list,
+            thumbnail_url=getattr(getattr(guild, "icon", None), "url", None),
+            footer_text=f"Showing {shown} of {len(bans)} bans",
+        )
         
         await self._respond(source, embed=embed)
 
@@ -958,14 +991,14 @@ class ManagementCommands:
             except (discord.Forbidden, discord.HTTPException):
                 failed.append(member.mention)
         
-        embed = discord.Embed(
-            title="✏️ Bulk Nickname Change",
+        moderator = source.user if isinstance(source, discord.Interaction) else source.author
+        embed = await self.create_summary_log_embed(
+            title="Bulk nickname change",
+            moderator=moderator,
             color=Colors.SUCCESS,
-            timestamp=datetime.now(timezone.utc)
+            details={"Changed": len(changed), "Failed": len(failed)},
+            thumbnail_url=getattr(getattr(guild, "icon", None), "url", None),
         )
-        
-        embed.add_field(name="✅ Changed", value=f"**{len(changed)}** members", inline=True)
-        embed.add_field(name="❌ Failed", value=f"**{len(failed)}** members", inline=True)
         
         await self._respond(source, embed=embed)
 
@@ -989,14 +1022,14 @@ class ManagementCommands:
             except (discord.Forbidden, discord.HTTPException):
                 failed.append(member.mention)
         
-        embed = discord.Embed(
-            title="🔄 Nicknames Reset",
+        moderator = source.user if isinstance(source, discord.Interaction) else source.author
+        embed = await self.create_summary_log_embed(
+            title="Nicknames reset",
+            moderator=moderator,
             color=Colors.SUCCESS,
-            timestamp=datetime.now(timezone.utc)
+            details={"Reset": len(reset), "Failed": len(failed)},
+            thumbnail_url=getattr(getattr(guild, "icon", None), "url", None),
         )
-        
-        embed.add_field(name="✅ Reset", value=f"**{len(reset)}** members", inline=True)
-        embed.add_field(name="❌ Failed", value=f"**{len(failed)}** members", inline=True)
         
         await self._respond(source, embed=embed)
 
@@ -1041,15 +1074,14 @@ class ManagementCommands:
             except (discord.Forbidden, discord.HTTPException):
                 failed.append(member.mention)
         
-        embed = discord.Embed(
-            title="🏷️ Bulk Role Assignment",
+        moderator = source.user if isinstance(source, discord.Interaction) else source.author
+        embed = await self.create_summary_log_embed(
+            title="Bulk role assignment",
+            moderator=moderator,
             color=Colors.SUCCESS,
-            timestamp=datetime.now(timezone.utc)
+            details={"Role": role.mention, "Added": len(success), "Failed": len(failed)},
+            thumbnail_url=getattr(getattr(guild, "icon", None), "url", None),
         )
-        
-        embed.add_field(name="✅ Added", value=f"**{len(success)}** members", inline=True)
-        embed.add_field(name="❌ Failed", value=f"**{len(failed)}** members", inline=True)
-        embed.add_field(name="Role", value=role.mention, inline=False)
         
         await self._respond(source, embed=embed)
 
@@ -1076,15 +1108,14 @@ class ManagementCommands:
             except (discord.Forbidden, discord.HTTPException):
                 failed.append(member.mention)
         
-        embed = discord.Embed(
-            title="🗑️ Bulk Role Removal",
+        moderator = source.user if isinstance(source, discord.Interaction) else source.author
+        embed = await self.create_summary_log_embed(
+            title="Bulk role removal",
+            moderator=moderator,
             color=Colors.SUCCESS,
-            timestamp=datetime.now(timezone.utc)
+            details={"Role": role.mention, "Removed": len(success), "Failed": len(failed)},
+            thumbnail_url=getattr(getattr(guild, "icon", None), "url", None),
         )
-        
-        embed.add_field(name="✅ Removed", value=f"**{len(success)}** members", inline=True)
-        embed.add_field(name="❌ Failed", value=f"**{len(failed)}** members", inline=True)
-        embed.add_field(name="Role", value=role.mention, inline=False)
         
         await self._respond(source, embed=embed)
 
@@ -1096,19 +1127,19 @@ class ManagementCommands:
                 embed=ModEmbed.info("No Members", f"No one has the {role.mention} role.")
             )
         
-        embed = discord.Embed(
+        shown = min(30, len(members))
+        member_rows = [
+            f"**{discord.utils.escape_markdown(member.display_name)}** · {member.mention}"
+            for member in members[:30]
+        ]
+        embed = moderation_list_embed(
             title=f"Members with {role.name}",
-            color=role.color,
-            timestamp=datetime.now(timezone.utc)
+            color=int(getattr(role.color, "value", role.color) or Colors.MOD),
+            summary_rows=(("Members", len(members)), ("Showing", shown)),
+            entries=member_rows,
+            thumbnail_url=getattr(getattr(guild, "icon", None), "url", None),
+            footer_text=f"Showing {shown} of {len(members)} members",
         )
-        
-        member_list = [m.mention for m in members[:30]]
-        embed.description = ", ".join(member_list)
-        
-        if len(members) > 30:
-            embed.set_footer(text=f"Showing 30 of {len(members)} members")
-        else:
-            embed.set_footer(text=f"{len(members)} total members")
         
         await self._respond(source, embed=embed)
 

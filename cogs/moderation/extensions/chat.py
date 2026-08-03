@@ -7,7 +7,13 @@ import io
 import re
 from typing import Optional, Union
 
-from utils.embeds import ModEmbed, Colors, stamp_actor_footer
+from utils.embeds import (
+    Colors,
+    ModEmbed,
+    compact_kv_lines,
+    sapphire_log_embed,
+    stamp_actor_footer,
+)
 from utils.checks import is_mod, is_admin, is_bot_owner_id
 from utils.moderation_settings import moderation_id_set
 from utils.time_parser import parse_time
@@ -424,12 +430,14 @@ class ChatCommands:
         except discord.HTTPException:
             pass
         
-        embed = discord.Embed(
-            title="💥 Channel Nuked",
-            description=f"This channel has been nuked by {user.mention}.\n**Reason:** {reason}",
-            color=Colors.ERROR
+        embed = self._build_channel_status_embed(
+            emoji=get_app_emoji("warning") or "💥",
+            title="Channel nuked",
+            color=Colors.ERROR,
+            moderator=user,
+            reason=reason,
+            extra_line="The channel was rebuilt with its previous settings.",
         )
-        stamp_actor_footer(embed, user)
         await new_channel.send(embed=embed)
         await new_channel.send(self.NUKE_SOURCE_URL)
 
@@ -645,19 +653,24 @@ class ChatCommands:
 
                 message_log_channel = await logging_cog.get_log_channel(source.guild, "message")
                 if message_log_channel:
-                    log_embed = discord.Embed(
-                        title="Bulk Message Delete",
-                        description=(
-                            f"**{count}** messages deleted in {channel.mention}\n"
-                            f"**Moderator:** {author.mention} (`{author.id}`)\n"
-                            f"**Breakdown:** {count - bot_count} human · {bot_count} bot · "
-                            f"{len(authors)} author(s)"
+                    details = [
+                        ("Channel", channel.mention),
+                        ("Messages", count),
+                        ("Moderator", f"{author.mention} (`{author.id}`)"),
+                        (
+                            "Breakdown",
+                            f"{count - bot_count} human · {bot_count} bot · {len(authors)} author(s)",
                         ),
-                        color=Colors.ERROR,
-                    )
+                    ]
                     if user:
-                        log_embed.description += f"\n**Filter:** {user.mention}"
-                    log_embed.add_field(name="Preview", value=preview_text[:500], inline=False)
+                        details.append(("Filter", user.mention))
+                    log_embed = sapphire_log_embed(
+                        title="Bulk Message Delete",
+                        color=Colors.ERROR,
+                        detail_lines=compact_kv_lines(details).splitlines(),
+                        message_text=preview_text[:500],
+                        thumbnail_url=getattr(getattr(author, "display_avatar", None), "url", None),
+                    )
 
                     view = None
                     if transcript_bytes and transcript_name:
