@@ -126,6 +126,11 @@ def _footer_copy(moderator: Optional[discord.abc.User], issued_at: datetime) -> 
     return f"-# {moderator_name} · <t:{int(issued_at.timestamp())}:f>"
 
 
+def _moderator_avatar_url(moderator: Optional[discord.abc.User]) -> Optional[str]:
+    avatar_url = getattr(getattr(moderator, "display_avatar", None), "url", None)
+    return str(avatar_url) if avatar_url else None
+
+
 def build_punishment_notice(
     *,
     guild: discord.Guild,
@@ -176,33 +181,25 @@ def build_punishment_notice(
     ])
 
     safe_rejoin_url = _safe_rejoin_url(rejoin_url)
-    footer = discord.ui.TextDisplay(
-        _footer_copy(moderator, issued_at or datetime.now(timezone.utc))
-    )
+    footer_lines: list[str] = []
     status_label = (
         _release_status_label(normalized_action, duration)
         if punishment_expires_at is not None
         else None
     )
     if status_label:
-        children.append(
-            discord.ui.Section(
-                footer,
-                accessory=discord.ui.Button(
-                    label=status_label,
-                    style=discord.ButtonStyle.secondary,
-                    disabled=True,
-                ),
-            )
-        )
+        footer_lines.append(f"**{status_label}**")
     elif normalized_action in {"kick", "softban"} and safe_rejoin_url:
+        footer_lines.append(f"[Rejoin server]({safe_rejoin_url})")
+
+    footer_lines.append(_footer_copy(moderator, issued_at or datetime.now(timezone.utc)))
+    footer = discord.ui.TextDisplay("\n".join(footer_lines))
+    moderator_avatar_url = _moderator_avatar_url(moderator)
+    if moderator_avatar_url:
         children.append(
             discord.ui.Section(
                 footer,
-                accessory=discord.ui.Button(
-                    label="Rejoin server",
-                    url=safe_rejoin_url,
-                ),
+                accessory=discord.ui.Thumbnail(moderator_avatar_url),
             )
         )
     else:
