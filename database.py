@@ -699,6 +699,7 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
                 
         self._lock = asyncio.Lock()
         self._initialized = False
+        self._schema_initialized = False
         self._pool: Optional[Any] = None
         self._supabase_mirror = SupabaseStorageMirror()
         self._supabase_sync_interval_seconds = max(5, int(os.getenv("SUPABASE_SYNC_INTERVAL_SECONDS", "15")))
@@ -1092,6 +1093,21 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
         
         async with self._lock:
             async with self.get_connection() as db:
+                # The schema (tables, migrations, indexes) is GLOBAL — it is keyed
+                # by guild_id columns, not per-guild namespaces. Running the full
+                # DDL+migration pass once per guild on startup is redundant work
+                # that holds ``self._lock`` and saturates the connection pool for
+                # ~90s on a 6-guild Postgres backend, which is what made warn/mute
+                # take several seconds each during startup. Build it once per
+                # process; subsequent guilds only need their settings row.
+                if self._schema_initialized:
+                    await db.execute(
+                        "INSERT OR IGNORE INTO guild_settings (guild_id) VALUES (?)",
+                        (guild_id,),
+                    )
+                    await db.commit()
+                    return
+
                 # ===== CORE GUILD SETTINGS =====
                 # Create tables first; indexes are created after schema/migrations.
                 await db.execute("""
@@ -1670,6 +1686,11 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
                     except Exception:
                         pass
                 
+                # Schema build is complete for this process — never redo it for
+                # subsequent guilds (they only need their settings row, handled
+                # by the early-return branch above).
+                self._schema_initialized = True
+
                 # Ensure guild exists
                 await db.execute(
                     "INSERT OR IGNORE INTO guild_settings (guild_id) VALUES (?)",
