@@ -221,10 +221,14 @@ class Moderation(
         
         if not self.check_quarantine_expiry.is_running():
             self.check_quarantine_expiry.start()
+        if not self.check_tempban_expiry.is_running():
+            self.check_tempban_expiry.start()
 
     async def cog_unload(self):
         if self.check_quarantine_expiry.is_running():
             self.check_quarantine_expiry.cancel()
+        if self.check_tempban_expiry.is_running():
+            self.check_tempban_expiry.cancel()
 
         self._unregister_top_level_commands()
 
@@ -300,6 +304,78 @@ class Moderation(
 
     @check_quarantine_expiry.before_loop
     async def before_quarantine_check(self):
+        await self.bot.wait_until_ready()
+
+    @tasks.loop(minutes=1)
+    async def check_tempban_expiry(self):
+        """Automatically unban expired tempbans and deliver a rejoin notice."""
+        await self._process_expired_tempbans()
+
+    async def _process_expired_tempbans(self) -> None:
+        try:
+            expired = await self.bot.db.get_expired_tempbans()
+        except Exception as exc:
+            logger.error("Failed to load expired tempbans: %s", exc)
+            return
+
+        for tempban in expired:
+            guild_id = int(tempban["guild_id"])
+            user_id = int(tempban["user_id"])
+            guild = self.bot.get_guild(guild_id)
+            if guild is None:
+                continue
+
+            try:
+                user = await self.bot.fetch_user(user_id)
+            except (discord.NotFound, discord.HTTPException):
+                logger.warning("Could not resolve expired tempban user %s in guild %s", user_id, guild_id)
+                continue
+
+            self._suppress_duplicate_member_action_log(guild_id, user_id, "unban")
+            try:
+                await guild.unban(user, reason="Temporary ban expired")
+            except discord.NotFound:
+                await self.bot.db.remove_tempban(guild_id, user_id)
+                continue
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                logger.warning("Could not expire tempban for %s in %s: %s", user_id, guild_id, exc)
+                continue
+
+            await self.bot.db.remove_tempban(guild_id, user_id)
+            settings = await self.bot.db.get_settings(guild_id)
+
+            appeals = self.bot.get_cog("Appeals")
+            notify_expired = getattr(appeals, "notify_tempban_expired", None)
+            if callable(notify_expired) and moderation_bool(settings, "moderation_dm_users", True):
+                try:
+                    await notify_expired(guild=guild, user=user, settings=settings)
+                except Exception as exc:
+                    logger.debug("Could not DM expired tempban user %s: %s", user_id, exc)
+
+            try:
+                bot_actor = guild.me or self.bot.user
+                case_num = await self.bot.db.create_case(
+                    guild_id,
+                    user_id,
+                    bot_actor.id,
+                    "Unban",
+                    "Temporary ban expired",
+                )
+                embed = await self.create_mod_embed(
+                    title="Member automatically unbanned",
+                    user=user,
+                    moderator=bot_actor,
+                    reason="Temporary ban expired",
+                    color=Colors.SUCCESS,
+                    case_num=case_num,
+                    extra_fields={"Original moderator": f"<@{tempban['moderator_id']}>"},
+                )
+                await self.log_action(guild, embed)
+            except Exception as exc:
+                logger.debug("Could not log expired tempban for %s: %s", user_id, exc)
+
+    @check_tempban_expiry.before_loop
+    async def before_tempban_check(self):
         await self.bot.wait_until_ready()
 
     # ==================== REPLY-BASED QUICK ACTIONS ====================

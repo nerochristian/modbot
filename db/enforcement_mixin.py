@@ -210,7 +210,7 @@ class EnforcementMixin:
                 if parsed_expiry > now:
                     continue
                 expired.append({
-                    "id": r[0],
+                    "id": row[0],
                     "guild_id": row[1],
                     "user_id": row[2],
                     "moderator_id": row[3],
