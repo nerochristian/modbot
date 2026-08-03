@@ -70,6 +70,22 @@ def test_prefix_role_commands_accept_unmentioned_multiword_role_names() -> None:
         assert role_parameter.kind is inspect.Parameter.VAR_POSITIONAL
 
 
+def test_prefix_role_lookup_is_case_insensitive_and_allows_unique_prefixes() -> None:
+    memberms = types.SimpleNamespace(id=1, name="Memberms")
+    admin = types.SimpleNamespace(id=2, name="Admin")
+    member_role = types.SimpleNamespace(id=3, name="Member Role")
+    roles = [memberms, admin, member_role]
+    guild = types.SimpleNamespace(
+        roles=roles,
+        get_role=lambda role_id: next((role for role in roles if role.id == role_id), None),
+    )
+
+    assert PrefixCommands._match_guild_role(guild, "admin") is admin
+    assert PrefixCommands._match_guild_role(guild, "memberm") is memberms
+    assert PrefixCommands._match_guild_role(guild, "member") is None
+    assert PrefixCommands._match_guild_role(guild, "2") is admin
+
+
 def test_cog_classes_do_not_override_command_lifecycle_methods() -> None:
     duplicates: list[str] = []
     for path in COGS.rglob("*.py"):

@@ -9,6 +9,8 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Union
 import asyncio
 import random
+import re
+import unicodedata
 
 from utils.embeds import ModEmbed, Colors
 from utils.checks import is_bot_owner_id, has_permissions_or_owner
@@ -52,17 +54,55 @@ class PrefixCommands(commands.Cog):
             await self._send_role_embed(ctx, ModEmbed.error("Missing Role", usage))
             return None
 
-        try:
-            return await commands.RoleConverter().convert(ctx, role_query)
-        except commands.RoleNotFound:
-            await self._send_role_embed(
-                ctx,
-                ModEmbed.error(
-                    "Role Not Found",
-                    f"I couldn't find a role named `{role_query}`. You can use the role name, mention, or ID.",
-                ),
-            )
+        role = self._match_guild_role(ctx.guild, role_query)
+        if role is not None:
+            return role
+
+        await self._send_role_embed(
+            ctx,
+            ModEmbed.error(
+                "Role Not Found",
+                f"I couldn't find one clear role matching `{role_query}`. Use a more specific role name, mention, or ID.",
+            ),
+        )
+        return None
+
+    @staticmethod
+    def _role_lookup_key(value: object) -> str:
+        return unicodedata.normalize("NFKC", str(value or "")).strip().casefold()
+
+    @classmethod
+    def _match_guild_role(
+        cls,
+        guild: Optional[discord.Guild],
+        role_query: str,
+    ) -> Optional[discord.Role]:
+        if guild is None:
             return None
+
+        id_match = re.fullmatch(r"<@&(\d{15,22})>", role_query.strip())
+        if id_match is not None or role_query.strip().isdigit():
+            role_id = int(id_match.group(1) if id_match is not None else role_query.strip())
+            return guild.get_role(role_id)
+
+        query_key = cls._role_lookup_key(role_query)
+        if not query_key:
+            return None
+
+        exact_matches = [
+            role for role in guild.roles
+            if cls._role_lookup_key(role.name) == query_key
+        ]
+        if len(exact_matches) == 1:
+            return exact_matches[0]
+        if exact_matches:
+            return None
+
+        prefix_matches = [
+            role for role in guild.roles
+            if cls._role_lookup_key(role.name).startswith(query_key)
+        ]
+        return prefix_matches[0] if len(prefix_matches) == 1 else None
 
     def _role_edit_error(
         self,
