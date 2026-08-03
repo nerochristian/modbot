@@ -31,7 +31,7 @@ _AI_BASE_URL = (os.getenv("AIMODEL_BASE_URL") or "https://aimodel.lol/v1").strip
 _AI_API_KEY = os.getenv("AIMODEL_API_KEY", "").strip()
 _AI_MODEL = (os.getenv("AIMODEL_CHAT_MODEL") or os.getenv("AI_MODEL") or "accounts/aimodel/models/kimi-k3-fast").strip()
 
-from utils.embeds import ModEmbed
+from utils.embeds import ModEmbed, compact_kv_lines, sapphire_log_embed
 from utils.logging import send_log_embed
 from utils.checks import is_admin, is_mod, is_bot_owner_id
 from utils.moderation_settings import moderation_bool, moderation_id_set
@@ -758,34 +758,18 @@ class AntiRaid(commands.Cog):
 
         await self.bot.db.update_settings(interaction.guild_id, settings)
 
-        embed = discord.Embed(
-            title="🛡️ Anti-Raid Settings",
+        rows = (
+            ("Threshold", f"{settings.get('antiraid_join_threshold', 10)} joins"),
+            ("Time window", f"{settings.get('antiraid_join_seconds', 10)} seconds"),
+            ("Cooldown", f"{settings.get('antiraid_cooldown_seconds', 60)} seconds"),
+            ("Response", settings.get("antiraid_action", "kick").title()),
+            ("AI detection", "Enabled" if settings.get("antiraid_ai_enabled") else "Disabled"),
+        )
+        embed = sapphire_log_embed(
+            title="Anti-raid settings",
             color=Config.COLOR_INFO,
-        )
-        embed.add_field(
-            name="Threshold",
-            value=f"{settings.get('antiraid_join_threshold', 10)} joins",
-            inline=True,
-        )
-        embed.add_field(
-            name="Time Window",
-            value=f"{settings.get('antiraid_join_seconds', 10)} seconds",
-            inline=True,
-        )
-        embed.add_field(
-            name="Cooldown",
-            value=f"{settings.get('antiraid_cooldown_seconds', 60)} seconds",
-            inline=True,
-        )
-        embed.add_field(
-            name="Action",
-            value=settings.get("antiraid_action", "kick").title(),
-            inline=True,
-        )
-        embed.add_field(
-            name="AI Detection",
-            value="✅ Enabled" if settings.get("antiraid_ai_enabled") else "❌ Disabled",
-            inline=True,
+            detail_lines=compact_kv_lines(rows).splitlines(),
+            thumbnail_url=getattr(getattr(interaction.guild, "icon", None), "url", None),
         )
 
         await interaction.response.send_message(embed=embed)
@@ -914,13 +898,10 @@ class AntiRaid(commands.Cog):
             )
             await self.bot.db.set_setting(interaction.guild_id, "raid_mode", True)
 
-            embed = discord.Embed(
-                title="🚨 RAID MODE ENABLED",
-                description=(
-                    f"Locked **{locked_count}** channels.\n"
-                    "New members will be auto-kicked/quarantined."
-                ),
-                color=Config.COLOR_ERROR,
+            embed = ModEmbed.warning(
+                "Raid Mode Enabled",
+                f"Locked **{locked_count}** channels.\n"
+                "New members will receive the configured raid response.",
             )
         else:
             unlocked_count = await self._unlock_raid_channels(
@@ -931,11 +912,7 @@ class AntiRaid(commands.Cog):
             await self.bot.db.set_setting(interaction.guild_id, "raid_mode", False)
             self.raid_cooldown.discard(interaction.guild_id)
 
-            embed = discord.Embed(
-                title="✅ Raid Mode Disabled",
-                description=f"Unlocked **{unlocked_count}** channels.",
-                color=Config.COLOR_SUCCESS,
-            )
+            embed = ModEmbed.success("Raid Mode Disabled", f"Unlocked **{unlocked_count}** channels.")
 
         await interaction.followup.send(embed=embed)
 
@@ -946,12 +923,6 @@ class AntiRaid(commands.Cog):
     async def antiraid_stats(self, interaction: discord.Interaction):
         settings = await self.bot.db.get_settings(interaction.guild_id)
         
-        embed = discord.Embed(
-            title="📊 Anti-Raid Statistics",
-            color=Config.COLOR_INFO,
-            timestamp=datetime.now(timezone.utc),
-        )
-
         # current status
         raid_mode = settings.get("raid_mode", False)
         enabled = settings.get("antiraid_enabled", False)
@@ -960,49 +931,37 @@ class AntiRaid(commands.Cog):
         if raid_mode:
             status += " | 🚨 **RAID MODE**"
         
-        embed.add_field(
-            name="Status",
-            value=status,
-            inline=False,
-        )
-
         # current tracking
         guild_id = interaction.guild_id
         recent_joins = len(self.join_tracker.get(guild_id, []))
         tracked_members = len(self.member_tracker.get(guild_id, []))
         
-        embed.add_field(
-            name="Recent Activity",
-            value=(
-                f"**Joins (last 60s):** {recent_joins}\n"
-                f"**Tracked Members:** {tracked_members}"
-            ),
-            inline=True,
-        )
-
         # config
         threshold = settings.get("antiraid_join_threshold", 10)
         seconds = settings.get("antiraid_join_seconds", 10)
         action = settings.get("antiraid_action", "kick")
         
-        embed.add_field(
-            name="Configuration",
-            value=(
-                f"**Threshold:** {threshold} joins / {seconds}s\n"
-                f"**Action:** {action.title()}"
-            ),
-            inline=True,
-        )
-
         # ai status
         ai_enabled = settings.get("antiraid_ai_enabled", False)
+        ai_status = "Disabled"
         if ai_enabled:
             confidence = settings.get("antiraid_ai_min_confidence", 70)
-            embed.add_field(
-                name="🤖 AI Detection",
-                value=f"Enabled (min {confidence}% confidence)",
-                inline=False,
-            )
+            ai_status = f"Enabled · minimum {confidence}% confidence"
+
+        rows = (
+            ("Status", status),
+            ("Joins in last 60s", recent_joins),
+            ("Tracked members", tracked_members),
+            ("Trigger", f"{threshold} joins in {seconds}s"),
+            ("Response", action.title()),
+            ("AI detection", ai_status),
+        )
+        embed = sapphire_log_embed(
+            title="Anti-raid statistics",
+            color=Config.COLOR_INFO,
+            detail_lines=compact_kv_lines(rows).splitlines(),
+            thumbnail_url=getattr(getattr(interaction.guild, "icon", None), "url", None),
+        )
 
         await interaction.response.send_message(embed=embed)
 

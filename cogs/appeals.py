@@ -12,6 +12,7 @@ from typing import Any, Optional
 import discord
 from discord.ext import commands
 
+from utils.embeds import Colors, moderation_list_embed, stamp_actor_footer
 from utils.status_emojis import get_app_emoji
 
 logger = logging.getLogger("ModBot.Appeals")
@@ -184,12 +185,22 @@ class Appeals(commands.Cog):
         settings = await self.bot.db.get_settings(ctx.guild.id)
         channel_id = str(settings.get("appeal_staff_channel") or "")
         questions = _questions(settings.get("appeal_questions"))
-        embed = discord.Embed(title="Appeals workflow", color=0x5865F2)
-        embed.add_field(name="Module", value="Enabled" if _as_bool(settings.get("appeals_enabled")) else "Disabled", inline=True)
-        embed.add_field(name="Submissions", value="Open" if _as_bool(settings.get("appeals_open"), True) else "Closed", inline=True)
-        embed.add_field(name="Link lifetime", value=f"{max(1, min(30, int(settings.get('appeal_expiry_days') or 7)))} days", inline=True)
-        embed.add_field(name="Staff channel", value=f"<#{channel_id}>" if channel_id.isdigit() else "Not configured", inline=False)
-        embed.add_field(name="Questions", value="\n".join(f"{index}. {question['label']}" for index, question in enumerate(questions, 1)), inline=False)
+        embed = moderation_list_embed(
+            title="Appeals workflow",
+            color=Colors.INFO,
+            summary_rows=(
+                ("Module", "Enabled" if _as_bool(settings.get("appeals_enabled")) else "Disabled"),
+                ("Submissions", "Open" if _as_bool(settings.get("appeals_open"), True) else "Closed"),
+                ("Link lifetime", f"{max(1, min(30, int(settings.get('appeal_expiry_days') or 7)))} days"),
+                ("Staff channel", f"<#{channel_id}>" if channel_id.isdigit() else "Not configured"),
+            ),
+            entries=(
+                "**Appeal questions**\n"
+                + "\n".join(f"> {index}. {question['label']}" for index, question in enumerate(questions, 1)),
+            ),
+            thumbnail_url=getattr(getattr(ctx.guild, "icon", None), "url", None),
+        )
+        stamp_actor_footer(embed, ctx.author)
         await ctx.send(embed=embed)
 
     async def notify_punishment(
