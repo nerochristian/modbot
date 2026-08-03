@@ -19,7 +19,7 @@ from discord.ext import commands, tasks
 
 from config import Config
 from utils.checks import is_admin, is_mod, is_bot_owner_id
-from utils.embeds import ModEmbed
+from utils.embeds import ModEmbed, moderation_list_embed
 
 logger = logging.getLogger("ModBot.RiskScoring")
 
@@ -319,21 +319,22 @@ class RiskScoring(commands.Cog):
             ((name, points) for name, points in result.factors.items() if points > 0),
             key=lambda item: -item[1],
         )[:4]
-        embed = discord.Embed(
-            title="⚠️ High-risk member detected",
-            description=(
-                f"{member.mention} (`{member.id}`) crossed the risk alert threshold.\n"
-                f"**Score:** {result.score}/100 (alert at {threshold})"
-            ),
+        factor_lines = [
+            f"> {name.replace('_', ' ').title()} · **+{points}**"
+            for name, points in top_factors
+        ]
+        embed = moderation_list_embed(
+            title="High-risk member detected",
             color=Config.COLOR_ERROR,
-            timestamp=datetime.now(timezone.utc),
+            summary_rows=(
+                ("Member", f"{member.mention} (`{member.id}`)"),
+                ("Risk score", f"{result.score}/100"),
+                ("Alert threshold", f"{threshold}/100"),
+            ),
+            entries=(("**Top risk factors**\n" + "\n".join(factor_lines)),) if factor_lines else (),
+            thumbnail_url=getattr(getattr(member, "display_avatar", None), "url", None),
+            footer_text=guild.name,
         )
-        if top_factors:
-            embed.add_field(
-                name="Top factors",
-                value="\n".join(f"• {name.replace('_', ' ').title()}: **+{points}**" for name, points in top_factors),
-                inline=False,
-            )
         try:
             await channel.send(embed=embed)
         except (discord.Forbidden, discord.HTTPException):
@@ -403,44 +404,39 @@ class RiskScoring(commands.Cog):
             else discord.Color.green()
         )
 
-        embed = discord.Embed(
-            title=f"🔍 Risk Scan: {user.display_name}",
-            description=f"**Score: {result.score}/100**",
-            color=color,
-            timestamp=datetime.now(timezone.utc),
-        )
-        embed.set_thumbnail(url=user.display_avatar.url)
+        factor_lines = []
+        for factor, points in sorted(result.factors.items(), key=lambda x: -x[1]):
+            if points > 0:
+                label = factor.replace("_", " ").title()
+                factor_lines.append(f"> {label} · **+{points}**")
+        if not factor_lines:
+            factor_lines.append("> No risk factors detected")
 
-        if result.factors:
-            factor_lines = []
-            for factor, points in sorted(result.factors.items(), key=lambda x: -x[1]):
-                if points > 0:
-                    label = factor.replace("_", " ").title()
-                    factor_lines.append(f"• {label}: **+{points}**")
-            if factor_lines:
-                embed.add_field(name="Risk Factors", value="\n".join(factor_lines), inline=False)
-            else:
-                embed.add_field(name="Risk Factors", value="✅ No risk factors detected", inline=False)
+        detail_parts = []
+        if "account_age_days" in result.details:
+            detail_parts.append(f"> Account age · {result.details['account_age_days']} days")
+        if "join_hours" in result.details:
+            detail_parts.append(f"> Joined · {result.details['join_hours']:.0f}h ago")
+        if "warning_count" in result.details:
+            detail_parts.append(f"> Warnings · {result.details['warning_count']}")
+        if "scam_cases" in result.details:
+            detail_parts.append(f"> Scam cases · {result.details['scam_cases']}")
 
+        entries = ["**Risk factors**\n" + "\n".join(factor_lines)]
+        if detail_parts:
+            entries.append("**Member context**\n" + "\n".join(detail_parts))
+
+        summary_rows = [("Risk score", f"{result.score}/100")]
         if result.suggested_action != "none":
-            embed.add_field(
-                name="Suggested Action",
-                value=f"🛡️ {result.suggested_action}",
-                inline=False,
-            )
+            summary_rows.append(("Suggested action", result.suggested_action))
 
-        if result.details:
-            detail_parts = []
-            if "account_age_days" in result.details:
-                detail_parts.append(f"Account age: {result.details['account_age_days']} days")
-            if "join_hours" in result.details:
-                detail_parts.append(f"Joined: {result.details['join_hours']:.0f}h ago")
-            if "warning_count" in result.details:
-                detail_parts.append(f"Warnings: {result.details['warning_count']}")
-            if "scam_cases" in result.details:
-                detail_parts.append(f"Scam cases: {result.details['scam_cases']}")
-            if detail_parts:
-                embed.add_field(name="Details", value="\n".join(detail_parts), inline=False)
+        embed = moderation_list_embed(
+            title=f"Risk scan · {user.display_name}",
+            color=color,
+            summary_rows=summary_rows,
+            entries=entries,
+            thumbnail_url=user.display_avatar.url,
+        )
 
         return embed
 
