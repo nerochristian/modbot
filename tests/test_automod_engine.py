@@ -491,6 +491,41 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(footer_section.accessory.label, "Rejoin server")
         self.assertEqual(footer_section.accessory.url, "https://discord.com/invite/example")
 
+    async def test_rejoin_invite_is_created_once_and_cached(self) -> None:
+        channel = SimpleNamespace(
+            id=321,
+            permissions_for=lambda member: SimpleNamespace(
+                administrator=False,
+                view_channel=True,
+                create_instant_invite=True,
+            ),
+            create_invite=AsyncMock(
+                return_value=SimpleNamespace(url="https://discord.gg/generated")
+            ),
+        )
+        guild = SimpleNamespace(
+            id=1,
+            me=SimpleNamespace(id=999),
+            vanity_url_code=None,
+            system_channel=channel,
+            rules_channel=None,
+            public_updates_channel=None,
+            text_channels=[channel],
+        )
+        appeals = Appeals(SimpleNamespace())
+
+        first = await appeals._resolve_rejoin_url(guild, {})
+        second = await appeals._resolve_rejoin_url(guild, {})
+
+        self.assertEqual(first, "https://discord.gg/generated")
+        self.assertEqual(second, first)
+        channel.create_invite.assert_awaited_once_with(
+            max_age=0,
+            max_uses=0,
+            unique=False,
+            reason="Docket moderation rejoin link",
+        )
+
     async def test_appeal_expiry_is_stored_as_naive_utc_for_postgres(self) -> None:
         source = datetime(2026, 7, 18, 16, 30, tzinfo=timezone(timedelta(hours=-5)))
 
