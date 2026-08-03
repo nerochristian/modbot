@@ -393,12 +393,13 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(embed.title, "Message flagged")
         self.assertEqual(embed.author.name, "The Supreme People")
-        self.assertIn("**The Supreme People**", embed.description)
-        self.assertEqual([field.name for field in embed.fields], ["Reason", "Outcome", "Message", "Questions"])
-        self.assertEqual(embed.fields[0].value, "> Blocked word or phrase")
-        self.assertEqual(embed.fields[1].value, "Removed")
-        self.assertEqual(embed.fields[2].value, "> @everyone")
-        self.assertEqual(embed.fields[3].value, "Open a ticket if you think this was a mistake.")
+        self.assertIn("> **Server:** The Supreme People", embed.description)
+        self.assertIn("> **Rule:** Blocked words", embed.description)
+        self.assertIn("> **Outcome:** Removed", embed.description)
+        self.assertIn("**Why it was flagged**\n> Blocked word or phrase", embed.description)
+        self.assertIn("**Message**\n> @everyone", embed.description)
+        self.assertIn("**What you can do**\n> Open a ticket if you think this was a mistake.", embed.description)
+        self.assertEqual(list(embed.fields), [])
         self.assertEqual(embed.footer.text, "CASE-0063 | AutoMod")
 
     async def test_case_notice_is_compact_and_keeps_the_case_visible(self) -> None:

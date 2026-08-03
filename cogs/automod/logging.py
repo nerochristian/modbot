@@ -7,7 +7,7 @@ from typing import Optional
 
 import discord
 
-from utils.embeds import Colors, compact_kv_lines
+from utils.embeds import Colors, compact_kv_lines, moderation_list_embed
 from .models import Action, RuleMatch, Severity
 
 
@@ -156,28 +156,33 @@ class AutoModLogger:
     ) -> discord.Embed:
         guild = message.guild
         server_name = guild.name if guild is not None else "this server"
-        embed = discord.Embed(
-            title="Message flagged",
-            description=f"Your message in **{server_name}** triggered **{_friendly_rule(match.rule)}**.",
-            color=_severity_color(match.severity),
-            timestamp=datetime.now(timezone.utc),
-        )
         outcome = "Removed" if deleted else _friendly_action(action)
-        embed.add_field(name="Reason", value=f"> {_trim(match.reason, 500)}", inline=False)
-        embed.add_field(name="Outcome", value=outcome, inline=True)
+        entries = [
+            f"**Why it was flagged**\n{_message_preview(match.reason, 500)}",
+        ]
         if message.content:
-            embed.add_field(name="Message", value=_message_preview(message.content), inline=False)
-
+            entries.append(f"**Message**\n{_message_preview(message.content)}")
         appeal = str(appeal_instructions or "").strip()
         if appeal:
-            embed.add_field(name="Questions", value=_trim(appeal, 500), inline=False)
+            entries.append(f"**What you can do**\n> {_trim(appeal, 500)}")
+
+        footer = f"CASE-{case_number:04d} | AutoMod" if case_number else "Docket AutoMod"
+        embed = moderation_list_embed(
+            title="Message flagged",
+            color=_severity_color(match.severity),
+            summary_rows=(
+                ("Server", server_name),
+                ("Rule", _friendly_rule(match.rule)),
+                ("Outcome", outcome),
+            ),
+            entries=entries,
+            footer_text=footer,
+        )
         guild_icon = getattr(getattr(guild, "icon", None), "url", None)
         if guild_icon:
             embed.set_author(name=server_name, icon_url=guild_icon)
         else:
             embed.set_author(name=server_name)
-        footer = f"CASE-{case_number:04d} | AutoMod" if case_number else "Docket AutoMod"
-        embed.set_footer(text=footer)
         return embed
 
     async def _send(self, guild: discord.Guild, embed: discord.Embed) -> None:
