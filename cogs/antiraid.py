@@ -567,23 +567,17 @@ class AntiRaid(commands.Cog):
         if action is None:
             action = settings.get("antiraid_action", "kick")
 
-        # build log embed
-        embed = discord.Embed(
-            title="🚨 RAID DETECTED",
-            description=f"Automatic raid protection triggered!\n**Action:** {action.upper()}",
-            color=Config.COLOR_ERROR,
-            timestamp=datetime.now(timezone.utc),
-        )
-
+        log_rows: list[tuple[str, object]] = [
+            ("Response", action.title()),
+            ("Trigger", "Automatic raid protection"),
+        ]
         if ai_analysis:
-            embed.add_field(
-                name="🤖 AI Analysis",
-                value=(
-                    f"**Confidence:** {ai_analysis['confidence']}%\n"
-                    f"**Severity:** {ai_analysis['severity']}/10\n"
-                    f"**Pattern:** {ai_analysis['pattern']}"
-                ),
-                inline=False,
+            log_rows.extend(
+                [
+                    ("AI confidence", f"{ai_analysis['confidence']}%"),
+                    ("Severity", f"{ai_analysis['severity']}/10"),
+                    ("Pattern", ai_analysis['pattern']),
+                ]
             )
 
         log_channel_id = settings.get("antiraid_log_channel") or settings.get("mod_log_channel")
@@ -663,10 +657,12 @@ class AntiRaid(commands.Cog):
                         except Exception:
                             pass
 
-        embed.add_field(
-            name="📊 Actions Taken",
-            value=f"**{action_count}** {action}s executed",
-            inline=False,
+        log_rows.append(("Actions taken", f"{action_count} {action} operation(s)"))
+        embed = sapphire_log_embed(
+            title="Raid detected",
+            color=Config.COLOR_ERROR,
+            detail_lines=compact_kv_lines(log_rows).splitlines(),
+            thumbnail_url=getattr(getattr(guild, "icon", None), "url", None),
         )
         if log_channel_id:
             try:

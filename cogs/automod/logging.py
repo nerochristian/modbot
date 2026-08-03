@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from typing import Optional
 
 import discord
 
-from utils.embeds import Colors, compact_kv_lines, moderation_list_embed
+from utils.embeds import Colors, compact_kv_lines, moderation_list_embed, sapphire_log_embed
 from .models import Action, RuleMatch, Severity
 
 
@@ -84,11 +83,6 @@ class AutoModLogger:
     ) -> None:
         if message.guild is None:
             return
-        embed = discord.Embed(
-            title="AutoMod action failed" if error else ("AutoMod removed a message" if deleted else "AutoMod rule triggered"),
-            color=_severity_color(match.severity, failed=bool(error)),
-            timestamp=datetime.now(timezone.utc),
-        )
         rows: list[tuple[str, object]] = [
             ("Member", f"{message.author.mention} (`{message.author.id}`)"),
             ("Channel", getattr(message.channel, "mention", str(message.channel))),
@@ -101,17 +95,19 @@ class AutoModLogger:
         if case_number:
             rows.append(("Case", f"#{case_number}"))
         rows.append(("Reason", _trim(match.reason, 500)))
-        embed.description = compact_kv_lines(rows, max_value_length=500)
-        if message.content:
-            embed.add_field(name="Message", value=_message_preview(message.content), inline=False)
+        avatar_url = getattr(getattr(message.author, "display_avatar", None), "url", None)
+        embed = sapphire_log_embed(
+            title="AutoMod action failed" if error else ("AutoMod removed a message" if deleted else "AutoMod rule triggered"),
+            color=_severity_color(match.severity, failed=bool(error)),
+            detail_lines=compact_kv_lines(rows, max_value_length=500).splitlines(),
+            message_text=_trim(message.content, 1000) if message.content else None,
+            thumbnail_url=avatar_url,
+        )
         evidence = _trim(", ".join(match.evidence), 900) if match.evidence else ""
         if evidence and evidence.casefold() != str(message.content or "").strip().casefold():
             embed.add_field(name="Matched content", value=_message_preview(evidence, 900), inline=False)
         if error:
             embed.add_field(name="Error", value=_trim(error, 900), inline=False)
-        avatar_url = getattr(getattr(message.author, "display_avatar", None), "url", None)
-        if avatar_url:
-            embed.set_thumbnail(url=avatar_url)
         await self._send(message.guild, embed)
 
     async def log_member_action(
@@ -123,25 +119,23 @@ class AutoModLogger:
         *,
         error: Optional[str] = None,
     ) -> None:
-        embed = discord.Embed(
+        avatar_url = getattr(getattr(member, "display_avatar", None), "url", None)
+        embed = sapphire_log_embed(
             title="AutoMod member alert failed" if error else "AutoMod member alert",
             color=_severity_color(match.severity, failed=bool(error)),
-            timestamp=datetime.now(timezone.utc),
-        )
-        embed.description = compact_kv_lines(
-            [
-                ("Member", f"{member.mention} (`{member.id}`)"),
-                ("Rule", _friendly_rule(match.rule)),
-                ("Action", _friendly_action(action)),
-                ("Reason", _trim(match.reason, 500)),
-            ],
-            max_value_length=500,
+            detail_lines=compact_kv_lines(
+                [
+                    ("Member", f"{member.mention} (`{member.id}`)"),
+                    ("Rule", _friendly_rule(match.rule)),
+                    ("Action", _friendly_action(action)),
+                    ("Reason", _trim(match.reason, 500)),
+                ],
+                max_value_length=500,
+            ).splitlines(),
+            thumbnail_url=avatar_url,
         )
         if error:
             embed.add_field(name="Error", value=_trim(error, 900), inline=False)
-        avatar_url = getattr(getattr(member, "display_avatar", None), "url", None)
-        if avatar_url:
-            embed.set_thumbnail(url=avatar_url)
         await self._send(guild, embed)
 
     def build_user_notice(

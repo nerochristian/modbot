@@ -30,7 +30,7 @@ from discord.ext import commands
 
 from config import Config
 from utils.checks import is_admin, is_bot_owner_id
-from utils.embeds import moderation_list_embed
+from utils.embeds import compact_kv_lines, moderation_list_embed, sapphire_log_embed
 from utils.logging import send_log_embed
 from utils.moderation_settings import moderation_bool, moderation_id_set
 
@@ -231,17 +231,19 @@ class Guardian(commands.Cog):
         except (discord.Forbidden, discord.HTTPException) as exc:
             outcome = f"Response failed: {exc.text or exc.status}"
 
-        embed = discord.Embed(
-            title="🛡️ Guardian: nuke attempt stopped",
-            description=(
-                f"**{actor}** (`{actor.id}`) tripped the **{label.lower()}** tripwire.\n"
-                f"**Response:** {outcome}"
-            ),
+        embed = sapphire_log_embed(
+            title="Guardian · nuke attempt stopped",
             color=Config.COLOR_ERROR,
-            timestamp=datetime.now(timezone.utc),
+            detail_lines=compact_kv_lines(
+                (
+                    ("Actor", f"{actor} (`{actor.id}`)"),
+                    ("Tripwire", f"{label}: {_threshold(settings, event)} in {_window(settings, event)}s"),
+                    ("Configured response", action.title()),
+                    ("Outcome", outcome),
+                )
+            ).splitlines(),
+            thumbnail_url=getattr(getattr(actor, "display_avatar", None), "url", None),
         )
-        embed.add_field(name="Tripwire", value=f"{label}: {_threshold(settings, event)} in {_window(settings, event)}s", inline=True)
-        embed.add_field(name="Configured action", value=action.title(), inline=True)
 
         log_channel_id = (
             settings.get("guardian_nuke_log_channel")
