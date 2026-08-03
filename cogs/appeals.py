@@ -115,22 +115,6 @@ def _release_status_label(action: str, duration: Optional[str]) -> Optional[str]
     return label if len(label) <= 80 else f"{verb} when timer ends"
 
 
-def _footer_copy(moderator: Optional[discord.abc.User], issued_at: datetime) -> str:
-    moderator_name = str(
-        getattr(moderator, "name", None)
-        or getattr(moderator, "display_name", None)
-        or "Docket moderation"
-    ).strip()
-    if not moderator_name.startswith("@") and moderator is not None:
-        moderator_name = f"@{moderator_name}"
-    return f"-# {moderator_name} · <t:{int(issued_at.timestamp())}:f>"
-
-
-def _moderator_avatar_url(moderator: Optional[discord.abc.User]) -> Optional[str]:
-    avatar_url = getattr(getattr(moderator, "display_avatar", None), "url", None)
-    return str(avatar_url) if avatar_url else None
-
-
 def build_punishment_notice(
     *,
     guild: discord.Guild,
@@ -144,7 +128,7 @@ def build_punishment_notice(
     rejoin_url: Optional[str] = None,
     moderator: Optional[discord.abc.User] = None,
     issued_at: Optional[datetime] = None,
-) -> discord.ui.LayoutView:
+) -> tuple[discord.Embed, Optional[discord.ui.View]]:
     normalized_action = action.strip().lower()
     emoji_kind, action_text = _action_copy(action)
     emoji = get_app_emoji(emoji_kind)
@@ -155,70 +139,58 @@ def build_punishment_notice(
     member_name = discord.utils.escape_markdown(
         str(getattr(user, "display_name", None) or getattr(user, "name", None) or "Member")
     )[:80]
-    header = f"## {member_name}\n{action_line}"
     reason_text = str(reason or "No reason provided")[:700]
     id_emoji = get_app_emoji("id")
     identity = f"user:{user.id} " if user is not None else ""
     details = (
-        f"**Reason :**\n> {reason_text}\n"
+        f"> {reason_text}\n"
         f"-# {id_emoji + ' ' if id_emoji else ''}`{identity}date:{datetime.now(timezone.utc):%Y-%m-%d}`"
     )
+    accent_color = 0xED4245 if normalized_action in {"ban", "tempban", "softban"} else 0xF0B232
+    action_time = issued_at or datetime.now(timezone.utc)
+    embed = discord.Embed(
+        title=member_name,
+        description=action_line,
+        color=accent_color,
+        timestamp=action_time,
+    )
+    embed.add_field(name="Reason :", value=details, inline=False)
+
     guild_icon = getattr(getattr(guild, "icon", None), "url", None)
-    children: list[discord.ui.Item[Any]] = []
     if guild_icon:
-        children.append(
-            discord.ui.Section(
-                discord.ui.TextDisplay(header),
-                accessory=discord.ui.Thumbnail(guild_icon),
-            )
-        )
-    else:
-        children.append(discord.ui.TextDisplay(header))
-    children.extend([
-        discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
-        discord.ui.TextDisplay(details),
-        discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
-    ])
+        embed.set_thumbnail(url=str(guild_icon))
 
     safe_rejoin_url = _safe_rejoin_url(rejoin_url)
-    footer_lines: list[str] = []
     status_label = (
         _release_status_label(normalized_action, duration)
         if punishment_expires_at is not None
         else None
     )
     if status_label:
-        footer_lines.append(f"**{status_label}**")
+        embed.add_field(name="\u200b", value=f"**{status_label}**", inline=False)
     elif normalized_action in {"kick", "softban"} and safe_rejoin_url:
-        footer_lines.append(f"[Rejoin server]({safe_rejoin_url})")
-
-    footer_lines.append(_footer_copy(moderator, issued_at or datetime.now(timezone.utc)))
-    footer = discord.ui.TextDisplay("\n".join(footer_lines))
-    moderator_avatar_url = _moderator_avatar_url(moderator)
-    if moderator_avatar_url:
-        children.append(
-            discord.ui.Section(
-                footer,
-                accessory=discord.ui.Thumbnail(moderator_avatar_url),
-            )
+        embed.add_field(
+            name="\u200b",
+            value=f"[Rejoin server]({safe_rejoin_url})",
+            inline=False,
         )
+
+    if moderator is not None:
+        stamp_actor_footer(embed, moderator, timestamp=action_time)
     else:
-        children.append(footer)
+        embed.set_footer(text="Docket moderation")
 
-    view = discord.ui.LayoutView(timeout=None)
-    accent_color = 0xED4245 if normalized_action in {"ban", "tempban", "softban"} else 0xF0B232
-    view.add_item(discord.ui.Container(*children, accent_color=accent_color))
+    view: Optional[discord.ui.View] = None
     if appeal_url:
+        view = discord.ui.View(timeout=None)
         view.add_item(
-            discord.ui.ActionRow(
-                discord.ui.Button(
-                    label="Appeal here",
-                    url=appeal_url,
-                    emoji=get_app_emoji("info") or None,
-                )
+            discord.ui.Button(
+                label="Appeal here",
+                url=appeal_url,
+                emoji=get_app_emoji("info") or None,
             )
         )
-    return view
+    return embed, view
 
 
 def build_release_notice(
@@ -485,7 +457,7 @@ class Appeals(commands.Cog):
                     token_row_id = int(row[0]) if row else None
                 appeal_url = f"{base_url}/appeal/{token}"
 
-        view = build_punishment_notice(
+        embed, view = build_punishment_notice(
             guild=guild,
             user=user,
             action=action,
@@ -500,7 +472,10 @@ class Appeals(commands.Cog):
         delivery_status = "sent"
         delivery_error: Optional[str] = None
         try:
-            await (delivery_channel or user).send(view=view)
+            message_kwargs: dict[str, Any] = {"embed": embed}
+            if view is not None:
+                message_kwargs["view"] = view
+            await (delivery_channel or user).send(**message_kwargs)
         except (discord.Forbidden, discord.HTTPException) as exc:
             delivery_status = "failed"
             delivery_error = str(exc)[:500]

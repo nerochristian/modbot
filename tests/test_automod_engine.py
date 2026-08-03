@@ -415,7 +415,7 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
         punishment_expires_at = datetime.now(timezone.utc) + timedelta(minutes=53)
         user = SimpleNamespace(id=55, display_name="Kayrozaa")
 
-        view = build_punishment_notice(
+        embed, view = build_punishment_notice(
             guild=guild,
             user=user,
             action="Ban",
@@ -431,37 +431,28 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
             issued_at=datetime(2026, 8, 3, 1, 16, tzinfo=timezone.utc),
         )
 
-        self.assertIsInstance(view, discord.ui.LayoutView)
-        container = view.children[0]
-        self.assertIsInstance(container, discord.ui.Container)
-        section = container.children[0]
-        self.assertIsInstance(section, discord.ui.Section)
-        header = next(item.content for item in section.children if isinstance(item, discord.ui.TextDisplay))
-        details = next(item.content for item in container.children if isinstance(item, discord.ui.TextDisplay))
-        self.assertIn("## Kayrozaa", header)
-        self.assertNotIn("!!” 🥢", header)
+        self.assertIsInstance(embed, discord.Embed)
+        self.assertEqual(embed.title, "Kayrozaa")
+        self.assertNotIn("!!” 🥢", embed.description)
         self.assertIn(
             f"You have been **banned** until <t:{int(punishment_expires_at.timestamp())}:R>",
-            header,
+            embed.description,
         )
-        self.assertNotIn("for **7 days**", header)
-        self.assertIn("**Reason :**\n> Repeated scam links", details)
-        self.assertIn("`user:55 date:", details)
-        self.assertIsInstance(container.children[1], discord.ui.Separator)
-        footer_section = container.children[4]
-        self.assertIsInstance(footer_section, discord.ui.Section)
-        footer = next(item.content for item in footer_section.children if isinstance(item, discord.ui.TextDisplay))
-        self.assertIn("**Unbanned in 7 days**", footer)
-        self.assertIn("@surreny", footer)
-        self.assertIsInstance(footer_section.accessory, discord.ui.Thumbnail)
-        self.assertEqual(footer_section.accessory.media.url, "https://example.com/moderator.png")
-        self.assertEqual(len(view.children), 2)
-        self.assertIsInstance(view.children[1], discord.ui.ActionRow)
+        self.assertNotIn("for **7 days**", embed.description)
+        self.assertEqual(embed.fields[0].name, "Reason :")
+        self.assertIn("> Repeated scam links", embed.fields[0].value)
+        self.assertIn("`user:55 date:", embed.fields[0].value)
+        self.assertEqual(embed.fields[1].value, "**Unbanned in 7 days**")
+        self.assertEqual(embed.footer.text, "@surreny")
+        self.assertEqual(embed.footer.icon_url, "https://example.com/moderator.png")
+        self.assertEqual(embed.timestamp, datetime(2026, 8, 3, 1, 16, tzinfo=timezone.utc))
+        self.assertIsInstance(view, discord.ui.View)
+        self.assertEqual(view.children[0].label, "Appeal here")
 
-    async def test_kick_notice_keeps_rejoin_link_left_and_moderator_right(self) -> None:
+    async def test_kick_notice_keeps_rejoin_link_and_native_moderator_footer(self) -> None:
         guild = SimpleNamespace(name="The Supreme People", icon=None)
         user = SimpleNamespace(id=55, display_name="Kayrozaa")
-        view = build_punishment_notice(
+        embed, view = build_punishment_notice(
             guild=guild,
             user=user,
             action="Kick",
@@ -474,13 +465,10 @@ class AutoModPresentationTests(unittest.IsolatedAsyncioTestCase):
             ),
         )
 
-        footer_section = view.children[0].children[4]
-        self.assertIsInstance(footer_section, discord.ui.Section)
-        footer = next(item.content for item in footer_section.children if isinstance(item, discord.ui.TextDisplay))
-        self.assertIn("[Rejoin server](https://discord.gg/example)", footer)
-        self.assertIn("@surreny", footer)
-        self.assertIsInstance(footer_section.accessory, discord.ui.Thumbnail)
-        self.assertEqual(footer_section.accessory.media.url, "https://example.com/moderator.png")
+        self.assertEqual(embed.fields[1].value, "[Rejoin server](https://discord.gg/example)")
+        self.assertEqual(embed.footer.text, "@surreny")
+        self.assertEqual(embed.footer.icon_url, "https://example.com/moderator.png")
+        self.assertIsNone(view)
 
     async def test_expired_tempban_notice_has_rejoin_link(self) -> None:
         guild = SimpleNamespace(
