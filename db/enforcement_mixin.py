@@ -171,7 +171,10 @@ class EnforcementMixin:
         reason: str,
         expires_at: datetime,
     ) -> None:
-        """Add a tempban"""
+        """Add a tempban using a database-portable naive UTC timestamp."""
+        stored_expiry = expires_at
+        if stored_expiry.tzinfo is not None:
+            stored_expiry = stored_expiry.astimezone(timezone.utc).replace(tzinfo=None)
         async with self._lock:
             async with self.get_connection() as db:
                 await db.execute(
@@ -180,29 +183,42 @@ class EnforcementMixin:
                     (guild_id, user_id, moderator_id, reason, expires_at)
                     VALUES (?, ?, ?, ?, ?)
                     """,
-                    (guild_id, user_id, moderator_id, reason, expires_at.isoformat()),
+                    (guild_id, user_id, moderator_id, reason, stored_expiry),
                 )
                 await db.commit()
 
     async def get_expired_tempbans(self) -> List[Dict[str, Any]]:
-        """Get expired tempbans"""
+        """Get expired tempbans across SQLite and PostgreSQL timestamp formats."""
         async with self.get_connection() as db:
-            cursor = await db.execute(
-                "SELECT * FROM tempbans WHERE expires_at <= CURRENT_TIMESTAMP"
-            )
+            cursor = await db.execute("SELECT * FROM tempbans")
             rows = await cursor.fetchall()
-            return [
-                {
+            now = datetime.now(timezone.utc)
+            expired: List[Dict[str, Any]] = []
+            for row in rows:
+                raw_expiry = row[5]
+                if isinstance(raw_expiry, datetime):
+                    parsed_expiry = raw_expiry
+                else:
+                    try:
+                        parsed_expiry = datetime.fromisoformat(str(raw_expiry).replace("Z", "+00:00"))
+                    except (TypeError, ValueError):
+                        continue
+                if parsed_expiry.tzinfo is None:
+                    parsed_expiry = parsed_expiry.replace(tzinfo=timezone.utc)
+                else:
+                    parsed_expiry = parsed_expiry.astimezone(timezone.utc)
+                if parsed_expiry > now:
+                    continue
+                expired.append({
                     "id": r[0],
-                    "guild_id": r[1],
-                    "user_id": r[2],
-                    "moderator_id": r[3],
-                    "reason": r[4],
-                    "expires_at": r[5],
-                    "created_at": r[6],
-                }
-                for r in rows
-            ]
+                    "guild_id": row[1],
+                    "user_id": row[2],
+                    "moderator_id": row[3],
+                    "reason": row[4],
+                    "expires_at": raw_expiry,
+                    "created_at": row[6],
+                })
+            return expired
 
     async def remove_tempban(self, guild_id: int, user_id: int) -> None:
         """Remove a tempban"""
