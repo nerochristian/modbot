@@ -30,6 +30,7 @@ from discord.ext import commands
 
 from config import Config
 from utils.checks import is_admin, is_bot_owner_id
+from utils.embeds import moderation_list_embed
 from utils.logging import send_log_embed
 from utils.moderation_settings import moderation_bool, moderation_id_set
 
@@ -393,27 +394,26 @@ class Guardian(commands.Cog):
     async def guardian_settings(self, interaction: discord.Interaction):
         settings = await self.bot.db.get_settings(interaction.guild_id)
         enabled = moderation_bool(settings, "guardian_nuke_enabled", False)
-        embed = discord.Embed(
-            title="🛡️ Guardian: anti-nuke",
-            color=Config.COLOR_SUCCESS if enabled else Config.COLOR_ERROR,
-            timestamp=datetime.now(timezone.utc),
-        )
-        embed.add_field(name="Status", value="✅ Enabled" if enabled else "❌ Disabled", inline=True)
-        embed.add_field(name="Response", value=str(settings.get("guardian_nuke_action", "strip")).title(), inline=True)
-        embed.add_field(name="Cooldown", value=f"{_clamped_int(settings, 'guardian_nuke_cooldown_seconds', 60, 10, 3600)}s", inline=True)
         lines = []
         for key, (_, _, _, label) in NUKE_EVENTS.items():
             if not _watch_enabled(settings, key):
                 lines.append(f"**{label}:** off")
             else:
                 lines.append(f"**{label}:** {_threshold(settings, key)} in {_window(settings, key)}s")
-        embed.add_field(name="Tripwires", value="\n".join(lines), inline=False)
         ignored_users = moderation_id_set(settings, "guardian_ignored_users")
         ignored_roles = moderation_id_set(settings, "guardian_ignored_roles")
-        embed.add_field(
-            name="Trusted bypass",
-            value=f"{len(ignored_users)} users · {len(ignored_roles)} roles",
-            inline=True,
+        rows = (
+            ("Status", "Enabled" if enabled else "Disabled"),
+            ("Response", str(settings.get("guardian_nuke_action", "strip")).title()),
+            ("Cooldown", f"{_clamped_int(settings, 'guardian_nuke_cooldown_seconds', 60, 10, 3600)}s"),
+            ("Trusted bypass", f"{len(ignored_users)} users · {len(ignored_roles)} roles"),
+        )
+        embed = moderation_list_embed(
+            title="Guardian · anti-nuke settings",
+            color=Config.COLOR_SUCCESS if enabled else Config.COLOR_ERROR,
+            summary_rows=rows,
+            entries=("**Tripwires**\n" + "\n".join(f"> {line}" for line in lines),),
+            thumbnail_url=getattr(getattr(interaction.guild, "icon", None), "url", None),
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 

@@ -927,9 +927,9 @@ class AntiRaid(commands.Cog):
         raid_mode = settings.get("raid_mode", False)
         enabled = settings.get("antiraid_enabled", False)
         
-        status = "🟢 Active" if enabled else "🔴 Disabled"
+        status = "Active" if enabled else "Disabled"
         if raid_mode:
-            status += " | 🚨 **RAID MODE**"
+            status += " · Raid mode engaged"
         
         # current tracking
         guild_id = interaction.guild_id
