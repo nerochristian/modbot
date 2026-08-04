@@ -139,14 +139,26 @@ class Utility(commands.Cog):
     @app_commands.describe(reason="Reason for being AFK")
     async def afk(self, interaction: discord.Interaction, reason: Optional[str] = "AFK"):
         """Set AFK status with auto-reply"""
+        reason = (reason or "AFK").strip()[:100] or "AFK"
+        original_nick = None
+        if interaction.guild and interaction.guild.me.guild_permissions.manage_nicknames:
+            member = interaction.guild.get_member(interaction.user.id)
+            if member is not None and member.guild_owner is False and member.top_role < interaction.guild.me.top_role:
+                try:
+                    original_nick = member.nick if member.nick is not None else member.display_name
+                    await member.edit(nick=f"[AFK] {member.display_name}", reason=f"AFK: {reason}")
+                except discord.HTTPException:
+                    original_nick = None
         self.afk_users[interaction.user.id] = {
-            "reason": reason[:100],
-            "since": datetime.now(timezone.utc)
+            "reason": reason,
+            "since": datetime.now(timezone.utc),
+            "nick": original_nick,
+            "guild_id": interaction.guild.id if interaction.guild else None,
         }
         
         embed = discord.Embed(
             title="💤 AFK Status Set",
-            description=f"You're now AFK: **{reason}**\n\nYou'll be automatically mentioned when someone pings you.",
+            description=f"You're now AFK: **{reason}**\n\nYour nickname has been set to **[AFK] {interaction.user.display_name}**. Send any message to return.",
             color=Colors.INFO,
             timestamp=datetime.now(timezone.utc)
         )
@@ -162,6 +174,14 @@ class Utility(commands.Cog):
         # Check if user returned from AFK
         if message.author.id in self.afk_users:
             afk_data = self.afk_users.pop(message.author.id)
+            # Restore original nickname if we changed it
+            if afk_data.get("guild_id") == message.guild.id and afk_data.get("nick") is not None:
+                member = message.guild.get_member(message.author.id)
+                if member is not None and message.guild.me.guild_permissions.manage_nicknames:
+                    try:
+                        await member.edit(nick=afk_data["nick"] if afk_data["nick"] != member.display_name else None, reason="Returned from AFK")
+                    except discord.HTTPException:
+                        pass
             duration = datetime.now(timezone.utc) - afk_data["since"]
             
             hours = int(duration.total_seconds() // 3600)
@@ -178,7 +198,8 @@ class Utility(commands.Cog):
             try:
                 await message.channel.send(
                     f"👋 Welcome back {message.author.mention}! You were AFK for **{time_str.strip()}**",
-                    delete_after=10
+                    delete_after=10,
+                    allowed_mentions=discord.AllowedMentions.none(),
                 )
             except Exception:
                 pass
@@ -192,7 +213,8 @@ class Utility(commands.Cog):
                 try:
                     await message.channel.send(
                         f"💤 {user.mention} is currently AFK: **{afk_data['reason']}** (since <t:{since_ts}:R>)",
-                        delete_after=15
+                        delete_after=15,
+                        allowed_mentions=discord.AllowedMentions.none(),
                     )
                 except Exception:
                     pass

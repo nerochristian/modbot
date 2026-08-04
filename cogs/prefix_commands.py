@@ -621,6 +621,37 @@ class PrefixCommands(commands.Cog):
         else:
             await ctx.send(embed=ModEmbed.error("No Icon", "Server has no icon."))
 
+    @commands.command(name="server", aliases=["serverinfo"])
+    async def server_cmd(self, ctx: commands.Context):
+        """Show this server's identity and activity"""
+        guild = ctx.guild
+        if guild is None:
+            return await ctx.send(embed=ModEmbed.error("Guild Only", "This command can only be used in a server."))
+        members = list(guild.members)
+        total_members = guild.member_count or len(members)
+        online_members = sum(member.status is not discord.Status.offline for member in members)
+        members_in_voice = sum(
+            not member.bot and member.voice is not None and member.voice.channel is not None
+            for member in members
+        )
+        channel_count = len(guild.channels)
+        owner = guild.owner.mention if guild.owner else f"<@{guild.owner_id}>"
+        embed = discord.Embed(color=Colors.ACCENT)
+        embed.set_author(name=guild.name, icon_url=guild.icon.url if guild.icon else None)
+        embed.add_field(name="Server ID", value=f"**{guild.id}**", inline=True)
+        embed.add_field(name="Owned By", value=owner, inline=True)
+        embed.add_field(name="Server Age", value=f"**<t:{int(guild.created_at.timestamp())}:R>**", inline=True)
+        embed.add_field(name=f"Members ({total_members:,})", value=f"Online: **{online_members:,}**", inline=True)
+        embed.add_field(
+            name=f"Channels ({channel_count:,})",
+            value=(f"Text: **{len(guild.text_channels):,}**\nVoice: **{len(guild.voice_channels):,}**\nCategories: **{len(guild.categories):,}**"),
+            inline=True,
+        )
+        embed.add_field(name="Roles", value=f"**{len(guild.roles):,}**", inline=True)
+        embed.add_field(name="Boosts", value=f"**{guild.premium_subscription_count or 0:,}**", inline=True)
+        embed.add_field(name="Members In Voice Channels", value=f"**{members_in_voice:,}** excl. bots", inline=True)
+        await ctx.send(embed=embed)
+
     @commands.command(name="stats")
     async def stats_cmd(self, ctx):
         """Bot statistics"""
@@ -710,13 +741,24 @@ class PrefixCommands(commands.Cog):
         """Set yourself as AFK. ,afk [reason]"""
         reason = (reason or "AFK").strip()[:100] or "AFK"
         store = self._afk_store()
+        original_nick = None
+        if ctx.guild and ctx.guild.me.guild_permissions.manage_nicknames:
+            member = ctx.guild.get_member(ctx.author.id)
+            if member is not None and member.guild_owner is False and member.top_role < ctx.guild.me.top_role:
+                try:
+                    original_nick = member.nick if member.nick is not None else member.display_name
+                    await member.edit(nick=f"[AFK] {member.display_name}", reason=f"AFK: {reason}")
+                except discord.HTTPException:
+                    original_nick = None
         store[ctx.author.id] = {
             "reason": reason,
             "since": datetime.now(timezone.utc),
+            "nick": original_nick,
+            "guild_id": ctx.guild.id if ctx.guild else None,
         }
         embed = discord.Embed(
             title="💤 AFK Status Set",
-            description=f"{ctx.author.mention} is now AFK: **{reason}**\n\nYou'll be automatically mentioned when someone pings you. Send any message to return.",
+            description=f"{ctx.author.mention} is now AFK: **{reason}**\n\nYour nickname has been set to **[AFK] {ctx.author.display_name}**. Send any message to return.",
             color=Colors.INFO,
             timestamp=datetime.now(timezone.utc),
         )

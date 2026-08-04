@@ -816,6 +816,39 @@ class AIClient:
 
         raise RuntimeError("No AI provider is available for this request.")
 
+    async def call_nemotron_completion(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        temperature: float,
+        max_tokens: int,
+        request_timeout: int = 60,
+        max_retries: int = 0,
+    ) -> Optional[str]:
+        """Force-route a completion through the OpenRouter Nemotron model.
+
+        Used by ``/profile`` so behavior profiling always runs on Nemotron
+        regardless of the bot's configured default provider, as long as an
+        OpenRouter key is present.
+        """
+        if not _OPENROUTER_API_KEY:
+            raise RuntimeError(
+                "Nemotron routing requires OPENROUTER_API_KEY to be set."
+            )
+        return await self._post_chat_completion(
+            messages,
+            base_url=_OPENROUTER_BASE_URL,
+            api_key=_OPENROUTER_API_KEY,
+            model=_OPENROUTER_NEMOTRON_MODEL,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            json_mode=False,
+            allow_multimodal=False,
+            provider_label=f"OpenRouter Nemotron ({_OPENROUTER_NEMOTRON_MODEL})",
+            max_retries=max_retries,
+            request_timeout=request_timeout,
+        )
+
     @staticmethod
     def _canonical_aimodel_model(model: str) -> str:
         """Normalize AiModel aliases to the resource IDs required by its API."""
