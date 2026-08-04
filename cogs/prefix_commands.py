@@ -297,6 +297,86 @@ class PrefixCommands(commands.Cog):
         await member.remove_roles(*roles, reason=f"Stripped by {ctx.author}")
         await ctx.send(embed=ModEmbed.success("🔻 Roles Stripped", f"Removed {len(roles)} roles from {member.mention}."))
 
+    @commands.command(name="allrole", aliases=["allroles"])
+    @has_permissions_or_owner(administrator=True)
+    async def allrole_cmd(self, ctx, member: discord.Member):
+        """Give a member every assignable role in the server, then strip them back after 12 hours."""
+        guild = ctx.guild
+        if guild is None or guild.me is None:
+            return
+
+        # Only target administrators (per request: "give an administrator all the roles")
+        if not member.guild_permissions.administrator and not is_bot_owner_id(member.id):
+            await ctx.send(embed=ModEmbed.error(
+                "Permission Denied",
+                "This command only grants every role to an administrator of the server.",
+            ))
+            return
+
+        # Respect hierarchy: caller must be able to act on the target
+        if (
+            member.top_role >= ctx.author.top_role
+            and member.id != ctx.author.id
+            and ctx.author.id != guild.owner_id
+            and not is_bot_owner_id(ctx.author.id)
+        ):
+            await ctx.send(embed=ModEmbed.error(
+                "Permission Denied",
+                "You cannot modify roles for someone with equal or higher role.",
+            ))
+            return
+
+        if member.id == guild.owner_id and ctx.author.id != guild.owner_id and not is_bot_owner_id(ctx.author.id):
+            await ctx.send(embed=ModEmbed.error("Permission Denied", "You cannot modify the server owner's roles."))
+            return
+
+        bot_top = guild.me.top_role
+        assignable = [
+            r for r in guild.roles
+            if r != guild.default_role
+            and r < bot_top
+            and not r.managed
+            and r not in member.roles
+        ]
+
+        if not assignable:
+            await ctx.send(embed=ModEmbed.error(
+                "No Roles Available",
+                f"{member.mention} already has every role I can assign.",
+            ))
+            return
+
+        try:
+            await member.add_roles(*assignable, reason=f",allrole by {ctx.author} (12h)")
+        except discord.Forbidden:
+            await ctx.send(embed=ModEmbed.error("Bot Error", "I lack permission to assign one or more roles."))
+            return
+        except discord.HTTPException as e:
+            await ctx.send(embed=ModEmbed.error("Role Update Failed", str(e)))
+            return
+
+        granted_ids = {r.id for r in assignable}
+        await ctx.send(embed=ModEmbed.success(
+            "👑 All Roles Granted",
+            f"Granted {len(assignable)} roles to {member.mention}.\nThey will be removed <t:{int((datetime.now(timezone.utc) + timedelta(hours=12)).timestamp())}:R>.",
+        ))
+
+        async def _revert():
+            await asyncio.sleep(12 * 3600)
+            try:
+                refetch = await guild.fetch_member(member.id)
+            except discord.HTTPException:
+                return
+            to_remove = [r for r in refetch.roles if r.id in granted_ids]
+            if not to_remove:
+                return
+            try:
+                await refetch.remove_roles(*to_remove, reason=",allrole expired (12h)")
+            except (discord.Forbidden, discord.HTTPException):
+                pass
+
+        asyncio.create_task(_revert())
+
     @commands.command(name="vcmute", aliases=["vm"])
     @has_permissions_or_owner(mute_members=True)
     async def vcmute_cmd(self, ctx, member: discord.Member):
