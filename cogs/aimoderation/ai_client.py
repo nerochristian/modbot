@@ -1119,6 +1119,8 @@ class AIClient:
         json_mode: bool = False,
         allow_multimodal: bool = False,
         fallback_models: Optional[Tuple[str, ...]] = None,
+        max_retries: Optional[int] = None,
+        request_timeout: Optional[int] = None,
     ) -> Optional[str]:
         """Call the protected-task gateway with bounded model failover."""
         if not _relayrouter_api_enabled():
@@ -1192,9 +1194,13 @@ class AIClient:
                     provider_label=f"{gateway_label} ({candidate})",
                     # Each candidate is itself a retry route. Retrying a dead
                     # route first made multi-model failover take over a minute.
-                    max_retries=0,
-                    request_timeout=_relayrouter_request_timeout(
-                        multimodal=allow_multimodal
+                    max_retries=0 if max_retries is None else max(0, max_retries),
+                    request_timeout=(
+                        request_timeout
+                        if request_timeout is not None
+                        else _relayrouter_request_timeout(
+                            multimodal=allow_multimodal
+                        )
                     ),
                 )
                 if result:
