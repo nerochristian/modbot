@@ -76,6 +76,9 @@ _OPENROUTER_LING_ROUTER_MODEL: Final[str] = "inclusionai/ling-2.6-flash"
 _OPENROUTER_NEMOTRON_MODEL: Final[str] = (
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
 )
+_OPENROUTER_NEMOTRON_PAID_MODEL: Final[str] = (
+    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+)
 _OPENROUTER_API_KEY: Final[str] = os.getenv("OPENROUTER_API_KEY", "").strip()
 _OPENROUTER_BASE_URL: Final[str] = os.getenv(
     "OPENROUTER_BASE_URL",
