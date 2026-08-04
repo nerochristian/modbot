@@ -696,11 +696,35 @@ class PrefixCommands(commands.Cog):
         else:
             await ctx.send(embed=ModEmbed.error("No Edit Snipe", "Nothing to snipe."))
 
-    # @commands.command(name="afk")
-    # async def afk_cmd(self, ctx, *, reason: str = "AFK"):
-    #     """Set yourself as AFK"""
-    #     self.afk_users[ctx.author.id] = reason
-    #     await ctx.send(embed=ModEmbed.info("💤 AFK", f"{ctx.author.mention} is now AFK: {reason}"))
+    # ==================== AFK ====================
+
+    def _afk_store(self):
+        """Return the shared AFK registry from the Utility cog if loaded."""
+        utility_cog = self.bot.get_cog("Utility")
+        if utility_cog is not None and getattr(utility_cog, "afk_users", None) is not None:
+            return utility_cog.afk_users
+        return self.afk_users
+
+    @commands.command(name="afk")
+    async def afk_cmd(self, ctx: commands.Context, *, reason: str = "AFK"):
+        """Set yourself as AFK. ,afk [reason]"""
+        reason = (reason or "AFK").strip()[:100] or "AFK"
+        store = self._afk_store()
+        store[ctx.author.id] = {
+            "reason": reason,
+            "since": datetime.now(timezone.utc),
+        }
+        embed = discord.Embed(
+            title="💤 AFK Status Set",
+            description=f"{ctx.author.mention} is now AFK: **{reason}**\n\nYou'll be automatically mentioned when someone pings you. Send any message to return.",
+            color=Colors.INFO,
+            timestamp=datetime.now(timezone.utc),
+        )
+        try:
+            await ctx.message.delete()
+        except Exception:
+            pass
+        await ctx.send(embed=embed)
 
     @commands.command(name="choose", aliases=["pick"])
     async def choose_cmd(self, ctx, *choices):

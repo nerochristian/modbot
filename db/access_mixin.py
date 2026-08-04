@@ -15,6 +15,11 @@ from typing import Optional, List, Dict, Any
 
 import aiosqlite
 
+try:
+    from utils.query_builder import QueryBuilder
+except Exception:
+    QueryBuilder = None
+
 logger = logging.getLogger("ModBot.Database.access")
 
 
