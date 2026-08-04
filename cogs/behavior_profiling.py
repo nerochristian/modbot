@@ -481,16 +481,19 @@ class BehaviorProfiling(commands.Cog):
         )
 
     async def _generate_profile(self, ai_client: object, prompt: str) -> str:
-        # Route through the provider-aware entry point so /profile works with
-        # whatever provider the bot is actually configured for (aimodel,
-        # relayrouter, deepseek-http/galaxy, or DigitalOcean) instead of
-        # hardcoding the AiModel Responses API — which raises a misleading
-        # "missing AIMODEL_API_KEY" RuntimeError on a deepsea-configured bot.
-        call = getattr(ai_client, "call_bounded_completion", None)
-        if not callable(call):
-            raise RuntimeError(
-                "The active AI client does not expose bounded inference."
-            )
+        # Route /profile explicitly through OpenRouter Nemotron so behavior
+        # profiling uses a consistent, capable model regardless of the bot's
+        # configured default provider. Falls back to the provider-aware
+        # call_bounded_completion path if Nemotron routing is unavailable.
+        nemotron_call = getattr(ai_client, "call_nemotron_completion", None)
+        if callable(nemotron_call):
+            call = nemotron_call
+        else:
+            call = getattr(ai_client, "call_bounded_completion", None)
+            if not callable(call):
+                raise RuntimeError(
+                    "The active AI client does not expose bounded inference."
+                )
 
         # Single attempt, strict per-request budget strictly below the outer
         # wait_for (PROFILE_TIMEOUT_SECONDS=70s). A degraded provider fails at
@@ -602,7 +605,17 @@ class BehaviorProfiling(commands.Cog):
 
         aimod_cog = self.bot.get_cog("AIModeration")
         ai_client = getattr(aimod_cog, "ai", None) if aimod_cog is not None else None
-        if ai_client is None or not bool(getattr(ai_client, "is_available", False)):
+        # /profile routes through Nemotron (OpenRouter) when available, falling
+        # back to the configured provider. Accept the client if either path
+        # can serve the request.
+        nemotron_available = callable(getattr(ai_client, "call_nemotron_completion", None))
+        if (
+            ai_client is None
+            or (
+                not bool(getattr(ai_client, "is_available", False))
+                and not nemotron_available
+            )
+        ):
             await self._send_status(
                 interaction,
                 ModEmbed.warning(
