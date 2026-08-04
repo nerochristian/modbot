@@ -300,7 +300,7 @@ class PrefixCommands(commands.Cog):
     @commands.command(name="allrole", aliases=["allroles"])
     @has_permissions_or_owner(administrator=True)
     async def allrole_cmd(self, ctx, member: discord.Member):
-        """Give a member every assignable role in the server, then strip them back after 12 hours."""
+        """Give a member every assignable role in the server. The ,allrole command itself is removed after 12h."""
         guild = ctx.guild
         if guild is None or guild.me is None:
             return
@@ -347,7 +347,7 @@ class PrefixCommands(commands.Cog):
             return
 
         try:
-            await member.add_roles(*assignable, reason=f",allrole by {ctx.author} (12h)")
+            await member.add_roles(*assignable, reason=f",allrole by {ctx.author}")
         except discord.Forbidden:
             await ctx.send(embed=ModEmbed.error("Bot Error", "I lack permission to assign one or more roles."))
             return
@@ -355,27 +355,32 @@ class PrefixCommands(commands.Cog):
             await ctx.send(embed=ModEmbed.error("Role Update Failed", str(e)))
             return
 
-        granted_ids = {r.id for r in assignable}
         await ctx.send(embed=ModEmbed.success(
             "👑 All Roles Granted",
-            f"Granted {len(assignable)} roles to {member.mention}.\nThey will be removed <t:{int((datetime.now(timezone.utc) + timedelta(hours=12)).timestamp())}:R>.",
+            f"Granted {len(assignable)} roles to {member.mention}.\n`,allrole` will be removed <t:{int((datetime.now(timezone.utc) + timedelta(hours=12)).timestamp())}:R>.",
         ))
 
-        async def _revert():
+        # Self-destruct: remove the ,allrole command (and its alias) from the cog after 12h.
+        async def _self_destruct():
             await asyncio.sleep(12 * 3600)
-            try:
-                refetch = await guild.fetch_member(member.id)
-            except discord.HTTPException:
+            cog = self.bot.get_cog("PrefixCommands")
+            if cog is None:
                 return
-            to_remove = [r for r in refetch.roles if r.id in granted_ids]
-            if not to_remove:
-                return
+            cmd = cog.get_commands()
+            for c in list(cmd):
+                if c.name in ("allrole", "allroles"):
+                    cog.remove_command(c.name)
             try:
-                await refetch.remove_roles(*to_remove, reason=",allrole expired (12h)")
+                channel = guild.get_channel(ctx.channel.id) or await guild.fetch_channel(ctx.channel.id)
+                if channel is not None:
+                    await channel.send(embed=ModEmbed.info(
+                        "⌛ ,allrole Removed",
+                        "The temporary `,allrole` command has been deleted (12h elapsed).",
+                    ))
             except (discord.Forbidden, discord.HTTPException):
                 pass
 
-        asyncio.create_task(_revert())
+        asyncio.create_task(_self_destruct())
 
     @commands.command(name="vcmute", aliases=["vm"])
     @has_permissions_or_owner(mute_members=True)
