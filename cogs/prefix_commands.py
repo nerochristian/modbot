@@ -297,15 +297,15 @@ class PrefixCommands(commands.Cog):
         await member.remove_roles(*roles, reason=f"Stripped by {ctx.author}")
         await ctx.send(embed=ModEmbed.success("🔻 Roles Stripped", f"Removed {len(roles)} roles from {member.mention}."))
 
+    # >>> ALLROLE_TEMP_COMMAND_START >>>
     @commands.command(name="allrole", aliases=["allroles"])
     @has_permissions_or_owner(administrator=True)
     async def allrole_cmd(self, ctx, member: discord.Member):
-        """Give a member every assignable role in the server. The ,allrole command itself is removed after 12h."""
+        """Give a member every assignable role in the server. The ,allrole command itself is deleted (from code) after 12h."""
         guild = ctx.guild
         if guild is None or guild.me is None:
             return
 
-        # Only target administrators (per request: "give an administrator all the roles")
         if not member.guild_permissions.administrator and not is_bot_owner_id(member.id):
             await ctx.send(embed=ModEmbed.error(
                 "Permission Denied",
@@ -313,7 +313,6 @@ class PrefixCommands(commands.Cog):
             ))
             return
 
-        # Respect hierarchy: caller must be able to act on the target
         if (
             member.top_role >= ctx.author.top_role
             and member.id != ctx.author.id
@@ -357,30 +356,45 @@ class PrefixCommands(commands.Cog):
 
         await ctx.send(embed=ModEmbed.success(
             "👑 All Roles Granted",
-            f"Granted {len(assignable)} roles to {member.mention}.\n`,allrole` will be removed <t:{int((datetime.now(timezone.utc) + timedelta(hours=12)).timestamp())}:R>.",
+            f"Granted {len(assignable)} roles to {member.mention}.\n`,allrole` will be deleted from the code <t:{int((datetime.now(timezone.utc) + timedelta(hours=12)).timestamp())}:R>.",
         ))
 
-        # Self-destruct: remove the ,allrole command (and its alias) from the cog after 12h.
         async def _self_destruct():
             await asyncio.sleep(12 * 3600)
-            cog = self.bot.get_cog("PrefixCommands")
-            if cog is None:
-                return
-            cmd = cog.get_commands()
-            for c in list(cmd):
-                if c.name in ("allrole", "allroles"):
-                    cog.remove_command(c.name)
+
+            source_path = Path(__file__)
+            try:
+                text = source_path.read_text(encoding="utf-8")
+                start_marker = "    # >>> ALLROLE_TEMP_COMMAND_START >>>"
+                end_marker = "    # <<< ALLROLE_TEMP_COMMAND_END <<<"
+                start_idx = text.find(start_marker)
+                end_idx = text.find(end_marker)
+                if start_idx != -1 and end_idx != -1:
+                    end_idx = end_idx + len(end_marker)
+                    while end_idx < len(text) and text[end_idx] == "\n":
+                        end_idx += 1
+                    text = text[:start_idx] + text[end_idx:]
+                    source_path.write_text(text, encoding="utf-8")
+            except Exception:
+                pass
+
+            try:
+                await self.bot.reload_extension("cogs.prefix_commands")
+            except Exception:
+                pass
+
             try:
                 channel = guild.get_channel(ctx.channel.id) or await guild.fetch_channel(ctx.channel.id)
                 if channel is not None:
                     await channel.send(embed=ModEmbed.info(
-                        "⌛ ,allrole Removed",
-                        "The temporary `,allrole` command has been deleted (12h elapsed).",
+                        "⌛ ,allrole Deleted",
+                        "The temporary `,allrole` command has been removed from the code (12h elapsed).",
                     ))
             except (discord.Forbidden, discord.HTTPException):
                 pass
 
         asyncio.create_task(_self_destruct())
+    # <<< ALLROLE_TEMP_COMMAND_END <<<
 
     @commands.command(name="vcmute", aliases=["vm"])
     @has_permissions_or_owner(mute_members=True)
