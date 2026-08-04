@@ -219,6 +219,11 @@ class ChatCommands:
 
     async def _slowmode_logic(self, source, seconds: int, channel: discord.TextChannel = None):
         channel = channel or (source.channel if isinstance(source, discord.Interaction) else source.channel)
+        # Discord only accepts a fixed set of slowmode values; snap to the
+        # nearest allowed one to avoid HTTP 400 (Invalid Form Body).
+        _ALLOWED_SLOWMODE = (0, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 21600)
+        seconds = max(0, min(int(seconds), 21600))
+        seconds = min(_ALLOWED_SLOWMODE, key=lambda v: abs(v - seconds))
         try:
             await channel.edit(slowmode_delay=seconds)
         except discord.Forbidden:

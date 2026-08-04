@@ -1017,6 +1017,7 @@ class AIClient:
         allow_multimodal: bool = False,
         fallback_models: Optional[Tuple[str, ...]] = None,
         max_retries: Optional[int] = None,
+        request_timeout: Optional[int] = None,
         search: bool = False,
     ) -> Optional[str]:
         """Call AiModel's Responses API with ordered provider-local failover.
@@ -1072,8 +1073,12 @@ class AIClient:
                     json_mode=json_mode,
                     allow_multimodal=allow_multimodal,
                     provider_label=f"AiModel ({candidate.rsplit('/', 1)[-1]})",
-                    request_timeout=_aimodel_request_timeout(
-                        multimodal=allow_multimodal
+                    request_timeout=(
+                        request_timeout
+                        if request_timeout is not None
+                        else _aimodel_request_timeout(
+                            multimodal=allow_multimodal
+                        )
                     ),
                     max_retries=1 if max_retries is None else max(0, max_retries),
                     search=search,
