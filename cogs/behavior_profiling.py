@@ -481,11 +481,12 @@ class BehaviorProfiling(commands.Cog):
         )
 
     async def _generate_profile(self, ai_client: object, prompt: str) -> str:
-        # Route /profile explicitly through OpenRouter Nemotron so behavior
-        # profiling uses a consistent, capable model regardless of the bot's
-        # configured default provider. Falls back to the provider-aware
-        # call_bounded_completion path if Nemotron routing is unavailable or
-        # hits OpenRouter's free-tier daily rate limit.
+        # Route /profile explicitly through Nemotron. call_nemotron_completion
+        # tries OpenRouter Nemotron first, then cascades through AiModel
+        # (also Nemotron, separate quota), DigitalOcean, and DeepSeek API if
+        # the OpenRouter free-tier daily quota is exhausted. Falls back to the
+        # provider-aware call_bounded_completion path only if the nemotron
+        # entry point is unavailable on this client.
         nemotron_call = getattr(ai_client, "call_nemotron_completion", None)
         fallback_call = getattr(ai_client, "call_bounded_completion", None)
 
@@ -500,39 +501,21 @@ class BehaviorProfiling(commands.Cog):
             max_retries=0,
         )
 
+        call = nemotron_call if callable(nemotron_call) else fallback_call
+        if not callable(call):
+            raise RuntimeError(
+                "The active AI client does not expose bounded inference."
+            )
+
         # Single attempt, strict per-request budget strictly below the outer
         # wait_for (PROFILE_TIMEOUT_SECONDS=70s). A degraded provider fails at
         # the request boundary (~60s) instead of grinding past the outer cap
         # and surfacing a misleading TimeoutError.
         async with self._ai_slots:
-            try:
-                if callable(nemotron_call):
-                    response = await asyncio.wait_for(
-                        nemotron_call(messages, **call_kwargs),
-                        timeout=PROFILE_TIMEOUT_SECONDS,
-                    )
-                elif callable(fallback_call):
-                    response = await asyncio.wait_for(
-                        fallback_call(messages, **call_kwargs),
-                        timeout=PROFILE_TIMEOUT_SECONDS,
-                    )
-                else:
-                    raise RuntimeError(
-                        "The active AI client does not expose bounded inference."
-                    )
-            except Exception as nemotron_error:
-                # Nemotron free-tier daily quota can be exhausted (HTTP 429).
-                # Fall back to the configured provider instead of failing hard.
-                if not callable(fallback_call):
-                    raise
-                logger.warning(
-                    "Nemotron profile route failed (%s); falling back to configured provider.",
-                    nemotron_error,
-                )
-                response = await asyncio.wait_for(
-                    fallback_call(messages, **call_kwargs),
-                    timeout=PROFILE_TIMEOUT_SECONDS,
-                )
+            response = await asyncio.wait_for(
+                call(messages, **call_kwargs),
+                timeout=PROFILE_TIMEOUT_SECONDS,
+            )
 
         return _clean_profile_output(response)
 

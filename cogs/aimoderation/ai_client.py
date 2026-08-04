@@ -825,29 +825,114 @@ class AIClient:
         request_timeout: int = 60,
         max_retries: int = 0,
     ) -> Optional[str]:
-        """Force-route a completion through the OpenRouter Nemotron model.
+        """Force-route a completion through the Nemotron model.
 
         Used by ``/profile`` so behavior profiling always runs on Nemotron
-        regardless of the bot's configured default provider, as long as an
-        OpenRouter key is present.
+        regardless of the bot's configured default provider. Tries the
+        OpenRouter Nemotron lane first; if it is rate-limited (the free-tier
+        daily quota can be exhausted), cascades through other gateways that
+        also expose Nemotron or an equivalent model with their own quota:
+        AiModel (Nemotron via aimodel.lol), DigitalOcean, then DeepSeek API.
         """
+        last_error: Optional[Exception] = None
+
+        # 1. OpenRouter Nemotron (primary).
+        if _OPENROUTER_API_KEY:
+            try:
+                result = await self._post_chat_completion(
+                    messages,
+                    base_url=_OPENROUTER_BASE_URL,
+                    api_key=_OPENROUTER_API_KEY,
+                    model=_OPENROUTER_NEMOTRON_MODEL,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    json_mode=False,
+                    allow_multimodal=False,
+                    provider_label=f"OpenRouter Nemotron ({_OPENROUTER_NEMOTRON_MODEL})",
+                    max_retries=max_retries,
+                    request_timeout=request_timeout,
+                )
+                if result:
+                    self._block_until = None
+                    self._block_reason = None
+                    return result
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "OpenRouter Nemotron profile route failed; trying fallback gateways: %s",
+                    exc,
+                )
+
+        # 2. AiModel gateway (also serves Nemotron, separate quota).
+        if _aimodel_api_enabled():
+            try:
+                result = await self._call_aimodel(
+                    messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    model=_AIMODEL_MODERATION_MODEL,
+                    json_mode=False,
+                    allow_multimodal=False,
+                    max_retries=max_retries,
+                    request_timeout=request_timeout,
+                )
+                if result:
+                    self._block_until = None
+                    self._block_reason = None
+                    return result
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "AiModel Nemotron profile route failed; trying next fallback: %s",
+                    exc,
+                )
+
+        # 3. DigitalOcean inference (separate quota/key).
+        if _DO_API_KEY:
+            try:
+                result = await self._call_digitalocean(
+                    messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    max_retries=max_retries,
+                    request_timeout=request_timeout,
+                )
+                if result:
+                    self._block_until = None
+                    self._block_reason = None
+                    return result
+            except Exception as exc:
+                last_error = exc
+                logger.warning(
+                    "DigitalOcean profile route failed; trying next fallback: %s",
+                    exc,
+                )
+
+        # 4. DeepSeek HTTP API (separate quota/key).
+        if _deepseek_api_enabled():
+            try:
+                result = await self._call_deepseek_api(
+                    messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    max_retries=max_retries,
+                    request_timeout=request_timeout,
+                )
+                if result:
+                    self._block_until = None
+                    self._block_reason = None
+                    return result
+            except Exception as exc:
+                last_error = exc
+                logger.warning("DeepSeek API profile route failed: %s", exc)
+
+        if last_error is not None:
+            raise last_error
         if not _OPENROUTER_API_KEY:
             raise RuntimeError(
-                "Nemotron routing requires OPENROUTER_API_KEY to be set."
+                "Nemotron routing requires OPENROUTER_API_KEY (or a fallback gateway) to be set."
             )
-        return await self._post_chat_completion(
-            messages,
-            base_url=_OPENROUTER_BASE_URL,
-            api_key=_OPENROUTER_API_KEY,
-            model=_OPENROUTER_NEMOTRON_MODEL,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            json_mode=False,
-            allow_multimodal=False,
-            provider_label=f"OpenRouter Nemotron ({_OPENROUTER_NEMOTRON_MODEL})",
-            max_retries=max_retries,
-            request_timeout=request_timeout,
-        )
+        raise RuntimeError("All Nemotron profile routes returned no content.")
 
     @staticmethod
     def _canonical_aimodel_model(model: str) -> str:
