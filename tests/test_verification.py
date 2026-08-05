@@ -111,10 +111,14 @@ class VerificationRoleRepairTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(result["errors"], [])
         self.assertTrue(verify_channel.overwrites_for(unverified_role).view_channel)
+        self.assertTrue(verify_channel.overwrites_for(unverified_role).read_message_history)
+        self.assertFalse(verify_channel.overwrites_for(unverified_role).send_messages)
         self.assertFalse(verify_channel.overwrites_for(verified_role).view_channel)
         self.assertTrue(welcome_channel.overwrites_for(unverified_role).view_channel)
+        self.assertTrue(welcome_channel.overwrites_for(unverified_role).read_message_history)
         self.assertIsNone(welcome_channel.overwrites_for(verified_role).view_channel)
         self.assertFalse(general_channel.overwrites_for(unverified_role).view_channel)
+        self.assertIsNone(general_channel.overwrites_for(unverified_role).read_message_history)
         self.assertIsNone(general_channel.overwrites_for(verified_role).view_channel)
 
     async def test_existing_member_is_given_waiting_role_when_starting(self) -> None:

@@ -743,18 +743,34 @@ async def apply_verification_gate(
         if isinstance(channel, discord.CategoryChannel):
             continue
 
-        role_targets = [(unverified_role, True if enabled and channel.id in exempt_channel_ids else (False if enabled else None))]
+        unverified_can_view = True if enabled and channel.id in exempt_channel_ids else (False if enabled else None)
+        unverified_can_read_history = True if enabled and channel.id in exempt_channel_ids else None
+        unverified_can_send = False if enabled and channel.id in panel_channel_ids else None
+        role_targets = [
+            (
+                unverified_role,
+                unverified_can_view,
+                unverified_can_read_history,
+                unverified_can_send,
+            )
+        ]
         if verified_role is not None and channel.id in panel_channel_ids:
-            role_targets.append((verified_role, False if enabled else None))
+            role_targets.append((verified_role, False if enabled else None, None, None))
         if stale_unverified_role is not None:
-            role_targets.append((stale_unverified_role, None))
+            role_targets.append((stale_unverified_role, None, None, None))
 
-        for role, desired_view in role_targets:
+        for role, desired_view, desired_history, desired_send in role_targets:
             overwrite = channel.overwrites_for(role)
-            if overwrite.view_channel == desired_view:
+            if (
+                overwrite.view_channel == desired_view
+                and overwrite.read_message_history == desired_history
+                and overwrite.send_messages == desired_send
+            ):
                 continue
 
             overwrite.view_channel = desired_view
+            overwrite.read_message_history = desired_history
+            overwrite.send_messages = desired_send
             try:
                 await channel.set_permissions(
                     role,
