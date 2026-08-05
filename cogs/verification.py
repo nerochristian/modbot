@@ -405,7 +405,7 @@ class Verification(commands.Cog):
                 if message_id and republish_panel:
                     try:
                         stale_panel = await channel.fetch_message(message_id)
-                        await stale_panel.delete(reason="Republish verification panel after access repair")
+                        await stale_panel.delete()
                     except (discord.NotFound, discord.Forbidden, discord.HTTPException):
                         pass
 

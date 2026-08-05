@@ -19,6 +19,8 @@ def test_website_mode_never_silently_falls_back_to_discord_captcha() -> None:
     assert '"Website Verification Unavailable"' in source
     assert "Cloudflare Turnstile" in source
     assert 'republish_panel = bool(gate_result.get("updated"))' in source
+    assert 'await stale_panel.delete()' in source
+    assert 'stale_panel.delete(reason=' not in source
     assert '"verification_panel_message_id": str(panel_message.id)' in source
 
 
