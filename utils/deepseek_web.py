@@ -85,6 +85,8 @@ class DeepSeekWebClient:
         self._browser: Any = None
         self._context: Any = None
         self._pages: dict[str, Any] = {}
+        self._active_runs: set[asyncio.Task[Any]] = set()
+        self._closing = False
 
     @staticmethod
     def _limit_prompt(prompt: str, limit: int = 12_000) -> str:
@@ -430,7 +432,7 @@ class DeepSeekWebClient:
         async with self._start_lock:
             if self._browser is not failed_browser:
                 return
-            await self.close()
+            await self._close_browser()
 
     @staticmethod
     async def _visible_locator(locator: Any) -> Any | None:
@@ -788,6 +790,38 @@ class DeepSeekWebClient:
         )
 
     async def _run(
+        self,
+        prompt: str,
+        *,
+        lane: str,
+        ui_mode: str,
+        deepthink: bool,
+        search: bool,
+        images: Sequence[tuple[str, str, bytes]] = (),
+        reuse_existing: bool = False,
+        session_name: str | None = None,
+    ) -> str:
+        if self._closing:
+            raise DeepSeekWebError("DeepSeek web provider is shutting down.")
+        task = asyncio.current_task()
+        if task is not None:
+            self._active_runs.add(task)
+        try:
+            return await self._run_active(
+                prompt,
+                lane=lane,
+                ui_mode=ui_mode,
+                deepthink=deepthink,
+                search=search,
+                images=images,
+                reuse_existing=reuse_existing,
+                session_name=session_name,
+            )
+        finally:
+            if task is not None:
+                self._active_runs.discard(task)
+
+    async def _run_active(
         self,
         prompt: str,
         *,
@@ -1160,7 +1194,7 @@ class DeepSeekWebClient:
             except Exception:
                 pass
 
-    async def close(self) -> None:
+    async def _close_browser(self) -> None:
         for lane in list(self._pages):
             await self._discard_page(lane)
         context, browser, playwright = (
@@ -1185,3 +1219,17 @@ class DeepSeekWebClient:
                 await playwright.stop()
             except Exception:
                 pass
+
+    async def close(self) -> None:
+        self._closing = True
+        current = asyncio.current_task()
+        active = [
+            task
+            for task in self._active_runs
+            if task is not current and not task.done()
+        ]
+        for task in active:
+            task.cancel()
+        if active:
+            await asyncio.gather(*active, return_exceptions=True)
+        await self._close_browser()
