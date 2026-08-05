@@ -744,7 +744,11 @@ class PrefixCommands(commands.Cog):
         original_nick = None
         if ctx.guild and ctx.guild.me.guild_permissions.manage_nicknames:
             member = ctx.guild.get_member(ctx.author.id)
-            if member is not None and member.guild_owner is False and member.top_role < ctx.guild.me.top_role:
+            if (
+                member is not None
+                and member.id != ctx.guild.owner_id
+                and member.top_role < ctx.guild.me.top_role
+            ):
                 try:
                     original_nick = member.nick if member.nick is not None else member.display_name
                     await member.edit(nick=f"[AFK] {member.display_name}", reason=f"AFK: {reason}")
