@@ -751,6 +751,20 @@ class Logging(commands.Cog):
             return None
         return None
 
+    @staticmethod
+    def _is_verification_queue_role_update(
+        settings: dict[str, Any],
+        added: list[discord.Role],
+        removed: list[discord.Role],
+    ) -> bool:
+        if removed or len(added) != 1 or not module_enabled(settings, "verification", False):
+            return False
+        try:
+            unverified_role_id = int(settings.get("unverified_role", 0) or 0)
+        except (TypeError, ValueError):
+            return False
+        return unverified_role_id > 0 and added[0].id == unverified_role_id
+
     async def _find_recent_message_delete_entry(
         self,
         guild: discord.Guild,
@@ -2061,8 +2075,19 @@ class Logging(commands.Cog):
         if before.roles != after.roles:
             added = [r for r in after.roles if r not in before.roles]
             removed = [r for r in before.roles if r not in after.roles]
+            verification_queue_update = False
+            if len(added) == 1 and not removed:
+                try:
+                    settings = await self.bot.db.get_settings(before.guild.id)
+                    verification_queue_update = self._is_verification_queue_role_update(
+                        settings,
+                        added,
+                        removed,
+                    )
+                except Exception:
+                    verification_queue_update = False
 
-            if (added or removed) and audit_channel:
+            if (added or removed) and audit_channel and not verification_queue_update:
                 added_text = "*None*"
                 if added:
                     added_text = ", ".join([r.mention for r in added[:10]])

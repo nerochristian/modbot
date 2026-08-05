@@ -1,5 +1,6 @@
 import 'server-only'
 
+import { withBotAdvisoryLock } from '@/lib/bot-db'
 import { getBotGuildSettings, patchBotGuildSettings } from '@/lib/bot-settings'
 
 const DISCORD_API = 'https://discord.com/api/v10'
@@ -10,6 +11,7 @@ const READ_MESSAGE_HISTORY = BigInt(1 << 16)
 const IS_COMPONENTS_V2 = 1 << 15
 const MAX_DISCORD_ATTEMPTS = 5
 const DISCORD_WRITE_CONCURRENCY = 3
+const BULK_VERIFICATION_AUDIT_REASON = 'Docket verification setup - queue existing member'
 
 const STAFF_ROLE_SETTING_KEYS = [
   'owner_role',
@@ -24,7 +26,11 @@ const STAFF_ROLE_SETTING_KEYS = [
 
 type DiscordRole = { id: string; name: string; managed: boolean; permissions: string }
 type DiscordChannel = { id: string; name: string; type: number; parent_id?: string | null }
-type DiscordMessage = { id: string }
+type DiscordMessage = {
+  id: string
+  author?: { id?: string }
+  components?: unknown[]
+}
 type DiscordGuild = { id: string; name: string; icon: string | null; owner_id: string }
 type DiscordUser = { id: string; bot?: boolean }
 type DiscordMember = { user: DiscordUser; roles: string[] }
@@ -133,6 +139,14 @@ function escapeDiscordMarkdown(value: string): string {
   return value.replace(/[\\*_~`>|]/g, '\\$&')
 }
 
+function componentHasCustomId(value: unknown, customId: string): boolean {
+  if (Array.isArray(value)) return value.some((item) => componentHasCustomId(item, customId))
+  if (!value || typeof value !== 'object') return false
+  const record = value as Record<string, unknown>
+  if (record.custom_id === customId) return true
+  return Object.values(record).some((item) => componentHasCustomId(item, customId))
+}
+
 function panelPayload(guild: DiscordGuild, editing = false) {
   const iconUrl = guildIconUrl(guild)
   const header = {
@@ -234,6 +248,7 @@ async function queueExistingMembers(
     await mapConcurrent(candidates, DISCORD_WRITE_CONCURRENCY, async (member) => {
       await discord<void>(`/guilds/${guild.id}/members/${member.user.id}/roles/${unverifiedRoleId}`, {
         method: 'PUT',
+        headers: { 'X-Audit-Log-Reason': encodeURIComponent(BULK_VERIFICATION_AUDIT_REASON) },
       })
       assigned += 1
     })
@@ -243,6 +258,33 @@ async function queueExistingMembers(
   }
 
   return { assigned, skipped }
+}
+
+async function removeDuplicateVerificationPanels(
+  channelId: string,
+  botUserId: string,
+  canonicalMessageId: string,
+): Promise<number> {
+  try {
+    const messages = await discord<DiscordMessage[]>(`/channels/${channelId}/messages?limit=100`)
+    const duplicates = messages.filter((message) => (
+      message.id !== canonicalMessageId
+      && message.author?.id === botUserId
+      && componentHasCustomId(message.components, 'verification:start')
+    ))
+    let removed = 0
+    await mapConcurrent(duplicates, 2, async (message) => {
+      try {
+        await discord<void>(`/channels/${channelId}/messages/${message.id}`, { method: 'DELETE' })
+        removed += 1
+      } catch {
+        // A stale panel is harmless; never fail an otherwise valid setup over cleanup.
+      }
+    })
+    return removed
+  } catch {
+    return 0
+  }
 }
 
 function assertPersistedSetup(
@@ -258,8 +300,7 @@ function assertPersistedSetup(
   }
 }
 
-export async function automaticallySetupVerification(guildId: string) {
-  if (!/^\d{15,22}$/.test(guildId)) throw new Error('Invalid Discord guild ID')
+async function automaticallySetupVerificationLocked(guildId: string) {
   const settings = await getBotGuildSettings(guildId)
   const [guild, botUser, roles, channels] = await Promise.all([
     discord<DiscordGuild>(`/guilds/${guildId}`),
@@ -354,6 +395,11 @@ export async function automaticallySetupVerification(guildId: string) {
     verification_panel_message_id: panel.id,
   })
   assertPersistedSetup(persistedPanel, { verification_panel_message_id: panel.id })
+  const duplicatePanelsRemoved = await removeDuplicateVerificationPanels(
+    verifyChannel.id,
+    botUser.id,
+    panel.id,
+  )
 
   return {
     verifiedRoleId: verified.id,
@@ -364,5 +410,14 @@ export async function automaticallySetupVerification(guildId: string) {
     restrictedChannels: protectedChannels.length,
     existingMembersAssigned: memberQueue.assigned,
     exemptMembersSkipped: memberQueue.skipped,
+    duplicatePanelsRemoved,
   }
+}
+
+export async function automaticallySetupVerification(guildId: string) {
+  if (!/^\d{15,22}$/.test(guildId)) throw new Error('Invalid Discord guild ID')
+  return withBotAdvisoryLock(
+    `verification-setup:${guildId}`,
+    () => automaticallySetupVerificationLocked(guildId),
+  )
 }

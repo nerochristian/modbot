@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 from cogs.logging_cog import Logging
 
@@ -32,6 +33,18 @@ def test_expired_member_action_suppression_does_not_hide_manual_action() -> None
 
     assert cog._consume_member_action_log_suppression(100, 200, "ban") is False
     assert cog._suppressed_member_action_logs == {}
+
+
+def test_verification_queue_role_addition_is_not_logged_individually() -> None:
+    unverified = SimpleNamespace(id=300)
+    settings = {
+        "verification_enabled": True,
+        "unverified_role": "300",
+    }
+
+    assert Logging._is_verification_queue_role_update(settings, [unverified], []) is True
+    assert Logging._is_verification_queue_role_update(settings, [unverified], [SimpleNamespace(id=301)]) is False
+    assert Logging._is_verification_queue_role_update({**settings, "verification_enabled": False}, [unverified], []) is False
 
 
 def test_primary_ban_path_suppresses_gateway_event_before_banning() -> None:
