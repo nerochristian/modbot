@@ -24,7 +24,8 @@ How to use:
 5. Raw `discord.Embed` objects become V2 containers. Existing buttons/selects
    are moved into V2 action rows so they stay with the converted embed.
 6. Sends with only plain text are left alone.
-7. Pass ``use_v2=False`` to preserve a classic embed for a specific send/edit.
+7. ``use_v2=False`` preserves classic non-interactive embeds; buttons always
+   take priority so they remain inside the converted card.
 
 This file is standalone. It does not depend on any other project file.
 """
@@ -281,11 +282,14 @@ def _normalize_v2_payload(
 ) -> tuple[tuple[Any, ...], dict[str, Any]]:
     use_v2 = kwargs.pop("use_v2", None)
     normalized_use_v2 = use_v2.strip().lower() if isinstance(use_v2, str) else use_v2
-    if normalized_use_v2 is False or normalized_use_v2 in {"0", "false", "no", "off"}:
-        return args, kwargs
-
     embeds = _extract_embeds(kwargs)
     view = kwargs.get("view", MISSING)
+    has_buttons = _view_has_buttons(view)
+    if (
+        not has_buttons
+        and (normalized_use_v2 is False or normalized_use_v2 in {"0", "false", "no", "off"})
+    ):
+        return args, kwargs
 
     explicitly_v2 = normalized_use_v2 is True or normalized_use_v2 in {
         "1",
@@ -293,7 +297,7 @@ def _normalize_v2_payload(
         "yes",
         "on",
     }
-    if not explicitly_v2 and not _view_has_buttons(view):
+    if not explicitly_v2 and not has_buttons:
         # Preserve native embeds unless they have buttons that need to sit
         # inside a Components v2 container.
         return args, kwargs

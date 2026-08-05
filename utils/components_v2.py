@@ -574,12 +574,13 @@ def patch_components_v2() -> None:
     Monkeypatch discord.py to auto-convert embeds to Components v2.
 
     This allows existing embed-based code to work with Components v2 without changes.
-    Respects ComponentsV2Config.enabled and per-message use_v2 flags.
-    Defaults to classic embed behavior (v1) unless explicitly enabled.
+    Respects ComponentsV2Config.enabled and per-message use_v2 flags for
+    non-interactive messages. Any embed paired with buttons is always V2 so
+    the controls remain inside the visual card.
 
     Control behavior:
     - Global: ComponentsV2Config.enable() / .disable()
-    - Per-message: pass use_v2=False to any send/edit method
+    - Per-message: pass use_v2=False to preserve a non-interactive embed
 
     Example:
         # Enable globally
@@ -634,7 +635,12 @@ def patch_components_v2() -> None:
         """Determine if v2 conversion should be applied based on config and flags."""
         use_v2 = _parse_use_v2(kwargs.pop("use_v2", None))
         
-        # Explicit per-message control
+        # Buttons always take priority over legacy opt-outs: interactive
+        # embeds must keep their controls inside the V2 container.
+        if _view_has_buttons(kwargs.get("view")):
+            return True
+
+        # Explicit per-message control for non-interactive messages.
         if use_v2 is True:
             return True
         if use_v2 is False:
@@ -642,7 +648,7 @@ def patch_components_v2() -> None:
         
         # Interactive embed panels become v2 automatically so their buttons
         # live inside the visual card. Embed-only messages stay native.
-        return ComponentsV2Config.enabled or _view_has_buttons(kwargs.get("view"))
+        return ComponentsV2Config.enabled
 
     def _strip_none_view_for_send(kwargs: dict[str, Any]) -> None:
         """
