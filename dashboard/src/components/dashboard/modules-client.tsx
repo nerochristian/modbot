@@ -8,9 +8,11 @@ import {
   Bot,
   CheckCircle2,
   CircleOff,
+  Globe2,
   ImageIcon,
   KeyRound,
   Loader2,
+  MessageSquareText,
   Search,
   Scale,
   ScrollText,
@@ -82,6 +84,7 @@ const BADGE_LABEL = {
 } as const
 
 type StatusFilter = 'all' | 'enabled' | 'disabled'
+type VerificationMethod = 'website' | 'discord'
 
 const CATEGORY_ORDER = ['Moderation', 'Access', 'Engagement'] as const
 
@@ -124,6 +127,7 @@ export function ModulesClient() {
   const [editing, setEditing] = useState<Module | null>(null)
   const [pendingWhitelist, setPendingWhitelist] = useState<Module | null>(null)
   const [pendingVerification, setPendingVerification] = useState<Module | null>(null)
+  const [verificationMethod, setVerificationMethod] = useState<VerificationMethod>('website')
   const [autoSettingVerification, setAutoSettingVerification] = useState(false)
   const verificationSetupInFlight = useRef(false)
 
@@ -178,6 +182,7 @@ export function ModulesClient() {
       return
     }
     if (mod.id === 'verification' && next && !verificationIsConfigured(mod)) {
+      setVerificationMethod('website')
       setPendingVerification(mod)
       return
     }
@@ -186,6 +191,7 @@ export function ModulesClient() {
 
   function requestSettings(mod: Module) {
     if (mod.id === 'verification' && !verificationIsConfigured(mod)) {
+      setVerificationMethod('website')
       setPendingVerification(mod)
       return
     }
@@ -197,14 +203,18 @@ export function ModulesClient() {
     verificationSetupInFlight.current = true
     setAutoSettingVerification(true)
     try {
-      const response = await fetch('/api/modules/verification/setup', { method: 'POST' })
+      const response = await fetch('/api/modules/verification/setup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method: verificationMethod }),
+      })
       const body = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(body.error || 'Automatic verification setup failed')
       const protectedChannels = Number(body.restrictedChannels ?? 0)
       const queuedMembers = Number(body.existingMembersAssigned ?? 0)
       toast.success(
         'Verification is ready',
-        `${protectedChannels} channels protected · ${queuedMembers} existing member${queuedMembers === 1 ? '' : 's'} queued · V2 panel posted.`,
+        `${verificationMethod === 'website' ? 'Website checkpoint' : 'Discord CAPTCHA'} · ${protectedChannels} channels protected · ${queuedMembers} existing member${queuedMembers === 1 ? '' : 's'} queued · Auto Role disabled.`,
       )
       setPendingVerification(null)
       await refetch()
@@ -364,16 +374,71 @@ export function ModulesClient() {
               Configure manually
             </Button>
             <Button loading={autoSettingVerification} onClick={() => void autoSetupVerification()}>
-              <WandSparkles className="size-4" /> Set up automatically
+              <WandSparkles className="size-4" /> Set up {verificationMethod === 'website' ? 'website' : 'Discord'}
             </Button>
           </>
         }
       >
+        <fieldset className="mb-4 grid gap-2 sm:grid-cols-2" disabled={autoSettingVerification}>
+          <legend className="mb-2 text-xs font-semibold text-foreground">Where should members prove they are human?</legend>
+          {([
+            {
+              value: 'website' as const,
+              icon: Globe2,
+              title: 'Website checkpoint',
+              badge: 'Recommended',
+              copy: 'Members open a private, single-use link protected by Cloudflare Turnstile.',
+            },
+            {
+              value: 'discord' as const,
+              icon: MessageSquareText,
+              title: 'Discord CAPTCHA',
+              badge: 'In-app',
+              copy: 'Members solve the image challenge without leaving Discord.',
+            },
+          ]).map((option) => {
+            const selected = verificationMethod === option.value
+            const Icon = option.icon
+            return (
+              <button
+                key={option.value}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => setVerificationMethod(option.value)}
+                className={cn(
+                  'focus-ring relative overflow-hidden rounded-lg border p-3 text-left transition-colors',
+                  selected
+                    ? 'border-accent bg-accent-soft text-foreground'
+                    : 'border-border bg-surface-2 text-muted hover:border-border-strong hover:text-foreground',
+                )}
+              >
+                <span className="flex items-start justify-between gap-3">
+                  <span className={cn('grid size-9 shrink-0 place-items-center rounded-md border', selected ? 'border-accent/40 bg-surface text-accent' : 'border-border bg-surface text-muted-2')}>
+                    <Icon className="size-4" />
+                  </span>
+                  <span className={cn('rounded-full border px-2 py-0.5 font-mono text-[0.5625rem] font-semibold uppercase tracking-[0.12em]', selected ? 'border-accent/35 text-accent' : 'border-border text-muted-2')}>
+                    {option.badge}
+                  </span>
+                </span>
+                <span className="mt-3 block text-sm font-semibold">{option.title}</span>
+                <span className="mt-1 block text-xs leading-5 text-muted">{option.copy}</span>
+                <span className={cn('absolute inset-x-0 bottom-0 h-0.5', selected ? 'bg-accent' : 'bg-transparent')} />
+              </button>
+            )
+          })}
+        </fieldset>
+
         <div className="grid gap-3 sm:grid-cols-3">
           {[
             ['01', 'Create roles', 'Verified and Unverified roles are created or reused.'],
             ['02', 'Protect channels', 'Unverified members only see the verification entry point.'],
-            ['03', 'Post the panel', 'The verification button and private staff log go live.'],
+            [
+              '03',
+              verificationMethod === 'website' ? 'Open the checkpoint' : 'Solve in Discord',
+              verificationMethod === 'website'
+                ? 'The panel issues a private website link protected by Turnstile.'
+                : 'The panel starts the in-Discord image CAPTCHA.',
+            ],
           ].map(([number, title, copy]) => (
             <div key={number} className="rounded-lg border border-border bg-surface-2 p-3">
               <span className="font-mono text-[0.625rem] font-bold text-accent">{number}</span>
