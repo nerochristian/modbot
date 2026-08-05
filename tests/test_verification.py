@@ -192,6 +192,32 @@ class VerificationRoleRepairTests(unittest.IsolatedAsyncioTestCase):
         )
         waiting_only.remove_roles.assert_not_awaited()
 
+    async def test_startup_recreates_a_deleted_unverified_role(self) -> None:
+        verified_role = SimpleNamespace(id=789, name="Memberms", managed=False)
+        replacement_waiting_role = SimpleNamespace(id=456, name="Unverified", managed=False)
+        guild = SimpleNamespace(
+            id=999,
+            roles=[verified_role],
+            get_role=lambda role_id: verified_role if role_id == verified_role.id else None,
+            create_role=AsyncMock(return_value=replacement_waiting_role),
+        )
+        database = SimpleNamespace(update_settings=AsyncMock())
+        cog = Verification.__new__(Verification)
+        cog.bot = SimpleNamespace(db=database)
+        settings = {
+            "verified_role": verified_role.id,
+            "verification_role": verified_role.id,
+            "unverified_role": 123,
+        }
+
+        unverified, verified = await cog._ensure_verification_roles(guild, settings)
+
+        self.assertIs(unverified, replacement_waiting_role)
+        self.assertIs(verified, verified_role)
+        self.assertEqual(settings["unverified_role"], replacement_waiting_role.id)
+        guild.create_role.assert_awaited_once()
+        database.update_settings.assert_awaited_once_with(guild.id, settings)
+
     def test_existing_regular_member_is_selected_for_verification(self) -> None:
         waiting_role = SimpleNamespace(id=456)
         verified_role = SimpleNamespace(id=789)

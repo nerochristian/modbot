@@ -371,6 +371,10 @@ class Verification(commands.Cog):
                 settings = await self._get_settings(guild.id)
                 if not module_enabled(settings, "verification", False):
                     continue
+                unverified_role, verified_role = await self._ensure_verification_roles(
+                    guild,
+                    settings,
+                )
                 gate_result = await apply_verification_gate(guild, settings)
                 if gate_result.get("errors"):
                     logger.warning(
@@ -378,7 +382,6 @@ class Verification(commands.Cog):
                         guild.id,
                         "; ".join(str(error) for error in gate_result["errors"]),
                     )
-                unverified_role, verified_role = await self._get_roles(guild)
                 if unverified_role is not None and verified_role is not None:
                     reconciled = await self._reconcile_verified_members(
                         guild,
@@ -444,6 +447,66 @@ class Verification(commands.Cog):
             return None, None
         unverified = guild.get_role(unverified_id) if unverified_id else None
         verified = guild.get_role(verified_id) if verified_id else None
+        return unverified, verified
+
+    async def _ensure_verification_roles(
+        self,
+        guild: discord.Guild,
+        settings: dict,
+    ) -> tuple[discord.Role, discord.Role]:
+        """Resolve or recreate verification roles when a configured role was deleted."""
+        sync_setup_aliases(settings)
+        try:
+            unverified_id = int(settings.get("unverified_role", 0) or 0)
+            verified_id = int(settings.get("verified_role", 0) or 0)
+        except (TypeError, ValueError):
+            unverified_id = 0
+            verified_id = 0
+
+        unverified = guild.get_role(unverified_id) if unverified_id else None
+        verified = guild.get_role(verified_id) if verified_id else None
+        settings_changed = False
+
+        if verified is None:
+            verified = next(
+                (role for role in guild.roles if not role.managed and role.name.casefold() == "verified"),
+                None,
+            )
+            if verified is None:
+                verified = await guild.create_role(
+                    name="Verified",
+                    colour=discord.Colour(0x57F287),
+                    permissions=discord.Permissions.none(),
+                    reason="Repair missing verification role",
+                )
+            settings["verified_role"] = verified.id
+            settings["verification_role"] = verified.id
+            settings_changed = True
+
+        if unverified is None:
+            unverified = next(
+                (role for role in guild.roles if not role.managed and role.name.casefold() == "unverified"),
+                None,
+            )
+            if unverified is None:
+                unverified = await guild.create_role(
+                    name="Unverified",
+                    colour=discord.Colour(0x747F8D),
+                    permissions=discord.Permissions.none(),
+                    reason="Repair missing verification waiting role",
+                )
+            settings["unverified_role"] = unverified.id
+            settings_changed = True
+
+        if settings_changed:
+            await self.bot.db.update_settings(guild.id, settings)
+            logger.info(
+                "Repaired verification role configuration for guild %s (verified=%s, unverified=%s)",
+                guild.id,
+                verified.id,
+                unverified.id,
+            )
+
         return unverified, verified
 
     @staticmethod
