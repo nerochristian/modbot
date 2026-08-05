@@ -5,7 +5,7 @@ from unittest.mock import AsyncMock
 
 import discord
 
-from cogs.verification import Verification, VerificationPanelLayout
+from cogs.verification import Verification, VerificationPanelLayout, WebsiteVerificationLayout
 from utils.server_setup import apply_verification_gate
 
 
@@ -128,6 +128,48 @@ class VerificationRoleRepairTests(unittest.IsolatedAsyncioTestCase):
         response.defer.assert_awaited_once_with(ephemeral=True, thinking=True)
         response.send_message.assert_not_awaited()
         interaction.edit_original_response.assert_awaited_once()
+
+    async def test_website_start_returns_the_secure_checkpoint_after_deferring(self) -> None:
+        state = {"acknowledged": False}
+
+        async def defer_response(*, ephemeral, thinking):
+            state["acknowledged"] = True
+
+        response = SimpleNamespace(
+            is_done=lambda: state["acknowledged"],
+            defer=AsyncMock(side_effect=defer_response),
+            send_message=AsyncMock(),
+        )
+        interaction = SimpleNamespace(
+            guild=SimpleNamespace(id=999),
+            response=response,
+            edit_original_response=AsyncMock(),
+        )
+        unverified_role = SimpleNamespace(id=456)
+        verified_role = SimpleNamespace(id=789)
+        guild = SimpleNamespace(id=999, name="Test Guild", icon=None, banner=None)
+        member = SimpleNamespace(id=222, roles=[unverified_role])
+        cog = Verification.__new__(Verification)
+        cog._cooldowns = {}
+        cog._resolve_guild_member = AsyncMock(return_value=(guild, member))
+        cog._is_server_verification_enabled = AsyncMock(return_value=True)
+        cog._get_roles = AsyncMock(return_value=(unverified_role, verified_role))
+        cog._get_settings = AsyncMock(return_value={"verification_method": "website"})
+        cog._website_verification_url = AsyncMock(
+            return_value="https://docketbot.xyz/verify/signed-token"
+        )
+
+        await cog._start_captcha(
+            interaction,
+            regenerate=True,
+            purpose="server",
+        )
+
+        response.defer.assert_awaited_once_with(ephemeral=True, thinking=True)
+        response.send_message.assert_not_awaited()
+        interaction.edit_original_response.assert_awaited_once()
+        payload = interaction.edit_original_response.await_args.kwargs
+        self.assertIsInstance(payload["view"], WebsiteVerificationLayout)
 
     async def test_verified_role_is_hidden_from_verification_channel(self) -> None:
         unverified_role = SimpleNamespace(id=456, name="Unverified")
