@@ -742,6 +742,7 @@ class PrefixCommands(commands.Cog):
         reason = (reason or "AFK").strip()[:100] or "AFK"
         store = self._afk_store()
         original_nick = None
+        nickname_changed = False
         if ctx.guild and ctx.guild.me.guild_permissions.manage_nicknames:
             member = ctx.guild.get_member(ctx.author.id)
             if (
@@ -752,6 +753,7 @@ class PrefixCommands(commands.Cog):
                 try:
                     original_nick = member.nick if member.nick is not None else member.display_name
                     await member.edit(nick=f"[AFK] {member.display_name}", reason=f"AFK: {reason}")
+                    nickname_changed = True
                 except discord.HTTPException:
                     original_nick = None
         store[ctx.author.id] = {
@@ -762,7 +764,15 @@ class PrefixCommands(commands.Cog):
         }
         embed = discord.Embed(
             title="💤 AFK Status Set",
-            description=f"{ctx.author.mention} is now AFK: **{reason}**\n\nYour nickname has been set to **[AFK] {ctx.author.display_name}**. Send any message to return.",
+            description=(
+                f"{ctx.author.mention} is now AFK: **{reason}**\n\n"
+                + (
+                    f"Your nickname has been set to **[AFK] {ctx.author.display_name}**. "
+                    if nickname_changed
+                    else "Your nickname could not be changed in this server. "
+                )
+                + "Send any message to return."
+            ),
             color=Colors.INFO,
             timestamp=datetime.now(timezone.utc),
         )

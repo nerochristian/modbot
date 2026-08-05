@@ -141,6 +141,7 @@ class Utility(commands.Cog):
         """Set AFK status with auto-reply"""
         reason = (reason or "AFK").strip()[:100] or "AFK"
         original_nick = None
+        nickname_changed = False
         if interaction.guild and interaction.guild.me.guild_permissions.manage_nicknames:
             member = interaction.guild.get_member(interaction.user.id)
             if (
@@ -151,6 +152,7 @@ class Utility(commands.Cog):
                 try:
                     original_nick = member.nick if member.nick is not None else member.display_name
                     await member.edit(nick=f"[AFK] {member.display_name}", reason=f"AFK: {reason}")
+                    nickname_changed = True
                 except discord.HTTPException:
                     original_nick = None
         self.afk_users[interaction.user.id] = {
@@ -162,7 +164,15 @@ class Utility(commands.Cog):
         
         embed = discord.Embed(
             title="💤 AFK Status Set",
-            description=f"You're now AFK: **{reason}**\n\nYour nickname has been set to **[AFK] {interaction.user.display_name}**. Send any message to return.",
+            description=(
+                f"You're now AFK: **{reason}**\n\n"
+                + (
+                    f"Your nickname has been set to **[AFK] {interaction.user.display_name}**. "
+                    if nickname_changed
+                    else "Your nickname could not be changed in this server. "
+                )
+                + "Send any message to return."
+            ),
             color=Colors.INFO,
             timestamp=datetime.now(timezone.utc)
         )
