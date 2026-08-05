@@ -291,7 +291,7 @@ class DeepSeekWebClient:
                     viewport={"width": 1440, "height": 1000},
                 )
             except Exception:
-                await self.close()
+                await self._close_browser()
                 raise
 
     def _lock_for_lane(self, lane: str) -> asyncio.Lock:

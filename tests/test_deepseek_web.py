@@ -1,3 +1,4 @@
+import asyncio
 import unittest
 from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, MagicMock
@@ -90,6 +91,30 @@ class DeepSeekWebHelperTests(unittest.TestCase):
 
 
 class DeepSeekWebChatModeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_close_cancels_and_retrieves_active_provider_tasks(self) -> None:
+        client = DeepSeekWebClient()
+        started = asyncio.Event()
+
+        async def wait_forever(*_args, **_kwargs) -> str:
+            started.set()
+            await asyncio.Event().wait()
+            return "unreachable"
+
+        client._run_active = AsyncMock(side_effect=wait_forever)
+        task = asyncio.create_task(client._run(
+            "hello",
+            lane="chat",
+            ui_mode="chat",
+            deepthink=False,
+            search=False,
+        ))
+        await started.wait()
+
+        await client.close()
+
+        self.assertTrue(task.cancelled())
+        self.assertEqual(client._active_runs, set())
+
     async def test_vision_uses_named_channel_session(self) -> None:
         client = DeepSeekWebClient()
         client._run = AsyncMock(return_value="image answer")
