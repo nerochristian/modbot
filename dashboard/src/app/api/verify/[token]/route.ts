@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { apiError, ok } from '@/lib/api'
 import { getBotGuildSettings } from '@/lib/bot-settings'
 import { botQuery } from '@/lib/bot-db'
@@ -8,11 +8,10 @@ import { verifyVerificationCapability } from '@/lib/web-verification'
 const DISCORD_API = 'https://discord.com/api/v10'
 const attempts = new Map<string, { count: number; resetAt: number }>()
 
-type RecaptchaResponse = { success: boolean; score?: number; action?: string; hostname?: string; 'error-codes'?: string[] }
+type TurnstileResponse = { success: boolean; action?: string; hostname?: string; 'error-codes'?: string[] }
 
-const RECAPTCHA_ACTION = 'verify'
-const RECAPTCHA_MIN_SCORE = 0.5
-const MAX_RECAPTCHA_TOKEN_LENGTH = 8_192
+const TURNSTILE_ACTION = 'verify'
+const MAX_TURNSTILE_TOKEN_LENGTH = 2_048
 const MAX_REQUEST_BYTES = 16_384
 type DiscordMember = { user: { id: string; bot?: boolean }; joined_at?: string }
 
@@ -53,7 +52,7 @@ export async function POST(request: Request, context: { params: Promise<{ token:
     if (
       typeof body.challenge !== 'string'
       || body.challenge.length < 10
-      || body.challenge.length > MAX_RECAPTCHA_TOKEN_LENGTH
+      || body.challenge.length > MAX_TURNSTILE_TOKEN_LENGTH
     ) {
       return apiError('Complete the human check before continuing.', 400)
     }
@@ -62,26 +61,28 @@ export async function POST(request: Request, context: { params: Promise<{ token:
     if (!settings.verification_enabled || settings.verification_method !== 'website') {
       return apiError('Website verification is not active for this server.', 409)
     }
-    const secret = process.env.RECAPTCHA_SECRET_KEY?.trim()
+    const secret = process.env.TURNSTILE_SECRET_KEY?.trim()
     if (!secret) return apiError('Website verification is not configured.', 503)
     const form = new URLSearchParams({
       secret,
       response: body.challenge,
-      remoteip: clientAddress(request),
+      idempotency_key: randomUUID(),
     })
-    const recaptchaResponse = await fetch('https://www.google.com/recaptcha/api/siteverify', {
+    const remoteAddress = clientAddress(request)
+    if (remoteAddress !== 'unknown') form.set('remoteip', remoteAddress)
+    const turnstileResponse = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: form,
       cache: 'no-store',
+      signal: AbortSignal.timeout(8_000),
     })
-    const recaptcha = await recaptchaResponse.json() as RecaptchaResponse
+    if (!turnstileResponse.ok) throw new Error(`Turnstile validation failed (${turnstileResponse.status})`)
+    const turnstile = await turnstileResponse.json() as TurnstileResponse
     const expectedHostname = new URL(dashboardBaseUrl(request.url)).hostname
-    // v3: require success, our own action, a passing score, and a matching host.
-    const scoreOk = typeof recaptcha.score === 'number' && recaptcha.score >= RECAPTCHA_MIN_SCORE
-    const actionOk = recaptcha.action === RECAPTCHA_ACTION
-    const hostOk = !recaptcha.hostname || recaptcha.hostname === expectedHostname
-    if (!recaptcha.success || !actionOk || !scoreOk || !hostOk) {
+    const actionOk = turnstile.action === TURNSTILE_ACTION
+    const hostOk = turnstile.hostname === expectedHostname
+    if (!turnstile.success || !actionOk || !hostOk) {
       return apiError('The human check was not accepted. Refresh the page and try again.', 400)
     }
 

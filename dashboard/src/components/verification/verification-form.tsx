@@ -5,54 +5,72 @@ import Script from 'next/script'
 import { ArrowRight, CheckCircle2, Loader2, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
-type RecaptchaApi = {
-  ready: (cb: () => void) => void
-  execute: (siteKey: string, options: { action: string }) => Promise<string>
+type TurnstileApi = {
+  render: (container: HTMLElement, options: {
+    sitekey: string
+    action: string
+    theme: 'dark'
+    size: 'flexible'
+    appearance: 'interaction-only'
+    callback: (token: string) => void
+    'expired-callback': () => void
+    'error-callback': () => void
+  }) => string
+  reset: (widgetId: string) => void
+  remove: (widgetId: string) => void
 }
 
 declare global {
   interface Window {
-    grecaptcha?: RecaptchaApi
+    turnstile?: TurnstileApi
   }
 }
 
-const RECAPTCHA_ACTION = 'verify'
+const TURNSTILE_ACTION = 'verify'
 
 export function VerificationForm({ token, siteKey }: { token: string; siteKey: string }) {
   const [state, setState] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle')
   const [message, setMessage] = useState('')
   const [scriptReady, setScriptReady] = useState(false)
-  const readyRef = useRef(false)
+  const [challenge, setChallenge] = useState('')
+  const containerRef = useRef<HTMLDivElement>(null)
+  const widgetRef = useRef<string | null>(null)
 
-  useEffect(() => {
-    readyRef.current = scriptReady
-  }, [scriptReady])
-
-  // Run the invisible reCAPTCHA v3 flow and return a fresh token. v3 tokens
-  // expire after ~2 minutes, so we execute at submit time rather than on load.
-  const runChallenge = useCallback((): Promise<string> => {
-    return new Promise((resolve, reject) => {
-      const api = window.grecaptcha
-      if (!api) {
-        reject(new Error('The human check could not load. Refresh the page and try again.'))
-        return
-      }
-      api.ready(() => {
-        api
-          .execute(siteKey, { action: RECAPTCHA_ACTION })
-          .then((tok) => {
-            if (!tok || tok.length < 10) {
-              reject(new Error('The human check did not finish. Wait a moment and press verify again.'))
-              return
-            }
-            resolve(tok)
-          })
-          .catch(() => {
-            reject(new Error('The human check could not be completed. Refresh the page and try again.'))
-          })
-      })
+  const renderChallenge = useCallback(() => {
+    const api = window.turnstile
+    const container = containerRef.current
+    if (!api || !container || widgetRef.current !== null) return
+    widgetRef.current = api.render(container, {
+      sitekey: siteKey,
+      action: TURNSTILE_ACTION,
+      theme: 'dark',
+      size: 'flexible',
+      appearance: 'interaction-only',
+      callback: (value) => {
+        setChallenge(value)
+        setMessage('')
+        setState('idle')
+      },
+      'expired-callback': () => {
+        setChallenge('')
+        setState('error')
+        setMessage('The human check expired. Complete it again to continue.')
+      },
+      'error-callback': () => {
+        setChallenge('')
+        setState('error')
+        setMessage('The secure human check could not start. Refresh the page and try again.')
+      },
     })
   }, [siteKey])
+
+  useEffect(() => {
+    if (scriptReady) renderChallenge()
+  }, [renderChallenge, scriptReady])
+
+  useEffect(() => () => {
+    if (widgetRef.current !== null) window.turnstile?.remove(widgetRef.current)
+  }, [])
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -60,7 +78,7 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
     setState('submitting')
     setMessage('')
     try {
-      const challenge = await runChallenge()
+      if (!challenge) throw new Error('Complete the human check before continuing.')
       const response = await fetch(`/api/verify/${encodeURIComponent(token)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -73,6 +91,8 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
     } catch (error) {
       setState('error')
       setMessage(error instanceof Error ? error.message : 'Verification could not be completed')
+      setChallenge('')
+      if (widgetRef.current !== null) window.turnstile?.reset(widgetRef.current)
     }
   }
 
@@ -93,16 +113,15 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
   return (
     <>
       <Script
-        src={`https://www.google.com/recaptcha/api.js?render=${encodeURIComponent(siteKey)}`}
+        src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"
         strategy="afterInteractive"
         onReady={() => {
-          const api = window.grecaptcha
-          if (!api) {
+          if (!window.turnstile) {
             setState('error')
             setMessage('The secure human check could not start. Refresh the page and try again.')
             return
           }
-          api.ready(() => setScriptReady(true))
+          setScriptReady(true)
         }}
         onError={() => {
           setScriptReady(false)
@@ -130,9 +149,9 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
               <ShieldCheck className="size-4" />
             </span>
             <div>
-              <p className="text-sm font-medium text-[#dce6f5]">One secure tap</p>
+              <p className="text-sm font-medium text-[#dce6f5]">One secure check</p>
               <p className="mt-1 text-xs leading-5 text-[#8291aa]">
-                Press verify and Docket will run a private human check before opening your server access.
+                Complete the private checkpoint below, then Docket will open your server access.
               </p>
             </div>
           </div>
@@ -143,23 +162,27 @@ export function VerificationForm({ token, siteKey }: { token: string; siteKey: s
             </div>
           )}
 
+          <div
+            ref={containerRef}
+            className="min-h-[65px] overflow-hidden rounded-xl border border-[#243652] bg-[#070d18] p-2"
+            aria-label="Cloudflare Turnstile human check"
+          />
+
           <Button
             type="submit"
             size="lg"
             className="h-12 w-full rounded-xl bg-gradient-to-r from-[#2563eb] to-[#1684ee] font-semibold shadow-[0_18px_40px_-18px_rgba(37,99,235,.95)]"
-            disabled={state === 'submitting' || !scriptReady}
+            disabled={state === 'submitting' || !scriptReady || !challenge}
           >
             {state === 'submitting' ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}
-            {state === 'submitting' ? 'Opening access…' : !scriptReady ? 'Loading secure check…' : 'Verify and open access'}
-            {state !== 'submitting' && scriptReady && <ArrowRight className="ml-auto size-4" />}
+            {state === 'submitting' ? 'Opening access…' : !scriptReady ? 'Loading secure check…' : !challenge ? 'Complete the check above' : 'Verify and open access'}
+            {state !== 'submitting' && Boolean(challenge) && <ArrowRight className="ml-auto size-4" />}
           </Button>
 
           <p className="text-center text-[0.6875rem] leading-4 text-[#6680a8]">
-            This site is protected by reCAPTCHA and the Google{' '}
-            <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer" className="underline hover:text-[#8fb0e0]">Privacy Policy</a>{' '}
-            and{' '}
-            <a href="https://policies.google.com/terms" target="_blank" rel="noreferrer" className="underline hover:text-[#8fb0e0]">Terms of Service</a>{' '}
-            apply.
+            Protected by Cloudflare Turnstile. Cloudflare&apos;s{' '}
+            <a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noreferrer" className="underline hover:text-[#8fb0e0]">Privacy Policy</a>{' '}
+            applies.
           </p>
         </div>
       </form>
