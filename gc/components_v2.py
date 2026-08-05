@@ -78,34 +78,44 @@ def _component_type(item: discord.ui.Item[Any]) -> Optional[int]:
         return None
 
 
+def _view_has_buttons(view: Any) -> bool:
+    if not isinstance(view, (discord.ui.View, discord.ui.LayoutView)):
+        return False
+    pending = list(getattr(view, "children", []))
+    while pending:
+        item = pending.pop()
+        if isinstance(item, discord.ui.Button):
+            return True
+        pending.extend(list(getattr(item, "children", [])))
+    return False
+
+
 def ensure_layout_view_action_rows(view: discord.ui.LayoutView) -> discord.ui.LayoutView:
     children = list(getattr(view, "children", []))
     if not children:
         return view
 
     needs_fix = any((_component_type(child) not in _V2_TOP_LEVEL_TYPES) for child in children)
-    if not needs_fix:
-        return view
+    if needs_fix:
+        action_rows: dict[int, list[discord.ui.Item[Any]]] = {}
+        layout_items: list[discord.ui.Item[Any]] = []
 
-    action_rows: dict[int, list[discord.ui.Item[Any]]] = {}
-    layout_items: list[discord.ui.Item[Any]] = []
+        for child in children:
+            component_type = _component_type(child)
+            if component_type in _V2_TOP_LEVEL_TYPES:
+                layout_items.append(child)
+                continue
 
-    for child in children:
-        component_type = _component_type(child)
-        if component_type in _V2_TOP_LEVEL_TYPES:
-            layout_items.append(child)
-            continue
+            row = getattr(child, "row", None)
+            row_index = row if isinstance(row, int) and row >= 0 else 0
+            action_rows.setdefault(row_index, []).append(child)
 
-        row = getattr(child, "row", None)
-        row_index = row if isinstance(row, int) and row >= 0 else 0
-        action_rows.setdefault(row_index, []).append(child)
-
-    view.clear_items()
-    for item in layout_items:
-        view.add_item(item)
-    for row_index in sorted(action_rows):
-        for start in range(0, len(action_rows[row_index]), 5):
-            view.add_item(discord.ui.ActionRow(*action_rows[row_index][start : start + 5]))
+        view.clear_items()
+        for item in layout_items:
+            view.add_item(item)
+        for row_index in sorted(action_rows):
+            for start in range(0, len(action_rows[row_index]), 5):
+                view.add_item(discord.ui.ActionRow(*action_rows[row_index][start : start + 5]))
 
     try:
         children = list(getattr(view, "children", []))
@@ -283,13 +293,9 @@ def _normalize_v2_payload(
         "yes",
         "on",
     }
-    if not explicitly_v2 and any(
-        embed.timestamp is not None
-        and bool(_clean_text(getattr(embed.footer, "text", None)))
-        for embed in embeds
-    ):
-        # A v2 container can only imitate footer text. Keep native Discord
-        # embeds whenever a real footer/timestamp has already been supplied.
+    if not explicitly_v2 and not _view_has_buttons(view):
+        # Preserve native embeds unless they have buttons that need to sit
+        # inside a Components v2 container.
         return args, kwargs
 
     if not embeds:

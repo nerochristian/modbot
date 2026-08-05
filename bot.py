@@ -35,7 +35,7 @@ from dotenv import load_dotenv
 from config import Config
 from utils.embeds import ModEmbed
 from utils.moderation_settings import moderation_bool
-from utils.components_v2 import ensure_layout_view_action_rows
+from utils.components_v2 import ensure_layout_view_action_rows, patch_components_v2
 from utils.server_setup import ensure_private_moderation_logs
 from utils.status_emojis import (
     apply_status_emoji_overrides,
@@ -46,6 +46,7 @@ from utils.status_emojis import (
 
 # Load environment variables
 load_dotenv(override=True)
+patch_components_v2()
 
 # ==================== ENVIRONMENT HELPERS ====================
 IS_RENDER = os.getenv("RENDER", "").lower() in ("true", "1", "yes")
