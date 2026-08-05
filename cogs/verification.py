@@ -376,6 +376,7 @@ class Verification(commands.Cog):
                     settings,
                 )
                 gate_result = await apply_verification_gate(guild, settings)
+                republish_panel = bool(gate_result.get("updated"))
                 if gate_result.get("errors"):
                     logger.warning(
                         "Verification access repair reported errors for guild %s: %s",
@@ -414,17 +415,24 @@ class Verification(commands.Cog):
 
                 panel_view = VerificationPanelLayout(self, guild=guild)
                 panel_message: Optional[discord.Message] = None
-                if message_id:
+                if message_id and not republish_panel:
                     try:
                         panel_message = await channel.fetch_message(message_id)
                     except discord.NotFound:
                         panel_message = None
 
+                if message_id and republish_panel:
+                    try:
+                        stale_panel = await channel.fetch_message(message_id)
+                        await stale_panel.delete(reason="Republish verification panel after access repair")
+                    except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                        pass
+
                 if panel_message is None:
                     panel_message = await channel.send(view=panel_view)
                     await self.bot.db.update_settings(
                         guild.id,
-                        {"verification_panel_message_id": panel_message.id},
+                        {"verification_panel_message_id": str(panel_message.id)},
                     )
                 else:
                     await panel_message.edit(content=None, embeds=[], view=panel_view)
