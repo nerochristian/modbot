@@ -259,6 +259,32 @@ export async function sendBotChannelMessage(channelId: string, content: string):
   })
 }
 
+export type DiscordEmbedPayload = {
+  title: string
+  description?: string
+  color?: number
+  timestamp?: string
+  thumbnail?: { url: string }
+  footer?: { text: string; icon_url?: string }
+}
+
+export async function sendBotChannelEmbed(channelId: string, embed: DiscordEmbedPayload): Promise<void> {
+  if (!/^\d{15,22}$/.test(channelId)) throw new Error('Invalid Discord channel ID')
+  const normalized: DiscordEmbedPayload = {
+    ...embed,
+    title: embed.title.trim().slice(0, 256),
+    description: embed.description?.trim().slice(0, 4096),
+    footer: embed.footer
+      ? { ...embed.footer, text: embed.footer.text.trim().slice(0, 2048) }
+      : undefined,
+  }
+  if (!normalized.title) throw new Error('Discord embed title is required')
+  await discordMutation(`/channels/${channelId}/messages`, 'POST', {
+    embeds: [normalized],
+    allowed_mentions: { parse: [] },
+  })
+}
+
 const guildResourceCache = new Map<string, {
   expiresAt: number
   value: {

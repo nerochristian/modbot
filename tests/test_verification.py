@@ -6,6 +6,7 @@ from unittest.mock import AsyncMock
 import discord
 
 from cogs.verification import Verification, VerificationPanelLayout, WebsiteVerificationLayout
+from utils.embeds import Colors
 from utils.server_setup import apply_verification_gate
 
 
@@ -45,6 +46,16 @@ class _PermissionGuild:
 
     def get_role(self, role_id):
         return self._roles.get(role_id)
+
+
+class _VerificationLogMember:
+    id = 222
+    name = "member_name"
+    mention = "<@222>"
+    display_avatar = SimpleNamespace(url="https://cdn.example/member.png")
+
+    def __str__(self) -> str:
+        return self.name
 
 
 def _panel_text(view: discord.ui.LayoutView) -> str:
@@ -89,6 +100,31 @@ class VerificationPanelTests(unittest.TestCase):
         self.assertIn("Complete one private security check", text)
         self.assertIn("No password", text)
         self.assertIn("Usually under a minute", text)
+
+    def test_verification_logs_match_the_shared_sapphire_log_style(self) -> None:
+        member = _VerificationLogMember()
+
+        embed = Verification._build_verify_log_embed(
+            member=member,
+            outcome="verified",
+            detail="Captcha passed",
+            method="Discord CAPTCHA",
+        )
+
+        self.assertEqual(embed.title, "Verification complete")
+        self.assertEqual(embed.color.value, Colors.SUCCESS)
+        self.assertEqual(
+            embed.description,
+            "> **User:** member_name (<@222>)\n"
+            "> **Method:** Discord CAPTCHA\n"
+            "> **Status:** Verified\n"
+            "> **Details:** Captcha passed",
+        )
+        self.assertEqual(list(embed.fields), [])
+        self.assertEqual(embed.thumbnail.url, "https://cdn.example/member.png")
+        self.assertEqual(embed.footer.text, "@member_name")
+        self.assertEqual(embed.footer.icon_url, "https://cdn.example/member.png")
+        self.assertIsNotNone(embed.timestamp)
 
 
 class VerificationRoleRepairTests(unittest.IsolatedAsyncioTestCase):

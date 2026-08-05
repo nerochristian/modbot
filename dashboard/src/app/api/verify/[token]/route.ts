@@ -2,7 +2,12 @@ import { createHash, randomUUID } from 'node:crypto'
 import { apiError, ok } from '@/lib/api'
 import { getBotGuildSettings } from '@/lib/bot-settings'
 import { botQuery } from '@/lib/bot-db'
-import { dashboardBaseUrl, sendBotChannelMessage } from '@/lib/discord'
+import {
+  dashboardBaseUrl,
+  discordMemberAvatarUrl,
+  sendBotChannelEmbed,
+  type DiscordGuildMember,
+} from '@/lib/discord'
 import { verifyVerificationCapability } from '@/lib/web-verification'
 
 const DISCORD_API = 'https://discord.com/api/v10'
@@ -13,8 +18,6 @@ type TurnstileResponse = { success: boolean; action?: string; hostname?: string;
 const TURNSTILE_ACTION = 'verify'
 const MAX_TURNSTILE_TOKEN_LENGTH = 2_048
 const MAX_REQUEST_BYTES = 16_384
-type DiscordMember = { user: { id: string; bot?: boolean }; joined_at?: string; roles?: string[] }
-
 function clientAddress(request: Request): string {
   return request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
 }
@@ -106,7 +109,7 @@ export async function POST(request: Request, context: { params: Promise<{ token:
 
     const memberResponse = await discord(`/guilds/${capability.g}/members/${capability.u}`)
     if (!memberResponse.ok) throw new Error(`Discord member lookup failed (${memberResponse.status})`)
-    const member = await memberResponse.json() as DiscordMember
+    const member = await memberResponse.json() as DiscordGuildMember
     if (member.user.bot) return apiError('Bot accounts cannot complete member verification.', 403)
     const verifiedRole = String(settings.verified_role ?? settings.verification_role ?? '')
     const unverifiedRole = String(settings.unverified_role ?? '')
@@ -127,7 +130,7 @@ export async function POST(request: Request, context: { params: Promise<{ token:
       body: JSON.stringify({ roles: finalRoles }),
     })
     if (!roleUpdate.ok) throw new Error(`Discord rejected the verification role update (${roleUpdate.status})`)
-    const updatedMember = await roleUpdate.json() as DiscordMember
+    const updatedMember = await roleUpdate.json() as DiscordGuildMember
     const updatedRoles = new Set(updatedMember.roles ?? [])
     if (!updatedRoles.has(verifiedRole) || updatedRoles.has(unverifiedRole)) {
       throw new Error('Discord did not persist the final verification role state')
@@ -137,7 +140,22 @@ export async function POST(request: Request, context: { params: Promise<{ token:
     const accountAgeDays = Math.max(0, Math.floor((Date.now() - createdAt) / 86_400_000))
     const logChannel = String(settings.verify_log_channel ?? settings.verification_log_channel ?? '')
     if (/^\d{15,22}$/.test(logChannel)) {
-      await sendBotChannelMessage(logChannel, `✅ <@${capability.u}> passed website verification · account age ${accountAgeDays}d`)
+      const avatarUrl = discordMemberAvatarUrl(capability.g, updatedMember)
+      const username = updatedMember.user.username
+      await sendBotChannelEmbed(logChannel, {
+        title: 'Verification complete',
+        description: [
+          `> **User:** ${username} (<@${capability.u}>)`,
+          `> **Method:** Website`,
+          `> **Status:** Verified`,
+          `> **Account age:** ${accountAgeDays} day(s)`,
+          `> **Roles:** Added <@&${verifiedRole}>, removed <@&${unverifiedRole}>`,
+        ].join('\n'),
+        color: 0x22c55e,
+        timestamp: new Date().toISOString(),
+        thumbnail: { url: avatarUrl },
+        footer: { text: `@${username}`, icon_url: avatarUrl },
+      }).catch((error) => console.error('Failed to send website verification log', error))
     }
     return ok({ verified: true })
   } catch (error) {

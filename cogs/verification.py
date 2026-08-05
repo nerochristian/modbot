@@ -31,9 +31,10 @@ from discord.ext import commands
 
 from config import Config
 from utils.checks import is_admin
-from utils.embeds import ModEmbed
+from utils.embeds import Colors, ModEmbed, sapphire_log_embed
 from utils.components_v2 import branded_panel_container
 from utils.guild_branding import get_guild_brand_assets, resolve_guild_component_emoji
+from utils.logging import prepare_log_embed
 from utils.status_emojis import get_app_emoji, sync_status_emojis_to_application
 from utils.server_setup import apply_verification_gate, module_enabled, sync_setup_aliases
 
@@ -788,33 +789,73 @@ class Verification(commands.Cog):
         outcome: str,
         detail: str,
         channel_name: Optional[str] = None,
+        method: str = "Discord CAPTCHA",
     ) -> None:
         ch = await self._get_verify_log_channel(guild)
         if not ch:
             return
         try:
-            color = {
-                "verified": 0x57F287,
-                "failed": 0xED4245,
-                "timeout": 0xFEE75C,
-                "bypass": 0x5865F2,
-                "moved": 0x3498DB,
-            }.get(outcome, Config.COLOR_INFO)
-            
-            embed = discord.Embed(
-                title=f"📋 Verification: {outcome.title()}",
-                color=color,
-                timestamp=datetime.now(timezone.utc),
+            embed = self._build_verify_log_embed(
+                member=member,
+                outcome=outcome,
+                detail=detail,
+                channel_name=channel_name,
+                method=method,
             )
-            embed.add_field(name="User", value=f"{member.mention} (`{member.id}`)", inline=True)
-            embed.add_field(name="Outcome", value=outcome.title(), inline=True)
-            if channel_name:
-                embed.add_field(name="Channel", value=channel_name, inline=True)
-            embed.add_field(name="Detail", value=detail, inline=False)
-            embed.set_thumbnail(url=member.display_avatar.url)
-            await ch.send(embed=embed)
-        except Exception:
-            return
+            normalized = await prepare_log_embed(ch, embed)
+            await ch.send(
+                embed=normalized,
+                allowed_mentions=discord.AllowedMentions.none(),
+                use_v2=False,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Failed to send verification log in guild %s: %s",
+                guild.id,
+                exc,
+            )
+
+    @staticmethod
+    def _build_verify_log_embed(
+        *,
+        member: discord.Member,
+        outcome: str,
+        detail: str,
+        channel_name: Optional[str] = None,
+        method: str = "Discord CAPTCHA",
+    ) -> discord.Embed:
+        title = {
+            "verified": "Verification complete",
+            "failed": "Verification failed",
+            "timeout": "Verification expired",
+            "bypass": "Verification bypassed",
+            "moved": "Verification transfer complete",
+        }.get(outcome, "Verification updated")
+        color = {
+            "verified": Colors.SUCCESS,
+            "failed": Colors.ERROR,
+            "timeout": Colors.WARNING,
+            "bypass": Colors.INFO,
+            "moved": Colors.SUCCESS,
+        }.get(outcome, Colors.INFO)
+        details_lines = [
+            f"**User:** {member} ({member.mention})",
+            f"**Method:** {method}",
+            f"**Status:** {outcome.title()}",
+        ]
+        if channel_name:
+            details_lines.append(f"**Channel:** {channel_name}")
+        details_lines.append(f"**Details:** {detail}")
+
+        avatar_url = getattr(getattr(member, "display_avatar", None), "url", None)
+        return sapphire_log_embed(
+            title=title,
+            color=color,
+            detail_lines=details_lines,
+            thumbnail_url=avatar_url,
+            footer_text=f"@{getattr(member, 'name', str(member))}",
+            footer_icon_url=avatar_url,
+        )
 
     # ─────────────────────────────────────────────────────────────────────────
     # Voice Movement
@@ -841,6 +882,7 @@ class Verification(commands.Cog):
                 outcome="moved",
                 detail="Moved to target channel after verification",
                 channel_name=target.name,
+                method="Voice gate",
             )
         except Exception:
             return
@@ -1208,6 +1250,7 @@ class Verification(commands.Cog):
                 member=member,
                 outcome="timeout",
                 detail="Captcha expired before submission",
+                method="Discord CAPTCHA" if purpose == "server" else "Voice CAPTCHA",
             )
             await interaction.response.send_message(
                 embed=ModEmbed.error("Expired", "Your captcha expired. Click **New Captcha** and try again."),
@@ -1221,6 +1264,7 @@ class Verification(commands.Cog):
                 member=member,
                 outcome="failed",
                 detail=f"Incorrect captcha attempt: `{attempt}`",
+                method="Discord CAPTCHA" if purpose == "server" else "Voice CAPTCHA",
             )
             await interaction.response.send_message(
                 embed=ModEmbed.error("Incorrect", "Wrong captcha. Click **New Captcha** to generate another."),
@@ -1252,6 +1296,7 @@ class Verification(commands.Cog):
             member=member,
             outcome="verified",
             detail="Captcha passed" if purpose == "server" else "Voice captcha passed",
+            method="Discord CAPTCHA" if purpose == "server" else "Voice CAPTCHA",
         )
         
         if purpose == "voice":
@@ -1657,6 +1702,7 @@ class Verification(commands.Cog):
                     outcome="bypass",
                     detail="User has bypass role",
                     channel_name=after.channel.name,
+                    method="Voice gate",
                 )
                 return
 
