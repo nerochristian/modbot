@@ -138,6 +138,60 @@ class VerificationRoleRepairTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(ready)
         member.add_roles.assert_not_awaited()
 
+    async def test_successful_verification_atomically_replaces_waiting_role(self) -> None:
+        guild = SimpleNamespace(id=999)
+        everyone = SimpleNamespace(id=guild.id)
+        regular_role = SimpleNamespace(id=111)
+        waiting_role = SimpleNamespace(id=456)
+        verified_role = SimpleNamespace(id=789)
+        updated_member = SimpleNamespace(roles=[regular_role, verified_role])
+        member = SimpleNamespace(
+            id=222,
+            guild=guild,
+            roles=[everyone, regular_role, waiting_role],
+            edit=AsyncMock(return_value=updated_member),
+        )
+
+        result = await Verification._apply_verified_roles(
+            member,
+            waiting_role,
+            verified_role,
+            reason="Verification captcha passed",
+        )
+
+        self.assertIs(result, updated_member)
+        member.edit.assert_awaited_once()
+        final_roles = member.edit.await_args.kwargs["roles"]
+        self.assertEqual({role.id for role in final_roles}, {regular_role.id, verified_role.id})
+
+    async def test_startup_reconciliation_removes_waiting_role_from_verified_members(self) -> None:
+        waiting_role = SimpleNamespace(id=456)
+        verified_role = SimpleNamespace(id=789)
+        both = SimpleNamespace(
+            id=222,
+            roles=[waiting_role, verified_role],
+            remove_roles=AsyncMock(),
+        )
+        waiting_only = SimpleNamespace(
+            id=333,
+            roles=[waiting_role],
+            remove_roles=AsyncMock(),
+        )
+        guild = SimpleNamespace(id=999, members=[both, waiting_only])
+
+        removed = await Verification._reconcile_verified_members(
+            guild,
+            waiting_role,
+            verified_role,
+        )
+
+        self.assertEqual(removed, 1)
+        both.remove_roles.assert_awaited_once_with(
+            waiting_role,
+            reason="Verification role reconciliation",
+        )
+        waiting_only.remove_roles.assert_not_awaited()
+
     def test_existing_regular_member_is_selected_for_verification(self) -> None:
         waiting_role = SimpleNamespace(id=456)
         verified_role = SimpleNamespace(id=789)

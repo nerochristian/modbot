@@ -380,6 +380,17 @@ class Verification(commands.Cog):
                     )
                 unverified_role, verified_role = await self._get_roles(guild)
                 if unverified_role is not None and verified_role is not None:
+                    reconciled = await self._reconcile_verified_members(
+                        guild,
+                        unverified_role,
+                        verified_role,
+                    )
+                    if reconciled:
+                        logger.info(
+                            "Removed the waiting role from %s verified member(s) in guild %s",
+                            reconciled,
+                            guild.id,
+                        )
                     assigned = await self._queue_existing_members(
                         guild,
                         settings,
@@ -513,6 +524,66 @@ class Verification(commands.Cog):
             if await self._ensure_waiting_role(member, unverified_role):
                 assigned += 1
         return assigned
+
+    @staticmethod
+    async def _reconcile_verified_members(
+        guild: discord.Guild,
+        unverified_role: discord.Role,
+        verified_role: discord.Role,
+    ) -> int:
+        """Restore the invariant that a verified member never keeps the waiting role."""
+        candidates = [
+            member
+            for member in guild.members
+            if verified_role in member.roles and unverified_role in member.roles
+        ]
+        if not candidates:
+            return 0
+
+        removed = 0
+        semaphore = asyncio.Semaphore(4)
+
+        async def remove_waiting_role(member: discord.Member) -> None:
+            nonlocal removed
+            async with semaphore:
+                try:
+                    await member.remove_roles(
+                        unverified_role,
+                        reason="Verification role reconciliation",
+                    )
+                    removed += 1
+                except (discord.Forbidden, discord.HTTPException) as exc:
+                    logger.warning(
+                        "Could not reconcile verification roles for member %s in guild %s: %s",
+                        member.id,
+                        guild.id,
+                        exc,
+                    )
+
+        await asyncio.gather(*(remove_waiting_role(member) for member in candidates))
+        return removed
+
+    @staticmethod
+    async def _apply_verified_roles(
+        member: discord.Member,
+        unverified_role: discord.Role,
+        verified_role: discord.Role,
+        *,
+        reason: str,
+    ) -> discord.Member:
+        """Atomically grant access and remove the waiting role, then verify the result."""
+        roles_by_id = {
+            role.id: role
+            for role in member.roles
+            if role.id not in {member.guild.id, unverified_role.id}
+        }
+        roles_by_id[verified_role.id] = verified_role
+        updated = await member.edit(roles=list(roles_by_id.values()), reason=reason)
+        updated_member = updated or await member.guild.fetch_member(member.id)
+        updated_role_ids = {role.id for role in updated_member.roles}
+        if verified_role.id not in updated_role_ids or unverified_role.id in updated_role_ids:
+            raise RuntimeError("Discord did not persist the final verification role state")
+        return updated_member
 
     async def _get_settings(self, guild_id: int) -> dict:
         settings = await self.bot.db.get_settings(guild_id)
@@ -1074,9 +1145,12 @@ class Verification(commands.Cog):
 
         if purpose == "server":
             try:
-                await member.add_roles(verified_role, reason="Verification captcha passed")
-                if unverified_role in member.roles:
-                    await member.remove_roles(unverified_role, reason="Verification complete")
+                member = await self._apply_verified_roles(
+                    member,
+                    unverified_role,
+                    verified_role,
+                    reason="Verification captcha passed",
+                )
             except Exception as e:
                 await interaction.response.send_message(
                     embed=ModEmbed.error("Failed", f"Could not update your roles: {e}"),

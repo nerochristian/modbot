@@ -13,7 +13,7 @@ type TurnstileResponse = { success: boolean; action?: string; hostname?: string;
 const TURNSTILE_ACTION = 'verify'
 const MAX_TURNSTILE_TOKEN_LENGTH = 2_048
 const MAX_REQUEST_BYTES = 16_384
-type DiscordMember = { user: { id: string; bot?: boolean }; joined_at?: string }
+type DiscordMember = { user: { id: string; bot?: boolean }; joined_at?: string; roles?: string[] }
 
 function clientAddress(request: Request): string {
   return request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 'unknown'
@@ -31,10 +31,14 @@ function rateLimit(request: Request): boolean {
   return current.count > 10
 }
 
-async function discord(path: string, method = 'GET'): Promise<Response> {
+async function discord(path: string, init: RequestInit = {}): Promise<Response> {
   const token = process.env.DISCORD_TOKEN?.trim()
   if (!token) throw new Error('DISCORD_TOKEN is not configured')
-  return fetch(`${DISCORD_API}${path}`, { method, headers: { Authorization: `Bot ${token}` }, cache: 'no-store' })
+  return fetch(`${DISCORD_API}${path}`, {
+    ...init,
+    headers: { Authorization: `Bot ${token}`, ...init.headers },
+    cache: 'no-store',
+  })
 }
 
 export async function POST(request: Request, context: { params: Promise<{ token: string }> }) {
@@ -110,10 +114,24 @@ export async function POST(request: Request, context: { params: Promise<{ token:
       throw new Error('Verification roles are not configured')
     }
 
-    const addRole = await discord(`/guilds/${capability.g}/members/${capability.u}/roles/${verifiedRole}`, 'PUT')
-    if (!addRole.ok) throw new Error(`Discord rejected the verified role (${addRole.status})`)
-    const removeRole = await discord(`/guilds/${capability.g}/members/${capability.u}/roles/${unverifiedRole}`, 'DELETE')
-    if (!removeRole.ok && removeRole.status !== 404) throw new Error(`Discord rejected the unverified role removal (${removeRole.status})`)
+    const finalRoles = [...new Set([
+      ...(member.roles ?? []).filter((roleId) => roleId !== unverifiedRole),
+      verifiedRole,
+    ])]
+    const roleUpdate = await discord(`/guilds/${capability.g}/members/${capability.u}`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Audit-Log-Reason': encodeURIComponent('Website verification passed'),
+      },
+      body: JSON.stringify({ roles: finalRoles }),
+    })
+    if (!roleUpdate.ok) throw new Error(`Discord rejected the verification role update (${roleUpdate.status})`)
+    const updatedMember = await roleUpdate.json() as DiscordMember
+    const updatedRoles = new Set(updatedMember.roles ?? [])
+    if (!updatedRoles.has(verifiedRole) || updatedRoles.has(unverifiedRole)) {
+      throw new Error('Discord did not persist the final verification role state')
+    }
 
     const createdAt = Number((BigInt(capability.u) >> BigInt(22)) + BigInt(1420070400000))
     const accountAgeDays = Math.max(0, Math.floor((Date.now() - createdAt) / 86_400_000))
