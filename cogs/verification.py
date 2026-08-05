@@ -240,25 +240,22 @@ class VerificationPanelLayout(discord.ui.LayoutView):
         self._cog = cog
 
         guild_name = guild.name if guild else "this server"
-        lock_emoji = get_app_emoji("lock") or "🔒"
-        unlock_emoji = get_app_emoji("unlock") or "🔓"
-        success_emoji = get_app_emoji("success") or "✅"
-        info_emoji = get_app_emoji("info") or "ℹ️"
+        logo_url, _ = get_guild_brand_assets(guild) if guild else (None, None)
         container = branded_panel_container(
-            title=f"{lock_emoji} Verification required",
+            title=f"Unlock {guild_name}",
             description=(
-                f"### Welcome to {guild_name}\n"
-                "Complete one quick security check to unlock the server."
+                "Complete one private security check to enter. "
+                "Docket grants your access automatically."
             ),
+            logo_url=logo_url,
             accent_color=0x2B7FFF,
         )
 
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
 
         start_button = discord.ui.Button(
-            label="Start verification",
+            label="Verify now",
             style=discord.ButtonStyle.primary,
-            emoji=success_emoji,
             custom_id="verification:start",
         )
 
@@ -270,7 +267,6 @@ class VerificationPanelLayout(discord.ui.LayoutView):
         tutorial_button = discord.ui.Button(
             label="How it works",
             style=discord.ButtonStyle.secondary,
-            emoji=info_emoji,
             custom_id="verification:tutorial",
         )
 
@@ -279,18 +275,11 @@ class VerificationPanelLayout(discord.ui.LayoutView):
 
         tutorial_button.callback = _tutorial
 
-        container.add_item(
-            discord.ui.TextDisplay(
-                f"## {unlock_emoji} Unlock your access\n"
-                "Docket creates a private checkpoint for your Discord account. "
-                "Pass it once and your member role is added automatically."
-            )
-        )
         container.add_item(discord.ui.ActionRow(start_button, tutorial_button))
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         container.add_item(
             discord.ui.TextDisplay(
-                f"-# {info_emoji} No password  •  {success_emoji} Automatic access  •  {lock_emoji} Single-use link"
+                "-# Private  •  No password  •  Usually under a minute"
             )
         )
 
@@ -960,15 +949,12 @@ class Verification(commands.Cog):
 
     async def _send_tutorial(self, interaction: discord.Interaction) -> None:
         embed = discord.Embed(
-            title="📖 Verification Tutorial",
+            title="How verification works",
             description=(
-                "**How to Verify:**\n"
-                "1️⃣ Click **Start Verification**\n"
-                "2️⃣ Look at the captcha image\n"
-                "3️⃣ Click **Submit Captcha** and type the code\n"
-                "4️⃣ You'll be moved to your voice channel!\n\n"
-                f"**Tutorial Video:** {getattr(Config, 'VERIFY_TUTORIAL_VIDEO_URL', 'https://example.com/')}\n\n"
-                "**Need help?** Contact a staff member."
+                "1. Press **Verify now**.\n"
+                "2. Complete the private human check Docket opens for you.\n"
+                "3. Return to Discord—your access updates automatically.\n\n"
+                "Docket never asks for your password or another Discord login."
             ),
             color=Config.COLOR_INFO,
         )
@@ -998,6 +984,27 @@ class Verification(commands.Cog):
         except Exception:
             return guild, None
 
+    @staticmethod
+    async def _send_start_response(
+        interaction: discord.Interaction,
+        *,
+        ephemeral: bool,
+        **payload,
+    ) -> None:
+        """Finish a verification start interaction, including a deferred one."""
+        if not interaction.response.is_done():
+            await interaction.response.send_message(ephemeral=ephemeral, **payload)
+            return
+
+        edit_payload = dict(payload)
+        file = edit_payload.pop("file", None)
+        files = edit_payload.pop("files", None)
+        if file is not None:
+            edit_payload["attachments"] = [file]
+        elif files is not None:
+            edit_payload["attachments"] = list(files)
+        await interaction.edit_original_response(**edit_payload)
+
     async def _start_captcha(
         self,
         interaction: discord.Interaction,
@@ -1007,27 +1014,34 @@ class Verification(commands.Cog):
         purpose: CaptchaPurpose = "server",
     ) -> None:
         target_guild_id = int(guild_id or (interaction.guild.id if interaction.guild else 0))
+        ephemeral = interaction.guild is not None
         if not target_guild_id:
-            await interaction.response.send_message(
+            await self._send_start_response(
+                interaction,
                 embed=ModEmbed.error("Guild Only", "Verification can only be used for a server."),
-                ephemeral=interaction.guild is not None,
+                ephemeral=ephemeral,
             )
             return
+
+        # Discord requires an interaction acknowledgement within three seconds.
+        # Reserve the private response before database, member and role work.
+        if not interaction.response.is_done():
+            await interaction.response.defer(ephemeral=ephemeral, thinking=True)
 
         guild, member = await self._resolve_guild_member(interaction, guild_id=target_guild_id)
         if not guild or not member:
-            await interaction.response.send_message(
+            await self._send_start_response(
+                interaction,
                 embed=ModEmbed.error("Not Found", "Could not resolve your server membership."),
-                ephemeral=interaction.guild is not None,
+                ephemeral=ephemeral,
             )
             return
-
-        ephemeral = interaction.guild is not None
 
         # Check cooldown
         on_cooldown, remaining = self._is_on_cooldown(guild.id, member.id)
         if on_cooldown and regenerate:
-            await interaction.response.send_message(
+            await self._send_start_response(
+                interaction,
                 embed=ModEmbed.error("Cooldown", f"Please wait **{remaining}** seconds before generating a new captcha."),
                 ephemeral=ephemeral,
             )
@@ -1037,7 +1051,8 @@ class Verification(commands.Cog):
         self._set_cooldown(guild.id, member.id)
 
         if purpose == "server" and not await self._is_server_verification_enabled(guild.id):
-            await interaction.response.send_message(
+            await self._send_start_response(
+                interaction,
                 embed=ModEmbed.error("Disabled", "Server verification is currently turned off."),
                 ephemeral=ephemeral,
             )
@@ -1045,7 +1060,8 @@ class Verification(commands.Cog):
 
         unverified_role, verified_role = await self._get_roles(guild)
         if not unverified_role or not verified_role:
-            await interaction.response.send_message(
+            await self._send_start_response(
+                interaction,
                 embed=ModEmbed.error(
                     "Not Configured",
                     "Verification roles are not set. Run `/setup` to create the baseline verification roles first.",
@@ -1056,7 +1072,8 @@ class Verification(commands.Cog):
 
         if purpose == "server":
             if verified_role in member.roles and unverified_role not in member.roles:
-                await interaction.response.send_message(
+                await self._send_start_response(
+                    interaction,
                     embed=ModEmbed.success("Already Verified", "You already have access."),
                     ephemeral=ephemeral,
                 )
@@ -1065,7 +1082,8 @@ class Verification(commands.Cog):
             if unverified_role not in member.roles:
                 waiting_role_ready = await self._ensure_waiting_role(member, unverified_role)
                 if not waiting_role_ready:
-                    await interaction.response.send_message(
+                    await self._send_start_response(
+                        interaction,
                         embed=ModEmbed.error(
                             "Verification Role Unavailable",
                             "Docket could not assign your waiting role. A server admin must move "
@@ -1079,7 +1097,8 @@ class Verification(commands.Cog):
             if settings.get("verification_method") == "website":
                 website_url = await self._website_verification_url(guild.id, member.id)
                 if not website_url:
-                    await interaction.response.send_message(
+                    await self._send_start_response(
+                        interaction,
                         embed=ModEmbed.error(
                             "Website Verification Unavailable",
                             "The secure website checkpoint is not configured correctly. "
@@ -1089,7 +1108,8 @@ class Verification(commands.Cog):
                     )
                     return
                 view = WebsiteVerificationLayout(guild=guild, url=website_url)
-                await interaction.response.send_message(
+                await self._send_start_response(
+                    interaction,
                     view=view,
                     ephemeral=ephemeral,
                 )
@@ -1126,7 +1146,8 @@ class Verification(commands.Cog):
                 embed.set_thumbnail(url=logo_url)
             
             file = discord.File(io.BytesIO(image_bytes), filename="captcha.png")
-            await interaction.response.send_message(
+            await self._send_start_response(
+                interaction,
                 embed=embed,
                 file=file,
                 view=CaptchaView(self, guild_id=guild.id, user_id=member.id, purpose=purpose),
@@ -1146,7 +1167,8 @@ class Verification(commands.Cog):
             if logo_url:
                 embed.set_thumbnail(url=logo_url)
 
-            await interaction.response.send_message(
+            await self._send_start_response(
+                interaction,
                 embed=embed,
                 view=CaptchaView(self, guild_id=guild.id, user_id=member.id, purpose=purpose),
                 ephemeral=ephemeral,

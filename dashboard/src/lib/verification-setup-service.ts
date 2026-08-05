@@ -153,7 +153,7 @@ function panelPayload(guild: DiscordGuild, editing = false) {
   const iconUrl = guildIconUrl(guild)
   const header = {
     type: 10,
-    content: `## 🔐 ${escapeDiscordMarkdown(guild.name)} access\nComplete one private check to unlock the server.`,
+    content: `## Unlock ${escapeDiscordMarkdown(guild.name)}\nComplete one private security check to enter. Docket grants your access automatically.`,
   }
   return {
     ...(editing ? { content: null, embeds: [] } : {}),
@@ -170,35 +170,21 @@ function panelPayload(guild: DiscordGuild, editing = false) {
         }] : [header]),
         { type: 14, divider: true, spacing: 1 },
         {
-          type: 9,
+          type: 1,
           components: [{
-            type: 10,
-            content: '### Start your check\nPress **Verify me**. Docket handles the rest privately and grants access when you pass.',
-          }],
-          accessory: {
             type: 2,
-            style: 3,
-            label: 'Verify me',
-            emoji: { name: '✅' },
+            style: 1,
+            label: 'Verify now',
             custom_id: 'verification:start',
-          },
-        },
-        {
-          type: 9,
-          components: [{
-            type: 10,
-            content: '### Need a hand?\nOpen the short walkthrough without leaving Discord.',
-          }],
-          accessory: {
+          }, {
             type: 2,
             style: 2,
             label: 'How it works',
-            emoji: { name: '❔' },
             custom_id: 'verification:tutorial',
-          },
+          }],
         },
         { type: 14, divider: true, spacing: 1 },
-        { type: 10, content: '-# 🔒 Private • One-time • Usually under a minute' },
+        { type: 10, content: '-# Private  •  No password  •  Usually under a minute' },
       ],
     }],
   }

@@ -75,7 +75,7 @@ class VerificationPanelTests(unittest.TestCase):
         buttons = action_rows[0].children
         self.assertEqual(
             [button.label for button in buttons],
-            ["Start verification", "How it works"],
+            ["Verify now", "How it works"],
         )
         self.assertEqual(
             [button.custom_id for button in buttons],
@@ -83,15 +83,50 @@ class VerificationPanelTests(unittest.TestCase):
         )
 
         text = _panel_text(view)
-        self.assertIn("Verification required", text)
-        self.assertIn("### Welcome to this server", text)
-        self.assertIn("Unlock your access", text)
+        self.assertIn("Unlock this server", text)
+        self.assertIn("Complete one private security check", text)
         self.assertIn("No password", text)
-        self.assertIn("Automatic access", text)
-        self.assertIn("Single-use link", text)
+        self.assertIn("Usually under a minute", text)
 
 
 class VerificationRoleRepairTests(unittest.IsolatedAsyncioTestCase):
+    async def test_start_acknowledges_discord_before_member_lookup(self) -> None:
+        state = {"acknowledged": False}
+
+        async def defer_response(*, ephemeral, thinking):
+            self.assertTrue(ephemeral)
+            self.assertTrue(thinking)
+            state["acknowledged"] = True
+
+        response = SimpleNamespace(
+            is_done=lambda: state["acknowledged"],
+            defer=AsyncMock(side_effect=defer_response),
+            send_message=AsyncMock(),
+        )
+        interaction = SimpleNamespace(
+            guild=SimpleNamespace(id=999),
+            response=response,
+            edit_original_response=AsyncMock(),
+        )
+        cog = Verification.__new__(Verification)
+
+        async def resolve_member(_interaction, *, guild_id):
+            self.assertEqual(guild_id, 999)
+            self.assertTrue(state["acknowledged"])
+            return None, None
+
+        cog._resolve_guild_member = AsyncMock(side_effect=resolve_member)
+
+        await cog._start_captcha(
+            interaction,
+            regenerate=True,
+            purpose="server",
+        )
+
+        response.defer.assert_awaited_once_with(ephemeral=True, thinking=True)
+        response.send_message.assert_not_awaited()
+        interaction.edit_original_response.assert_awaited_once()
+
     async def test_verified_role_is_hidden_from_verification_channel(self) -> None:
         unverified_role = SimpleNamespace(id=456, name="Unverified")
         verified_role = SimpleNamespace(id=789, name="Verified")
