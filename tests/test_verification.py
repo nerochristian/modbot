@@ -52,6 +52,7 @@ class _VerificationLogMember:
     id = 222
     name = "member_name"
     mention = "<@222>"
+    created_at = datetime(2024, 1, 2, tzinfo=timezone.utc)
     display_avatar = SimpleNamespace(url="https://cdn.example/member.png")
 
     def __str__(self) -> str:
@@ -116,6 +117,7 @@ class VerificationPanelTests(unittest.TestCase):
         self.assertEqual(
             embed.description,
             "> **User:** member_name (<@222>)\n"
+            "> **Account created:** <t:1704153600:R>\n"
             "> **Method:** Discord CAPTCHA\n"
             "> **Status:** Verified\n"
             "> **Details:** Captcha passed",

@@ -146,6 +146,7 @@ export async function POST(request: Request, context: { params: Promise<{ token:
         title: 'Verification complete',
         description: [
           `> **User:** ${username} (<@${capability.u}>)`,
+          `> **Account created:** <t:${Math.floor(createdAt / 1000)}:R>`,
           `> **Method:** Website`,
           `> **Status:** Verified`,
           `> **Account age:** ${accountAgeDays} day(s)`,

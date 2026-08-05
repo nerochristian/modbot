@@ -840,9 +840,14 @@ class Verification(commands.Cog):
         }.get(outcome, Colors.INFO)
         details_lines = [
             f"**User:** {member} ({member.mention})",
+        ]
+        created_at = getattr(member, "created_at", None)
+        if created_at is not None:
+            details_lines.append(f"**Account created:** <t:{int(created_at.timestamp())}:R>")
+        details_lines.extend([
             f"**Method:** {method}",
             f"**Status:** {outcome.title()}",
-        ]
+        ])
         if channel_name:
             details_lines.append(f"**Channel:** {channel_name}")
         details_lines.append(f"**Details:** {detail}")
