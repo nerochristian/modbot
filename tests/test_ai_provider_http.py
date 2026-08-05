@@ -753,6 +753,10 @@ def test_relayrouter_provider_routes_before_legacy_providers(monkeypatch):
     client._call_digitalocean.assert_not_awaited()
 
 
+def test_provider_timeout_summary_is_not_blank():
+    assert ai_client_module._exception_summary(asyncio.TimeoutError()) == "TimeoutError"
+
+
 @pytest.mark.parametrize(
     "placeholder",
     (

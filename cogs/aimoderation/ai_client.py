@@ -36,6 +36,13 @@ from .prompts import (
 
 logger = logging.getLogger("ModBot.AIModeration.Client")
 
+
+def _exception_summary(exc: BaseException) -> str:
+    """Return a useful one-line label even for message-less timeout errors."""
+    detail = str(exc).strip()
+    return detail if detail else type(exc).__name__
+
+
 _RESEARCH_UNAVAILABLE = (
     "Live search is unavailable right now because no verifiable source links "
     "were returned. I won't invent a current-events answer. Please try again shortly."
@@ -678,10 +685,10 @@ class AIClient:
                     json_mode=json_mode,
                     allow_multimodal=allow_multimodal,
                 )
-            except Exception:
-                logger.warning(
-                    "RelayRouter call failed; trying configured legacy fallbacks.",
-                    exc_info=True,
+            except Exception as exc:
+                logger.info(
+                    "Protected AI gateway unavailable (%s); continuing with configured fallbacks.",
+                    _exception_summary(exc),
                 )
 
         http_attempted = False
@@ -1283,14 +1290,15 @@ class AIClient:
                 )
             except Exception as exc:
                 last_error = exc
-                logger.warning(
-                    "%s model %s failed (%d/%d): %s",
-                    gateway_label,
-                    candidate,
-                    index + 1,
-                    len(candidates),
-                    exc,
-                )
+                if len(candidates) > 1:
+                    logger.warning(
+                        "%s model %s failed (%d/%d): %s",
+                        gateway_label,
+                        candidate,
+                        index + 1,
+                        len(candidates),
+                        _exception_summary(exc),
+                    )
 
         if last_error is not None:
             raise last_error
@@ -1537,7 +1545,13 @@ class AIClient:
                         return self._extract_sse_completion_content(raw_body)
             except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
                 last_error = exc
-                logger.warning("%s network error (attempt %d/%d): %s", provider_label, attempt + 1, max_retries + 1, exc)
+                logger.warning(
+                    "%s network error (attempt %d/%d): %s",
+                    provider_label,
+                    attempt + 1,
+                    max_retries + 1,
+                    _exception_summary(exc),
+                )
             finally:
                 if owned_session:
                     await session.close()

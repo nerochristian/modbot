@@ -27,6 +27,7 @@ _CHALLENGE_MARKERS: Final = (
     "captcha",
     "cf-chl",
 )
+_CLOSE_TIMEOUT_SECONDS: Final = 8.0
 
 
 class DeepSeekWebError(RuntimeError):
@@ -1231,5 +1232,24 @@ class DeepSeekWebClient:
         for task in active:
             task.cancel()
         if active:
-            await asyncio.gather(*active, return_exceptions=True)
-        await self._close_browser()
+            done, pending = await asyncio.wait(
+                active,
+                timeout=_CLOSE_TIMEOUT_SECONDS,
+            )
+            for task in done:
+                if not task.cancelled():
+                    task.exception()
+            if pending:
+                logger.warning(
+                    "Timed out waiting for %d DeepSeek task(s) during shutdown.",
+                    len(pending),
+                )
+        try:
+            await asyncio.wait_for(
+                self._close_browser(),
+                timeout=_CLOSE_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Timed out closing the DeepSeek browser; shutdown will continue."
+            )

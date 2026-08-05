@@ -3,6 +3,7 @@ import unittest
 from tempfile import TemporaryDirectory
 from unittest.mock import AsyncMock, MagicMock
 
+import utils.deepseek_web as deepseek_web_module
 from utils.deepseek_web import DeepSeekWebClient
 
 
@@ -91,6 +92,22 @@ class DeepSeekWebHelperTests(unittest.TestCase):
 
 
 class DeepSeekWebChatModeTests(unittest.IsolatedAsyncioTestCase):
+    async def test_close_bounds_browser_cleanup(self) -> None:
+        client = DeepSeekWebClient()
+
+        async def hang_forever() -> None:
+            await asyncio.Event().wait()
+
+        client._close_browser = AsyncMock(side_effect=hang_forever)
+        original_timeout = deepseek_web_module._CLOSE_TIMEOUT_SECONDS
+        deepseek_web_module._CLOSE_TIMEOUT_SECONDS = 0.01
+        try:
+            await asyncio.wait_for(client.close(), timeout=0.5)
+        finally:
+            deepseek_web_module._CLOSE_TIMEOUT_SECONDS = original_timeout
+
+        client._close_browser.assert_awaited_once()
+
     async def test_close_cancels_and_retrieves_active_provider_tasks(self) -> None:
         client = DeepSeekWebClient()
         started = asyncio.Event()
