@@ -19,6 +19,7 @@ const SNOWFLAKE_SETTING_KEYS = [
   'verification_channel',
   'verify_log_channel',
   'verification_log_channel',
+  'verification_panel_message_id',
   'waiting_verify_voice_channel',
   'ticket_category',
   'ticket_support_role',

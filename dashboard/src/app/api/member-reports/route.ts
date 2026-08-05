@@ -24,8 +24,8 @@ export async function GET(request: Request) {
     const q = (url.searchParams.get('q') || '').trim()
     const values: unknown[] = [guildId]
     const conditions = ['guild_id = $1::bigint']
-    if (status === 'open') conditions.push('resolved = FALSE')
-    if (status === 'resolved') conditions.push('resolved = TRUE')
+    if (status === 'open') conditions.push('resolved = 0')
+    if (status === 'resolved') conditions.push('resolved = 1')
     if (q) {
       values.push(`%${q}%`)
       conditions.push(`(reason ILIKE $${values.length} OR reported_id::text ILIKE $${values.length} OR reporter_id::text ILIKE $${values.length} OR id::text ILIKE $${values.length})`)

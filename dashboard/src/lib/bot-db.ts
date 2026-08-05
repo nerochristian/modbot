@@ -58,6 +58,17 @@ export async function withBotTransaction<T>(work: (client: PoolClient) => Promis
   }
 }
 
+export async function withBotAdvisoryLock<T>(key: string, work: () => Promise<T>): Promise<T> {
+  const client = await pool().connect()
+  try {
+    await client.query('SELECT pg_advisory_lock(hashtextextended($1, 0))', [key])
+    return await work()
+  } finally {
+    await client.query('SELECT pg_advisory_unlock(hashtextextended($1, 0))', [key]).catch(() => undefined)
+    client.release()
+  }
+}
+
 export async function botDatabaseHealthy(): Promise<boolean> {
   try {
     await botQuery('SELECT 1 AS ok')

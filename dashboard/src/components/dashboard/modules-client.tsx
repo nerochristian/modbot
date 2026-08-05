@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import {
   ArrowUpRight,
@@ -125,6 +125,7 @@ export function ModulesClient() {
   const [pendingWhitelist, setPendingWhitelist] = useState<Module | null>(null)
   const [pendingVerification, setPendingVerification] = useState<Module | null>(null)
   const [autoSettingVerification, setAutoSettingVerification] = useState(false)
+  const verificationSetupInFlight = useRef(false)
 
   const modules = useMemo(() => data?.data ?? [], [data])
   const filtered = useMemo(() => {
@@ -192,6 +193,8 @@ export function ModulesClient() {
   }
 
   async function autoSetupVerification() {
+    if (verificationSetupInFlight.current) return
+    verificationSetupInFlight.current = true
     setAutoSettingVerification(true)
     try {
       const response = await fetch('/api/modules/verification/setup', { method: 'POST' })
@@ -208,6 +211,7 @@ export function ModulesClient() {
     } catch (error) {
       toast.error('Verification setup failed', error instanceof Error ? error.message : 'Try again in a moment.')
     } finally {
+      verificationSetupInFlight.current = false
       setAutoSettingVerification(false)
     }
   }
