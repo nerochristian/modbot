@@ -294,39 +294,31 @@ class WebsiteVerificationLayout(discord.ui.LayoutView):
         super().__init__(timeout=10 * 60)
 
         guild_name = guild.name if guild else "this server"
-        lock_emoji = get_app_emoji("lock") or "🔒"
-        unlock_emoji = get_app_emoji("unlock") or "🔓"
-        info_emoji = get_app_emoji("info") or "ℹ️"
+        logo_url, _ = get_guild_brand_assets(guild) if guild else (None, None)
         container = branded_panel_container(
-            title=f"{lock_emoji} Your checkpoint is ready",
+            title="Your checkpoint is ready",
             description=(
                 f"Open the secure page below to unlock **{guild_name}**. "
                 "Docket never asks for your password or another Discord login."
             ),
+            logo_url=logo_url,
             accent_color=0x2B7FFF,
         )
 
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
-        container.add_item(
-            discord.ui.TextDisplay(
-                f"## {unlock_emoji} Finish verification\n"
-                "Complete the human check in your browser. Your Discord access updates automatically when you pass."
-            )
-        )
         container.add_item(
             discord.ui.ActionRow(
                 discord.ui.Button(
                     label="Open secure checkpoint",
                     style=discord.ButtonStyle.link,
                     url=url,
-                    emoji=lock_emoji,
                 )
             )
         )
         container.add_item(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
         container.add_item(
             discord.ui.TextDisplay(
-                f"-# {info_emoji} Expires in 10 minutes  •  {lock_emoji} Works once  •  Protected human check"
+                "-# Expires in 10 minutes  •  Single-use  •  Protected human check"
             )
         )
 
