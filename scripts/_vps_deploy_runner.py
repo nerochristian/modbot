@@ -61,14 +61,19 @@ if rc_compile != 0:
 
 # 4. Detect the process manager and restart the bot. Prefer the systemd
 #    service the deploy script targets; fall back to PM2 if that's what's
-#    actually running the bot.
+#    actually running the bot. Never print `pm2 jlist`: it includes the full
+#    process environment and can expose production credentials in deploy logs.
 rc_systemctl, out_systemctl, _ = run("systemctl cat modbot >/dev/null 2>&1 && echo SYSTEMD_MODBOT || echo NO_SYSTEMD")
-rc_pm2, out_pm2, _ = run("command -v pm2 >/dev/null 2>&1 && pm2 jlist 2>/dev/null || echo NO_PM2")
+rc_pm2, out_pm2, _ = run(
+    "command -v pm2 >/dev/null 2>&1 && "
+    "test -n \"$(pm2 pid modbot 2>/dev/null | grep -E '^[0-9]+$' | grep -v '^0$' | head -1)\" "
+    "&& echo PM2_MODBOT || echo NO_PM2_MODBOT"
+)
 
 if "SYSTEMD_MODBOT" in out_systemctl:
     run("systemctl restart modbot")
     run("sleep 3 && systemctl is-active --quiet modbot && echo MODBOT_ACTIVE || echo MODBOT_FAILED")
-elif "NO_PM2" not in out_pm2 and '"modbot"' in out_pm2:
+elif "PM2_MODBOT" in out_pm2:
     run("pm2 restart modbot --update-env")
     run("pm2 save")
     run("sleep 3 && pm2 describe modbot >/dev/null && echo MODBOT_PM2_OK || echo MODBOT_PM2_FAILED")
