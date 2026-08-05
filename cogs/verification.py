@@ -1162,6 +1162,8 @@ class Verification(commands.Cog):
                 return
 
         settings["verification_enabled"] = state == "on"
+        if state == "on":
+            settings["autoroles_enabled"] = False
         gate_result = await self._save_verification_settings(
             interaction.guild,
             settings,
@@ -1180,7 +1182,7 @@ class Verification(commands.Cog):
             f"Channel access sync: `{updated_channels}` channel(s) updated"
         )
         if state == "on":
-            description += "\nAutorole is overridden while verification is enabled."
+            description += "\nAuto Role was disabled because only one join access system can run at a time."
         if errors:
             description += f"\nPermission sync issues: `{len(errors)}`"
 

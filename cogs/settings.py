@@ -826,6 +826,8 @@ class VerificationSettingsView(BaseSettingsView):
     @discord.ui.button(label="Verification: OFF", style=discord.ButtonStyle.danger, row=1)
     async def verify_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.settings["verification_enabled"] = not self.settings.get("verification_enabled", True)
+        if self.settings["verification_enabled"]:
+            self.settings["autoroles_enabled"] = False
         await self._persist()
         self._sync_buttons()
         await interaction.response.edit_message(embed=self.get_embed(), view=self)

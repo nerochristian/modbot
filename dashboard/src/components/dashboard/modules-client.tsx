@@ -165,7 +165,16 @@ export function ModulesClient() {
         body: JSON.stringify({ enabled: next }),
       })
       if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Failed to update module')
-      toast.success(`${mod.name} ${next ? 'enabled' : 'disabled'}`)
+      const conflictingModule = next
+        ? modules.find((candidate) => (
+            (mod.id === 'verification' && candidate.id === 'autoroles')
+            || (mod.id === 'autoroles' && candidate.id === 'verification')
+          ) && candidate.enabled)
+        : null
+      toast.success(
+        `${mod.name} ${next ? 'enabled' : 'disabled'}`,
+        conflictingModule ? `${conflictingModule.name} was disabled because only one join access system can run at a time.` : undefined,
+      )
       await refetch()
     } catch (e) {
       const message = e instanceof Error ? e.message : 'Try again in a moment.'

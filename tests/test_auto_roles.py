@@ -4,6 +4,7 @@ from types import SimpleNamespace
 import pytest
 
 from cogs.roles import Roles, autoroles_enabled
+from database import normalize_runtime_settings
 
 
 class _SettingsDB:
@@ -100,3 +101,18 @@ def test_verification_keeps_precedence_over_enabled_auto_roles():
         )
     )
     assert member.added_roles == []
+
+
+def test_runtime_settings_disable_auto_roles_when_verification_is_enabled():
+    normalized = normalize_runtime_settings({
+        "verification_enabled": True,
+        "autoroles_enabled": True,
+        "modules": {
+            "verification": {"enabled": True},
+            "autoroles": {"enabled": True},
+        },
+    })
+
+    assert normalized["verification_enabled"] is True
+    assert normalized["autoroles_enabled"] is False
+    assert normalized["modules"]["autoroles"]["enabled"] is False

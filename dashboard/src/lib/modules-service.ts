@@ -468,6 +468,11 @@ export async function setModuleEnabled(
   )) {
     throw new ModuleValidationError('Set a voice waiting room before enabling voice verification')
   }
+  if (enabled && def.id === 'verification' && settings.verification_method === 'website' && (
+    !process.env.TURNSTILE_SITE_KEY?.trim() || !process.env.TURNSTILE_SECRET_KEY?.trim()
+  )) {
+    throw new ModuleValidationError('Website verification needs Cloudflare Turnstile keys before it can be enabled')
+  }
   if (enabled && def.id === 'tickets' && !hasChannel(settings.ticket_category, [4])) {
     throw new ModuleValidationError('Set a ticket category before enabling tickets')
   }
@@ -495,6 +500,8 @@ export async function setModuleEnabled(
   }
   const changes: Record<string, unknown> = { [def.enableKey]: enabled }
   if (enabled && def.enableAlso) Object.assign(changes, def.enableAlso)
+  if (enabled && def.id === 'verification') changes.autoroles_enabled = false
+  if (enabled && def.id === 'autoroles') changes.verification_enabled = false
   await patchBotGuildSettings(guildId, changes)
   const updatedSettings = await getBotGuildSettings(guildId)
   return viewFor(def, updatedSettings)

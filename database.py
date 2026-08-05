@@ -48,6 +48,8 @@ _FEATURE_MODULE_KEYS = {
     "automod": ("automod_enabled", True),
     "aimod": ("aimod_enabled", False),
     "appeals": ("appeals_enabled", True),
+    "verification": ("verification_enabled", False),
+    "autoroles": ("autoroles_enabled", False),
 }
 
 _LOG_CHANNEL_MODULE_FIELDS = {
@@ -177,6 +179,13 @@ def normalize_runtime_settings(settings: Dict[str, Any]) -> Dict[str, Any]:
             _ensure_module(modules, module_id)["enabled"] = enabled
         elif isinstance(module, dict) and "enabled" in module:
             normalized[flat_key] = _coerce_bool(module.get("enabled"), default)
+
+    # Join verification and Auto Role are mutually exclusive. If legacy or
+    # external data enables both, verification wins because it is the access
+    # control boundary and assigning a normal join role could bypass the gate.
+    if normalized.get("verification_enabled") and normalized.get("autoroles_enabled"):
+        normalized["autoroles_enabled"] = False
+        _ensure_module(modules, "autoroles")["enabled"] = False
 
     aimod = modules.get("aimod")
     aimod_settings = aimod.get("settings") if isinstance(aimod, dict) else None
