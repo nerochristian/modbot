@@ -245,6 +245,37 @@ def setup_logging() -> logging.Logger:
 
 logger = setup_logging()
 
+
+def _is_expected_playwright_shutdown_exception(context: Dict[str, Any]) -> bool:
+    exception = context.get("exception")
+    return bool(
+        "future exception was never retrieved" in str(context.get("message", "")).lower()
+        and type(exception).__name__ == "TargetClosedError"
+        and "target page, context or browser has been closed" in str(exception).lower()
+    )
+
+
+def _install_shutdown_exception_filter() -> None:
+    loop = asyncio.get_running_loop()
+    if getattr(loop, "_modbot_shutdown_exception_filter", False):
+        return
+    previous_handler = loop.get_exception_handler()
+
+    def handle_shutdown_exception(
+        active_loop: asyncio.AbstractEventLoop,
+        context: Dict[str, Any],
+    ) -> None:
+        if _is_expected_playwright_shutdown_exception(context):
+            logger.debug("Ignored expected Playwright page-close future during shutdown.")
+            return
+        if previous_handler is not None:
+            previous_handler(active_loop, context)
+        else:
+            active_loop.default_exception_handler(context)
+
+    loop.set_exception_handler(handle_shutdown_exception)
+    setattr(loop, "_modbot_shutdown_exception_filter", True)
+
 # ==================== IMPORTS ====================
 try:
     from database import Database
@@ -2548,6 +2579,7 @@ class ModBot(commands.Bot):
 
     async def close(self):
         """Graceful shutdown."""
+        _install_shutdown_exception_filter()
         # Shutdown dashboard
         if self._dashboard_runner:
             try:
