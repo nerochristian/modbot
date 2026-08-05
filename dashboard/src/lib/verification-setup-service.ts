@@ -13,6 +13,8 @@ const MAX_DISCORD_ATTEMPTS = 5
 const DISCORD_WRITE_CONCURRENCY = 3
 const BULK_VERIFICATION_AUDIT_REASON = 'Docket verification setup - queue existing member'
 
+export type VerificationMethod = 'website' | 'discord'
+
 const STAFF_ROLE_SETTING_KEYS = [
   'owner_role',
   'manager_role',
@@ -300,7 +302,20 @@ function assertPersistedSetup(
   }
 }
 
-async function automaticallySetupVerificationLocked(guildId: string) {
+function assertVerificationMethodReady(method: VerificationMethod): void {
+  if (method === 'website' && (
+    !process.env.TURNSTILE_SITE_KEY?.trim()
+    || !process.env.TURNSTILE_SECRET_KEY?.trim()
+  )) {
+    throw new Error('Website verification needs Cloudflare Turnstile keys on the dashboard server')
+  }
+}
+
+async function automaticallySetupVerificationLocked(
+  guildId: string,
+  method: VerificationMethod,
+) {
+  assertVerificationMethodReady(method)
   const settings = await getBotGuildSettings(guildId)
   const [guild, botUser, roles, channels] = await Promise.all([
     discord<DiscordGuild>(`/guilds/${guildId}`),
@@ -347,9 +362,9 @@ async function automaticallySetupVerificationLocked(guildId: string) {
     async (roleId) => setOverwrite(logChannel.id, roleId, 0, VIEW_CHANNEL | SEND_MESSAGES | READ_MESSAGE_HISTORY, BigInt(0)),
   )
 
-  const method = settings.verification_method === 'website' ? 'website' : 'discord'
   const setupChanges = {
     verification_enabled: true,
+    autoroles_enabled: false,
     verification_method: method,
     verified_role: verified.id,
     verification_role: verified.id,
@@ -411,13 +426,19 @@ async function automaticallySetupVerificationLocked(guildId: string) {
     existingMembersAssigned: memberQueue.assigned,
     exemptMembersSkipped: memberQueue.skipped,
     duplicatePanelsRemoved,
+    verificationMethod: method,
+    autoRolesDisabled: true,
   }
 }
 
-export async function automaticallySetupVerification(guildId: string) {
+export async function automaticallySetupVerification(
+  guildId: string,
+  method: VerificationMethod,
+) {
   if (!/^\d{15,22}$/.test(guildId)) throw new Error('Invalid Discord guild ID')
+  if (method !== 'website' && method !== 'discord') throw new Error('Choose website or Discord verification')
   return withBotAdvisoryLock(
     `verification-setup:${guildId}`,
-    () => automaticallySetupVerificationLocked(guildId),
+    () => automaticallySetupVerificationLocked(guildId, method),
   )
 }
