@@ -1,4 +1,5 @@
 import unittest
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -6,6 +7,17 @@ import discord
 
 from cogs.verification import Verification, VerificationPanelLayout
 from utils.server_setup import apply_verification_gate
+
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_website_mode_never_silently_falls_back_to_discord_captcha() -> None:
+    source = (ROOT / "cogs" / "verification.py").read_text(encoding="utf-8")
+
+    assert 'settings.get("verification_method") == "website"' in source
+    assert '"Website Verification Unavailable"' in source
+    assert "Cloudflare Turnstile" in source
 
 
 class _PermissionChannel:

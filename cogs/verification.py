@@ -299,7 +299,7 @@ class VerificationPanelLayout(discord.ui.LayoutView):
 
 class WebsiteVerificationLayout(discord.ui.LayoutView):
     """Ephemeral Components v2 card handed to a member after they press Verify me
-    when the server uses website (reCAPTCHA) verification."""
+    when the server uses website (Cloudflare Turnstile) verification."""
 
     def __init__(self, *, guild: Optional[discord.Guild], url: str):
         super().__init__(timeout=10 * 60)
@@ -933,8 +933,19 @@ class Verification(commands.Cog):
                     )
                     return
 
-            website_url = await self._website_verification_url(guild.id, member.id)
-            if website_url:
+            settings = await self._get_settings(guild.id)
+            if settings.get("verification_method") == "website":
+                website_url = await self._website_verification_url(guild.id, member.id)
+                if not website_url:
+                    await interaction.response.send_message(
+                        embed=ModEmbed.error(
+                            "Website Verification Unavailable",
+                            "The secure website checkpoint is not configured correctly. "
+                            "Ask a server admin to check Docket's dashboard URL and verification secret.",
+                        ),
+                        ephemeral=ephemeral,
+                    )
+                    return
                 view = WebsiteVerificationLayout(guild=guild, url=website_url)
                 await interaction.response.send_message(
                     view=view,
