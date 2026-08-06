@@ -46,6 +46,61 @@ _WHITESPACE = re.compile(r"\s+")
 _CODE_FENCE_START = re.compile(r"^```(?:[a-zA-Z0-9_+-]+)?\s*")
 _CODE_FENCE_END = re.compile(r"\s*```$")
 
+# Reasoning models (the pinned Nemotron variants) emit chain-of-thought inline
+# in ``message.content`` rather than in a separate ``reasoning`` field, so the
+# raw completion cannot be trusted as display text. These patterns recover the
+# real profile and discard the scratchpad.
+_THINK_BLOCK = re.compile(
+    r"<(?:think|thinking|thought|reasoning|scratchpad)\b[^>]*>.*?"
+    r"</(?:think|thinking|thought|reasoning|scratchpad)\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+_UNCLOSED_THINK_BLOCK = re.compile(
+    r"<(?:think|thinking|thought|reasoning|scratchpad)\b[^>]*>.*\Z",
+    re.IGNORECASE | re.DOTALL,
+)
+_ORPHAN_THINK_CLOSE = re.compile(
+    r"^.*?</(?:think|thinking|thought|reasoning|scratchpad)\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+
+# The mandated profile heading. Everything before the LAST occurrence is
+# preamble reasoning; the model frequently drafts the profile several times
+# inside its scratchpad before committing to a final answer.
+_PROFILE_HEADING = re.compile(
+    r"^\s*\**\s*Behavioral\s*&\s*Personality\s+Profile\s*:",
+    re.IGNORECASE | re.MULTILINE,
+)
+_INTRO_SENTENCE = re.compile(
+    r"^\s*Here\s+is\s+the\s+behavioral\s+and\s+personality\s+profile\s+for\b",
+    re.IGNORECASE | re.MULTILINE,
+)
+_SUMMARY_HEADING = re.compile(
+    r"^\s*\**\s*Summary\s*\**\s*:?\s*$",
+    re.IGNORECASE | re.MULTILINE,
+)
+
+# Telltale first-person planning/meta-commentary. Used to trim trailing
+# scratchpad that follows an otherwise-complete profile, and to detect a
+# response that is nothing but reasoning.
+_REASONING_LINE = re.compile(
+    r"^\s*(?:"
+    r"(?:so|now|ok(?:ay)?|alright|hmm+|wait|but|and|also|actually|thus|hence|"
+    r"therefore|first|next|then|finally|maybe|perhaps|probably|let'?s|let\s+me|"
+    r"i'?(?:ll|d|m|ve)|i\s+(?:will|would|should|need|must|think|guess|count|"
+    r"want|have)|we\s+(?:need|must|should|will|have|can|want|could|are|examine)|"
+    r"the\s+(?:user|prompt|instruction|system|example|format|structure|task)|"
+    r"must\s+(?:not|be|include|use|keep|have|follow|avoid|output)|"
+    r"do\s+not\s+(?:use|mention|over)|"
+    r"aim\s+for|word\s+count|count\s+(?:words|again)|rewrite|redo|draft|"
+    r"output\s*:|final\s+(?:answer|output)|make\s+sure|ensure|note\s+that|"
+    r"remember|instructions?\b|according\s+to|based\s+on\s+the\s+(?:instruction|prompt)"
+    r")\b",
+    re.IGNORECASE,
+)
+_WORD_COUNT_ARTIFACT = re.compile(r"\w+\(?\d+\)?(?:\s+\w+\d+){3,}")
+_MIN_PROFILE_SECTIONS = 3
+
 PROFILE_SYSTEM_PROMPT = """You are a straightforward Discord behavioral analyst. Your job is to read the supplied message excerpts and provide a simple, direct, and highly accurate behavioral profile.
 
 Do not over-analyze or use overly academic, pretentious language. Be direct, grounded, and use simple language. Distinguish between actual toxicity and friend-group roughhousing, and explain their basic role in the server (e.g., the class clown, the instigator, the lurker).
