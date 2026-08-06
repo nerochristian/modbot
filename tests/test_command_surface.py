@@ -26,6 +26,12 @@ COGS = ROOT / "cogs"
 REQUIRED_MODERATION_SLASH = {"ban", "kick", "mute", "timeout", "warn"}
 
 
+def test_nick_is_an_alias_of_the_moderation_rename_command() -> None:
+    assert "nick" in Moderation.mod_rename.aliases
+    assert PrefixCommands.get_commands
+    assert PrefixCommands.__dict__.get("nick_cmd") is None
+
+
 def test_prefix_role_commands_accept_unmentioned_multiword_role_names() -> None:
     async def parse_role_add() -> tuple[list[object], dict[str, object]]:
         bot = commands.Bot(command_prefix=",", intents=discord.Intents.none())

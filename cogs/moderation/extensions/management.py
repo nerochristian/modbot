@@ -1643,7 +1643,7 @@ class ManagementCommands:
     async def banlist_slash(self, interaction: discord.Interaction):
         await self._banlist_logic(interaction)
 
-    @commands.command(name="rename", description="📝 Change a user's nickname")
+    @commands.command(name="rename", aliases=["nick"], description="📝 Change a user's nickname")
     @is_mod()
     async def mod_rename(self, ctx: commands.Context, user: discord.Member, *, nickname: Optional[str] = None):
         await self._rename_logic(ctx, user, nickname)

@@ -283,13 +283,6 @@ class PrefixCommands(commands.Cog):
     #     await channel.set_permissions(ctx.guild.default_role, send_messages=None)
     #     await ctx.send(embed=ModEmbed.success("🔓 Unlocked", f"{channel.mention} is now unlocked."))
 
-    @commands.command(name="nick", aliases=["setnick"])
-    @has_permissions_or_owner(manage_nicknames=True)
-    async def nick_cmd(self, ctx, member: discord.Member, *, nickname: str = None):
-        """Change a user's nickname"""
-        await member.edit(nick=nickname)
-        await ctx.send(embed=ModEmbed.success("✏️ Nickname Changed", f"{member.mention}'s nickname updated."))
-
     @commands.command(name="strip", aliases=["removeallroles"])
     @has_permissions_or_owner(manage_roles=True)
     async def strip_cmd(self, ctx, member: discord.Member):
