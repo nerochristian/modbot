@@ -166,20 +166,20 @@ class AccessMixin:
         self._validate_guild_id(guild_id)
         self._validate_user_id(user_id)
         now = datetime.now(timezone.utc).isoformat()
+        factors_json = json.dumps(factors, ensure_ascii=False)
+        builder = getattr(self, "qb", None)
         async with self._lock:
             async with self.get_connection() as db:
-                if QueryBuilder and hasattr(QueryBuilder, "upsert"):
-                    builder = QueryBuilder("user_risk_scores")
-                    builder.insert(
+                if builder is not None:
+                    sql, params = builder.upsert(
+                        "user_risk_scores",
+                        conflict_columns=("guild_id", "user_id"),
+                        mode="replace",
                         guild_id=guild_id,
                         user_id=user_id,
                         score=score,
-                        factors=json.dumps(factors, ensure_ascii=False),
+                        factors=factors_json,
                         last_calculated=now,
-                    )
-                    sql, params = builder.on_conflict_do_update(
-                        conflict_columns=["guild_id", "user_id"],
-                        update_columns=["score", "factors", "last_calculated"],
                     )
                     await db.execute(sql, params)
                 else:
@@ -192,7 +192,7 @@ class AccessMixin:
                             factors = excluded.factors,
                             last_calculated = excluded.last_calculated
                         """,
-                        (guild_id, user_id, score, json.dumps(factors, ensure_ascii=False), now),
+                        (guild_id, user_id, score, factors_json, now),
                     )
                 await db.commit()
 
@@ -251,13 +251,14 @@ class AccessMixin:
         self._validate_user_id(user_id)
         async with self._lock:
             async with self.get_connection() as db:
-                existing = await db.execute_fetchall(
+                cursor = await db.execute(
                     "SELECT banned_from_guilds FROM banned_user_profiles WHERE user_id = ?",
                     (user_id,),
                 )
+                existing = await cursor.fetchone()
                 guilds = []
                 if existing:
-                    guilds = json.loads(existing[0][0]) if existing[0][0] else []
+                    guilds = json.loads(existing[0]) if existing[0] else []
                 if guild_id not in guilds:
                     guilds.append(guild_id)
 
