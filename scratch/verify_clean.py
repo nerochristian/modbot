@@ -1,44 +1,10 @@
-import importlib.util
 import os
 import sys
-import types
 
-ROOT = os.path.join(os.path.dirname(__file__), "..")
+ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+sys.path.insert(0, ROOT)
 
-# Stub discord/utils so the cog imports without the full bot dependency tree.
-for name in ("discord", "discord.ext", "discord.ext.commands", "discord.app_commands"):
-    sys.modules.setdefault(name, types.ModuleType(name))
-sys.modules["discord"].Embed = object
-sys.modules["discord"].Member = object
-sys.modules["discord"].Interaction = object
-sys.modules["discord"].HTTPException = Exception
-sys.modules["discord"].NotFound = Exception
-sys.modules["discord"].Color = object
-sys.modules["discord"].AllowedMentions = object
-sys.modules["discord"].app_commands = sys.modules["discord.app_commands"]
-sys.modules["discord"].ext = sys.modules["discord.ext"]
-sys.modules["discord.ext"].commands = sys.modules["discord.ext.commands"]
-
-
-class _Cog:
-    pass
-
-
-sys.modules["discord.ext.commands"].Cog = _Cog
-sys.modules["discord.ext.commands"].Bot = object
-for attr in ("command", "describe", "guild_only", "default_permissions"):
-    setattr(sys.modules["discord.app_commands"], attr, lambda *a, **k: (lambda f: f))
-ue = types.ModuleType("utils.embeds")
-ue.ModEmbed = object
-u = types.ModuleType("utils")
-sys.modules.setdefault("utils", u)
-sys.modules["utils.embeds"] = ue
-
-spec = importlib.util.spec_from_file_location(
-    "bp", os.path.join(ROOT, "cogs", "behavior_profiling.py")
-)
-bp = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(bp)
+from cogs import behavior_profiling as bp  # noqa: E402
 
 results = []
 
