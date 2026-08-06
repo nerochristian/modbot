@@ -16,6 +16,7 @@ from utils.embeds import ModEmbed, Colors
 from utils.checks import is_bot_owner_id, has_permissions_or_owner
 from utils.moderation_settings import moderation_bool
 from utils.status_emojis import apply_status_emoji_overrides
+from cogs.utility import apply_afk_nick
 
 
 class PrefixCommands(commands.Cog):
@@ -743,6 +744,7 @@ class PrefixCommands(commands.Cog):
         store = self._afk_store()
         original_nick = None
         nickname_changed = False
+        afk_nick = ctx.author.display_name
         if ctx.guild and ctx.guild.me.guild_permissions.manage_nicknames:
             member = ctx.guild.get_member(ctx.author.id)
             if (
@@ -750,16 +752,12 @@ class PrefixCommands(commands.Cog):
                 and member.id != ctx.guild.owner_id
                 and member.top_role < ctx.guild.me.top_role
             ):
-                try:
-                    original_nick = member.nick if member.nick is not None else member.display_name
-                    await member.edit(nick=f"[AFK] {member.display_name}", reason=f"AFK: {reason}")
-                    nickname_changed = True
-                except discord.HTTPException:
-                    original_nick = None
+                nickname_changed, original_nick, afk_nick = await apply_afk_nick(member, reason)
         store[ctx.author.id] = {
             "reason": reason,
             "since": datetime.now(timezone.utc),
             "nick": original_nick,
+            "nick_changed": nickname_changed,
             "guild_id": ctx.guild.id if ctx.guild else None,
         }
         embed = discord.Embed(
@@ -767,12 +765,13 @@ class PrefixCommands(commands.Cog):
             description=(
                 f"{ctx.author.mention} is now AFK: **{reason}**\n\n"
                 + (
-                    f"Your nickname has been set to **[AFK] {ctx.author.display_name}**. "
+                    f"Your nickname has been set to **{afk_nick}**. "
                     if nickname_changed
                     else "Your nickname could not be changed in this server. "
                 )
                 + "Send any message to return."
             ),
+
             color=Colors.INFO,
             timestamp=datetime.now(timezone.utc),
         )
