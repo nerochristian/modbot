@@ -13,7 +13,7 @@ import re
 import shutil
 import tempfile
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Optional, List, Dict, Any
 
 import aiosqlite
@@ -263,6 +263,56 @@ _POSTGRES_SERIAL_ID_TABLES = {
     "dashboard_appeal_tokens",
     "dashboard_reports",
 }
+
+
+def _encode_temporal(value: Any) -> str:
+    """Encode a datetime/date/ISO-string for a Postgres temporal column.
+
+    Large parts of the codebase persist timestamps as ISO-8601 strings (a
+    carry-over from SQLite, which is untyped). asyncpg's binary codecs reject
+    strings outright, so temporal columns are handled in text format with this
+    permissive encoder that accepts both native objects and ISO strings.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, (datetime, date)):
+        return value.isoformat()
+    return str(value)
+
+
+def _decode_timestamp(value: str) -> Any:
+    """Decode a Postgres timestamp/timestamptz text value into a datetime."""
+    try:
+        return datetime.fromisoformat(value)
+    except (TypeError, ValueError):
+        return value
+
+
+def _decode_date(value: str) -> Any:
+    """Decode a Postgres date text value into a date."""
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return value
+
+
+async def _init_postgres_connection(conn: "asyncpg.Connection") -> None:
+    """Register permissive temporal codecs on a new PostgreSQL connection."""
+    for type_name in ("timestamp", "timestamptz"):
+        await conn.set_type_codec(
+            type_name,
+            encoder=_encode_temporal,
+            decoder=_decode_timestamp,
+            schema="pg_catalog",
+            format="text",
+        )
+    await conn.set_type_codec(
+        "date",
+        encoder=_encode_temporal,
+        decoder=_decode_date,
+        schema="pg_catalog",
+        format="text",
+    )
 
 
 def _normalize_query_params(params: Any = None) -> tuple[Any, ...]:
