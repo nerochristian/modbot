@@ -874,19 +874,36 @@ class AIClient:
         Tries the free Nemotron lane first; if it is rate-limited (the
         free-tier daily quota can be exhausted), falls back to the paid
         Nemotron variant on the same OpenRouter key.
+
+        The pinned Nemotron variants are reasoning models that stream their
+        chain-of-thought into ``message.content`` instead of the separate
+        ``reasoning`` field, which leaked raw scratchpad into Discord embeds.
+        ``reasoning: {"enabled": false}`` suppresses it at the source; note that
+        ``{"exclude": true}`` only hides the ``reasoning`` field and does NOT
+        stop the inline leak. Each model is attempted with reasoning disabled
+        first, then without the control at all, so a provider that rejects the
+        parameter still yields a profile (the caller strips any residual
+        scratchpad defensively).
         """
         if not _OPENROUTER_API_KEY:
             raise RuntimeError(
                 "Nemotron routing requires OPENROUTER_API_KEY to be set."
             )
 
+        no_reasoning: Dict[str, Any] = {"reasoning": {"enabled": False}}
         candidates = (
-            (_OPENROUTER_NEMOTRON_MODEL, "OpenRouter Nemotron free"),
-            (_OPENROUTER_NEMOTRON_PAID_MODEL, "OpenRouter Nemotron paid"),
+            (_OPENROUTER_NEMOTRON_MODEL, "OpenRouter Nemotron free", no_reasoning),
+            (_OPENROUTER_NEMOTRON_PAID_MODEL, "OpenRouter Nemotron paid", no_reasoning),
+            (_OPENROUTER_NEMOTRON_MODEL, "OpenRouter Nemotron free (default reasoning)", None),
+            (
+                _OPENROUTER_NEMOTRON_PAID_MODEL,
+                "OpenRouter Nemotron paid (default reasoning)",
+                None,
+            ),
         )
 
         last_error: Optional[Exception] = None
-        for model, label in candidates:
+        for model, label, extra_payload in candidates:
             try:
                 result = await self._post_chat_completion(
                     messages,
@@ -900,6 +917,7 @@ class AIClient:
                     provider_label=f"{label} ({model})",
                     max_retries=max_retries,
                     request_timeout=request_timeout,
+                    extra_payload=extra_payload,
                 )
                 if result:
                     self._block_until = None

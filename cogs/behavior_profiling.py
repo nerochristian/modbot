@@ -38,6 +38,12 @@ HISTORY_SCAN_DEADLINE_SECONDS = 20
 PROFILE_AI_CONCURRENCY = 2
 PROFILE_TIMEOUT_SECONDS = 70
 PROFILE_AI_REQUEST_TIMEOUT = 60
+# Reasoning models spend completion tokens on chain-of-thought before emitting
+# any prose, and those tokens count against ``max_tokens``. At 1,800 the pinned
+# Nemotron routes hit ``finish_reason="length"`` mid-scratchpad and returned a
+# truncated profile, so the budget must cover reasoning plus the ~350-word
+# answer.
+PROFILE_MAX_TOKENS = 6_000
 PROFILE_COOLDOWN_SECONDS = 30.0
 MAX_COOLDOWN_ENTRIES = 512
 
