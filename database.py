@@ -807,6 +807,7 @@ class Database(MemoryMixin, CasesMixin, StaffMixin, TicketsMixin, ModmailMixin, 
                     min_size=1,
                     max_size=max(2, int(os.getenv("DATABASE_POOL_MAX_SIZE", "10"))),
                     command_timeout=60,
+                    init=_init_postgres_connection,
                 )
                 logger.info("Database connection pool initialized (PostgreSQL)")
                 return
