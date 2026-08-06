@@ -232,7 +232,11 @@ class Utility(commands.Cog):
         
         # Check if user returned from AFK
         if message.author.id in self.afk_users:
-            afk_data = self.afk_users.pop(message.author.id)
+            afk_data = self.afk_users[message.author.id]
+            # Ignore the very message that set AFK (prefix command races this listener)
+            if (datetime.now(timezone.utc) - afk_data["since"]).total_seconds() < 2:
+                return
+            self.afk_users.pop(message.author.id, None)
             # Restore original nickname if we changed it
             if afk_data.get("guild_id") == message.guild.id and afk_data.get("nick_changed", afk_data.get("nick") is not None):
                 member = message.guild.get_member(message.author.id)
