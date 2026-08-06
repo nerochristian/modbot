@@ -83,8 +83,13 @@ _OPENROUTER_LING_ROUTER_MODEL: Final[str] = "inclusionai/ling-2.6-flash"
 _OPENROUTER_NEMOTRON_MODEL: Final[str] = (
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
 )
+# The paid Nemotron fallback used when the free lane's daily quota is spent.
+# ``nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`` (the ":free" id minus the
+# suffix) is NOT a real OpenRouter model and always returned HTTP 404
+# "No endpoints found", which turned every quota-exhausted profile request into
+# a hard failure. This is the closest real paid Nemotron in the catalog.
 _OPENROUTER_NEMOTRON_PAID_MODEL: Final[str] = (
-    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning"
+    "nvidia/nemotron-3-nano-30b-a3b"
 )
 _OPENROUTER_API_KEY: Final[str] = os.getenv("OPENROUTER_API_KEY", "").strip()
 _OPENROUTER_BASE_URL: Final[str] = os.getenv(
