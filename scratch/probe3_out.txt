@@ -1,0 +1,81 @@
+============================================================
+VARIANT: exclude HTTP 200
+finish_reason: length
+reasoning_tokens: 0
+reasoning field len: 0
+content len: 7193
+starts with profile heading: False
+--- HEAD 400 ---
+We need to output profile with exact structure, using bold headers, subcategories, etc. Must include empty blank lines between major sections. Must be very short 250-350 words total. Must use exact structure:
+
+**Behavioral & Personality Profile: [USERNAME]**
+
+**General Tone & Communication Style**
+**[Subcategory Name]:** [Brief explanation]
+**[Subcategory Name]:** [Brief explanation]
+
+**Primary In
+--- TAIL 300 ---
+nd quick to tease but also self‑aware. He creates agenda items, dabbles in gaming banter, and occasionally pretends to lurk, all while keeping the vibe chaotic and friendly.
+
+Make sure there are empty blank lines between major sections. That means after each major section block, we need a blank line
+============================================================
+VARIANT: enabled-false HTTP 200
+finish_reason: stop
+reasoning_tokens: 0
+reasoning field len: 0
+content len: 1554
+starts with profile heading: True
+--- HEAD 400 ---
+**Behavioral & Personality Profile: A$hley**
+
+**General Tone & Communication Style**
+**Energy:** Hyper, all‑caps excitement.
+**Brevity:** Very short, slang‑heavy replies.
+**Tone:** Playful, often mocking or teasing.
+
+**Primary Interests & Topics**
+**Gaming:** Frequent references to in‑game actions and status.
+**Community Hype:** Uses exclamation and slang to rally others.
+**Local Culture:** Drops 
+--- TAIL 300 ---
+ten crosses into mocking territory, especially when calling out perceived weakness. Occasionally he signals a low‑key presence (“lurking today”), showing he can dial back the noise when he chooses. Overall, he’s the class clown‑instigator who keeps the chat lively, even if his jokes sometimes sting.
+============================================================
+VARIANT: effort-low HTTP 200
+finish_reason: stop
+reasoning_tokens: 1488
+reasoning field len: 5814
+content len: 1320
+starts with profile heading: True
+--- HEAD 400 ---
+**Behavioral & Personality Profile: A$hley**
+
+**General Tone & Communication Style**  
+**[Excited]:** [All caps, multiple exclamation marks, hype]  
+**[Casual slang]:** [Uses abbreviations like “wsp”, “ngl”, and local Tagalog interjections]  
+
+**Primary Interests & Topics**  
+**[Gaming]:** [Talks about queueing, getting jailed, calling others “ass” in game]  
+**[Anime/food]:** [Drops “palo‑bok”, “
+--- TAIL 300 ---
+l call out bad play but quickly back off with a joke. He sometimes pretends to be a lurker, yet he’s the one who sparks the loudest reactions. Overall he’s a friendly provocateur who mixes gaming banter with occasional food‑related memes, keeping the chat lively without crossing into real hostility.
+============================================================
+VARIANT: baseline-4000tok HTTP 200
+finish_reason: stop
+reasoning_tokens: 1902
+reasoning field len: 7367
+content len: 1414
+starts with profile heading: True
+--- HEAD 400 ---
+**Behavioral & Personality Profile: A$hley**
+
+**General Tone & Communication Style**  
+**Vibe:** hyper, hype, random caps, slang, Filipino exclamations.  
+**Style:** all‑caps bursts, short slang, occasional meme references.  
+
+**Primary Interests & Topics**  
+**Interest:** gaming banter and competitive queue.  
+**Interest:** Filipino pop culture references (palabok, tangina).  
+**Interest:** self‑
+--- TAIL 300 ---
+.” They’ll tease opponents with cheap insults but wrap it in jokes, and they’ll vanish into lurker mode when the chat gets quiet. The mix of self‑promotion, playful toxicity, and sudden silence makes them the classic class clown who’s always ready to rally the crowd, even if it means a little chaos.
