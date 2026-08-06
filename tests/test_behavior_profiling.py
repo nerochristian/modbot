@@ -174,6 +174,21 @@ class BehaviorProfilingAsyncTests(unittest.IsolatedAsyncioTestCase):
         ai_client.call_nemotron_completion.assert_awaited_once()
         ai_client.call_bounded_completion.assert_awaited_once()
 
+    async def test_generate_profile_falls_back_to_deepseek_web(self) -> None:
+        web_call = AsyncMock(return_value="Browser profile")
+        cog = BehaviorProfiling(SimpleNamespace())
+        ai_client = SimpleNamespace(
+            call_nemotron_completion=AsyncMock(side_effect=RuntimeError("quota reached")),
+            call_bounded_completion=AsyncMock(side_effect=RuntimeError("gateway failed")),
+            _deepseek_web=SimpleNamespace(chat=web_call),
+        )
+
+        result = await cog._generate_profile(ai_client, "prompt")
+
+        self.assertEqual(result, "Browser profile")
+        web_call.assert_awaited_once()
+        self.assertTrue(web_call.await_args.kwargs["long_answer"])
+
     async def test_cooldown_blocks_immediate_repeat(self) -> None:
         cog = BehaviorProfiling(SimpleNamespace())
 

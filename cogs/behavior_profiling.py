@@ -485,6 +485,8 @@ class BehaviorProfiling(commands.Cog):
         # routes are unavailable or quota-limited.
         nemotron_call = getattr(ai_client, "call_nemotron_completion", None)
         fallback_call = getattr(ai_client, "call_bounded_completion", None)
+        deepseek_web = getattr(ai_client, "_deepseek_web", None)
+        web_call = getattr(deepseek_web, "chat", None)
 
         messages = [
             {"role": "system", "content": PROFILE_SYSTEM_PROMPT},
@@ -502,7 +504,7 @@ class BehaviorProfiling(commands.Cog):
             calls.append(nemotron_call)
         if callable(fallback_call) and fallback_call is not nemotron_call:
             calls.append(fallback_call)
-        if not calls:
+        if not calls and not callable(web_call):
             raise RuntimeError(
                 "The active AI client does not expose bounded inference."
             )
@@ -526,6 +528,17 @@ class BehaviorProfiling(commands.Cog):
                                 "Preferred profile provider failed; trying configured fallback: %s",
                                 exc,
                             )
+                if callable(web_call):
+                    try:
+                        return await web_call(
+                            "\n\n".join(
+                                f"[{message['role'].upper()}]\n{message['content']}"
+                                for message in messages
+                            ),
+                            long_answer=True,
+                        )
+                    except Exception as exc:
+                        last_error = exc
                 if last_error is not None:
                     raise last_error
                 return None
