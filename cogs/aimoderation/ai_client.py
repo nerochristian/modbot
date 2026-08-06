@@ -94,6 +94,10 @@ _OPENROUTER_BASE_URL: Final[str] = os.getenv(
 _OPENROUTER_CHAT_MODEL: Final[str] = _OPENROUTER_LUNA_MODEL
 
 _AIMODEL_API_KEY: Final[str] = os.getenv("AIMODEL_API_KEY", "").strip()
+_AIMODEL_CONVERSATION_API_KEY: Final[str] = os.getenv(
+    "AIMODEL_CONVERSATION_API_KEY",
+    "",
+).strip()
 _AIMODEL_BASE_URL: Final[str] = os.getenv(
     "AIMODEL_BASE_URL",
     "https://aimodel.lol/v1",
@@ -217,7 +221,12 @@ def _aimodel_api_enabled() -> bool:
 
 def _aimodel_conversation_enabled() -> bool:
     """AiModel Grok is usable as the dedicated ordinary-conversation lane."""
-    return bool(_aimodel_api_enabled() and _AIMODEL_CONVERSATION_MODEL)
+    return bool(
+        _credential_is_configured(
+            _AIMODEL_CONVERSATION_API_KEY or _AIMODEL_API_KEY
+        )
+        and _AIMODEL_CONVERSATION_MODEL
+    )
 
 
 def _relayrouter_request_timeout(*, multimodal: bool) -> int:
@@ -1392,7 +1401,7 @@ class AIClient:
         return await self._post_chat_completion(
             messages,
             base_url=_AIMODEL_BASE_URL,
-            api_key=_AIMODEL_API_KEY,
+            api_key=_AIMODEL_CONVERSATION_API_KEY or _AIMODEL_API_KEY,
             model=_AIMODEL_CONVERSATION_MODEL,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -2477,7 +2486,11 @@ class AIClient:
                     )
 
             http_primary_attempted = False
-            aimodel_primary = self.prefers_aimodel and _aimodel_api_enabled()
+            aimodel_primary = self.prefers_aimodel and (
+                _aimodel_api_enabled()
+                if image_context
+                else _aimodel_conversation_enabled()
+            )
             relay_primary = self.prefers_relayrouter and _relayrouter_api_enabled()
             deepseek_primary = (
                 self.prefers_deepseek_http

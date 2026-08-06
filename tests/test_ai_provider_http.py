@@ -198,6 +198,7 @@ def test_openrouter_conversation_uses_only_configured_luna_model(monkeypatch):
     client.config = AIConfig(provider="aimodel")
     client._post_chat_completion = AsyncMock(return_value="natural reply")
     monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "")
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_CONVERSATION_API_KEY", "")
     monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
     monkeypatch.setattr(
         ai_client_module,
@@ -232,7 +233,12 @@ def test_aimodel_grok_is_only_the_ordinary_text_conversation_lane(monkeypatch):
     client.provider = "aimodel"
     client.config = AIConfig(provider="aimodel")
     client._post_chat_completion = AsyncMock(return_value="natural grok reply")
-    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "stale-aimodel-key")
+    monkeypatch.setattr(
+        ai_client_module,
+        "_AIMODEL_CONVERSATION_API_KEY",
+        "aimodel-conversation-test-key",
+    )
     monkeypatch.setattr(ai_client_module, "_AIMODEL_BASE_URL", "https://aimodel.test/v1")
     monkeypatch.setattr(ai_client_module, "_AIMODEL_CONVERSATION_MODEL", "grok-4.5")
 
@@ -247,6 +253,7 @@ def test_aimodel_grok_is_only_the_ordinary_text_conversation_lane(monkeypatch):
     assert result == "natural grok reply"
     kwargs = client._post_chat_completion.await_args.kwargs
     assert kwargs["base_url"] == "https://aimodel.test/v1"
+    assert kwargs["api_key"] == "aimodel-conversation-test-key"
     assert kwargs["model"] == "grok-4.5"
     assert kwargs["json_mode"] is False
     assert kwargs["allow_multimodal"] is False
@@ -255,7 +262,12 @@ def test_aimodel_grok_is_only_the_ordinary_text_conversation_lane(monkeypatch):
 
 
 def test_openrouter_lane_is_reserved_for_search_research_and_images(monkeypatch):
-    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "stale-aimodel-key")
+    monkeypatch.setattr(
+        ai_client_module,
+        "_AIMODEL_CONVERSATION_API_KEY",
+        "aimodel-conversation-test-key",
+    )
     monkeypatch.setattr(ai_client_module, "_AIMODEL_CONVERSATION_MODEL", "grok-4.5")
     monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
     standard = ConversationSignals(mode=ConversationMode.STANDARD, confidence=1.0)
@@ -272,6 +284,7 @@ def test_openrouter_lane_is_reserved_for_search_research_and_images(monkeypatch)
     assert AIClient._uses_openrouter_conversation_lane(standard, has_images=True) is True
 
     monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "")
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_CONVERSATION_API_KEY", "")
     assert AIClient._uses_openrouter_conversation_lane(standard, has_images=False) is True
 
 
@@ -406,6 +419,11 @@ def test_ordinary_conversation_uses_grok_without_openrouter(monkeypatch):
         ),
     )
     monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
+    monkeypatch.setattr(
+        ai_client_module,
+        "_AIMODEL_CONVERSATION_API_KEY",
+        "aimodel-conversation-test-key",
+    )
     monkeypatch.setattr(ai_client_module, "_AIMODEL_CONVERSATION_MODEL", "grok-4.5")
     monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
 
@@ -604,6 +622,11 @@ def test_aimodel_conversation_ignores_stale_dashboard_model(monkeypatch):
     client.config = AIConfig(provider="aimodel", model="old-dashboard-model")
     client._call_aimodel_conversation = AsyncMock(return_value="chat")
     monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
+    monkeypatch.setattr(
+        ai_client_module,
+        "_AIMODEL_CONVERSATION_API_KEY",
+        "aimodel-conversation-test-key",
+    )
     monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "")
     monkeypatch.setattr(
         ai_client_module,
