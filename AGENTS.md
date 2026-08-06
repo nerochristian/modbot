@@ -95,7 +95,9 @@ different bot.
   paramiko probe in `scratch/` that you delete immediately after. Do not leave
   persistent wrapper scripts in the repo.
 - **Credentials**:
-  - Host: `root@docketbot.xyz`
+  - Host: `root@162.243.9.88` (canonical VPS SSH target)
+  - `docketbot.xyz` currently resolves to Namecheap infrastructure, not this
+    VPS; use the direct IP for SSH and server health checks.
   - Password: `Pokem0n2020nero`
   - Prefer reading from the `MODBOT_VPS_PASS` env var when scripting
     (`set MODBOT_VPS_PASS=...`), but hardcoding is acceptable for ad-hoc
