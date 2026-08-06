@@ -7,8 +7,11 @@ from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-from cogs.behavior_profiling import PROFILE_SYSTEM_PROMPT  # noqa: E402
+_SRC = open(
+    os.path.join(os.path.dirname(__file__), "..", "cogs", "behavior_profiling.py"),
+    encoding="utf-8",
+).read()
+PROFILE_SYSTEM_PROMPT = _SRC.split('PROFILE_SYSTEM_PROMPT = """', 1)[1].split('"""', 1)[0]
 
 KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 BASE = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").strip().rstrip("/")
