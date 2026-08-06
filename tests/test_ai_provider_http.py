@@ -257,6 +257,7 @@ def test_aimodel_grok_is_only_the_ordinary_text_conversation_lane(monkeypatch):
     assert kwargs["model"] == "grok-4.5"
     assert kwargs["json_mode"] is False
     assert kwargs["allow_multimodal"] is False
+    assert kwargs["max_retries"] == 0
     assert "search" not in kwargs
     assert client.conversation_model_name("stale-dashboard-model") == "grok-4.5"
 
@@ -443,6 +444,60 @@ def test_ordinary_conversation_uses_grok_without_openrouter(monkeypatch):
     assert result == "grok answer"
     client._call_aimodel_conversation.assert_awaited_once()
     client._call_openrouter_conversation.assert_not_awaited()
+
+
+def test_ordinary_conversation_falls_back_to_luna_when_grok_is_down(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client.provider = "aimodel"
+    client.config = AIConfig(provider="aimodel")
+    client._block_until = None
+    client._block_reason = None
+    client._brave_search_api_key = None
+    client._tavily_api_key = None
+    client._serpapi_api_key = None
+    client._rate_limiter = types.SimpleNamespace(
+        is_rate_limited=AsyncMock(return_value=(False, 0)),
+        record_call=AsyncMock(),
+    )
+    client._deepseek_web = types.SimpleNamespace(enabled=False)
+    client._collect_image_context = AsyncMock(return_value=[])
+    client._call_aimodel_conversation = AsyncMock(
+        side_effect=RuntimeError("AiModel HTTP 523")
+    )
+    client._call_openrouter_conversation = AsyncMock(return_value="luna fallback")
+    client._update_memory_smart = AsyncMock()
+    client.bot = types.SimpleNamespace(
+        user=types.SimpleNamespace(id=999),
+        db=types.SimpleNamespace(
+            get_ai_memory=AsyncMock(return_value=""),
+            get_guild_memory=AsyncMock(return_value=""),
+        ),
+    )
+    monkeypatch.setattr(
+        ai_client_module,
+        "_AIMODEL_CONVERSATION_API_KEY",
+        "aimodel-conversation-test-key",
+    )
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_CONVERSATION_MODEL", "grok-4.5")
+    monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
+
+    result = asyncio.run(
+        client.converse(
+            user_content="how are you doing?",
+            guild=types.SimpleNamespace(id=1, name="Guild", member_count=10),
+            author=types.SimpleNamespace(id=2, name="User"),
+            recent_messages=[],
+            signals=ConversationSignals(
+                mode=ConversationMode.STANDARD,
+                confidence=1.0,
+            ),
+        )
+    )
+
+    assert result == "luna fallback"
+    client._call_aimodel_conversation.assert_awaited_once()
+    client._call_openrouter_conversation.assert_awaited_once()
+    assert client._call_openrouter_conversation.await_args.kwargs.get("require_search") is None
 
 
 def test_openrouter_citations_are_preserved_for_research_output():
