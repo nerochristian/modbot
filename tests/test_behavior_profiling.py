@@ -148,6 +148,32 @@ class BehaviorProfilingAsyncTests(unittest.IsolatedAsyncioTestCase):
         messages = ai_client.call_bounded_completion.await_args.args[0]
         self.assertEqual(messages[0]["role"], "system")
 
+    async def test_generate_profile_prefers_nemotron(self) -> None:
+        cog = BehaviorProfiling(SimpleNamespace())
+        ai_client = SimpleNamespace(
+            call_nemotron_completion=AsyncMock(return_value="Nemotron profile"),
+            call_bounded_completion=AsyncMock(return_value="Fallback profile"),
+        )
+
+        result = await cog._generate_profile(ai_client, "prompt")
+
+        self.assertEqual(result, "Nemotron profile")
+        ai_client.call_nemotron_completion.assert_awaited_once()
+        ai_client.call_bounded_completion.assert_not_awaited()
+
+    async def test_generate_profile_falls_back_when_nemotron_fails(self) -> None:
+        cog = BehaviorProfiling(SimpleNamespace())
+        ai_client = SimpleNamespace(
+            call_nemotron_completion=AsyncMock(side_effect=RuntimeError("quota reached")),
+            call_bounded_completion=AsyncMock(return_value="Fallback profile"),
+        )
+
+        result = await cog._generate_profile(ai_client, "prompt")
+
+        self.assertEqual(result, "Fallback profile")
+        ai_client.call_nemotron_completion.assert_awaited_once()
+        ai_client.call_bounded_completion.assert_awaited_once()
+
     async def test_cooldown_blocks_immediate_repeat(self) -> None:
         cog = BehaviorProfiling(SimpleNamespace())
 

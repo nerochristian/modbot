@@ -481,12 +481,8 @@ class BehaviorProfiling(commands.Cog):
         )
 
     async def _generate_profile(self, ai_client: object, prompt: str) -> str:
-        # Route /profile explicitly through Nemotron. call_nemotron_completion
-        # tries OpenRouter Nemotron first, then cascades through AiModel
-        # (also Nemotron, separate quota), DigitalOcean, and DeepSeek API if
-        # the OpenRouter free-tier daily quota is exhausted. Falls back to the
-        # provider-aware call_bounded_completion path only if the nemotron
-        # entry point is unavailable on this client.
+        # Prefer Nemotron, then use the configured provider when its OpenRouter
+        # routes are unavailable or quota-limited.
         nemotron_call = getattr(ai_client, "call_nemotron_completion", None)
         fallback_call = getattr(ai_client, "call_bounded_completion", None)
 
@@ -501,8 +497,12 @@ class BehaviorProfiling(commands.Cog):
             max_retries=0,
         )
 
-        call = nemotron_call if callable(nemotron_call) else fallback_call
-        if not callable(call):
+        calls = []
+        if callable(nemotron_call):
+            calls.append(nemotron_call)
+        if callable(fallback_call) and fallback_call is not nemotron_call:
+            calls.append(fallback_call)
+        if not calls:
             raise RuntimeError(
                 "The active AI client does not expose bounded inference."
             )
@@ -512,10 +512,25 @@ class BehaviorProfiling(commands.Cog):
         # the request boundary (~60s) instead of grinding past the outer cap
         # and surfacing a misleading TimeoutError.
         async with self._ai_slots:
-            response = await asyncio.wait_for(
-                call(messages, **call_kwargs),
-                timeout=PROFILE_TIMEOUT_SECONDS,
-            )
+            async def generate() -> object:
+                last_error: Exception | None = None
+                for call in calls:
+                    try:
+                        response = await call(messages, **call_kwargs)
+                        if response:
+                            return response
+                    except Exception as exc:
+                        last_error = exc
+                        if call is not calls[-1]:
+                            logger.warning(
+                                "Preferred profile provider failed; trying configured fallback: %s",
+                                exc,
+                            )
+                if last_error is not None:
+                    raise last_error
+                return None
+
+            response = await asyncio.wait_for(generate(), timeout=PROFILE_TIMEOUT_SECONDS)
 
         return _clean_profile_output(response)
 
