@@ -197,6 +197,7 @@ def test_openrouter_conversation_uses_only_configured_luna_model(monkeypatch):
     client.provider = "aimodel"
     client.config = AIConfig(provider="aimodel")
     client._post_chat_completion = AsyncMock(return_value="natural reply")
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "")
     monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
     monkeypatch.setattr(
         ai_client_module,
@@ -226,14 +227,52 @@ def test_openrouter_conversation_uses_only_configured_luna_model(monkeypatch):
     assert client.conversation_model_name("stale-dashboard-model") == "openai/gpt-5.6-luna"
 
 
-def test_openrouter_lane_includes_research_and_images(monkeypatch):
+def test_aimodel_grok_is_only_the_ordinary_text_conversation_lane(monkeypatch):
+    client = AIClient.__new__(AIClient)
+    client.provider = "aimodel"
+    client.config = AIConfig(provider="aimodel")
+    client._post_chat_completion = AsyncMock(return_value="natural grok reply")
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_BASE_URL", "https://aimodel.test/v1")
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_CONVERSATION_MODEL", "grok-4.5")
+
+    result = asyncio.run(
+        client._call_aimodel_conversation(
+            [{"role": "user", "content": "hello"}],
+            temperature=0.8,
+            max_tokens=500,
+        )
+    )
+
+    assert result == "natural grok reply"
+    kwargs = client._post_chat_completion.await_args.kwargs
+    assert kwargs["base_url"] == "https://aimodel.test/v1"
+    assert kwargs["model"] == "grok-4.5"
+    assert kwargs["json_mode"] is False
+    assert kwargs["allow_multimodal"] is False
+    assert "search" not in kwargs
+    assert client.conversation_model_name("stale-dashboard-model") == "grok-4.5"
+
+
+def test_openrouter_lane_is_reserved_for_search_research_and_images(monkeypatch):
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_CONVERSATION_MODEL", "grok-4.5")
     monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
     standard = ConversationSignals(mode=ConversationMode.STANDARD, confidence=1.0)
+    searched = ConversationSignals(
+        mode=ConversationMode.STANDARD,
+        confidence=1.0,
+        requires_web_search=True,
+    )
     research = ConversationSignals(mode=ConversationMode.RESEARCH, confidence=1.0)
 
-    assert AIClient._uses_openrouter_conversation_lane(standard, has_images=False) is True
+    assert AIClient._uses_openrouter_conversation_lane(standard, has_images=False) is False
+    assert AIClient._uses_openrouter_conversation_lane(searched, has_images=False) is True
     assert AIClient._uses_openrouter_conversation_lane(research, has_images=False) is True
     assert AIClient._uses_openrouter_conversation_lane(standard, has_images=True) is True
+
+    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "")
+    assert AIClient._uses_openrouter_conversation_lane(standard, has_images=False) is True
 
 
 def test_openrouter_lets_luna_decide_when_search_is_needed(monkeypatch):
@@ -516,13 +555,13 @@ def test_aimodel_conversation_ignores_stale_dashboard_model(monkeypatch):
     client = AIClient.__new__(AIClient)
     client.provider = "aimodel"
     client.config = AIConfig(provider="aimodel", model="old-dashboard-model")
-    client._call_aimodel = AsyncMock(return_value="chat")
+    client._call_aimodel_conversation = AsyncMock(return_value="chat")
     monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "aimodel-test-key")
     monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "")
     monkeypatch.setattr(
         ai_client_module,
-        "_AIMODEL_CHAT_MODEL",
-        "accounts/aimodel/models/claude-fable-5",
+        "_AIMODEL_CONVERSATION_MODEL",
+        "grok-4.5",
     )
 
     result = asyncio.run(
@@ -533,8 +572,8 @@ def test_aimodel_conversation_ignores_stale_dashboard_model(monkeypatch):
     )
 
     assert result == "chat"
-    assert client.conversation_model_name("old-dashboard-model") == "accounts/aimodel/models/claude-fable-5"
-    assert client._call_aimodel.await_args.kwargs["model"] == "accounts/aimodel/models/claude-fable-5"
+    assert client.conversation_model_name("old-dashboard-model") == "grok-4.5"
+    client._call_aimodel_conversation.assert_awaited_once()
 
 
 def test_aimodel_provider_routes_before_legacy_providers(monkeypatch):
