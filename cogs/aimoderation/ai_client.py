@@ -1408,8 +1408,8 @@ class AIClient:
             json_mode=False,
             allow_multimodal=False,
             provider_label=f"AiModel conversation ({_AIMODEL_CONVERSATION_MODEL})",
-            max_retries=1,
-            request_timeout=_aimodel_request_timeout(multimodal=False),
+            max_retries=0,
+            request_timeout=min(45, _aimodel_request_timeout(multimodal=False)),
         )
 
     async def _call_openrouter_visual_candidates(
@@ -2489,7 +2489,11 @@ class AIClient:
             aimodel_primary = self.prefers_aimodel and (
                 _aimodel_api_enabled()
                 if image_context
-                else _aimodel_conversation_enabled()
+                else (
+                    signals.mode == ConversationMode.STANDARD
+                    and not signals.requires_web_search
+                    and _aimodel_conversation_enabled()
+                )
             )
             relay_primary = self.prefers_relayrouter and _relayrouter_api_enabled()
             deepseek_primary = (
@@ -2575,6 +2579,35 @@ class AIClient:
                         "Primary HTTP conversation failed; trying an eligible fallback.",
                         exc_info=True,
                     )
+                    if (
+                        aimodel_primary
+                        and not image_context
+                        and signals.mode == ConversationMode.STANDARD
+                        and not signals.requires_web_search
+                        and _openrouter_conversation_enabled()
+                    ):
+                        try:
+                            content = await self._call_openrouter_conversation(
+                                api_messages,
+                                temperature=plan.temperature,
+                                max_tokens=max_tokens,
+                            )
+                            if content:
+                                content = self._postprocess_chat_response(content)
+                                asyncio.create_task(
+                                    self._update_memory_smart(
+                                        author.id,
+                                        user_content,
+                                        content,
+                                        stored_memory,
+                                    )
+                                )
+                                return content
+                        except Exception:
+                            logger.warning(
+                                "Luna fallback after AiModel Grok failure also failed.",
+                                exc_info=True,
+                            )
 
             if image_context and not self._deepseek_web.enabled:
                 # Never answer an image question through a text-only fallback.
