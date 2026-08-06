@@ -91,7 +91,7 @@ _SUMMARY_HEADING = re.compile(
 # response that is nothing but reasoning.
 _REASONING_LINE = re.compile(
     r"^\s*(?:"
-    r"(?:so|now|ok(?:ay)?|alright|hmm+|wait|but|and|also|actually|thus|hence|"
+    r"so|now|ok(?:ay)?|alright|hmm+|wait|but|and|also|actually|thus|hence|"
     r"therefore|first|next|then|finally|maybe|perhaps|probably|let'?s|let\s+me|"
     r"i'?(?:ll|d|m|ve)|i\s+(?:will|would|should|need|must|think|guess|count|"
     r"want|have)|we\s+(?:need|must|should|will|have|can|want|could|are|examine)|"
