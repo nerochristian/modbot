@@ -304,6 +304,131 @@ def _build_prompt(
     return prompt, len(lines)
 
 
+def _strip_reasoning_blocks(value: str) -> str:
+    """Remove explicit <think>-style scratchpad markup."""
+
+    cleaned = _THINK_BLOCK.sub("\n", value)
+    # A truncated response (finish_reason="length") can open a think block and
+    # never close it; drop the tail. An orphan close tag means the opening tag
+    # was consumed upstream, so drop the head.
+    if _UNCLOSED_THINK_BLOCK.search(cleaned):
+        cleaned = _UNCLOSED_THINK_BLOCK.sub("\n", cleaned)
+    elif _ORPHAN_THINK_CLOSE.search(cleaned):
+        cleaned = _ORPHAN_THINK_CLOSE.sub("", cleaned)
+    return cleaned
+
+
+def _count_profile_sections(value: str) -> int:
+    """Count mandated major section headings present in the text."""
+
+    return sum(
+        1
+        for heading in (
+            "General Tone & Communication Style",
+            "Primary Interests & Topics",
+            "Toxicity & Friendliness Level",
+            "Notable Behavioral Patterns",
+            "Summary",
+        )
+        if re.search(
+            rf"^\s*\**\s*{re.escape(heading)}\s*\**\s*:?\s*$",
+            value,
+            re.IGNORECASE | re.MULTILINE,
+        )
+    )
+
+
+def _extract_profile_body(value: str) -> str:
+    """Isolate the final rendered profile from surrounding reasoning.
+
+    Reasoning models restate the required layout, draft the profile one or more
+    times, and tally word counts inside ``message.content``. The authoritative
+    profile is the LAST complete rendering, so anchor on the final occurrence of
+    the mandated heading (or the intro sentence) and drop everything before it.
+    """
+
+    anchors = [match.start() for match in _PROFILE_HEADING.finditer(value)]
+    if anchors:
+        # Prefer the last heading that still carries enough sections to be a
+        # complete profile rather than a layout echo inside the scratchpad.
+        for start in reversed(anchors):
+            candidate = value[start:]
+            if _count_profile_sections(candidate) >= _MIN_PROFILE_SECTIONS:
+                return candidate
+        return value[anchors[-1]:]
+
+    intro = [match.start() for match in _INTRO_SENTENCE.finditer(value)]
+    if intro:
+        for start in reversed(intro):
+            candidate = value[start:]
+            if _count_profile_sections(candidate) >= _MIN_PROFILE_SECTIONS:
+                return candidate
+        return value[intro[-1]:]
+    return value
+
+
+def _trim_trailing_reasoning(value: str) -> str:
+    """Drop scratchpad that trails a complete profile.
+
+    After the Summary paragraph the model often resumes planning ("Make sure
+    there are empty blank lines...") or tallies words. Cut at the first such
+    line that appears after the Summary section.
+    """
+
+    summary = None
+    for match in _SUMMARY_HEADING.finditer(value):
+        summary = match
+    lines = value.splitlines()
+    if summary is not None:
+        summary_line = value.count("\n", 0, summary.start())
+        # Keep the heading plus at least one paragraph of summary prose.
+        search_from = summary_line + 1
+    else:
+        search_from = 0
+
+    cut_at: Optional[int] = None
+    for index in range(search_from, len(lines)):
+        line = lines[index]
+        stripped = line.strip()
+        if not stripped:
+            continue
+        # Bolded structural lines are profile content, never reasoning.
+        if stripped.startswith("**"):
+            continue
+        if _WORD_COUNT_ARTIFACT.search(stripped) or _REASONING_LINE.match(stripped):
+            if summary is None and index == search_from:
+                continue
+            cut_at = index
+            break
+
+    if cut_at is None:
+        return value
+    if summary is not None and cut_at <= search_from:
+        return value
+    return "\n".join(lines[:cut_at])
+
+
+def _looks_like_reasoning(value: str) -> bool:
+    """Report whether the text is scratchpad rather than a usable profile."""
+
+    if not value.strip():
+        return True
+    if _count_profile_sections(value) >= _MIN_PROFILE_SECTIONS:
+        return False
+    if _WORD_COUNT_ARTIFACT.search(value):
+        return True
+
+    lines = [line.strip() for line in value.splitlines() if line.strip()]
+    if not lines:
+        return True
+    reasoning_lines = sum(
+        1
+        for line in lines
+        if not line.startswith("**") and _REASONING_LINE.match(line)
+    )
+    return reasoning_lines * 2 >= len(lines)
+
+
 def _clean_profile_output(value: object) -> str:
     if not isinstance(value, str):
         return ""
@@ -311,12 +436,30 @@ def _clean_profile_output(value: object) -> str:
     cleaned = value.replace("\u200b", "").strip()
     cleaned = _CODE_FENCE_START.sub("", cleaned, count=1)
     cleaned = _CODE_FENCE_END.sub("", cleaned, count=1).strip()
+    cleaned = _strip_reasoning_blocks(cleaned)
+    cleaned = _extract_profile_body(cleaned)
+    cleaned = _trim_trailing_reasoning(cleaned)
     cleaned = cleaned.replace("@everyone", "@\u200beveryone").replace(
         "@here", "@\u200bhere"
     )
 
-    lines = [line.rstrip() for line in cleaned.splitlines() if line.strip()]
-    cleaned = "\n".join(lines)
+    # Collapse runs of blank lines to exactly one. The system prompt REQUIRES
+    # blank lines between major sections, so they must survive cleaning; only
+    # excess padding is removed.
+    normalized: list[str] = []
+    for line in cleaned.splitlines():
+        line = line.rstrip()
+        if line:
+            normalized.append(line)
+        elif normalized and normalized[-1]:
+            normalized.append("")
+    while normalized and not normalized[-1]:
+        normalized.pop()
+    cleaned = "\n".join(normalized).strip()
+
+    if _looks_like_reasoning(cleaned):
+        return ""
+
     word_matches = list(re.finditer(r"\S+", cleaned))
     if len(word_matches) > MAX_PROFILE_WORDS:
         cleaned = (
@@ -549,7 +692,7 @@ class BehaviorProfiling(commands.Cog):
         ]
         call_kwargs = dict(
             temperature=0.2,
-            max_tokens=1_800,
+            max_tokens=PROFILE_MAX_TOKENS,
             request_timeout=PROFILE_AI_REQUEST_TIMEOUT,
             max_retries=0,
         )
@@ -569,13 +712,11 @@ class BehaviorProfiling(commands.Cog):
         # the request boundary (~60s) instead of grinding past the outer cap
         # and surfacing a misleading TimeoutError.
         async with self._ai_slots:
-            async def generate() -> object:
+            async def generate() -> str:
                 last_error: Exception | None = None
                 for call in calls:
                     try:
                         response = await call(messages, **call_kwargs)
-                        if response:
-                            return response
                     except Exception as exc:
                         last_error = exc
                         if call is not calls[-1]:
@@ -583,24 +724,41 @@ class BehaviorProfiling(commands.Cog):
                                 "Preferred profile provider failed; trying configured fallback: %s",
                                 exc,
                             )
+                        continue
+                    # A reasoning model can return nothing but chain-of-thought
+                    # (or a profile truncated mid-scratchpad). Cleaning yields
+                    # "" for those, so treat it as a provider failure and fail
+                    # over rather than shipping the scratchpad to Discord.
+                    profile = _clean_profile_output(response)
+                    if profile:
+                        return profile
+                    if response:
+                        logger.warning(
+                            "Profile provider returned unusable reasoning-only output "
+                            "(%d chars); falling through.",
+                            len(str(response)),
+                        )
                 if callable(web_call):
                     try:
-                        return await web_call(
+                        response = await web_call(
                             "\n\n".join(
                                 f"[{message['role'].upper()}]\n{message['content']}"
                                 for message in messages
                             ),
                             long_answer=True,
                         )
+                        profile = _clean_profile_output(response)
+                        if profile:
+                            return profile
                     except Exception as exc:
                         last_error = exc
                 if last_error is not None:
                     raise last_error
-                return None
+                return ""
 
-            response = await asyncio.wait_for(generate(), timeout=PROFILE_TIMEOUT_SECONDS)
-
-        return _clean_profile_output(response)
+            return await asyncio.wait_for(
+                generate(), timeout=PROFILE_TIMEOUT_SECONDS
+            )
 
     async def _send_status(
         self,
