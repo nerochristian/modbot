@@ -4,7 +4,9 @@ import sys
 src = open("cogs/utility.py", encoding="utf-8").read()
 tree = ast.parse(src)
 wanted = {"strip_afk_prefix", "build_afk_nick"}
-ns = {"Optional": object}
+from typing import Optional
+
+ns = {"Optional": Optional}
 mod = ast.Module(
     body=[n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in wanted]
     + [n for n in tree.body if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") in {"AFK_NICK_PREFIX", "NICK_MAX_LENGTH"}],
