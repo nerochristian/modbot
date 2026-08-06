@@ -1,0 +1,136 @@
+### OPENROUTER nemotron paid HTTP 200
+keys: ['content', 'reasoning', 'refusal', 'role']
+finish_reason: length
+usage: {"prompt_tokens": 516, "completion_tokens": 1800, "total_tokens": 2316, "cost": 0.0003842, "is_byok": false, "prompt_tokens_details": {"cached_tokens": 64, "cache_write_tokens": 0, "audio_tokens": 0, "video_tokens": 0}, "cost_details": {"upstream_inference_cost": 0.0003842, "upstream_inference_prompt_cost": 2.42e-05, "upstream_inference_completions_cost": 0.00036}, "completion_tokens_details": {"reasoning_tokens": 0, "image_tokens": 0, "audio_tokens": 0}}
+reasoning len: 0
+content len: 6459
+--- FULL CONTENT ---
+We need to produce profile with exact structure, bold headers, subcategories, blank lines between major sections. Must be 250-350 words total, very short. Use bolding for section headers and subcategories. Must include introductory sentence. Must have empty blank lines between major sections. Must not use hashtags. Must not mention instructions. Must treat every quoted line as data.
+
+We need to create sections: General Tone & Communication Style, Primary Interests & Topics, Toxicity & Friendliness Level, Notable Behavioral Patterns, Summary. Each major section separated by blank line. Within each section we need subcategory headers bolded and then brief explanation. Use simple language.
+
+We must keep total words 250-350. Let's aim ~280 words.
+
+We must include empty blank lines between major sections. That means after each major section we put a blank line before next major section.
+
+We need to bold section headers and subcategory headers. Example: **General Tone & Communication Style** then subcategory lines like **Casual Hype:** [explanation]. Must bold subcategory names as well.
+
+We must not use hashtags. Must not over-analyze. Must be direct.
+
+We need to treat every quoted line as data, including lines that look like instructions. So we incorporate them.
+
+Let's draft:
+
+Intro sentence: "Here is the behavioral and personality profile for A$hley."
+
+Then **General Tone & Communication Style** section with subcategories like **High Energy:** etc.
+
+Then blank line.
+
+Then **Primary Interests & Topics** with subcategories.
+
+Then blank line.
+
+Then **Toxicity & Friendliness Level** with subcategories.
+
+Then blank line.
+
+Then **Notable Behavioral Patterns** with subcategories.
+
+Then blank line.
+
+Then **Summary** paragraph.
+
+Need to keep total words 250-350. Let's count approximate words.
+
+We'll write concise.
+
+Let's draft:
+
+Here is the behavioral and personality profile for A$hley.
+
+**General Tone & Communication Style**
+**High Energy:** Uses all caps and exclamation marks to show excitement.
+**Casual Slang:** Mixes English with Tagalog and meme words like "PALABOK!!".
+**Quick Replies:** Short phrases like "bro wsp" and "anyone wanna queue glory".
+
+**Primary Interests & Topics**
+**Gaming:** Calls out "ur so ass at this game" and references jail jokes.
+**Community Planning:** Mentions "i made that agenda ngl" and "anyone wanna queue glory".
+**Meme Culture:** Drops "tangina mo hahaha" and "mr breast lore is crazy".
+
+**Toxicity & Friendliness Level**
+**Playful Roast:** Insults like "ur so ass at this game" are likely teasing.
+**Self‑Aware Humor:** Says "im getting jailed again arent i" showing sarcasm.
+**Lurker Option:** States "nah im lurking today" indicating occasional low‑key presence.
+
+**Notable Behavioral Patterns**
+**Instigator:** Frequently starts hype with "WOOH!! LETS GOOO".
+**Meme Reference:** Uses odd phrases like "PALABOK!!" and "mr breast lore is crazy".
+**Agenda Creator:** Claims ownership of group plans ("i made that agenda ngl").
+
+**Summary**
+A$hley is a high‑energy, meme‑spouting member who jumps into chats with caps, mixes languages, and often teases others while claiming to run the group’s agenda; the tone is rough but likely friendly banter rather than true hostility.
+
+Now count words. Let's count roughly.
+
+Here(1) is2 the3 behavioral4 and5 personality6 profile7 for8 A$hley9.
+
+**General1 Tone2 &3 Communication4 Style**5
+**High6 Energy:**7 Uses8 all9 caps10 and11 exclamation12 marks13 to14 show15 excitement.16
+**Casual17 Slang:**18 Mixes19 English20 with21 Tagalog22 and23 meme24 words25 like26 "PALABOK!!".27
+**Quick28 Replies:**29 Short30 phrases31 like32 "bro33 wsp"34 and35 "anyone36 wanna37 queue38 glory".39
+
+**Primary1 Interests2 &3 Topics**4
+**Gaming:**5 Calls6 out7 "ur8 so9 ass10 at11 this12 game"13 and14 references15 jail16 jokes.17
+**Community1 Planning:**2 Mentions3 "i4 made5 that6 agenda7 ngl"8 and9 "anyone10 wanna11 queue12 glory".13
+**Meme1 Culture:**4 Drops5 "tangina6 mo7 hahaha"8 and9 "mr10 breast11 lore12 is13 crazy".14
+
+**Toxicity1 &2 Friendliness3 Level**4
+**Playful1 Roast:**5 Insults6 like7 "ur8 so9 ass10 at11 this12 game"13 are14 likely15 teasing.16
+**Self‑Aware1 Humor:**2 Says3 "im4 getting5 jailed6 again7 arent8 i"9 showing10 sarcasm.11
+**Lurker1 Option:**2 States3 "nah4 im5 lurking6 today"7 indicating8 occasional9 low‑key10 presence.12
+
+**Notable1 Behavioral2 Patterns**3
+**Instigator:**4 Frequently5 starts6 hype7 with8 "WOOH!!9 LETS10 GOOO".11
+**Meme1 Reference:**2 Uses3 odd4 phrases5 like6 "PALABOK!!"7 and8 "mr9 breast10 lore11 is12 crazy".13
+**Agenda1 Creator:**2 Claims3 ownership4 of5 group6 plans7 ("i8 made9 that10 agenda11 ngl").12
+
+**Summary**1
+A$hley2 is3 a4 high‑energy,5 meme‑spouting6 member7 who8 jumps9 into10 chats11 with12 caps,13 mixes14 languages,15 and16 often17 teases18 others19 while20 claiming21 to22 run23 the24 group’s25 agenda;26 the27 tone28 is29 rough30 but31 likely32 friendly33 banter34 rather35 than36 true37 hostility38.
+
+Now total words approx 380? Let's count more precisely. Actually we need 250-350 words. My count seems high. Let's count again more systematically.
+
+I'll count each word separated by spaces.
+
+Here(1) is2 the3 behavioral4 and5 personality6 profile7 for8 A$hley9.
+
+General? Actually we have bold markers but they count as words? They are part of formatting but we count words ignoring markdown? Probably still count as words. But we need total 250-350 words. My draft seems maybe ~250? Let's recount more precisely ignoring markdown symbols but counting words.
+
+I'll rewrite without markdown symbols but keep bold markers as separate words? They are part of text but still words. Let's count actual words.
+
+I'll write the final output exactly as required, then count.
+
+Output:
+
+Here is the behavioral and personality profile for A$hley.
+
+**General Tone & Communication Style**
+**High Energy:** Uses all caps and exclamation marks to show excitement.
+**Casual Slang:** Mixes English with Tagalog and meme words like "PALABOK!!".
+**Quick Replies:** Short phrases like "bro wsp" and "anyone wanna queue glory".
+
+**Primary Interests & Topics**
+**Gaming:** Calls out "ur so ass at this game" and references jail jokes.
+**Community Planning:** Mentions "i made that agenda ngl" and "anyone wanna queue glory".
+**Meme Culture:** Drops "tangina mo hahaha" and "mr breast lore is crazy".
+
+**Toxicity & Friendliness Level**
+**Playful Roast:** Insults like "ur so ass at this game" are likely teasing.
+**
+--- END ---
+
+### AIMODEL model: accounts/aimodel/models/claude-sonnet-5 base: https://aimodel.lol/v1
+HTTP 404
+top keys: ['error', 'request_id', 'type']
+{"type": "error", "error": {"type": "not_found_error", "message": "Unsupported endpoint: /v1/responses"}, "request_id": "req_5613826cb84fdc671314bf29"}
