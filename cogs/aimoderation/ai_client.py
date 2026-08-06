@@ -73,11 +73,11 @@ _RELAYROUTER_ROUTER_MODEL: Final[str] = os.getenv(
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
 
-# OpenRouter has exactly three approved models. Luna handles conversation,
-# conversational vision, and sourced research. Ling performs the low-cost
-# conversation route classification. Nemotron handles protected moderation
-# and memory work when the legacy RelayRouter-named gateway points at
-# OpenRouter. No other OpenRouter model is permitted.
+# OpenRouter has exactly three approved models. Luna handles conversation turns
+# that need search, sourced research, and conversational vision. Ling performs
+# the low-cost conversation route classification. Nemotron handles protected
+# moderation and memory work when the legacy RelayRouter-named gateway points
+# at OpenRouter. No other OpenRouter model is permitted.
 _OPENROUTER_LUNA_MODEL: Final[str] = "openai/gpt-5.6-luna"
 _OPENROUTER_LING_ROUTER_MODEL: Final[str] = "inclusionai/ling-2.6-flash"
 _OPENROUTER_NEMOTRON_MODEL: Final[str] = (
@@ -98,6 +98,10 @@ _AIMODEL_BASE_URL: Final[str] = os.getenv(
     "AIMODEL_BASE_URL",
     "https://aimodel.lol/v1",
 ).strip().rstrip("/")
+_AIMODEL_CONVERSATION_MODEL: Final[str] = os.getenv(
+    "AIMODEL_CONVERSATION_MODEL",
+    "grok-4.5",
+).strip()
 _AIMODEL_CHAT_MODEL: Final[str] = os.getenv(
     "AIMODEL_CHAT_MODEL",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
@@ -209,6 +213,11 @@ def _openrouter_conversation_enabled() -> bool:
 def _aimodel_api_enabled() -> bool:
     """AiModel is usable when a non-placeholder key is configured."""
     return _credential_is_configured(_AIMODEL_API_KEY)
+
+
+def _aimodel_conversation_enabled() -> bool:
+    """AiModel Grok is usable as the dedicated ordinary-conversation lane."""
+    return bool(_aimodel_api_enabled() and _AIMODEL_CONVERSATION_MODEL)
 
 
 def _relayrouter_request_timeout(*, multimodal: bool) -> int:
@@ -393,6 +402,8 @@ class AIClient:
 
     def conversation_model_name(self, override: Optional[str] = None) -> str:
         """Return the model this bot requests, without claiming upstream attestation."""
+        if _aimodel_conversation_enabled():
+            return _AIMODEL_CONVERSATION_MODEL
         if _openrouter_conversation_enabled():
             return _OPENROUTER_CHAT_MODEL
         if self.prefers_aimodel:
@@ -413,11 +424,15 @@ class AIClient:
         *,
         has_images: bool,
     ) -> bool:
-        """Use OpenRouter only inside conversation, including vision/research."""
-        del has_images  # Luna accepts text, image, and file input.
+        """Use Luna for searched, researched, or visual conversation turns."""
         return bool(
             _openrouter_conversation_enabled()
-            and signals.mode in {ConversationMode.STANDARD, ConversationMode.RESEARCH}
+            and (
+                not _aimodel_conversation_enabled()
+                or has_images
+                or signals.mode == ConversationMode.RESEARCH
+                or signals.requires_web_search
+            )
         )
 
     def availability_message(self) -> str:
@@ -426,9 +441,13 @@ class AIClient:
             if not _aimodel_api_enabled():
                 return "AiModel is missing `AIMODEL_API_KEY`."
             conversation_route = (
-                f"OpenRouter `{_OPENROUTER_CHAT_MODEL}`"
-                if _openrouter_conversation_enabled()
-                else f"AiModel `{_AIMODEL_CHAT_MODEL}`"
+                f"AiModel `{_AIMODEL_CONVERSATION_MODEL}`"
+                if _aimodel_conversation_enabled()
+                else (
+                    f"OpenRouter `{_OPENROUTER_CHAT_MODEL}`"
+                    if _openrouter_conversation_enabled()
+                    else f"AiModel `{_AIMODEL_CHAT_MODEL}`"
+                )
             )
             return (
                 f"AiModel is configured for protected AI tasks; conversation uses {conversation_route}, "
@@ -1354,6 +1373,36 @@ class AIClient:
             include_citations=True,
         )
 
+    async def _call_aimodel_conversation(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        temperature: float,
+        max_tokens: int,
+    ) -> Optional[str]:
+        """Call Grok through AiModel's working text-only chat endpoint.
+
+        This method is deliberately limited to ordinary text conversation.
+        Search, research, vision, moderation, routing, and memory use their
+        dedicated provider lanes instead.
+        """
+        if not _aimodel_conversation_enabled():
+            raise RuntimeError("AiModel conversation is missing AIMODEL_API_KEY.")
+
+        return await self._post_chat_completion(
+            messages,
+            base_url=_AIMODEL_BASE_URL,
+            api_key=_AIMODEL_API_KEY,
+            model=_AIMODEL_CONVERSATION_MODEL,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            json_mode=False,
+            allow_multimodal=False,
+            provider_label=f"AiModel conversation ({_AIMODEL_CONVERSATION_MODEL})",
+            max_retries=1,
+            request_timeout=_aimodel_request_timeout(multimodal=False),
+        )
+
     async def _call_openrouter_visual_candidates(
         self,
         messages: List[Dict[str, Any]],
@@ -1661,13 +1710,11 @@ class AIClient:
         web-search remain browser-only; this covers plain text turns.
         """
         max_tokens = max(self.config.max_tokens_chat, 2400) if long_answer else self.config.max_tokens_chat
-        if self.prefers_aimodel and _aimodel_api_enabled():
-            return await self._call_aimodel(
+        if self.prefers_aimodel and _aimodel_conversation_enabled():
+            return await self._call_aimodel_conversation(
                 [{"role": "user", "content": prompt}],
                 temperature=self.config.temperature_chat,
                 max_tokens=max_tokens,
-                model=_AIMODEL_CHAT_MODEL,
-                fallback_models=_AIMODEL_CHAT_FALLBACK_MODELS,
             )
         if self.prefers_relayrouter and _relayrouter_api_enabled():
             try:
@@ -2452,24 +2499,21 @@ class AIClient:
                         else plan.max_tokens
                     )
                     if aimodel_primary:
-                        selected_model = (
-                            _AIMODEL_VISION_MODEL
-                            if image_context
-                            else _AIMODEL_CHAT_MODEL
-                        )
-                        content = await self._call_aimodel(
-                            multimodal_api_messages,
-                            temperature=plan.temperature,
-                            max_tokens=max_tokens,
-                            model=selected_model,
-                            allow_multimodal=bool(image_context),
-                            fallback_models=(
-                                _AIMODEL_VISION_FALLBACK_MODELS
-                                if image_context
-                                else _AIMODEL_CHAT_FALLBACK_MODELS
-                            ),
-                            search=(signals.mode == ConversationMode.RESEARCH),
-                        )
+                        if image_context:
+                            content = await self._call_aimodel(
+                                multimodal_api_messages,
+                                temperature=plan.temperature,
+                                max_tokens=max_tokens,
+                                model=_AIMODEL_VISION_MODEL,
+                                allow_multimodal=True,
+                                fallback_models=_AIMODEL_VISION_FALLBACK_MODELS,
+                            )
+                        else:
+                            content = await self._call_aimodel_conversation(
+                                api_messages,
+                                temperature=plan.temperature,
+                                max_tokens=max_tokens,
+                            )
                     elif relay_primary:
                         selected_model = model or (
                             _RELAYROUTER_VISION_MODEL
