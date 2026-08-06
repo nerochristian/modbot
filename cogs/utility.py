@@ -18,6 +18,53 @@ from utils.checks import is_mod, is_admin
 from utils.paginator import Paginator
 from config import Config
 
+AFK_NICK_PREFIX = "[AFK] "
+NICK_MAX_LENGTH = 32
+
+
+def strip_afk_prefix(name: Optional[str]) -> str:
+    """Remove any number of stacked [AFK] prefixes from a nickname."""
+    cleaned = (name or "").strip()
+    while cleaned.upper().startswith("[AFK]"):
+        cleaned = cleaned[len("[AFK]"):].lstrip()
+    return cleaned
+
+
+def build_afk_nick(name: Optional[str]) -> str:
+    """Build an [AFK] nickname that never stacks prefixes or exceeds Discord's limit."""
+    base = strip_afk_prefix(name)
+    return f"{AFK_NICK_PREFIX}{base[:NICK_MAX_LENGTH - len(AFK_NICK_PREFIX)]}"
+
+
+async def apply_afk_nick(member: discord.Member, reason: str) -> tuple[bool, Optional[str], str]:
+    """Prefix a member's nickname with [AFK].
+
+    Returns (changed, nick_to_restore, displayed_nick). ``nick_to_restore`` is
+    ``None`` when the member had no nickname before going AFK.
+    """
+    base_name = strip_afk_prefix(member.nick) or strip_afk_prefix(member.global_name) or member.name
+    restore_nick = strip_afk_prefix(member.nick) or None
+    new_nick = build_afk_nick(base_name)
+    if member.nick == new_nick:
+        return True, restore_nick, new_nick
+    try:
+        await member.edit(nick=new_nick, reason=f"AFK: {reason}")
+    except discord.HTTPException:
+        return False, None, base_name
+    return True, restore_nick, new_nick
+
+
+async def clear_afk_nick(member: discord.Member, restore_nick: Optional[str]) -> None:
+    """Restore the pre-AFK nickname, clearing it entirely when there was none."""
+    target = strip_afk_prefix(restore_nick) or None
+    if member.nick == target:
+        return
+    try:
+        await member.edit(nick=target, reason="Returned from AFK")
+    except discord.HTTPException:
+        pass
+
+
 class Utility(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
@@ -142,6 +189,7 @@ class Utility(commands.Cog):
         reason = (reason or "AFK").strip()[:100] or "AFK"
         original_nick = None
         nickname_changed = False
+        afk_nick = interaction.user.display_name
         if interaction.guild and interaction.guild.me.guild_permissions.manage_nicknames:
             member = interaction.guild.get_member(interaction.user.id)
             if (
@@ -149,16 +197,12 @@ class Utility(commands.Cog):
                 and member.id != interaction.guild.owner_id
                 and member.top_role < interaction.guild.me.top_role
             ):
-                try:
-                    original_nick = member.nick if member.nick is not None else member.display_name
-                    await member.edit(nick=f"[AFK] {member.display_name}", reason=f"AFK: {reason}")
-                    nickname_changed = True
-                except discord.HTTPException:
-                    original_nick = None
+                nickname_changed, original_nick, afk_nick = await apply_afk_nick(member, reason)
         self.afk_users[interaction.user.id] = {
             "reason": reason,
             "since": datetime.now(timezone.utc),
             "nick": original_nick,
+            "nick_changed": nickname_changed,
             "guild_id": interaction.guild.id if interaction.guild else None,
         }
         
@@ -167,12 +211,13 @@ class Utility(commands.Cog):
             description=(
                 f"You're now AFK: **{reason}**\n\n"
                 + (
-                    f"Your nickname has been set to **[AFK] {interaction.user.display_name}**. "
+                    f"Your nickname has been set to **{afk_nick}**. "
                     if nickname_changed
                     else "Your nickname could not be changed in this server. "
                 )
                 + "Send any message to return."
             ),
+
             color=Colors.INFO,
             timestamp=datetime.now(timezone.utc)
         )
@@ -189,13 +234,10 @@ class Utility(commands.Cog):
         if message.author.id in self.afk_users:
             afk_data = self.afk_users.pop(message.author.id)
             # Restore original nickname if we changed it
-            if afk_data.get("guild_id") == message.guild.id and afk_data.get("nick") is not None:
+            if afk_data.get("guild_id") == message.guild.id and afk_data.get("nick_changed", afk_data.get("nick") is not None):
                 member = message.guild.get_member(message.author.id)
                 if member is not None and message.guild.me.guild_permissions.manage_nicknames:
-                    try:
-                        await member.edit(nick=afk_data["nick"] if afk_data["nick"] != member.display_name else None, reason="Returned from AFK")
-                    except discord.HTTPException:
-                        pass
+                    await clear_afk_nick(member, afk_data.get("nick"))
             duration = datetime.now(timezone.utc) - afk_data["since"]
             
             hours = int(duration.total_seconds() // 3600)
