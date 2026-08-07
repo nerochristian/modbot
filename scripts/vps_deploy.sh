@@ -44,17 +44,19 @@ restart_service() {
   run_as_root_or_user systemctl is-active --quiet "${SERVICE}"
 }
 
-install_dependencies() {
+install_bot_dependencies() {
   if [[ ! -x ".venv/bin/python" ]]; then
     "${PYTHON_BIN}" -m venv .venv
   fi
   .venv/bin/python -m pip install --upgrade pip
   .venv/bin/python -m pip install -r requirements.txt
-  
+
   if grep -q "playwright" requirements.txt; then
     .venv/bin/python -m playwright install chromium
   fi
+}
 
+build_dashboard() {
   if [[ -f "dashboard/package.json" ]] && command -v npm >/dev/null 2>&1; then
     (
       cd dashboard
