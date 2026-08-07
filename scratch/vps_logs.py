@@ -1,5 +1,8 @@
 """Pull recent modbot + dashboard logs from the VPS and surface errors."""
+import sys
 import paramiko
+
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 HOST = "docketbot.xyz"
 USER = "root"
