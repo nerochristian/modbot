@@ -1108,6 +1108,35 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         )
         cog.fetch_recent_messages.assert_not_awaited()
 
+    async def test_disabled_ai_mod_routes_research_false_positive_to_conversation(self) -> None:
+        cog = object.__new__(AIModeration)
+        bot_user = SimpleNamespace(id=999)
+        settings = GuildSettings(enabled=False, chat_enabled=True)
+        cog.bot = SimpleNamespace(
+            user=bot_user,
+            get_context=AsyncMock(return_value=SimpleNamespace(valid=False)),
+        )
+        cog.get_guild_settings = AsyncMock(return_value=settings)
+        cog._message_replies_to_bot = AsyncMock(return_value=False)
+        cog.clean_content = lambda message: "research rezero lust if?"
+        cog._handle_conversation = AsyncMock()
+        message = SimpleNamespace(
+            author=SimpleNamespace(bot=False, id=10),
+            guild=SimpleNamespace(id=1),
+            mentions=[bot_user],
+            reference=None,
+            content="<@999> research <@999> rezero lust if?",
+            channel=SimpleNamespace(id=30),
+        )
+
+        await cog.on_message(message)
+
+        cog._handle_conversation.assert_awaited_once_with(
+            message,
+            "research rezero lust if?",
+            settings,
+        )
+
     async def test_execute_decision_rechecks_enabled_state_after_confirmation(self) -> None:
         cog = object.__new__(AIModeration)
         cog.get_guild_settings = AsyncMock(return_value=GuildSettings(enabled=False))
