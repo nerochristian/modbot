@@ -166,13 +166,50 @@ compile_check() {
   log "Deploying ${current_commit} -> ${target_commit}."
   git merge --ff-only "${REMOTE}/${BRANCH}"
 
-  if ! install_dependencies || ! compile_check || ! restart_service || ! restart_dashboard; then
+  # Only rebuild/restart the components whose files actually changed. The
+  # auto-update timer fires every 60s and most commits touch scratch/, tests/,
+  # or docs — none of which affect the running services. Rebuilding the
+  # dashboard unconditionally cost a ~2-minute `npm ci`/build every couple of
+  # minutes, rotated Next.js Server Action IDs (breaking open browser sessions
+  # with "Failed to find Server Action"), and bounced the bot's gateway link.
+  changed_files="$(git diff --name-only "${current_commit}" "${target_commit}" || true)"
+  bot_changed=0
+  dashboard_changed=0
+  if grep -qE '^(bot\.py|database\.py|config\.py|requirements\.txt|cogs/|utils/)' <<<"${changed_files}"; then
+    bot_changed=1
+  fi
+  if grep -qE '^(dashboard/|ecosystem\.config\.cjs)' <<<"${changed_files}"; then
+    dashboard_changed=1
+  fi
+
+  if [[ "${bot_changed}" -eq 0 && "${dashboard_changed}" -eq 0 ]]; then
+    log "No runtime-relevant changes (updated tree only); skipping rebuild/restart."
+    log "Deploy complete at $(git rev-parse HEAD)."
+    exit 0
+  fi
+
+  deploy_ok=1
+  if [[ "${bot_changed}" -eq 1 ]]; then
+    log "Bot sources changed; installing deps, compiling, restarting ${SERVICE}."
+    { install_bot_dependencies && compile_check && restart_service; } || deploy_ok=0
+  fi
+  if [[ "${deploy_ok}" -eq 1 && "${dashboard_changed}" -eq 1 ]]; then
+    log "Dashboard sources changed; rebuilding and reloading dashboard."
+    { build_dashboard && restart_dashboard; } || deploy_ok=0
+  fi
+
+  if [[ "${deploy_ok}" -ne 1 ]]; then
     log "Deploy failed; rolling back to ${current_commit}."
     git reset --hard "${current_commit}"
-    install_dependencies || true
-    compile_check || true
-    restart_service || true
-    restart_dashboard || true
+    if [[ "${bot_changed}" -eq 1 ]]; then
+      install_bot_dependencies || true
+      compile_check || true
+      restart_service || true
+    fi
+    if [[ "${dashboard_changed}" -eq 1 ]]; then
+      build_dashboard || true
+      restart_dashboard || true
+    fi
     exit 1
   fi
 
