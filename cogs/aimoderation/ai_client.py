@@ -48,6 +48,11 @@ _RESEARCH_UNAVAILABLE = (
     "were returned. I won't invent a current-events answer. Please try again shortly."
 )
 
+# Minimum seconds between identical "AI service blocked" WARNINGs. A persistently
+# exhausted upstream (e.g. an OpenRouter free-tier daily quota) re-blocks on every
+# probe; without throttling that floods the journal with the same line all day.
+_BLOCK_LOG_COOLDOWN_SECONDS: Final[int] = 300
+
 _DO_API_KEY: Final[str] = os.getenv("DO_API_KEY", "").strip()
 _DO_BASE_URL: Final[str] = os.getenv("DO_INFERENCE_BASE_URL", "https://inference.do-ai.run/v1").strip().rstrip("/")
 
@@ -632,9 +637,25 @@ class AIClient:
     # ------------------------------------------------------------------
 
     def _set_block(self, *, seconds: int, reason: str) -> None:
-        self._block_until = _now() + timedelta(seconds=max(1, seconds))
+        now = _now()
+        self._block_until = now + timedelta(seconds=max(1, seconds))
         self._block_reason = reason
-        logger.warning("AI service blocked for %ds: %s", seconds, reason)
+        # Throttle the WARNING: a persistently exhausted upstream re-blocks on
+        # every probe (its short window expires, the next request re-hits the
+        # limit), which would otherwise log the same line every ~60s all day.
+        # Emit at WARNING when the reason changes or after a cool-down; keep the
+        # repeats at DEBUG so the journal stays readable.
+        last_at = self._block_log_at
+        if (
+            reason != self._block_log_reason
+            or last_at is None
+            or (now - last_at).total_seconds() >= _BLOCK_LOG_COOLDOWN_SECONDS
+        ):
+            logger.warning("AI service blocked for %ds: %s", seconds, reason)
+            self._block_log_at = now
+            self._block_log_reason = reason
+        else:
+            logger.debug("AI service still blocked for %ds: %s", seconds, reason)
 
     def _get_block_message(self) -> Optional[str]:
         if not self._block_until:
