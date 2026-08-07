@@ -3340,6 +3340,14 @@ class AIModeration(commands.Cog):
                     await self.reply(message, embed=self.build_help_embed(message.guild))
                 return
 
+        # When moderation is disabled, every direct interaction belongs to the
+        # conversation surface.  Do this before action classification so words
+        # such as "research" cannot be mistaken for disabled moderation tools.
+        if (is_mentioned or is_reply_to_bot) and not settings.enabled:
+            if settings.chat_enabled:
+                await self._handle_conversation(message, content, settings)
+            return
+
         # --- Check if this looks like a moderation request ---
         if (is_mentioned or is_reply_to_bot) and settings.chat_enabled and self._looks_like_image_question(content):
             await self._handle_conversation(message, content, settings)
@@ -3367,17 +3375,6 @@ class AIModeration(commands.Cog):
 
         if implicit_continuation:
             if not is_mod_request:
-                await self._handle_conversation(message, content, settings)
-            return
-
-        # --- Mentioned but AI mod disabled: chat-only mode ---
-        if (is_mentioned or is_reply_to_bot) and not settings.enabled:
-            if is_mod_request:
-                await self.reply(
-                    message,
-                    content="AI moderation is disabled right now. Enable it before requesting moderation actions.",
-                )
-            elif settings.chat_enabled:
                 await self._handle_conversation(message, content, settings)
             return
 

@@ -1072,7 +1072,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(decision["route"], "research")
         self.assertTrue(decision["current_info"])
 
-    async def test_disabled_ai_mod_hard_gates_explicit_owner_request(self) -> None:
+    async def test_disabled_ai_mod_routes_explicit_owner_request_to_conversation(self) -> None:
         cog = object.__new__(AIModeration)
         bot_user = SimpleNamespace(id=999)
         cog.bot = SimpleNamespace(
@@ -1080,13 +1080,11 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             get_context=AsyncMock(return_value=SimpleNamespace(valid=False)),
         )
         cog.get_guild_settings = AsyncMock(
-            return_value=GuildSettings(enabled=False, chat_enabled=False),
+            return_value=GuildSettings(enabled=False, chat_enabled=True),
         )
         cog._message_replies_to_bot = AsyncMock(return_value=False)
         cog.clean_content = lambda message: "ban <@20> for spam"
-        cog._looks_like_mod_request = lambda content: True
-        cog._looks_like_advanced_action_request = lambda content: False
-        cog.reply = AsyncMock()
+        cog._handle_conversation = AsyncMock()
         cog.fetch_recent_messages = AsyncMock()
         message = SimpleNamespace(
             author=SimpleNamespace(bot=False, id=10),
@@ -1103,8 +1101,11 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         ):
             await cog.on_message(message)
 
-        cog.reply.assert_awaited_once()
-        self.assertIn("AI moderation is disabled", cog.reply.await_args.kwargs["content"])
+        cog._handle_conversation.assert_awaited_once_with(
+            message,
+            "ban <@20> for spam",
+            GuildSettings(enabled=False, chat_enabled=True),
+        )
         cog.fetch_recent_messages.assert_not_awaited()
 
     async def test_execute_decision_rechecks_enabled_state_after_confirmation(self) -> None:
@@ -1343,7 +1344,7 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("failed preflight", second_prompt)
         self.assertTrue(cog.ai._call.await_args.kwargs["json_mode"])
 
-    async def test_direct_mention_is_not_discarded_when_it_matches_legacy_command(self) -> None:
+    async def test_disabled_ai_mod_routes_legacy_command_mention_to_conversation(self) -> None:
         cog = object.__new__(AIModeration)
         bot_user = SimpleNamespace(id=999, bot=True)
         cog.bot = SimpleNamespace(
@@ -1351,14 +1352,11 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
             get_context=AsyncMock(return_value=SimpleNamespace(valid=True)),
         )
         cog.get_guild_settings = AsyncMock(
-            return_value=GuildSettings(enabled=False, chat_enabled=False),
+            return_value=GuildSettings(enabled=False, chat_enabled=True),
         )
         cog._message_replies_to_bot = AsyncMock(return_value=False)
         cog.clean_content = lambda message: "purge the last 50 messages sent by cherry"
-        cog._looks_like_mod_request = lambda content: True
-        cog._looks_like_advanced_action_request = lambda content: False
-        cog._can_use_ai_tools = lambda author, settings: True
-        cog.reply = AsyncMock()
+        cog._handle_conversation = AsyncMock()
         message = SimpleNamespace(
             author=SimpleNamespace(bot=False, id=10),
             guild=SimpleNamespace(id=1),
@@ -1370,8 +1368,11 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
 
         await cog.on_message(message)
 
-        cog.reply.assert_awaited_once()
-        self.assertIn("AI moderation is disabled", cog.reply.await_args.kwargs["content"])
+        cog._handle_conversation.assert_awaited_once()
+        self.assertEqual(
+            cog._handle_conversation.await_args.args[1],
+            "purge the last 50 messages sent by cherry",
+        )
 
     def test_duplicate_suggestion_thread_request_is_advanced_action(self) -> None:
         cog = object.__new__(AIModeration)
