@@ -1,0 +1,2 @@
+Deploy-churn end-to-end check: a scratch-only commit must NOT rebuild/restart the dashboard.
+Created during VPS log-error fix session.
