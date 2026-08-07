@@ -806,6 +806,16 @@ class SupportServer(commands.GroupCog, group_name="supportserver", group_descrip
                 await message.edit(view=build_status_view(self.bot))
             except (discord.NotFound, discord.Forbidden):
                 continue
+            except discord.DiscordServerError as exc:
+                # Discord-side 5xx (e.g. "503 no healthy upstream") is transient
+                # and not actionable. The panel refreshes again in 2 minutes, so
+                # log a one-line warning instead of a full traceback every cycle.
+                logger.warning(
+                    "Skipping support panel refresh in guild %s: Discord API unavailable (%s)",
+                    guild.id,
+                    exc,
+                )
+                continue
             except Exception:
                 logger.exception("Failed to refresh support server panels in guild %s", guild.id)
                 continue
