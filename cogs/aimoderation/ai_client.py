@@ -2756,25 +2756,27 @@ class AIClient:
                         and _openrouter_conversation_enabled()
                     ):
                         try:
-                            content = await self._call_openrouter_conversation(
+                            # This branch is STANDARD, text-only conversation, so
+                            # it belongs on the Grok talking lane rather than
+                            # Luna's searched lane.
+                            content = await self._call_openrouter_grok_chat(
                                 api_messages,
                                 temperature=plan.temperature,
                                 max_tokens=max_tokens,
                             )
                             if content:
                                 content = self._postprocess_chat_response(content)
-                                asyncio.create_task(
-                                    self._update_memory_smart(
-                                        author.id,
-                                        user_content,
-                                        content,
-                                        stored_memory,
-                                    )
+                                self._schedule_memory_update(
+                                    signals,
+                                    author,
+                                    user_content,
+                                    content,
+                                    stored_memory,
                                 )
                                 return content
                         except Exception:
                             logger.warning(
-                                "Luna fallback after AiModel Grok failure also failed.",
+                                "OpenRouter Grok fallback after AiModel failure also failed.",
                                 exc_info=True,
                             )
 
@@ -2811,8 +2813,12 @@ class AIClient:
                     )
                     if not content:
                         return _RESEARCH_UNAVAILABLE
-                asyncio.create_task(
-                    self._update_memory_smart(author.id, user_content, content, stored_memory)
+                self._schedule_memory_update(
+                    signals,
+                    author,
+                    user_content,
+                    content,
+                    stored_memory,
                 )
                 return content
             if image_context and http_primary_attempted:
@@ -2906,9 +2912,14 @@ class AIClient:
                     if not content:
                         return _RESEARCH_UNAVAILABLE
 
-            # Fire-and-forget memory update with summarization
-            asyncio.create_task(
-                self._update_memory_smart(author.id, user_content, content, stored_memory)
+            # Fire-and-forget memory update with summarization (skipped for
+            # isolated research turns).
+            self._schedule_memory_update(
+                signals,
+                author,
+                user_content,
+                content,
+                stored_memory,
             )
             return content
         except DeepSeekWebAuthError as exc:
