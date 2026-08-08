@@ -2641,13 +2641,12 @@ class AIClient:
                             "\n\n__BOT_SOURCES__\n",
                             1,
                         )[0].strip()
-                        asyncio.create_task(
-                            self._update_memory_smart(
-                                author.id,
-                                user_content,
-                                memory_content,
-                                stored_memory,
-                            )
+                        self._schedule_memory_update(
+                            signals,
+                            author,
+                            user_content,
+                            memory_content,
+                            stored_memory,
                         )
                         return content
                 except Exception:
@@ -2736,13 +2735,12 @@ class AIClient:
                             )
                             if not content:
                                 return _RESEARCH_UNAVAILABLE
-                        asyncio.create_task(
-                            self._update_memory_smart(
-                                author.id,
-                                user_content,
-                                content,
-                                stored_memory,
-                            )
+                        self._schedule_memory_update(
+                            signals,
+                            author,
+                            user_content,
+                            content,
+                            stored_memory,
                         )
                         return content
                 except Exception:
@@ -3924,6 +3922,32 @@ class AIClient:
         "- Keep the whole profile under ~1200 characters. Be ruthless about relevance.\n"
         "- Output ONLY the updated profile text. No preamble, no JSON, no quotes."
     )
+
+    def _schedule_memory_update(
+        self,
+        signals: ConversationSignals,
+        author: Any,
+        user_content: str,
+        bot_response: str,
+        stored_memory: str,
+    ) -> None:
+        """Persist a conversation turn unless the turn is an isolated research turn.
+
+        Research turns deliberately read no memory (see ``converse``), so they must
+        not write memory back either — otherwise research questions leaked into the
+        user's persistent profile and defeated that isolation.
+        """
+        if signals.mode == ConversationMode.RESEARCH:
+            return
+        memory_content = (bot_response or "").split("__BOT_SOURCES__", 1)[0].strip()
+        asyncio.create_task(
+            self._update_memory_smart(
+                author.id,
+                user_content,
+                memory_content,
+                stored_memory,
+            )
+        )
 
     async def _update_memory_smart(
         self, user_id: int, user_msg: str, bot_response: str, past_memory: str
