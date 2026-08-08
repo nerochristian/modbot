@@ -78,12 +78,31 @@ _RELAYROUTER_ROUTER_MODEL: Final[str] = os.getenv(
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
 
-# OpenRouter has exactly three approved models. Luna handles conversation turns
-# that need search, sourced research, and conversational vision. Ling performs
-# the low-cost conversation route classification. Nemotron handles protected
+# OpenRouter models, one per lane. Grok handles ordinary text conversation and
+# never receives the web-search tool, images, or research prompts. Luna handles
+# conversation turns that need search, sourced research, and conversational
+# vision. Sonar is the live-research pre-fetch/fallback. Ling performs the
+# low-cost conversation route classification. Nemotron handles protected
 # moderation and memory work when the legacy RelayRouter-named gateway points
 # at OpenRouter. No other OpenRouter model is permitted.
+#
+# Grok is deliberately scoped to "talking only": _call_openrouter_grok_chat
+# sends no tools and refuses multimodal input, so search/research/vision keep
+# using their own lanes even though Grok is the default chat model.
+_OPENROUTER_GROK_CHAT_MODEL: Final[str] = os.getenv(
+    "OPENROUTER_GROK_CHAT_MODEL",
+    "x-ai/grok-4.3",
+).strip()
 _OPENROUTER_LUNA_MODEL: Final[str] = "openai/gpt-5.6-luna"
+# Perplexity Sonar is reached through OpenRouter, not the RelayRouter gateway.
+# relayrouter.org does not serve any perplexity/* model: the old
+# `_call_relayrouter(model="perplexity/sonar")` research pre-fetch returned
+# HTTP 400 on every research turn, which is why research always degraded to
+# "Live search is unavailable".
+_OPENROUTER_RESEARCH_MODEL: Final[str] = os.getenv(
+    "OPENROUTER_RESEARCH_MODEL",
+    "perplexity/sonar",
+).strip()
 _OPENROUTER_LING_ROUTER_MODEL: Final[str] = "inclusionai/ling-2.6-flash"
 _OPENROUTER_NEMOTRON_MODEL: Final[str] = (
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
@@ -101,7 +120,7 @@ _OPENROUTER_BASE_URL: Final[str] = os.getenv(
     "OPENROUTER_BASE_URL",
     "https://openrouter.ai/api/v1",
 ).strip().rstrip("/")
-_OPENROUTER_CHAT_MODEL: Final[str] = _OPENROUTER_LUNA_MODEL
+_OPENROUTER_CHAT_MODEL: Final[str] = _OPENROUTER_GROK_CHAT_MODEL
 
 _AIMODEL_API_KEY: Final[str] = os.getenv("AIMODEL_API_KEY", "").strip()
 _AIMODEL_CONVERSATION_API_KEY: Final[str] = os.getenv(
@@ -1378,6 +1397,37 @@ class AIClient:
         if last_error is not None:
             raise last_error
         return None
+
+    async def _call_openrouter_grok_chat(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        temperature: float,
+        max_tokens: int,
+    ) -> Optional[str]:
+        """Call Grok on OpenRouter for ordinary text conversation only.
+
+        This lane is deliberately narrow: no web-search tool, no images, no
+        citations. Search, research, vision, moderation, routing, and memory all
+        keep their own dedicated lanes, so making Grok the default chat model
+        cannot silently take over those behaviors.
+        """
+        if not _openrouter_conversation_enabled():
+            raise RuntimeError("OpenRouter conversation is missing OPENROUTER_API_KEY.")
+
+        return await self._post_chat_completion(
+            messages,
+            base_url=_OPENROUTER_BASE_URL,
+            api_key=_OPENROUTER_API_KEY,
+            model=_OPENROUTER_GROK_CHAT_MODEL,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            json_mode=False,
+            allow_multimodal=False,
+            provider_label=f"OpenRouter chat ({_OPENROUTER_GROK_CHAT_MODEL})",
+            max_retries=1,
+            request_timeout=_openrouter_request_timeout(),
+        )
 
     async def _call_openrouter_conversation(
         self,
