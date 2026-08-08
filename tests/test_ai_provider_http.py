@@ -262,7 +262,8 @@ def test_aimodel_grok_is_only_the_ordinary_text_conversation_lane(monkeypatch):
     assert client.conversation_model_name("stale-dashboard-model") == "grok-4.5"
 
 
-def test_openrouter_lane_is_reserved_for_search_research_and_images(monkeypatch):
+def test_grok_talks_and_luna_keeps_search_research_and_images(monkeypatch):
+    """Grok owns ordinary talking; Luna owns search, research, and vision."""
     monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "stale-aimodel-key")
     monkeypatch.setattr(
         ai_client_module,
@@ -279,14 +280,47 @@ def test_openrouter_lane_is_reserved_for_search_research_and_images(monkeypatch)
     )
     research = ConversationSignals(mode=ConversationMode.RESEARCH, confidence=1.0)
 
-    assert AIClient._uses_openrouter_conversation_lane(standard, has_images=False) is False
+    # OpenRouter now handles every conversation turn...
+    assert AIClient._uses_openrouter_conversation_lane(standard, has_images=False) is True
     assert AIClient._uses_openrouter_conversation_lane(searched, has_images=False) is True
     assert AIClient._uses_openrouter_conversation_lane(research, has_images=False) is True
     assert AIClient._uses_openrouter_conversation_lane(standard, has_images=True) is True
 
-    monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "")
-    monkeypatch.setattr(ai_client_module, "_AIMODEL_CONVERSATION_API_KEY", "")
-    assert AIClient._uses_openrouter_conversation_lane(standard, has_images=False) is True
+    # ...but only search/research/vision turns escalate to Luna. Plain talking
+    # stays on Grok, which is never given the web-search tool or images.
+    assert AIClient._openrouter_lane_needs_luna(standard, has_images=False) is False
+    assert AIClient._openrouter_lane_needs_luna(searched, has_images=False) is True
+    assert AIClient._openrouter_lane_needs_luna(research, has_images=False) is True
+    assert AIClient._openrouter_lane_needs_luna(standard, has_images=True) is True
+
+
+def test_grok_chat_lane_sends_no_search_tool_and_no_images(monkeypatch):
+    """The talking lane must not carry search tools, citations, or multimodal input."""
+    client = AIClient.__new__(AIClient)
+    client._post_chat_completion = AsyncMock(return_value="grok reply")
+    monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
+    monkeypatch.setattr(
+        ai_client_module,
+        "_OPENROUTER_GROK_CHAT_MODEL",
+        "x-ai/grok-4.3",
+    )
+
+    result = asyncio.run(
+        client._call_openrouter_grok_chat(
+            [{"role": "user", "content": "how are you?"}],
+            temperature=0.6,
+            max_tokens=600,
+        )
+    )
+
+    assert result == "grok reply"
+    kwargs = client._post_chat_completion.await_args.kwargs
+    assert kwargs["model"] == "x-ai/grok-4.3"
+    assert kwargs["allow_multimodal"] is False
+    assert kwargs["json_mode"] is False
+    # No web-search tool and no citation harvesting on the talking lane.
+    assert "extra_payload" not in kwargs
+    assert kwargs.get("include_citations") in (None, False)
 
 
 def test_openrouter_lets_luna_decide_when_search_is_needed(monkeypatch):
