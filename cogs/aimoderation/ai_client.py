@@ -603,6 +603,15 @@ class AIClient:
         )
 
     @property
+    def has_openrouter_search(self) -> bool:
+        """Whether the OpenRouter search/research lane is usable.
+
+        Distinct from ``has_web_search``, which only reports the standalone
+        Brave/Tavily/SerpAPI/DeepSeek-web backends.
+        """
+        return _openrouter_conversation_enabled()
+
+    @property
     def has_external_web_search(self) -> bool:
         return bool(
             self._brave_search_api_key
@@ -617,11 +626,11 @@ class AIClient:
     ) -> List[str]:
         urls: List[str] = []
         for url in source_urls or []:
-            clean = str(url or "").strip().rstrip(".,;)")
+            clean = str(url or "").strip().rstrip(".,;)>")
             if clean.startswith(("https://", "http://")) and clean not in urls:
                 urls.append(clean)
         for url in re.findall(r"https?://[^\s<>]+", content or ""):
-            clean = url.rstrip(".,;)")
+            clean = url.rstrip(".,;)>")
             if clean not in urls:
                 urls.append(clean)
         return urls

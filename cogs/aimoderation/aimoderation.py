@@ -962,7 +962,15 @@ class AIModeration(commands.Cog):
             else ConversationMode.STANDARD
         )
 
-        show_indicator = getattr(self.ai, "has_web_search", True) and mode == ConversationMode.RESEARCH
+        # `has_web_search` only knows about Brave/Tavily/SerpAPI/DeepSeek-web. It
+        # does not know about the OpenRouter search lane (Luna's web_search tool
+        # and the Sonar research pre-fetch), so gating on it alone hid the
+        # "Searching..." indicator on deployments where research actually works.
+        research_capable = bool(
+            getattr(self.ai, "has_web_search", True)
+            or getattr(self.ai, "has_openrouter_search", False)
+        )
+        show_indicator = research_capable and mode == ConversationMode.RESEARCH
 
         return ConversationSignals(
             mode=mode,
