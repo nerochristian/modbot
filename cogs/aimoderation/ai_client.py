@@ -460,21 +460,30 @@ class AIClient:
         return str(self.config.model or "deepseek-web").strip()
 
     @staticmethod
+    def _openrouter_lane_needs_luna(
+        signals: ConversationSignals,
+        *,
+        has_images: bool,
+    ) -> bool:
+        """Return whether this turn needs Luna's searched/visual lane.
+
+        Grok is the ordinary-conversation model. Anything that needs live search,
+        sourced research, or image understanding stays on Luna.
+        """
+        return bool(
+            has_images
+            or signals.mode == ConversationMode.RESEARCH
+            or signals.requires_web_search
+        )
+
+    @staticmethod
     def _uses_openrouter_conversation_lane(
         signals: ConversationSignals,
         *,
         has_images: bool,
     ) -> bool:
-        """Use Luna for searched, researched, or visual conversation turns."""
-        return bool(
-            _openrouter_conversation_enabled()
-            and (
-                not _aimodel_conversation_enabled()
-                or has_images
-                or signals.mode == ConversationMode.RESEARCH
-                or signals.requires_web_search
-            )
-        )
+        """Use OpenRouter for conversation: Grok for talking, Luna for search/vision."""
+        return _openrouter_conversation_enabled()
 
     def availability_message(self) -> str:
         provider = str(getattr(self, "provider", "") or "").strip().lower()
@@ -2503,6 +2512,10 @@ class AIClient:
             )
             if openrouter_standard_chat:
                 try:
+                    needs_luna = self._openrouter_lane_needs_luna(
+                        signals,
+                        has_images=bool(image_context),
+                    )
                     image_identification = bool(
                         image_context
                         and self._looks_like_image_identification_request(user_content)
@@ -2540,14 +2553,23 @@ class AIClient:
                         if signals.asks_for_long_answer
                         else plan.max_tokens
                     )
-                    content = await self._call_openrouter_conversation(
-                        multimodal_api_messages,
-                        temperature=plan.temperature,
-                        max_tokens=max_tokens,
-                        allow_multimodal=bool(image_context),
-                        require_search=(
-                            signals.requires_web_search or image_identification
-                        ),
+                    content = (
+                        await self._call_openrouter_conversation(
+                            multimodal_api_messages,
+                            temperature=plan.temperature,
+                            max_tokens=max_tokens,
+                            allow_multimodal=bool(image_context),
+                            require_search=(
+                                signals.requires_web_search or image_identification
+                            ),
+                        )
+                        if needs_luna
+                        # Ordinary talking: Grok, text-only, no search tool.
+                        else await self._call_openrouter_grok_chat(
+                            api_messages,
+                            temperature=plan.temperature,
+                            max_tokens=max_tokens,
+                        )
                     )
                     if content:
                         content = self._postprocess_chat_response(content)
