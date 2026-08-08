@@ -1407,6 +1407,61 @@ class AIClient:
             raise last_error
         return None
 
+    async def _call_research_prefetch(
+        self,
+        user_content: str,
+    ) -> Tuple[Optional[str], List[str]]:
+        """Fetch live research material plus the URLs that actually back it.
+
+        Perplexity Sonar is served by OpenRouter, not by the RelayRouter-named
+        gateway, so this deliberately does not go through ``_call_relayrouter``:
+        that lane force-pins every request to Nemotron when it points at
+        OpenRouter, and relayrouter.org itself serves no ``perplexity/*`` model.
+
+        Returns (content, source_urls). The URLs come from the provider's real
+        citations, so an answer with no citations yields no sources and correctly
+        fails the verifiable-source gate instead of being dressed up as sourced.
+        """
+        if not _openrouter_conversation_enabled():
+            return None, []
+
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are a live internet research assistant. Provide a highly "
+                    "detailed, factual, and up-to-date answer to the user's query. "
+                    "Cite the sources you used."
+                ),
+            },
+            {"role": "user", "content": user_content},
+        ]
+        content = await self._post_chat_completion(
+            messages,
+            base_url=_OPENROUTER_BASE_URL,
+            api_key=_OPENROUTER_API_KEY,
+            model=_OPENROUTER_RESEARCH_MODEL,
+            temperature=0.3,
+            max_tokens=self.config.max_tokens_chat,
+            json_mode=False,
+            allow_multimodal=False,
+            provider_label=f"OpenRouter research ({_OPENROUTER_RESEARCH_MODEL})",
+            max_retries=0,
+            request_timeout=_openrouter_request_timeout(),
+            include_citations=True,
+        )
+        if not content:
+            return None, []
+
+        # ``include_citations`` appends a __BOT_SOURCES__ block. Split it back off
+        # so the research material stays clean and the URLs travel separately.
+        body, _, sources_block = content.partition("__BOT_SOURCES__")
+        urls = [
+            url.strip().lstrip("-").strip()
+            for url in re.findall(r"https?://[^\s<>]+", sources_block)
+        ]
+        return body.strip(), [url for url in urls if url]
+
     async def _call_openrouter_grok_chat(
         self,
         messages: List[Dict[str, Any]],
@@ -2418,15 +2473,8 @@ class AIClient:
             and not openrouter_research
         ):
             try:
-                pplx_messages = [
-                    {"role": "system", "content": "You are a live internet research assistant. Provide a highly detailed, factual, and up-to-date answer to the user's query."},
-                    {"role": "user", "content": user_content}
-                ]
-                research_content = await self._call_relayrouter(
-                    pplx_messages,
-                    temperature=0.3,
-                    max_tokens=self.config.max_tokens_chat,
-                    model="perplexity/sonar"
+                research_content, sonar_urls = await self._call_research_prefetch(
+                    user_content,
                 )
                 if research_content:
                     web_context = (
@@ -2435,9 +2483,13 @@ class AIClient:
                         "structure required by the research system prompt. Keep citations and raw "
                         "source URLs out of the response body."
                     )
-                    research_source_urls = ["https://perplexity.ai/"]
+                    # Only real cited URLs count as sources. Never synthesize a
+                    # placeholder like "https://perplexity.ai/" to satisfy the
+                    # verifiable-source gate, or the bot would claim sourcing it
+                    # does not have.
+                    research_source_urls = sonar_urls
             except Exception:
-                logger.warning("Perplexity Sonar research failed", exc_info=True)
+                logger.warning("Live research pre-fetch failed", exc_info=True)
 
         # Galaxy exposes plain chat-completions, not a documented search flag.
         # Use authenticated browser search when no provider results exist.
