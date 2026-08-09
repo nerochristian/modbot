@@ -78,7 +78,7 @@ _RELAYROUTER_ROUTER_MODEL: Final[str] = os.getenv(
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
 
-# OpenRouter models, one per lane. Grok handles ordinary text conversation and
+# OpenRouter models, one per lane. GLM handles ordinary text conversation and
 # never receives the web-search tool, images, or research prompts. Luna handles
 # conversation turns that need search, sourced research, and conversational
 # vision. Sonar is the live-research pre-fetch/fallback. Ling performs the
@@ -86,13 +86,28 @@ _RELAYROUTER_ROUTER_MODEL: Final[str] = os.getenv(
 # moderation and memory work when the legacy RelayRouter-named gateway points
 # at OpenRouter. No other OpenRouter model is permitted.
 #
-# Grok is deliberately scoped to "talking only": _call_openrouter_grok_chat
-# sends no tools and refuses multimodal input, so search/research/vision keep
-# using their own lanes even though Grok is the default chat model.
-_OPENROUTER_GROK_CHAT_MODEL: Final[str] = os.getenv(
-    "OPENROUTER_GROK_CHAT_MODEL",
-    "x-ai/grok-4.3",
+# The talking model is deliberately scoped to "talking only":
+# _call_openrouter_chat sends no tools and refuses multimodal input, so
+# search/research/vision keep using their own lanes.
+#
+# GLM was chosen over Luna/Grok for conversational tone: it opens casually, asks
+# follow-up questions, and does not read like a support widget. Reasoning is
+# disabled on this lane (see _OPENROUTER_CHAT_DISABLE_REASONING) because GLM
+# defaults it on, which measured ~5.1s per reply versus ~0.6-1.4s with it off,
+# and the hidden reasoning tokens are billed and count against max_tokens.
+_OPENROUTER_CHAT_MODEL_DEFAULT: Final[str] = "z-ai/glm-5.2"
+_OPENROUTER_TALK_CHAT_MODEL: Final[str] = (
+    os.getenv("OPENROUTER_CHAT_MODEL_TALKING")
+    # Back-compat: this lane used to be Grok-specific.
+    or os.getenv("OPENROUTER_GROK_CHAT_MODEL")
+    or _OPENROUTER_CHAT_MODEL_DEFAULT
 ).strip()
+
+# Chat models that ship reasoning on by default. On the talking lane this only
+# adds latency and cost, so it is explicitly disabled for these families.
+_OPENROUTER_CHAT_DISABLE_REASONING: Final[bool] = str(
+    os.getenv("OPENROUTER_CHAT_DISABLE_REASONING", "true")
+).strip().lower() in {"1", "true", "yes", "on"}
 _OPENROUTER_LUNA_MODEL: Final[str] = "openai/gpt-5.6-luna"
 # Perplexity Sonar is reached through OpenRouter, not the RelayRouter gateway.
 # relayrouter.org does not serve any perplexity/* model: the old
@@ -120,7 +135,7 @@ _OPENROUTER_BASE_URL: Final[str] = os.getenv(
     "OPENROUTER_BASE_URL",
     "https://openrouter.ai/api/v1",
 ).strip().rstrip("/")
-_OPENROUTER_CHAT_MODEL: Final[str] = _OPENROUTER_GROK_CHAT_MODEL
+_OPENROUTER_CHAT_MODEL: Final[str] = _OPENROUTER_TALK_CHAT_MODEL
 
 _AIMODEL_API_KEY: Final[str] = os.getenv("AIMODEL_API_KEY", "").strip()
 _AIMODEL_CONVERSATION_API_KEY: Final[str] = os.getenv(
