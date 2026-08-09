@@ -169,6 +169,19 @@ class Logging(commands.Cog):
         self._snapshot_lock = asyncio.Lock()
         self._logging_state_cache: dict[int, tuple[float, bool]] = {}
         self._suppressed_member_action_logs: dict[tuple[int, int, str], datetime] = {}
+        # These six used to be created inside _cleanup_temp_cache, the hourly
+        # task loop. That had two consequences: listeners firing before the
+        # first tick raised AttributeError, and every tick REPLACED them with
+        # empty dicts -- discarding every live suppression window (so an AI
+        # purge's bulk-delete log leaked through as a duplicate) plus the whole
+        # message-snapshot cache, up to 20k entries. State belongs here; the
+        # loop should only prune.
+        self._suppress_bulk_delete_until: dict[int, datetime] = {}
+        self._suppress_timeout_change_until: dict[tuple[int, int], datetime] = {}
+        self._seen_webhook_create_entries: dict[int, datetime] = {}
+        self._recent_message_snapshots: dict[int, dict[str, Any]] = {}
+        self._recent_message_snapshot_ttl = timedelta(hours=3)
+        self._recent_message_snapshot_max = 20000
 
     async def _logging_enabled(self, guild_id: int) -> bool:
         now = time.monotonic()
