@@ -171,11 +171,10 @@ class EmojiApprovalView(discord.ui.LayoutView):
         if not self.message:
             return
         try:
-            if hasattr(self, '_text'):
-                 self._text.content = self._render(
-                    status="Expired",
-                    note="No decision within 24 hours",
-                )
+            self._text.content = self._render(
+                status="Expired",
+                note="No decision within 24 hours",
+            )
             await self.message.edit(view=self)
         except Exception:
             pass
