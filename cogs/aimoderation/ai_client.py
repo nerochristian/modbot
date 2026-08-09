@@ -1700,7 +1700,23 @@ class AIClient(
                                 },
                             ]
                     max_tokens = self._turn_max_tokens(plan, signals)
-                    if needs_vision and not needs_luna:
+                    # Research with evidence already gathered: Sonar supplied the
+                    # sources and they are in the prompt, so synthesis is pure
+                    # writing. research_source_urls still flows to the citation
+                    # path untouched, so the Sources button is unaffected.
+                    research_synthesis = bool(
+                        signals.mode == ConversationMode.RESEARCH
+                        and web_context
+                        and research_source_urls
+                        and not image_context
+                    )
+                    if research_synthesis:
+                        content = await self._call_openrouter_research_writer(
+                            api_messages,
+                            temperature=plan.temperature,
+                            max_tokens=max_tokens,
+                        )
+                    elif needs_vision and not needs_luna:
                         # Pure image understanding: the vision model answers
                         # directly. No search tool, so no citations are expected.
                         content = await self._call_openrouter_vision(

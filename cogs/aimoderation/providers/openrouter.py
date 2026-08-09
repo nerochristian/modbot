@@ -184,6 +184,44 @@ class OpenRouterLaneMixin:
             include_citations=True,
         )
 
+    async def _call_openrouter_research_writer(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        temperature: float,
+        max_tokens: int,
+    ) -> Optional[str]:
+        """Write the research report from evidence Sonar already gathered.
+
+        Sonar is a search product: it finds and cites sources well, but it is not
+        the strongest long-form writer. When the pre-fetch has already supplied
+        the evidence and the real source URLs, the synthesis step is pure writing
+        over text that is already in the prompt -- no search tool and no images
+        needed -- so it goes to the writer model instead of the search lane.
+        """
+        if not settings.call("_openrouter_conversation_enabled"):
+            raise RuntimeError("OpenRouter conversation is missing OPENROUTER_API_KEY.")
+
+        extra_payload: Optional[Dict[str, Any]] = None
+        if settings.setting("_OPENROUTER_CHAT_DISABLE_REASONING"):
+            extra_payload = {"reasoning": {"enabled": False}}
+
+        writer_model = settings.setting("_OPENROUTER_RESEARCH_WRITER_MODEL")
+        return await self._post_chat_completion(
+            messages,
+            base_url=settings.setting("_OPENROUTER_BASE_URL"),
+            api_key=settings.setting("_OPENROUTER_API_KEY"),
+            model=writer_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            json_mode=False,
+            allow_multimodal=False,
+            provider_label=f"OpenRouter research writer ({writer_model})",
+            max_retries=1,
+            request_timeout=settings.call("_openrouter_request_timeout"),
+            extra_payload=extra_payload,
+        )
+
     async def _call_openrouter_vision(
         self,
         messages: List[Dict[str, Any]],
