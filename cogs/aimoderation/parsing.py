@@ -505,11 +505,16 @@ class MessageParsingMixin:
 
     @staticmethod
     def _extract_purge_target_id(text: str) -> Optional[int]:
-        matches = list(re.finditer(r"\b(?:from|by|of)\s+<@!?(\d{15,22})>", text, re.IGNORECASE))
-        if not matches:
+        # Take the FIRST match, not the last. "purge 20 messages from @Alice
+        # because reported by @Bob" yields (from, Alice) then (by, Bob); using
+        # matches[-1] purged Bob -- the person who reported it -- and reported
+        # success. The first "from/by/of @user" is the requested target; any
+        # later mention is attribution or context.
+        match = re.search(r"\b(?:from|by|of)\s+<@!?(\d{15,22})>", text, re.IGNORECASE)
+        if not match:
             return None
         try:
-            return int(matches[-1].group(1))
+            return int(match.group(1))
         except ValueError:
             return None
 
