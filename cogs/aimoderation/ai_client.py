@@ -1789,6 +1789,16 @@ class AIClient(
             recent_messages,
             source_message=source_message,
         )
+        original_image_context = list(image_context)
+        image_identification = bool(
+            image_context
+            and self._looks_like_image_identification_request(user_content)
+        )
+        if image_identification:
+            image_context = await asyncio.to_thread(
+                self._prepare_image_identification_variants,
+                image_context,
+            )
         turn_prompt = "\n\n".join(
             part
             for part in (
@@ -1815,6 +1825,54 @@ class AIClient(
 
         try:
             await self._rate_limiter.record_call(author.id)
+            max_tokens = self._turn_max_tokens(plan, signals)
+            google_evidence = GoogleImageEvidence()
+            google_candidate: Optional[str] = None
+
+            # This lane is independent from OpenRouter. If OpenRouter is absent
+            # or degraded, direct Gemini plus Google Search can still answer.
+            if image_identification:
+                try:
+                    google_evidence = await self._call_google_web_detection(
+                        original_image_context,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Google Cloud Vision evidence pass failed; continuing "
+                        "with grounded vision fallbacks.",
+                        exc_info=True,
+                    )
+
+                try:
+                    google_candidate = await self._call_google_grounded_vision(
+                        image_context,
+                        user_content=user_content,
+                        evidence=google_evidence,
+                        max_tokens=max_tokens,
+                    )
+                except Exception:
+                    logger.warning(
+                        "Google grounded image identification failed; "
+                        "continuing with provider fallbacks.",
+                        exc_info=True,
+                    )
+
+                if google_candidate and "__BOT_SOURCES__" in google_candidate:
+                    google_candidate = self._postprocess_chat_response(
+                        google_candidate
+                    )
+                    finished = self._finish_turn(
+                        google_candidate,
+                        signals=signals,
+                        author=author,
+                        user_content=user_content,
+                        stored_memory=stored_memory,
+                        research_source_urls=research_source_urls,
+                        strip_sources_from_memory=True,
+                    )
+                    if finished is not None:
+                        return finished
+
             openrouter_standard_chat = self._uses_openrouter_conversation_lane(
                 signals,
                 has_images=bool(image_context),
@@ -1829,61 +1887,12 @@ class AIClient(
                         signals,
                         has_images=bool(image_context),
                     )
-                    image_identification = bool(
-                        image_context
-                        and self._looks_like_image_identification_request(user_content)
-                    )
-                    max_tokens = self._turn_max_tokens(plan, signals)
-                    google_evidence = GoogleImageEvidence()
-                    google_candidate: Optional[str] = None
                     # "Who/what is this?" must be verified against a source, and
                     # the answer path below refuses an unsourced identification.
-                    # Use Google's actual product stack first: Cloud Vision for
-                    # reverse-image/OCR evidence, then Gemini with native Google
-                    # Search grounding. OpenRouter remains the resilient fallback.
+                    # The Google-native lane ran first; OpenRouter remains the
+                    # resilient OCR, vision, and searched-verification fallback.
                     if image_identification:
                         needs_luna = True
-                        try:
-                            google_evidence = await self._call_google_web_detection(
-                                image_context,
-                            )
-                        except Exception:
-                            logger.warning(
-                                "Google Cloud Vision evidence pass failed; "
-                                "continuing with grounded vision fallbacks.",
-                                exc_info=True,
-                            )
-
-                        try:
-                            google_candidate = await self._call_google_grounded_vision(
-                                image_context,
-                                user_content=user_content,
-                                evidence=google_evidence,
-                                max_tokens=max_tokens,
-                            )
-                        except Exception:
-                            logger.warning(
-                                "Google grounded image identification failed; "
-                                "continuing with OpenRouter verification.",
-                                exc_info=True,
-                            )
-
-                        if google_candidate and "__BOT_SOURCES__" in google_candidate:
-                            google_candidate = self._postprocess_chat_response(
-                                google_candidate
-                            )
-                            finished = self._finish_turn(
-                                google_candidate,
-                                signals=signals,
-                                author=author,
-                                user_content=user_content,
-                                stored_memory=stored_memory,
-                                research_source_urls=research_source_urls,
-                                strip_sources_from_memory=True,
-                            )
-                            if finished is not None:
-                                return finished
-
                         try:
                             visual_candidates = await self._call_openrouter_visual_candidates(
                                 multimodal_api_messages,
@@ -2107,6 +2116,19 @@ class AIClient(
                             "The HTTP vision route returned a response without receiving the image."
                         )
                     if content:
+                        if image_identification and google_evidence.source_urls:
+                            content = self._merge_grounded_sources(
+                                content,
+                                google_evidence.source_urls,
+                            )
+                        if (
+                            image_identification
+                            and "__BOT_SOURCES__" not in content
+                        ):
+                            return (
+                                "I can inspect the image, but I couldn't verify the identity "
+                                "against a reliable source, so I won't make another confident guess."
+                            )
                         finished = self._finish_turn(
                             content,
                             signals=signals,
@@ -2114,6 +2136,7 @@ class AIClient(
                             user_content=user_content,
                             stored_memory=stored_memory,
                             research_source_urls=research_source_urls,
+                            strip_sources_from_memory=image_identification,
                         )
                         if finished is not None:
                             return finished

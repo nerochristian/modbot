@@ -1,8 +1,35 @@
 from __future__ import annotations
 
+import io
+
+from PIL import Image
+
 from cogs.aimoderation.providers.google import (
     GoogleImageSearchLaneMixin,
 )
+from cogs.aimoderation.types import ImageContext
+
+
+def test_identification_variants_add_ocr_and_corner_views() -> None:
+    source_buffer = io.BytesIO()
+    Image.new("RGB", (120, 80), "black").save(source_buffer, format="PNG")
+    source = ImageContext(
+        label="original",
+        filename="subject.png",
+        mime_type="image/png",
+        data=source_buffer.getvalue(),
+    )
+
+    variants = GoogleImageSearchLaneMixin._prepare_image_identification_variants(
+        [source]
+    )
+
+    assert len(variants) == 4
+    assert variants[0] is source
+    assert all(item.data for item in variants)
+    assert variants[1].filename == "subject-ocr-full.jpg"
+    assert "bottom-right" in variants[2].filename
+    assert "corner-sheet" in variants[3].filename
 
 
 def test_web_detection_preserves_ocr_and_exact_matching_pages() -> None:
