@@ -1942,6 +1942,24 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
             logger.exception("Failed to write pre-confirmation generated-code review")
             return None
 
+    @staticmethod
+    def _has_usable_action_reason(decision: Decision) -> bool:
+        """Is there a real moderation reason to show the user and Discord?
+
+        Checks ``decision.arguments["reason"]`` -- the field every handler
+        actually reads via ``ctx.str_arg("reason")`` -- and not
+        ``decision.reason``, which holds routing provenance like "rule: ban"
+        and is therefore always truthy on the deterministic routing path.
+        """
+        raw = decision.arguments.get("reason") if decision.arguments else None
+        text = str(raw or "").strip()
+        if not text:
+            return False
+        if text.lower() in ("no reason", "no reason provided", "none", "unknown", "n/a"):
+            return False
+        # Routing provenance markers are not moderation reasons either.
+        return not text.lower().startswith("rule:")
+
     async def _infer_action_reason(self, message: discord.Message, decision: Decision) -> str:
         try:
             recent_msgs = await self.fetch_recent_messages(message.channel, limit=10)
