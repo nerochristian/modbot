@@ -8,7 +8,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, Final, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, ClassVar, Dict, Final, Optional, Set, Tuple
 
 from utils.moderation_settings import moderation_id_set
 
