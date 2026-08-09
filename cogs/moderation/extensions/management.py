@@ -505,11 +505,39 @@ class ManagementCommands:
         
         self._suppress_duplicate_member_action_log(guild.id, user.id, "ban")
         self._suppress_duplicate_member_action_log(guild.id, user.id, "unban")
+        # These two calls need separate handling. They used to share one try, so
+        # a failing unban -- transient 5xx, rate limit, a hierarchy change
+        # between the two API calls -- reported "Could not softban" and created
+        # no case, while the user was in fact left PERMANENTLY BANNED. A softban
+        # that half-completed is the one outcome the moderator must be told
+        # about, because only they can undo it.
         try:
             await user.ban(reason=f"[SOFTBAN] {reason}", delete_message_days=7)
-            await guild.unban(user, reason="Softban - immediate unban")
         except Exception as e:
             return await self._respond(source, embed=ModEmbed.error("Failed", f"Could not softban: {e}"), ephemeral=True)
+
+        try:
+            await guild.unban(user, reason="Softban - immediate unban")
+        except Exception as e:
+            logger.error(
+                "Softban unban step failed for %s in guild %s; user remains banned: %s",
+                user.id, guild.id, e,
+            )
+            case_num = await self.bot.db.create_case(
+                guild.id, user.id, moderator.id, "Ban",
+                f"[SOFTBAN FAILED - unban step errored, user is still banned] {reason}",
+            )
+            return await self._respond(
+                source,
+                embed=ModEmbed.error(
+                    "Softban Incomplete",
+                    f"{user} was banned and their messages were deleted, but the "
+                    f"automatic unban failed: {e}\n\n"
+                    f"**They are still banned.** Unban them manually to finish the "
+                    f"softban. Logged as case #{case_num}.",
+                ),
+                ephemeral=True,
+            )
 
         case_num = await self.bot.db.create_case(guild.id, user.id, moderator.id, "Softban", reason)
         dm_embed = ModEmbed.punishment_notice(
