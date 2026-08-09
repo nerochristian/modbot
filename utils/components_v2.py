@@ -625,6 +625,7 @@ async def layout_view_from_embeds(
             view.add_item(discord.ui.Container(discord.ui.TextDisplay(content_text)))
 
     # Convert each embed to a Container
+    containers: list[discord.ui.Container[Any]] = []
     for e in _normalize_embeds(embed=embed, embeds=embeds):
         try:
             container = container_from_embed(e)
@@ -636,12 +637,19 @@ async def layout_view_from_embeds(
             except Exception:
                 continue
         if container.children:
-            view.add_item(container)
+            containers.append(container)
+
+    # Interactive items become ActionRows; reserve budget so they still fit.
+    reserved = _estimate_action_row_cost(existing_children)
+    for container in _fit_component_budget(
+        containers, reserved=reserved + _view_component_cost(view)
+    ):
+        view.add_item(container)
 
     # Preserve existing view items
     for child in existing_children:
         view.add_item(child)
-        
+
     return ensure_layout_view_action_rows(view)
 
 
