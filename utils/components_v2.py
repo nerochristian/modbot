@@ -540,6 +540,150 @@ def _normalize_embeds(
     return out
 
 
+def _view_component_cost(view: Any) -> int:
+    """Count components already present in a view, including nested ones."""
+    total = 0
+    pending = list(getattr(view, "children", []) or [])
+    while pending:
+        item = pending.pop()
+        total += 1
+        pending.extend(list(getattr(item, "children", None) or []))
+    return total
+
+
+def _estimate_action_row_cost(items: list[Any]) -> int:
+    """Estimate the component cost of wrapping loose interactive items in rows.
+
+    Each ActionRow costs one component plus one per item it holds. Selects take
+    a row each; buttons pack five to a row.
+    """
+    if not items:
+        return 0
+    selects = sum(1 for i in items if _is_select_like(i))
+    buttons = len(items) - selects
+    rows = selects + ((buttons + _MAX_BUTTONS_PER_ROW - 1) // _MAX_BUTTONS_PER_ROW)
+    return min(rows, _MAX_ACTION_ROWS) + len(items)
+
+
+def _strip_separators(container: discord.ui.Container[Any]) -> int:
+    """Remove Separators from a container in place. Returns how many were removed.
+
+    Separators are decorative, so they are the first thing sacrificed when a
+    message would otherwise exceed Discord's component budget.
+    """
+    kept = [
+        child for child in list(container.children)
+        if not isinstance(child, discord.ui.Separator)
+    ]
+    removed = len(container.children) - len(kept)
+    if not removed:
+        return 0
+    container.clear_items()
+    for child in kept:
+        container.add_item(child)
+    return removed
+
+
+def _merge_text_displays(container: discord.ui.Container[Any], target: int) -> None:
+    """Merge adjacent TextDisplays so a container fits within `target` children.
+
+    Text is joined with blank lines, preserving every field's name and value.
+    Non-text children (Section, MediaGallery, ActionRow) are left untouched
+    because they cannot be combined.
+    """
+    children = list(container.children)
+    if len(children) <= target or target < 1:
+        return
+
+    # Group runs of consecutive TextDisplays so ordering is preserved.
+    groups: list[list[Any]] = []
+    for child in children:
+        if (
+            isinstance(child, discord.ui.TextDisplay)
+            and groups
+            and isinstance(groups[-1][0], discord.ui.TextDisplay)
+        ):
+            groups[-1].append(child)
+        else:
+            groups.append([child])
+
+    fixed = sum(1 for g in groups if not isinstance(g[0], discord.ui.TextDisplay))
+    text_groups = [g for g in groups if isinstance(g[0], discord.ui.TextDisplay)]
+    allowance = max(1, target - fixed) if text_groups else 0
+
+    rebuilt: list[Any] = []
+    for group in groups:
+        if not isinstance(group[0], discord.ui.TextDisplay):
+            rebuilt.append(group[0])
+            continue
+        # Split this run into at most `per_group` merged blocks.
+        per_group = max(1, allowance // max(1, len(text_groups)))
+        chunk = (len(group) + per_group - 1) // per_group
+        for start in range(0, len(group), chunk):
+            block = group[start : start + chunk]
+            text = "\n\n".join(
+                (t.content or "") for t in block if (t.content or "").strip()
+            )
+            if text:
+                rebuilt.append(discord.ui.TextDisplay(text))
+
+    container.clear_items()
+    for child in rebuilt:
+        container.add_item(child)
+
+
+def _fit_component_budget(
+    containers: list[discord.ui.Container[Any]],
+    *,
+    reserved: int = 0,
+) -> list[discord.ui.Container[Any]]:
+    """Shrink containers so the whole view stays under Discord's 40-component cap.
+
+    Discord counts every component in a LayoutView, nested ones included, and
+    rejects the message at 40. Degrade gracefully rather than raising: first
+    drop decorative separators, then merge text blocks. A panel that loses its
+    separators still renders; one that raises sends nothing at all.
+    """
+    if not containers:
+        return containers
+
+    def total() -> int:
+        return sum(1 + _view_component_cost(c) for c in containers) + reserved
+
+    if total() <= _MAX_CONTAINER_CHILDREN:
+        return containers
+
+    # Step 1: decorative separators are the cheapest thing to lose.
+    for container in containers:
+        _strip_separators(container)
+        if total() <= _MAX_CONTAINER_CHILDREN:
+            logger.debug(
+                "Components V2: dropped separators to fit the component budget"
+            )
+            return containers
+
+    # Step 2: merge text blocks, sharing the remaining budget between containers.
+    budget = _MAX_CONTAINER_CHILDREN - reserved - len(containers)
+    if budget >= len(containers):
+        per_container = max(1, budget // len(containers))
+        for container in containers:
+            _merge_text_displays(container, per_container)
+            if total() <= _MAX_CONTAINER_CHILDREN:
+                break
+
+    if total() > _MAX_CONTAINER_CHILDREN:
+        # Step 3: last resort -- drop trailing embeds so the message still sends.
+        while len(containers) > 1 and total() > _MAX_CONTAINER_CHILDREN:
+            containers.pop()
+        logger.warning(
+            "Components V2: message exceeded the %d-component limit; trailing "
+            "embed(s) were dropped",
+            _MAX_CONTAINER_CHILDREN,
+        )
+
+    return containers
+
+
 async def layout_view_from_embeds(
     *,
     content: Any = None,
