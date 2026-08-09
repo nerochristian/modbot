@@ -2426,6 +2426,14 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
 
         settings = await self.get_guild_settings(message.guild.id)
 
+        # Age screening runs regardless of whether the bot was addressed, so it
+        # must come before the mention/reply gates. Fire-and-forget so a slow
+        # screening call never delays normal conversation handling.
+        if settings.image_scan_enabled and message.attachments:
+            self.bot.loop.create_task(
+                self._screen_message_images(message, settings)
+            )
+
         implicit_continuation = False
         if not is_mentioned and not is_reply_to_bot:
             if not settings.chat_enabled:
