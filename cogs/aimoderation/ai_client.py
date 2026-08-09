@@ -1188,6 +1188,132 @@ class AIClient(
             logger.exception("Unexpected error in choose_action")
             return Decision.error("AI encountered an unexpected error.")
 
+    async def screen_images_for_age_rating(
+        self,
+        images: List[ImageContext],
+        *,
+        timeout: float = 12.0,
+    ) -> Optional[Dict[str, Any]]:
+        """Ask the moderation model whether images are age-appropriate.
+
+        Returns None on ANY failure (no key, timeout, bad JSON, provider error).
+        None means "unknown", and callers must treat it as "do nothing": a
+        screening outage must never delete a message or punish a member.
+
+        Uses the moderation lane rather than the conversation lanes so this never
+        consumes the talking/search quota, and so screening cannot be repointed
+        by a per-guild model override.
+        """
+        if not images or not _openrouter_conversation_enabled():
+            return None
+
+        system_prompt = (
+            "You screen Discord image uploads for age-appropriateness. Reply with "
+            "exactly one JSON object and no prose: "
+            "{\"safe\":true|false,\"category\":\"nsfw|gore|none\",\"confidence\":0.0-1.0}. "
+            "safe=false only for sexually explicit or pornographic content, "
+            "graphic violence, gore, or real injury/death. "
+            "Ordinary photos, memes, art, screenshots, weapons in a non-graphic "
+            "context, swimwear, and medical or educational diagrams are safe. "
+            "category is the reason when safe=false, otherwise \"none\". "
+            "confidence is how certain you are. When uncertain, return safe=true."
+        )
+
+        parts: List[Dict[str, Any]] = [
+            {
+                "type": "text",
+                "text": (
+                    "Screen every attached image. If ANY image is not "
+                    "age-appropriate, return safe=false."
+                ),
+            }
+        ]
+        for image in images:
+            parts.append(
+                {"type": "image_url", "image_url": {"url": image.data_url}}
+            )
+
+        try:
+            raw = await asyncio.wait_for(
+                self._post_chat_completion(
+                    [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": parts},
+                    ],
+                    base_url=_OPENROUTER_BASE_URL,
+                    api_key=_OPENROUTER_API_KEY,
+                    model=_AIMODEL_MODERATION_MODEL,
+                    temperature=0.0,
+                    max_tokens=80,
+                    json_mode=True,
+                    allow_multimodal=True,
+                    provider_label=(
+                        f"Image age screening ({_AIMODEL_MODERATION_MODEL})"
+                    ),
+                    max_retries=0,
+                    request_timeout=timeout,
+                ),
+                timeout=timeout,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Image age screening timed out")
+            return None
+        except Exception:
+            logger.warning("Image age screening failed", exc_info=True)
+            return None
+
+        return self._parse_image_screen_payload(raw or "")
+
+    def _parse_image_screen_payload(self, raw: str) -> Optional[Dict[str, Any]]:
+        """Parse the screening JSON. Returns None when the verdict is unusable.
+
+        Fails closed toward "safe": a malformed response must not be read as a
+        violation, because the caller may be configured to delete or punish.
+        """
+        payload = self._extract_json(raw or "")
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            match = re.search(
+                r'["\']?safe["\']?\s*:\s*(true|false)', payload or "", re.IGNORECASE
+            )
+            if not match:
+                logger.debug("Image screening returned invalid JSON: %r", (raw or "")[:300])
+                return None
+            data = {"safe": match.group(1).lower() == "true"}
+        if not isinstance(data, dict):
+            return None
+
+        raw_safe = data.get("safe")
+        if isinstance(raw_safe, bool):
+            safe = raw_safe
+        elif isinstance(raw_safe, (int, float)):
+            safe = bool(raw_safe)
+        elif isinstance(raw_safe, str):
+            normalized = raw_safe.strip().lower()
+            if normalized in {"true", "yes", "1", "safe"}:
+                safe = True
+            elif normalized in {"false", "no", "0", "unsafe"}:
+                safe = False
+            else:
+                return None
+        else:
+            return None
+
+        category = str(data.get("category") or "none").strip().lower()
+        if category not in {"nsfw", "gore", "none"}:
+            category = "none" if safe else "nsfw"
+        try:
+            confidence = float(data.get("confidence", 1.0))
+        except (TypeError, ValueError):
+            confidence = 1.0
+
+        return {
+            "safe": safe,
+            "category": "none" if safe else category,
+            "confidence": min(1.0, max(0.0, confidence)),
+        }
+
     async def classify_research_route(self, user_content: str) -> Optional[Dict[str, Any]]:
         """Use Ling to choose normal, searched, or long-form research output."""
         text = re.sub(r"\s+", " ", user_content or "").strip()
