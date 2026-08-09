@@ -15,6 +15,7 @@ from cogs.behavior_profiling import (
     MAX_PROMPT_SAMPLES,
     MAX_PROFILE_WORDS,
     PROFILE_AI_REQUEST_TIMEOUT,
+    PROFILE_MAX_TOKENS,
     BehaviorProfiling,
     ProfileCorpus,
     ProfileMessage,
@@ -138,7 +139,10 @@ class BehaviorProfilingAsyncTests(unittest.IsolatedAsyncioTestCase):
         ai_client.call_bounded_completion.assert_awaited_once()
         kwargs = ai_client.call_bounded_completion.await_args.kwargs
         # Provider-aware entry point, not a hardcoded provider method.
-        self.assertEqual(kwargs["max_tokens"], 1_800)
+        # Must track PROFILE_MAX_TOKENS rather than restating a literal: the
+        # budget was raised from 1,800 because reasoning models spent it all on
+        # chain-of-thought and returned truncated profiles.
+        self.assertEqual(kwargs["max_tokens"], PROFILE_MAX_TOKENS)
         # Strict per-request budget strictly below the outer wait_for cap, and
         # a single attempt, so a degraded provider fails at the request
         # boundary instead of grinding past the outer timeout.
