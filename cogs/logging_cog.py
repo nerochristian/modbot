@@ -199,6 +199,16 @@ class Logging(commands.Cog):
 
     async def cog_load(self):
         self._cleanup_temp_cache.start()
+        # Registered once at load. This used to sit inside the hourly cleanup
+        # loop, which meant the persistent view was not registered until the
+        # first tick and was then re-registered every hour.
+        try:
+            self.bot.add_view(DeletedMessageImageView(self.bot))
+        except Exception:
+            logger.debug(
+                "Deleted-message image persistent view was already registered",
+                exc_info=True,
+            )
 
     async def cog_unload(self):
         self._cleanup_temp_cache.cancel()
@@ -212,16 +222,24 @@ class Logging(commands.Cog):
                     f.unlink(missing_ok=True)
         except Exception:
             pass
-        self._suppress_bulk_delete_until: dict[int, datetime] = {}
-        self._suppress_timeout_change_until: dict[tuple[int, int], datetime] = {}
-        self._seen_webhook_create_entries: dict[int, datetime] = {}
-        self._recent_message_snapshots: dict[int, dict[str, Any]] = {}
-        self._recent_message_snapshot_ttl = timedelta(hours=3)
-        self._recent_message_snapshot_max = 20000
+        # Prune expired entries; do NOT reassign these dicts. Replacing them
+        # with fresh empties (what this used to do) threw away every live
+        # suppression window and the entire message-snapshot cache once an hour.
         try:
-            self.bot.add_view(DeletedMessageImageView(self.bot))
+            cutoff = datetime.now(timezone.utc)
+            for channel_id, until in list(self._suppress_bulk_delete_until.items()):
+                if until < cutoff:
+                    self._suppress_bulk_delete_until.pop(channel_id, None)
+            for key, until in list(self._suppress_timeout_change_until.items()):
+                if until < cutoff:
+                    self._suppress_timeout_change_until.pop(key, None)
+            webhook_cutoff = cutoff - timedelta(hours=1)
+            for entry_id, seen_at in list(self._seen_webhook_create_entries.items()):
+                if seen_at < webhook_cutoff:
+                    self._seen_webhook_create_entries.pop(entry_id, None)
+            self._prune_recent_message_snapshots()
         except Exception:
-            logger.debug("Deleted-message image persistent view was already registered", exc_info=True)
+            logger.debug("Failed to prune logging suppression caches", exc_info=True)
 
     def _log_channel_setting_keys(self, log_type: str) -> tuple[str, ...]:
         aliases = self._LOG_CHANNEL_KEY_ALIASES.get(log_type)
