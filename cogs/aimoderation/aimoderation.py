@@ -33,7 +33,7 @@ from utils.status_emojis import apply_status_emoji_overrides
 from .types import (
     ToolType, DecisionType, ConversationMode,
     TARGETED_TOOLS, REASONED_MODERATION_TOOLS, MAX_MODERATION_REASON_LENGTH,
-    AIConfig, GuildSettings, Decision, ConversationSignals,
+    AIConfig, GuildSettings, Decision,
     PermissionFlags, MentionInfo,
 )
 from .context import ToolResult
