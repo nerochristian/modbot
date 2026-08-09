@@ -293,6 +293,14 @@ export const MODULE_DEFINITIONS: readonly ModuleDefinition[] = [
     special: 'aimod',
     fields: [
       { key: 'aimod_chat_enabled', label: 'Conversational chat', type: 'toggle', hint: 'Let members chat with Docket instead of limiting AI to staff actions.', fallback: false },
+      { key: 'aimod_image_scan_enabled', label: 'Image screening', type: 'toggle', hint: 'Check uploaded images for explicit or graphic content. Age-restricted channels and staff are always skipped. Costs one AI check per image posted.', fallback: false },
+      {
+        key: 'aimod_image_scan_action', label: 'When an image is flagged', type: 'select', fallback: 'log', hint: 'Only applies when image screening is on. Reporting only is the safest choice while you judge accuracy.', options: [
+          { label: 'Report to the log channel only', value: 'log' },
+          { label: 'Delete the message and report it', value: 'delete' },
+          { label: 'Delete, report, and warn the member', value: 'punish' },
+        ],
+      },
       { key: 'aimod_confirm_timeout_seconds', label: 'Confirmation window', type: 'number', min: 5, max: 300, fallback: 25, hint: 'Seconds before a pending confirmation expires. Every action that changes the server always asks for approval first; that cannot be switched off.' },
       { key: 'aimod_context_messages', label: 'Context window', type: 'number', min: 1, max: 200, fallback: 100, hint: 'Recent messages available to Galaxy. Newest messages are kept within a bounded input budget.' },
       { key: 'aimod_location_context', label: 'Server location context', type: 'text', maxLength: 120, placeholder: 'Global community, English speaking', hint: 'Optional regional or community context for better interpretation.' },

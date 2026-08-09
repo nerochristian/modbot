@@ -1412,13 +1412,19 @@ const OPERATIONAL_SECTIONS: Record<OperationalSpecial, OperationalSectionDefinit
       keys: ['aimod_confirm_timeout_seconds'],
     },
     {
-      register: 'CONTEXT / 02',
+      register: 'SAFETY / 02',
+      title: 'Image screening',
+      description: 'Screen uploaded images for explicit or graphic content. Age-restricted channels and staff are always skipped.',
+      keys: ['aimod_image_scan_enabled', 'aimod_image_scan_action'],
+    },
+    {
+      register: 'CONTEXT / 03',
       title: 'Conversation context',
       description: 'Set how Docket talks and how much recent server context it may use for a decision.',
       keys: ['aimod_chat_enabled', 'aimod_context_messages', 'aimod_location_context'],
     },
     {
-      register: 'PROVIDER / 03',
+      register: 'PROVIDER / 04',
       title: 'Model routing',
       description: 'Keep the provider default for automatic upgrades, or pin an approved model identifier.',
       keys: ['aimod_model'],
