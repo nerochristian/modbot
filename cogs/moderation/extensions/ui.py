@@ -61,7 +61,15 @@ async def _fetch_addemoji_tutorial_gif_file() -> Optional[discord.File]:
     return discord.File(io.BytesIO(_ADD_EMOJI_TUTORIAL_GIF_BYTES), filename=ADD_EMOJI_TUTORIAL_GIF_FILENAME)
 
 
-class EmojiApprovalView(discord.ui.View):
+class EmojiApprovalView(discord.ui.LayoutView):
+    """Emoji approval panel.
+
+    This is a LayoutView (Components V2) because it builds a Container with a
+    MediaGallery preview of the requested emoji. Adding V2 items to a plain
+    discord.ui.View raises ValueError, so the class must be a LayoutView for
+    the panel to construct at all.
+    """
+
     def __init__(
         self,
         cog,
@@ -77,41 +85,40 @@ class EmojiApprovalView(discord.ui.View):
         self._emoji_url = emoji_url
         self._handled = False
         self.message: Optional[discord.Message] = None
-        # Note: TextDisplay is not a standard discord.py UI component, assumed custom or new feature.
-        # Checking implementation in provided code: `self._text = discord.ui.TextDisplay(...)`
-        # Assuming TextDisplay is available or patched.
-        # If it fails, I'll fallback or assume existing environment supports it.
-        # Based on file read, it was imported from discord.ui, so it must exist in this environment's library version.
-        try:
-             self._text = discord.ui.TextDisplay(self._render(status="Pending", note="Awaiting admin decision"))
-             self.add_item(
-                discord.ui.Container(
-                    discord.ui.TextDisplay("**Emoji Approval Request**"),
-                    discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
-                    self._text,
-                    discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
-                    discord.ui.MediaGallery(discord.MediaGalleryItem(self._emoji_url)),
-                    accent_color=discord.Color.blurple().value,
-                )
-            )
-        except AttributeError:
-             # Fallback if TextDisplay/Container/MediaGallery (Discord Components V2) are not standard
-             pass
 
-        approve_button = discord.ui.Button(label="Approve", style=discord.ButtonStyle.success)
-        reject_button = discord.ui.Button(label="Reject", style=discord.ButtonStyle.danger)
+        self._text = discord.ui.TextDisplay(
+            self._render(status="Pending", note="Awaiting admin decision")
+        )
+
+        self._approve_button = discord.ui.Button(
+            label="Approve", style=discord.ButtonStyle.success
+        )
+        self._reject_button = discord.ui.Button(
+            label="Reject", style=discord.ButtonStyle.danger
+        )
 
         async def _approve(interaction: discord.Interaction):
-            return await self.approve(interaction, approve_button)
+            return await self.approve(interaction, self._approve_button)
 
         async def _reject(interaction: discord.Interaction):
-            return await self.reject(interaction, reject_button)
+            return await self.reject(interaction, self._reject_button)
 
-        approve_button.callback = _approve
-        reject_button.callback = _reject
+        self._approve_button.callback = _approve
+        self._reject_button.callback = _reject
 
-        self.add_item(approve_button)
-        self.add_item(reject_button)
+        # Buttons live inside the container so they render within the card,
+        # matching how every auto-converted panel looks.
+        self.add_item(
+            discord.ui.Container(
+                discord.ui.TextDisplay("**Emoji Approval Request**"),
+                discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+                self._text,
+                discord.ui.Separator(spacing=discord.SeparatorSpacing.small),
+                discord.ui.MediaGallery(discord.MediaGalleryItem(self._emoji_url)),
+                discord.ui.ActionRow(self._approve_button, self._reject_button),
+                accent_color=discord.Color.blurple().value,
+            )
+        )
 
     def _render(self, *, status: str, note: str) -> str:
         return (
@@ -134,9 +141,11 @@ class EmojiApprovalView(discord.ui.View):
         )
 
     async def _disable_all(self) -> None:
-        for child in self.children:
+        # On a LayoutView the buttons are nested inside a Container/ActionRow,
+        # not direct children, so disable the tracked buttons explicitly.
+        for button in (self._approve_button, self._reject_button):
             try:
-                child.disabled = True
+                button.disabled = True
             except Exception:
                 continue
 
@@ -147,9 +156,8 @@ class EmojiApprovalView(discord.ui.View):
         status: str,
         note: str,
     ) -> None:
-        if hasattr(self, '_text'):
-            self._text.content = self._render(status=status, note=note)
-        
+        self._text.content = self._render(status=status, note=note)
+
         await self._disable_all()
         msg = interaction.message or self.message
         if msg:
