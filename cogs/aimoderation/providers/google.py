@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import html
+import io
 import json
 import logging
 import re
@@ -20,8 +21,10 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from urllib.parse import urlparse
 
 import aiohttp
+from PIL import Image, ImageEnhance, ImageFilter
 
 from .. import settings
+from ..types import ImageContext
 
 logger = logging.getLogger("ModBot.AIModeration.Client")
 
@@ -73,6 +76,121 @@ def _unique_urls(values: Iterable[Any], *, limit: int = 12) -> List[str]:
 
 class GoogleImageSearchLaneMixin:
     """Official Google OCR, reverse-image lookup, and grounded synthesis."""
+
+    @staticmethod
+    def _prepare_image_identification_variants(
+        images: Sequence[ImageContext],
+    ) -> List[ImageContext]:
+        """Add high-resolution and corner crops for tiny watermark/OCR clues.
+
+        Consumer image-search products internally tile large images. OpenAI-
+        compatible gateways do not guarantee that behavior, so a single-image
+        identification request gets explicit OCR detail views. Multi-image
+        requests keep their originals to avoid crowding out separate subjects.
+        """
+        originals = list(images[:4])
+        if len(originals) != 1:
+            return originals
+
+        source = originals[0]
+        try:
+            with Image.open(io.BytesIO(source.data)) as opened:
+                opened.seek(0)
+                rgba = opened.convert("RGBA")
+        except Exception:
+            logger.debug(
+                "Could not prepare image-identification detail views",
+                exc_info=True,
+            )
+            return originals
+
+        background = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+        background.alpha_composite(rgba)
+        rgb = background.convert("RGB")
+        width, height = rgb.size
+        if width < 2 or height < 2:
+            return originals
+
+        longest = max(width, height)
+        scale = min(12.0, max(1.0, 1_600 / longest))
+        enhanced_size = (
+            max(1, round(width * scale)),
+            max(1, round(height * scale)),
+        )
+        enhanced = rgb.resize(enhanced_size, Image.Resampling.LANCZOS)
+        enhanced = ImageEnhance.Contrast(enhanced).enhance(1.18)
+        enhanced = ImageEnhance.Sharpness(enhanced).enhance(1.65)
+        enhanced = enhanced.filter(ImageFilter.UnsharpMask(radius=1.2, percent=130))
+
+        def encoded_context(
+            image: Image.Image,
+            *,
+            suffix: str,
+            label: str,
+        ) -> ImageContext:
+            output = io.BytesIO()
+            image.save(output, format="JPEG", quality=95, optimize=True)
+            stem = source.filename.rsplit(".", 1)[0] or "image"
+            return ImageContext(
+                label=label,
+                filename=f"{stem}-{suffix}.jpg",
+                mime_type="image/jpeg",
+                data=output.getvalue(),
+            )
+
+        detail_views: List[ImageContext] = [
+            encoded_context(
+                enhanced,
+                suffix="ocr-full",
+                label="OCR-enhanced full-resolution view of the original image",
+            )
+        ]
+
+        enhanced_width, enhanced_height = enhanced.size
+        right = enhanced.crop(
+            (
+                int(enhanced_width * 0.45),
+                int(enhanced_height * 0.45),
+                enhanced_width,
+                enhanced_height,
+            )
+        ).resize((1_200, 1_200), Image.Resampling.LANCZOS)
+        detail_views.append(
+            encoded_context(
+                right,
+                suffix="bottom-right",
+                label="magnified bottom-right watermark and signature detail",
+            )
+        )
+
+        crop_width = max(1, int(enhanced_width * 0.42))
+        crop_height = max(1, int(enhanced_height * 0.42))
+        corner_boxes = (
+            (0, 0, crop_width, crop_height),
+            (enhanced_width - crop_width, 0, enhanced_width, crop_height),
+            (0, enhanced_height - crop_height, crop_width, enhanced_height),
+            (
+                enhanced_width - crop_width,
+                enhanced_height - crop_height,
+                enhanced_width,
+                enhanced_height,
+            ),
+        )
+        sheet = Image.new("RGB", (1_600, 1_600), "white")
+        for index, box in enumerate(corner_boxes):
+            tile = enhanced.crop(box).resize((800, 800), Image.Resampling.LANCZOS)
+            sheet.paste(tile, ((index % 2) * 800, (index // 2) * 800))
+        detail_views.append(
+            encoded_context(
+                sheet,
+                suffix="corner-sheet",
+                label=(
+                    "magnified corner sheet ordered top-left, top-right, "
+                    "bottom-left, bottom-right"
+                ),
+            )
+        )
+        return [source, *detail_views]
 
     async def _post_google_json(
         self,
