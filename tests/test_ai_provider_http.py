@@ -301,12 +301,12 @@ def test_grok_chat_lane_sends_no_search_tool_and_no_images(monkeypatch):
     monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
     monkeypatch.setattr(
         ai_client_module,
-        "_OPENROUTER_GROK_CHAT_MODEL",
+        "_OPENROUTER_TALK_CHAT_MODEL",
         "x-ai/grok-4.3",
     )
 
     result = asyncio.run(
-        client._call_openrouter_grok_chat(
+        client._call_openrouter_chat(
             [{"role": "user", "content": "how are you?"}],
             temperature=0.6,
             max_tokens=600,
@@ -446,7 +446,7 @@ def test_ordinary_conversation_uses_grok_without_openrouter(monkeypatch):
     client._collect_image_context = AsyncMock(return_value=[])
     client._call_aimodel_conversation = AsyncMock(return_value="grok answer")
     client._call_openrouter_conversation = AsyncMock(return_value="wrong lane")
-    client._call_openrouter_grok_chat = AsyncMock(return_value="wrong lane")
+    client._call_openrouter_chat = AsyncMock(return_value="wrong lane")
     client._update_memory_smart = AsyncMock()
     client.bot = types.SimpleNamespace(
         user=types.SimpleNamespace(id=999),
@@ -480,7 +480,7 @@ def test_ordinary_conversation_uses_grok_without_openrouter(monkeypatch):
     assert result == "grok answer"
     client._call_aimodel_conversation.assert_awaited_once()
     client._call_openrouter_conversation.assert_not_awaited()
-    client._call_openrouter_grok_chat.assert_not_awaited()
+    client._call_openrouter_chat.assert_not_awaited()
 
 
 def test_ordinary_talking_prefers_openrouter_grok(monkeypatch):
@@ -499,7 +499,7 @@ def test_ordinary_talking_prefers_openrouter_grok(monkeypatch):
     )
     client._deepseek_web = types.SimpleNamespace(enabled=False)
     client._collect_image_context = AsyncMock(return_value=[])
-    client._call_openrouter_grok_chat = AsyncMock(return_value="grok 4.3 answer")
+    client._call_openrouter_chat = AsyncMock(return_value="grok 4.3 answer")
     client._call_openrouter_conversation = AsyncMock(return_value="wrong lane")
     client._call_aimodel_conversation = AsyncMock(return_value="wrong lane")
     client._update_memory_smart = AsyncMock()
@@ -526,7 +526,7 @@ def test_ordinary_talking_prefers_openrouter_grok(monkeypatch):
     )
 
     assert result == "grok 4.3 answer"
-    client._call_openrouter_grok_chat.assert_awaited_once()
+    client._call_openrouter_chat.assert_awaited_once()
     client._call_openrouter_conversation.assert_not_awaited()
 
 
@@ -546,7 +546,7 @@ def test_ordinary_conversation_falls_back_when_openrouter_grok_is_down(monkeypat
     )
     client._deepseek_web = types.SimpleNamespace(enabled=False)
     client._collect_image_context = AsyncMock(return_value=[])
-    client._call_openrouter_grok_chat = AsyncMock(
+    client._call_openrouter_chat = AsyncMock(
         side_effect=RuntimeError("OpenRouter HTTP 523")
     )
     client._call_openrouter_conversation = AsyncMock(return_value="wrong lane")
@@ -582,7 +582,7 @@ def test_ordinary_conversation_falls_back_when_openrouter_grok_is_down(monkeypat
     )
 
     assert result == "aimodel fallback"
-    client._call_openrouter_grok_chat.assert_awaited_once()
+    client._call_openrouter_chat.assert_awaited_once()
     client._call_aimodel_conversation.assert_awaited_once()
     # The searched lane must never absorb a plain talking turn.
     client._call_openrouter_conversation.assert_not_awaited()

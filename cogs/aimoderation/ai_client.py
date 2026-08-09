@@ -497,7 +497,7 @@ class AIClient:
         *,
         has_images: bool,
     ) -> bool:
-        """Use OpenRouter for conversation: Grok for talking, Luna for search/vision."""
+        """Use OpenRouter for conversation: GLM for talking, Luna for search/vision."""
         return _openrouter_conversation_enabled()
 
     def availability_message(self) -> str:
@@ -2857,7 +2857,7 @@ class AIClient:
                                 return content
                         except Exception:
                             logger.warning(
-                                "OpenRouter Grok fallback after AiModel failure also failed.",
+                                "OpenRouter chat fallback after AiModel failure also failed.",
                                 exc_info=True,
                             )
 
