@@ -1735,7 +1735,13 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
         return await self.reply(message, content=result.message, delete_after=result.delete_after)
 
     @staticmethod
-    def _requires_confirmation(settings: GuildSettings, decision: Decision) -> bool:
+    def _requires_confirmation(decision: Decision) -> bool:
+        """Every mutating tool needs an explicit button confirmation.
+
+        This is deliberately not per-guild configurable: an admin cannot switch
+        off the approval step for bans, purges, or generated code. Only the
+        approval window (``GuildSettings.confirm_timeout_seconds``) is tunable.
+        """
         if decision.type != DecisionType.TOOL_CALL or not decision.tool:
             return False
         non_mutating_tools = {
@@ -2577,7 +2583,7 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
                     )
                     return
 
-            if self._requires_confirmation(settings, decision):
+            if self._requires_confirmation(decision):
                 if decision.tool in (ToolType.BAN, ToolType.KICK, ToolType.TIMEOUT, ToolType.WARN):
                     if not decision.reason or decision.reason.strip().lower() in ("no reason", "none", "unknown", "n/a", ""):
                         decision.reason = await self._infer_action_reason(message, decision)
@@ -2608,7 +2614,7 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
                         settings=settings,
                     )
                 if plan_ready:
-                    if self._requires_confirmation(settings, decision):
+                    if self._requires_confirmation(decision):
                         await self._request_confirmation(message, decision, settings)
                     else:
                         await self._execute_decision(
@@ -2659,7 +2665,7 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
                         settings=settings,
                     )
                 if plan_ready:
-                    if self._requires_confirmation(settings, decision):
+                    if self._requires_confirmation(decision):
                         await self._request_confirmation(message, decision, settings)
                     else:
                         await self._execute_decision(
