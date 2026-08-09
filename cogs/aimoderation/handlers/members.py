@@ -601,6 +601,34 @@ async def _handle_bulk_timeout(ctx: ToolContext) -> ToolResult:
             continue
         eligible.append(member)
 
+    if not eligible:
+        # Nothing was eligible, so no Discord call happens below and
+        # ``asyncio.gather()`` would return an empty list. Falling through would
+        # report "Muted 0 member(s)" as a success and write a mod-log entry for
+        # an action that never ran. Explain who filtered out instead.
+        reasons: list[str] = []
+        if counts["excluded_users"]:
+            reasons.append(f"**{counts['excluded_users']}** explicitly excluded")
+        if counts["excluded_role"]:
+            reasons.append(
+                f"**{counts['excluded_role']}** in "
+                f"{excluded_role.mention if excluded_role else 'the excluded role'}"
+            )
+        if counts["admins"]:
+            reasons.append(f"**{counts['admins']}** admin or server owner")
+        if counts["protected"]:
+            reasons.append(f"**{counts['protected']}** with a protected role")
+        if counts["hierarchy"]:
+            reasons.append(f"**{counts['hierarchy']}** ranked above you or above me")
+        if counts["bots"]:
+            reasons.append(f"**{counts['bots']}** bot(s)")
+        detail = "; ".join(reasons)
+        return ToolResult.clarify(
+            "I didn't mute anyone: no member matched that scope."
+            + (f" Skipped {detail}." if detail else "")
+            + " Narrow the request or check my role position, then try again."
+        )
+
     semaphore = asyncio.Semaphore(3)
 
     async def apply_timeout(member: discord.Member) -> bool:
@@ -687,7 +715,9 @@ async def _handle_bulk_timeout(ctx: ToolContext) -> ToolResult:
             "Discord Failures": str(counts["failed"]),
         },
     )
-    if counts["failed"] and muted_count == 0 and eligible:
+    # ``eligible`` is non-empty here (guarded above), so a zero mute count with
+    # failures means every attempted timeout was rejected by Discord.
+    if counts["failed"] and muted_count == 0:
         return ToolResult.fail(result_message)
     return ToolResult.ok(result_message, embed=embed)
 
