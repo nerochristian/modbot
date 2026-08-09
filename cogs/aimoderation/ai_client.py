@@ -591,6 +591,19 @@ class AIClient(
     def diagnostic_lines(self) -> List[str]:
         provider = str(getattr(self, "provider", "") or "deepseek").strip().lower()
         lines = [f"Provider preference: `{provider}`"]
+        if _openrouter_conversation_enabled():
+            # The OpenRouter lanes are what conversation actually uses, so report
+            # them explicitly instead of only the provider-specific models.
+            lines.extend(
+                [
+                    f"Talking lane: `{_OPENROUTER_CHAT_MODEL}`",
+                    f"Search lane: `{_OPENROUTER_LUNA_MODEL}`",
+                    f"Vision lane: `{_OPENROUTER_VISION_MODEL}`",
+                    f"Research sources: `{_OPENROUTER_RESEARCH_MODEL}`",
+                    f"Research writer: `{_OPENROUTER_RESEARCH_WRITER_MODEL}`",
+                    f"Route classifier: `{_OPENROUTER_LING_ROUTER_MODEL}`",
+                ]
+            )
         if self.prefers_aimodel:
             lines.extend(
                 [
