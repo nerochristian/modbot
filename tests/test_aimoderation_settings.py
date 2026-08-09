@@ -9,6 +9,7 @@ the real environment with real credentials.
 from __future__ import annotations
 
 import ast
+import re
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -77,6 +78,38 @@ class LateBoundSettingsTests(unittest.TestCase):
         )
         with self.assertRaises(AttributeError):
             settings.setting("_NOT_A_REAL_SETTING")
+
+    def test_every_late_bound_name_still_exists_on_ai_client(self) -> None:
+        """Fail if a config name read by ``providers/`` was deleted.
+
+        Provider lanes resolve configuration by string at call time, so these
+        names have no textual reference left in ai_client.py. A linter or
+        "find usages" sweep reports them unused, and deleting one breaks that
+        lane at runtime while static analysis stays silent. This test is the
+        thing that makes such a deletion fail loudly instead.
+        """
+        pattern = re.compile(
+            r"settings\.(?:setting|call)\(\s*[\"'](_[A-Za-z0-9_]+)[\"']"
+        )
+        referenced: dict[str, set[str]] = {}
+        for path in sorted((PACKAGE_DIR / "providers").glob("*.py")):
+            for name in pattern.findall(path.read_text(encoding="utf-8")):
+                referenced.setdefault(name, set()).add(path.name)
+
+        self.assertTrue(referenced, "expected provider modules to read settings")
+
+        missing = sorted(
+            f"{name} (read by {', '.join(sorted(files))})"
+            for name, files in referenced.items()
+            if not hasattr(ai_client_module, name)
+        )
+        self.assertEqual(
+            missing,
+            [],
+            "These names are read late-bound by provider lanes but no longer "
+            "exist on ai_client; restore them or update the readers:\n  "
+            + "\n  ".join(missing),
+        )
 
     def test_no_sibling_module_snapshots_patched_config(self) -> None:
         """Fail loudly if a module from-imports a patched config name.

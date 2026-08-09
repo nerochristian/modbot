@@ -49,6 +49,21 @@ _RESEARCH_UNAVAILABLE = (
 # probe; without throttling that floods the journal with the same line all day.
 _BLOCK_LOG_COOLDOWN_SECONDS: Final[int] = 300
 
+# ---------------------------------------------------------------------------
+# Provider configuration.
+#
+# These constants are THE patch target for the test suite (83 sites, e.g.
+# ``monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", ...)``), so they
+# must stay defined in THIS module. Provider lanes in ``providers/`` read them
+# late-bound through ``settings.setting("_NAME")`` / ``settings.call("_fn")``.
+#
+# WARNING: many of the names below have no textual reference left in this file,
+# because the only readers resolve them by string at call time. They are NOT
+# dead. Deleting one because a linter or "find usages" reports it unused will
+# break the corresponding provider lane at runtime while static analysis stays
+# silent. Check ``providers/`` for ``settings.setting("<name>")`` first.
+# ---------------------------------------------------------------------------
+
 _DO_API_KEY: Final[str] = os.getenv("DO_API_KEY", "").strip()
 _DO_BASE_URL: Final[str] = os.getenv("DO_INFERENCE_BASE_URL", "https://inference.do-ai.run/v1").strip().rstrip("/")
 
