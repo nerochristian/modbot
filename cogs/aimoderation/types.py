@@ -106,6 +106,30 @@ MAX_MODERATION_REASON_LENGTH: Final[int] = 140
 # =============================================================================
 
 
+def _default_max_tokens_chat() -> int:
+    """Output-token ceiling for conversation replies.
+
+    This is a headroom limit, not a target: the bot splits long replies into
+    Discord-sized chunks, so a high ceiling costs nothing on normal short
+    answers (billing is per token actually generated).
+
+    It must stay well above the longest expected answer because reasoning
+    models count their hidden reasoning tokens against ``max_tokens``. The old
+    3,000 cap was low enough that a reasoning model could spend the entire
+    budget thinking and return an EMPTY reply with finish_reason="length".
+    Upstream providers here allow ~128k completion tokens.
+    """
+    raw = (os.getenv("AI_MAX_TOKENS_CHAT") or "").strip()
+    if raw:
+        try:
+            parsed = int(raw)
+        except ValueError:
+            parsed = 0
+        if parsed > 0:
+            return max(1_000, min(64_000, parsed))
+    return 16_000
+
+
 def _default_ai_provider() -> str:
     explicit = (os.getenv("AI_PROVIDER") or "").strip().lower()
     if explicit:
@@ -150,7 +174,7 @@ class AIConfig:
     temperature_routing: float = 0.2
     temperature_chat: float = 0.85
     max_tokens_routing: int = 1500
-    max_tokens_chat: int = 3_000
+    max_tokens_chat: int = field(default_factory=_default_max_tokens_chat)
     memory_window: int = 200
     memory_max_chars: int = 96_000
     context_messages: int = 100
