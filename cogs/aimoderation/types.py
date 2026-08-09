@@ -5,11 +5,10 @@ Extracted from cogs/aimoderation.py into cogs/moderation/ai/types.py
 """
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, ClassVar, Dict, Final, Optional, Set, Tuple
+from typing import TYPE_CHECKING, Any, Dict, Final, Optional, Set, Tuple
 
 from utils.moderation_settings import moderation_id_set
 
@@ -206,8 +205,6 @@ class GuildSettings:
     proactive_chance: float = 0.02
     location_context: str = ""
     mod_roles: Set[int] = field(default_factory=set)
-
-    _VALID_ACTIONS: ClassVar[Set[str]] = {t.value for t in ToolType}
 
     @staticmethod
     def _coerce_bool(raw: Any, default: bool) -> bool:
