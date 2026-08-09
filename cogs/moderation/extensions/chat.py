@@ -187,11 +187,28 @@ class ChatCommands:
                 reason=f"{author}: {reason}"
             )
 
+            # Roles whose whole purpose is denying speech must survive an
+            # unlock. This loop used to clear send_messages=False from EVERY
+            # overwrite, so /unlock silently lifted a Muted or quarantine
+            # role's per-channel deny -- a mute bypass that no one was told
+            # about. Skip those targets instead.
+            settings = await self.bot.db.get_settings(source.guild.id)
+            silencing_role_ids = set()
+            for key in ("mute_role", "muted_role", "automod_quarantine_role_id"):
+                raw_id = settings.get(key)
+                if raw_id:
+                    try:
+                        silencing_role_ids.add(int(raw_id))
+                    except (TypeError, ValueError):
+                        pass
+
             bot_member = source.guild.me
             for target, overwrite in channel.overwrites.items():
                 if target == source.guild.default_role:
                     continue
                 if isinstance(target, discord.Role) and target == bot_member.top_role:
+                    continue
+                if isinstance(target, discord.Role) and target.id in silencing_role_ids:
                     continue
                 if isinstance(target, discord.Member) and target.id == bot_member.id:
                     continue
