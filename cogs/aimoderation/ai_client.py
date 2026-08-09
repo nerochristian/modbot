@@ -33,6 +33,7 @@ from .prompts import (
     ROUTING_SYSTEM_PROMPT, CONVERSATION_SYSTEM_PROMPT,
     DEEP_RESEARCH_SYSTEM_PROMPT, MOD_GUIDANCE_SYSTEM_PROMPT,
 )
+from .transport import TransportMixin
 
 logger = logging.getLogger("ModBot.AIModeration.Client")
 
@@ -401,8 +402,13 @@ def _vision_response_missed_image(content: str) -> bool:
     )
 
 
-class AIClient:
-    """Async wrapper around the configured AI provider with rate limiting and memory."""
+class AIClient(TransportMixin):
+    """Async wrapper around the configured AI provider with rate limiting and memory.
+
+    The OpenAI-compatible HTTP wire layer lives in ``TransportMixin``
+    (``transport.py``): ``_post_chat_completion``, the JSON/SSE response parsers,
+    citation extraction, and text-only message normalization.
+    """
 
     _CODE_FENCE_RE: ClassVar[re.Pattern] = re.compile(r"^```[a-zA-Z]*\s*|\s*```$", re.MULTILINE)
     _JSON_RE: ClassVar[re.Pattern] = re.compile(r"(\{.*\})", re.DOTALL)
