@@ -262,7 +262,7 @@ def test_aimodel_grok_is_only_the_ordinary_text_conversation_lane(monkeypatch):
     assert client.conversation_model_name("stale-dashboard-model") == "grok-4.5"
 
 
-def test_grok_talks_and_luna_keeps_search_research_and_images(monkeypatch):
+def test_talking_model_and_luna_keep_separate_lanes(monkeypatch):
     """Grok owns ordinary talking; Luna owns search, research, and vision."""
     monkeypatch.setattr(ai_client_module, "_AIMODEL_API_KEY", "stale-aimodel-key")
     monkeypatch.setattr(
@@ -294,15 +294,15 @@ def test_grok_talks_and_luna_keeps_search_research_and_images(monkeypatch):
     assert AIClient._openrouter_lane_needs_luna(standard, has_images=True) is True
 
 
-def test_grok_chat_lane_sends_no_search_tool_and_no_images(monkeypatch):
+def test_talking_lane_sends_no_search_tool_and_no_images(monkeypatch):
     """The talking lane must not carry search tools, citations, or multimodal input."""
     client = AIClient.__new__(AIClient)
-    client._post_chat_completion = AsyncMock(return_value="grok reply")
+    client._post_chat_completion = AsyncMock(return_value="chat reply")
     monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
     monkeypatch.setattr(
         ai_client_module,
         "_OPENROUTER_TALK_CHAT_MODEL",
-        "x-ai/grok-4.3",
+        "z-ai/glm-5.2",
     )
 
     result = asyncio.run(
@@ -313,14 +313,62 @@ def test_grok_chat_lane_sends_no_search_tool_and_no_images(monkeypatch):
         )
     )
 
-    assert result == "grok reply"
+    assert result == "chat reply"
     kwargs = client._post_chat_completion.await_args.kwargs
-    assert kwargs["model"] == "x-ai/grok-4.3"
+    assert kwargs["model"] == "z-ai/glm-5.2"
     assert kwargs["allow_multimodal"] is False
     assert kwargs["json_mode"] is False
-    # No web-search tool and no citation harvesting on the talking lane.
-    assert "extra_payload" not in kwargs
     assert kwargs.get("include_citations") in (None, False)
+    # No web-search tool on the talking lane; the only extra payload allowed is
+    # the reasoning switch.
+    extra = kwargs.get("extra_payload") or {}
+    assert "tools" not in extra
+    assert "tool_choice" not in extra
+
+
+def test_talking_lane_disables_reasoning_by_default(monkeypatch):
+    """GLM enables reasoning implicitly; chat turns must opt out for speed/cost."""
+    client = AIClient.__new__(AIClient)
+    client._post_chat_completion = AsyncMock(return_value="chat reply")
+    monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
+    monkeypatch.setattr(
+        ai_client_module,
+        "_OPENROUTER_CHAT_DISABLE_REASONING",
+        True,
+    )
+
+    asyncio.run(
+        client._call_openrouter_chat(
+            [{"role": "user", "content": "hi"}],
+            temperature=0.6,
+            max_tokens=600,
+        )
+    )
+
+    extra = client._post_chat_completion.await_args.kwargs["extra_payload"]
+    assert extra == {"reasoning": {"enabled": False}}
+
+
+def test_talking_lane_can_keep_reasoning_when_configured(monkeypatch):
+    """The reasoning opt-out is configurable, not hardcoded."""
+    client = AIClient.__new__(AIClient)
+    client._post_chat_completion = AsyncMock(return_value="chat reply")
+    monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "openrouter-test-key")
+    monkeypatch.setattr(
+        ai_client_module,
+        "_OPENROUTER_CHAT_DISABLE_REASONING",
+        False,
+    )
+
+    asyncio.run(
+        client._call_openrouter_chat(
+            [{"role": "user", "content": "hi"}],
+            temperature=0.6,
+            max_tokens=600,
+        )
+    )
+
+    assert client._post_chat_completion.await_args.kwargs["extra_payload"] is None
 
 
 def test_openrouter_lets_luna_decide_when_search_is_needed(monkeypatch):
@@ -483,7 +531,7 @@ def test_ordinary_conversation_uses_grok_without_openrouter(monkeypatch):
     client._call_openrouter_chat.assert_not_awaited()
 
 
-def test_ordinary_talking_prefers_openrouter_grok(monkeypatch):
+def test_ordinary_talking_prefers_openrouter_chat_lane(monkeypatch):
     """Plain talking goes to Grok on OpenRouter, never Luna's searched lane."""
     client = AIClient.__new__(AIClient)
     client.provider = "aimodel"
@@ -499,7 +547,7 @@ def test_ordinary_talking_prefers_openrouter_grok(monkeypatch):
     )
     client._deepseek_web = types.SimpleNamespace(enabled=False)
     client._collect_image_context = AsyncMock(return_value=[])
-    client._call_openrouter_chat = AsyncMock(return_value="grok 4.3 answer")
+    client._call_openrouter_chat = AsyncMock(return_value="glm answer")
     client._call_openrouter_conversation = AsyncMock(return_value="wrong lane")
     client._call_aimodel_conversation = AsyncMock(return_value="wrong lane")
     client._update_memory_smart = AsyncMock()
@@ -525,12 +573,12 @@ def test_ordinary_talking_prefers_openrouter_grok(monkeypatch):
         )
     )
 
-    assert result == "grok 4.3 answer"
+    assert result == "glm answer"
     client._call_openrouter_chat.assert_awaited_once()
     client._call_openrouter_conversation.assert_not_awaited()
 
 
-def test_ordinary_conversation_falls_back_when_openrouter_grok_is_down(monkeypatch):
+def test_ordinary_conversation_falls_back_when_openrouter_chat_is_down(monkeypatch):
     """If the Grok talking lane fails, plain chat degrades to the AiModel lane."""
     client = AIClient.__new__(AIClient)
     client.provider = "aimodel"
