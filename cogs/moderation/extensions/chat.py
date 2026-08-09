@@ -430,6 +430,20 @@ class ChatCommands:
         audit_reason = f"Nuked by {user}: {reason}"
         new_channel: Optional[discord.TextChannel] = None
 
+        # Acknowledge before the channel is destroyed. Nothing on the success
+        # path used to respond to the interaction at all -- only the four error
+        # branches did -- so a nuke that worked perfectly still showed the user
+        # Discord's red "This interaction failed". Defer here (ephemerally, so
+        # the notice survives the original channel being deleted) and follow up
+        # once the new channel exists.
+        deferred = False
+        if isinstance(source, discord.Interaction) and not source.response.is_done():
+            try:
+                await source.response.defer(ephemeral=True)
+                deferred = True
+            except discord.HTTPException:
+                deferred = False
+
         try:
             position = channel.position
             new_channel = await channel.clone(reason=audit_reason)
@@ -450,7 +464,7 @@ class ChatCommands:
             await new_channel.edit(position=position, reason=audit_reason)
         except discord.HTTPException:
             pass
-        
+
         embed = self._build_channel_status_embed(
             emoji=get_app_emoji("warning") or "💥",
             title="Channel nuked",
@@ -461,6 +475,21 @@ class ChatCommands:
         )
         await new_channel.send(embed=embed)
         await new_channel.send(self.NUKE_SOURCE_URL)
+
+        # Close the loop with the invoker. The channel they ran this in no
+        # longer exists, so point them at the rebuilt one.
+        if deferred or isinstance(source, discord.Interaction):
+            try:
+                await self._respond(
+                    source,
+                    embed=ModEmbed.success(
+                        "Channel Nuked",
+                        f"{channel.name} was rebuilt as {new_channel.mention}.",
+                    ),
+                    ephemeral=True,
+                )
+            except discord.HTTPException:
+                pass
 
     async def _glock_logic(self, source, channel: discord.TextChannel = None, role: discord.Role = None, reason: str = "No reason provided"):
         author_id = source.user.id if isinstance(source, discord.Interaction) else source.author.id
