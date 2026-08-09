@@ -473,15 +473,17 @@ def container_from_embed(embed: discord.Embed) -> discord.ui.Container:
         else:
             children.append(discord.ui.TextDisplay(header_text))
 
-    # Add fields with separators
+    # Add fields with separators. These separators are part of the established
+    # look, so they are kept; _fit_component_budget() strips them later only if
+    # the message would otherwise exceed Discord's 40-component limit.
     for field in embed.fields:
         name = (field.name or "").strip()
         value = (field.value or "").strip()
         if not name and not value:
             continue
-            
+
         children.append(discord.ui.Separator(spacing=discord.SeparatorSpacing.small))
-        
+
         if name and value:
             children.append(discord.ui.TextDisplay(f"**{name}**\n{value}"))
         elif name:
