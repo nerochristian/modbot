@@ -1254,6 +1254,89 @@ class AIClient(
             "reason": reason_match.group(1) if reason_match else "loose classifier output",
         }
 
+    async def _load_conversation_memory(
+        self,
+        author: Union[discord.Member, discord.User],
+        guild: discord.Guild,
+    ) -> Tuple[str, str]:
+        """Load the stored user and guild memory, tolerating a database outage.
+
+        Returns (user_memory, guild_memory); both empty when unavailable. A
+        memory read failure must not fail the whole turn, so this degrades to
+        empty strings and logs at debug level.
+        """
+        try:
+            db = getattr(self.bot, "db", None)
+            if db:
+                return (
+                    await db.get_ai_memory(author.id) or "",
+                    await db.get_guild_memory(guild.id) or "",
+                )
+        except Exception:
+            logger.debug(
+                "Failed to load AI memory for user %d",
+                author.id,
+                exc_info=True,
+            )
+        return "", ""
+
+    @staticmethod
+    def _describe_source_channel(source_message: Optional[discord.Message]) -> str:
+        """Render "#name (ID n) | Topic: ..." for the originating channel."""
+        source_channel = getattr(source_message, "channel", None)
+        if source_channel is None:
+            return ""
+        channel_context = ""
+        channel_name = str(getattr(source_channel, "name", "") or "").strip()
+        channel_id = getattr(source_channel, "id", None)
+        topic = str(getattr(source_channel, "topic", "") or "").strip()
+        if channel_name:
+            channel_context = f"#{channel_name}"
+        if channel_id is not None:
+            channel_context += f" (ID {channel_id})"
+        if topic:
+            channel_context += f" | Topic: {topic[:500]}"
+        return channel_context
+
+    async def _prefetch_research_context(
+        self,
+        user_content: str,
+    ) -> Tuple[str, List[str]]:
+        """Fetch live research evidence and its real source URLs.
+
+        Always runs for research turns, including when OpenRouter is available.
+        Luna answers well but frequently returns no citation annotations, and the
+        research system prompt forbids URLs in the body, so relying on Luna alone
+        made the verifiable-source gate discard good answers and report "live
+        search is unavailable". This pre-fetch supplies both the evidence and the
+        real source URLs; Luna's own search remains the fallback when it returns
+        nothing.
+
+        Returns ("", []) on failure so the caller falls through to native search
+        rather than failing the turn.
+        """
+        try:
+            research_content, sonar_urls = await self._call_research_prefetch(
+                user_content,
+            )
+        except Exception:
+            logger.warning("Live research pre-fetch failed", exc_info=True)
+            return "", []
+
+        if not (research_content and sonar_urls):
+            return "", []
+
+        web_context = (
+            f"--- LIVE RESEARCH DATA ---\n{research_content}\n--- END RESEARCH ---\n"
+            "Format the final response with the clean, topic-appropriate Discord "
+            "structure required by the research system prompt. Keep citations and raw "
+            "source URLs out of the response body."
+        )
+        # Only real cited URLs count as sources. Never synthesize a placeholder
+        # like "https://perplexity.ai/" to satisfy the verifiable-source gate,
+        # or the bot would claim sourcing it does not have.
+        return web_context, sonar_urls
+
     async def converse(
         self,
         *,
@@ -1285,17 +1368,14 @@ class AIClient(
 
         # Research is intentionally isolated from prior conversations. Only
         # the current request and explicitly attached/replied media are sent.
-        stored_memory = ""
-        stored_guild_memory = ""
         is_continuation = False
         thread_context = "No recent messages"
-        try:
-            db = getattr(self.bot, "db", None)
-            if db:
-                stored_memory = await db.get_ai_memory(author.id) or ""
-                stored_guild_memory = await db.get_guild_memory(guild.id) or ""
-        except Exception:
-            logger.debug("Failed to load AI memory for user %d", author.id, exc_info=True)
+        stored_memory, stored_guild_memory = await self._load_conversation_memory(
+            author,
+            guild,
+        )
+        # Isolation is INPUT-only: research must not read the saved profile into
+        # the prompt, but the turn IS still written back to memory afterwards.
         past_memory = stored_memory if signals.mode != ConversationMode.RESEARCH else ""
         guild_memory = stored_guild_memory if signals.mode != ConversationMode.RESEARCH else ""
         if signals.mode != ConversationMode.RESEARCH:
@@ -1305,18 +1385,7 @@ class AIClient(
             )
             thread_context = self._format_conversation_history(recent_messages)
 
-        channel_context = ""
-        source_channel = getattr(source_message, "channel", None)
-        if source_channel is not None:
-            channel_name = str(getattr(source_channel, "name", "") or "").strip()
-            channel_id = getattr(source_channel, "id", None)
-            topic = str(getattr(source_channel, "topic", "") or "").strip()
-            if channel_name:
-                channel_context = f"#{channel_name}"
-            if channel_id is not None:
-                channel_context += f" (ID {channel_id})"
-            if topic:
-                channel_context += f" | Topic: {topic[:500]}"
+        channel_context = self._describe_source_channel(source_message)
 
         web_context = ""
         research_source_urls: List[str] = []
@@ -1324,32 +1393,10 @@ class AIClient(
             signals.mode == ConversationMode.RESEARCH
             and _openrouter_conversation_enabled()
         )
-        # Always pre-fetch live research material, including when OpenRouter is
-        # available. Luna answers well but frequently returns no citation
-        # annotations, and the research system prompt forbids URLs in the body,
-        # so relying on Luna alone made the verifiable-source gate discard good
-        # answers and report "live search is unavailable". The Sonar pre-fetch
-        # supplies both the evidence and the real source URLs; Luna's own search
-        # remains the fallback when this pre-fetch returns nothing.
         if signals.mode == ConversationMode.RESEARCH:
-            try:
-                research_content, sonar_urls = await self._call_research_prefetch(
-                    user_content,
-                )
-                if research_content and sonar_urls:
-                    web_context = (
-                        f"--- LIVE RESEARCH DATA ---\n{research_content}\n--- END RESEARCH ---\n"
-                        "Format the final response with the clean, topic-appropriate Discord "
-                        "structure required by the research system prompt. Keep citations and raw "
-                        "source URLs out of the response body."
-                    )
-                    # Only real cited URLs count as sources. Never synthesize a
-                    # placeholder like "https://perplexity.ai/" to satisfy the
-                    # verifiable-source gate, or the bot would claim sourcing it
-                    # does not have.
-                    research_source_urls = sonar_urls
-            except Exception:
-                logger.warning("Live research pre-fetch failed", exc_info=True)
+            web_context, research_source_urls = await self._prefetch_research_context(
+                user_content,
+            )
 
         # Galaxy exposes plain chat-completions, not a documented search flag.
         # Use authenticated browser search when no provider results exist.
