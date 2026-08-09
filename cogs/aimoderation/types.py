@@ -255,6 +255,18 @@ class GuildSettings:
         return value
 
     @classmethod
+    def _coerce_image_scan_action(cls, raw: Any) -> str:
+        """Normalize the flagged-image action, rejecting unknown values.
+
+        An unrecognized action must never escalate: fall back to "log" so a bad
+        or stale setting cannot start deleting messages or punishing members.
+        """
+        value = str(raw or "").strip().lower()
+        if value in cls.IMAGE_SCAN_ACTIONS:
+            return value
+        return "log"
+
+    @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "GuildSettings":
         return cls(
             enabled=cls._coerce_bool(data.get("aimod_enabled", False), False),
@@ -269,6 +281,13 @@ class GuildSettings:
             confirm_timeout_seconds=cls._coerce_int(data.get("aimod_confirm_timeout_seconds", 25), 25, minimum=1, maximum=300),
             proactive_chance=cls._coerce_float(data.get("aimod_proactive_chance", 0.02), 0.02, minimum=0.0, maximum=1.0),
             location_context=str(data.get("aimod_location_context") or data.get("server_location") or "").strip(),
+            image_scan_enabled=cls._coerce_bool(
+                data.get("aimod_image_scan_enabled", False),
+                False,
+            ),
+            image_scan_action=cls._coerce_image_scan_action(
+                data.get("aimod_image_scan_action", "log"),
+            ),
             mod_roles=moderation_id_set(data, "mod_roles"),
         )
 
@@ -281,6 +300,8 @@ class GuildSettings:
             "aimod_confirm_timeout_seconds": self.confirm_timeout_seconds,
             "aimod_proactive_chance": self.proactive_chance,
             "aimod_location_context": self.location_context,
+            "aimod_image_scan_enabled": self.image_scan_enabled,
+            "aimod_image_scan_action": self.image_scan_action,
             "mod_roles": sorted(self.mod_roles),
         }
 
