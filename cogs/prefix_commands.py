@@ -405,7 +405,32 @@ class PrefixCommands(commands.Cog):
     @has_permissions_or_owner(administrator=True)
     async def clearwarns_cmd(self, ctx, member: discord.Member):
         """Clear all warnings for a user"""
-        await ctx.send(embed=ModEmbed.success("🧹 Cleared", f"Warnings cleared for {member.mention}."))
+        # This command used to consist of nothing but the success embed: it
+        # reported "Warnings cleared" without touching the database, so every
+        # warning survived and escalation thresholds kept firing. Use the same
+        # DB call the slash command does (see moderation/extensions/warnings.py
+        # _clearwarnings_logic) and report the real count.
+        try:
+            count = await self.bot.db.clear_warnings(ctx.guild.id, member.id)
+        except Exception as exc:
+            logger.error(
+                "Failed to clear warnings for %s in guild %s: %s",
+                member.id, ctx.guild.id, exc,
+            )
+            return await ctx.send(embed=ModEmbed.error(
+                "Failed",
+                f"Could not clear warnings for {member.mention}: {exc}",
+            ))
+
+        if not count:
+            return await ctx.send(embed=ModEmbed.info(
+                "🧹 Nothing to Clear",
+                f"{member.mention} has no warnings.",
+            ))
+        return await ctx.send(embed=ModEmbed.success(
+            "🧹 Cleared",
+            f"Cleared **{count}** warning(s) for {member.mention}.",
+        ))
 
     @commands.group(name="role", aliases=["giverole", "addrole"], invoke_without_command=True)
     @has_permissions_or_owner(manage_roles=True)
