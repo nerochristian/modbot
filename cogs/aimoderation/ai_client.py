@@ -86,11 +86,12 @@ _RELAYROUTER_VISION_MODEL: Final[str] = os.getenv(
 
 # OpenRouter models, one per lane. GLM handles ordinary text conversation and
 # never receives the web-search tool, images, or research prompts. Luna handles
-# conversation turns that need search, sourced research, and conversational
-# vision. Sonar is the live-research pre-fetch/fallback. Ling performs the
-# low-cost conversation route classification. Nemotron handles protected
-# moderation and memory work when the legacy RelayRouter-named gateway points
-# at OpenRouter. No other OpenRouter model is permitted.
+# conversation turns that need live search. Gemini handles image understanding.
+# Sonar is the live-research source gatherer, and GLM writes the report from what
+# Sonar returns. Ling performs the low-cost conversation route classification.
+# Nemotron handles protected moderation, image age screening, and memory work
+# when the legacy RelayRouter-named gateway points at OpenRouter. No other
+# OpenRouter model is permitted.
 #
 # The talking model is deliberately scoped to "talking only":
 # _call_openrouter_chat sends no tools and refuses multimodal input, so
@@ -125,6 +126,24 @@ _OPENROUTER_RESEARCH_MODEL: Final[str] = os.getenv(
     "perplexity/sonar",
 ).strip()
 _OPENROUTER_LING_ROUTER_MODEL: Final[str] = "inclusionai/ling-2.6-flash"
+# Conversational vision lane. Luna technically accepts images, but it is a
+# search model: it is weak at reading a photo's actual visible subject, which is
+# why the visual-candidate + web-verification two-pass exists further down.
+# Gemini is natively multimodal (text/image/video/audio, 1M context), so image
+# turns route here instead.
+_OPENROUTER_VISION_MODEL: Final[str] = os.getenv(
+    "OPENROUTER_VISION_MODEL",
+    "google/gemini-3.6-flash",
+).strip()
+# Research is a two-model pipeline: Sonar gathers live sources (it is a search
+# product, not a writer), then this model synthesizes the report from them.
+# GLM is the same family as the talking lane, so long-form research reads in the
+# bot's normal voice. It is text-only, which is fine: it only ever sees Sonar's
+# gathered text, never images.
+_OPENROUTER_RESEARCH_WRITER_MODEL: Final[str] = (
+    os.getenv("OPENROUTER_RESEARCH_WRITER_MODEL", "").strip()
+    or _OPENROUTER_CHAT_MODEL_DEFAULT
+)
 _OPENROUTER_NEMOTRON_MODEL: Final[str] = (
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
 )
