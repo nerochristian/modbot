@@ -2903,7 +2903,6 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
         guild_id = interaction.guild.id
         await self.update_guild_setting(guild_id, "aimod_enabled", enabled)
         await self.update_guild_setting(guild_id, "aimod_chat_enabled", talking)
-        await self.update_guild_setting(guild_id, "aimod_confirm_enabled", True)
         await self.update_guild_setting(guild_id, "aimod_context_messages", int(context_messages))
         await self.update_guild_setting(guild_id, "aimod_proactive_chance", float(proactive_percent) / 100)
 
