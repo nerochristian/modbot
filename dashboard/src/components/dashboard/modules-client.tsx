@@ -1408,8 +1408,8 @@ const OPERATIONAL_SECTIONS: Record<OperationalSpecial, OperationalSectionDefinit
     {
       register: 'SAFETY / 01',
       title: 'Decision guard',
-      description: 'Control which high-impact requests pause for approval and how long that approval remains valid.',
-      keys: ['aimod_confirm_enabled', 'aimod_confirm_timeout_seconds', 'aimod_confirm_actions'],
+      description: 'Every request that changes the server pauses for approval. Set how long that approval stays valid.',
+      keys: ['aimod_confirm_timeout_seconds'],
     },
     {
       register: 'CONTEXT / 02',
