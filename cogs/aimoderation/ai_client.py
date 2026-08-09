@@ -2477,15 +2477,19 @@ class AIClient:
             signals.mode == ConversationMode.RESEARCH
             and _openrouter_conversation_enabled()
         )
-        if (
-            signals.mode == ConversationMode.RESEARCH
-            and not openrouter_research
-        ):
+        # Always pre-fetch live research material, including when OpenRouter is
+        # available. Luna answers well but frequently returns no citation
+        # annotations, and the research system prompt forbids URLs in the body,
+        # so relying on Luna alone made the verifiable-source gate discard good
+        # answers and report "live search is unavailable". The Sonar pre-fetch
+        # supplies both the evidence and the real source URLs; Luna's own search
+        # remains the fallback when this pre-fetch returns nothing.
+        if signals.mode == ConversationMode.RESEARCH:
             try:
                 research_content, sonar_urls = await self._call_research_prefetch(
                     user_content,
                 )
-                if research_content:
+                if research_content and sonar_urls:
                     web_context = (
                         f"--- LIVE RESEARCH DATA ---\n{research_content}\n--- END RESEARCH ---\n"
                         "Format the final response with the clean, topic-appropriate Discord "
@@ -2643,7 +2647,14 @@ class AIClient:
                                 "against a reliable source, so I won't make another confident guess."
                             )
                         if signals.mode == ConversationMode.RESEARCH:
-                            content = self._finalize_research_response(content)
+                            # Pass the pre-fetched URLs through: Luna often omits
+                            # citation annotations, and the research prompt bans
+                            # URLs in the body, so without these a good answer
+                            # would fail the verifiable-source gate.
+                            content = self._finalize_research_response(
+                                content,
+                                research_source_urls,
+                            )
                             if not content:
                                 return _RESEARCH_UNAVAILABLE
                         memory_content = content.split(
