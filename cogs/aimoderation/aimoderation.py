@@ -2330,43 +2330,53 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
         extra: Optional[Dict[str, str]] = None,
         view: Optional[discord.ui.View] = None,
     ) -> None:
-        guild = message.guild
-        if not guild:
-            return
-        logging_cog = self.bot.get_cog("Logging")
-        if not logging_cog:
-            return
+        """Best-effort audit log. Never raises.
+
+        Every caller awaits this *after* the real Discord action has already
+        succeeded, and no caller uses the return value. If anything in here
+        raised, it would escape the handler, get caught by ToolRegistry.execute,
+        and be reported to the moderator as a failed action -- for a ban or
+        timeout that actually went through. A logging problem must never
+        rewrite the outcome of a completed action.
+        """
         try:
+            guild = message.guild
+            if not guild:
+                return
+            logging_cog = self.bot.get_cog("Logging")
+            if not logging_cog:
+                return
             channel = await logging_cog.get_log_channel(guild, "automod")
-        except Exception:
-            return
-        if not channel:
-            return
+            if not channel:
+                return
 
-        embed = discord.Embed(
-            title=f"Bot AI Moderation: {action}",
-            color=discord.Color.blurple(),
-            timestamp=_now(),
-        )
-        rows: list[tuple[str, object]] = [("Actor", f"{actor.mention} (`{actor.id}`)")]
-        if target:
-            rows.append(("Target", f"{target.mention} (`{target.id}`)"))
-        rows.extend([("Channel", message.channel.mention), ("Reason", reason)])
-        if extra:
-            for k, v in extra.items():
-                rows.append((k, v))
-        embed.description = compact_kv_lines(rows)
-        if message.content:
-            preview = message.content[:400]
-            if len(message.content) > 400:
-                preview += "\n*...truncated*"
-            embed.add_field(name="Original Message", value=preview, inline=False)
-        embed.set_footer(text="AI Moderation")
+            embed = discord.Embed(
+                title=f"Bot AI Moderation: {action}",
+                color=discord.Color.blurple(),
+                timestamp=_now(),
+            )
+            rows: list[tuple[str, object]] = [("Actor", f"{actor.mention} (`{actor.id}`)")]
+            if target:
+                rows.append(("Target", f"{target.mention} (`{target.id}`)"))
+            rows.extend([("Channel", message.channel.mention), ("Reason", reason)])
+            if extra:
+                for k, v in extra.items():
+                    rows.append((k, v))
+            embed.description = compact_kv_lines(rows)
+            if message.content:
+                preview = message.content[:400]
+                if len(message.content) > 400:
+                    preview += "\n*...truncated*"
+                embed.add_field(name="Original Message", value=preview, inline=False)
+            embed.set_footer(text="AI Moderation")
 
-        try:
             await logging_cog.safe_send_log(channel, embed, view=view)
         except Exception:
-            logger.debug("Failed to send AI mod log", exc_info=True)
+            logger.warning(
+                "Failed to write AI mod log for %s; the action itself still stands.",
+                action,
+                exc_info=True,
+            )
 
     # ------------------------------------------------------------------
     # Core event listener
