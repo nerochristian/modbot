@@ -276,9 +276,12 @@ test('every configurable module declares a purpose-built operational contract', 
   }
 
   const aimod = moduleDefinition('aimod')!
-  const confirmActions = aimod.fields.find((field) => field.key === 'aimod_confirm_actions')
-  assert.equal(confirmActions?.type, 'multiSelect')
-  assert.ok(confirmActions?.options?.some((option) => option.value === 'ban_member'))
+  // Confirmation is not configurable: the bot confirms every mutating tool
+  // (AIModeration._requires_confirmation), so exposing these keys would be a
+  // control that silently does nothing. Only the approval window is tunable.
+  assert.equal(aimod.fields.find((field) => field.key === 'aimod_confirm_enabled'), undefined)
+  assert.equal(aimod.fields.find((field) => field.key === 'aimod_confirm_actions'), undefined)
+  assert.equal(aimod.fields.find((field) => field.key === 'aimod_confirm_timeout_seconds')?.type, 'number')
 
   const antiraid = moduleDefinition('antiraid')!
   assert.equal(antiraid.fields.find((field) => field.key === 'antiraid_join_threshold')?.min, 3)
