@@ -8,6 +8,7 @@ from discord.ext import commands
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Union
 import asyncio
+import logging
 import random
 import re
 import unicodedata
@@ -17,6 +18,8 @@ from utils.checks import is_bot_owner_id, has_permissions_or_owner
 from utils.moderation_settings import moderation_bool
 from utils.status_emojis import apply_status_emoji_overrides
 from cogs.utility import apply_afk_nick
+
+logger = logging.getLogger("ModBot.PrefixCommands")
 
 
 class PrefixCommands(commands.Cog):
