@@ -144,7 +144,7 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
         return ToolResult.fail(f"You need Manage Messages and Read Message History in {channel.mention}.")
 
     if ctx.arg("needs_channel_scope"):
-        return ToolResult.ok(
+        return ToolResult.clarify(
             f"Did you mean in {ctx.message.channel.mention}, or in all channels? "
             "Mention the channel to use, or say `in this channel`."
         )

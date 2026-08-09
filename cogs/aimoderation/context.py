@@ -48,6 +48,18 @@ class ToolResult:
         return cls(success=True, message=message, embed=embed, use_v2=use_v2)
 
     @classmethod
+    def clarify(cls, message: str) -> "ToolResult":
+        """A question back to the user: nothing executed, nothing failed.
+
+        ``ok()`` would be a lie (no Discord call was made, and the caller would
+        record the target as acted-on). ``fail()`` would be a different lie: it
+        renders a red "Action Failed" panel for what is really just a request
+        for more detail. So this carries ``success=False`` to keep the caller
+        honest, but no embed, so the reply is sent as plain conversational text.
+        """
+        return cls(success=False, message=message, embed=None)
+
+    @classmethod
     def fail(cls, message: str, delete_after: float = 15.0) -> "ToolResult":
         description = cls._with_followup(message)
         embed = discord.Embed(
