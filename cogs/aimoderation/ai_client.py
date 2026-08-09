@@ -69,10 +69,6 @@ _RELAYROUTER_VISION_MODEL: Final[str] = os.getenv(
     "RELAYROUTER_VISION_MODEL",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
-_RELAYROUTER_ROUTER_MODEL: Final[str] = os.getenv(
-    "RELAYROUTER_ROUTER_MODEL",
-    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-).strip()
 
 # OpenRouter models, one per lane. GLM handles ordinary text conversation and
 # never receives the web-search tool, images, or research prompts. Luna handles
@@ -156,10 +152,6 @@ _AIMODEL_MODERATION_MODEL: Final[str] = os.getenv(
 ).strip()
 _AIMODEL_VISION_MODEL: Final[str] = os.getenv(
     "AIMODEL_VISION_MODEL",
-    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-).strip()
-_AIMODEL_ROUTER_MODEL: Final[str] = os.getenv(
-    "AIMODEL_ROUTER_MODEL",
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
 ).strip()
 
@@ -358,19 +350,6 @@ def _sanitize_untrusted_text(text: str, *, limit: int = 2000) -> str:
 
 
 
-def _looks_like_image_question_text(content: str) -> bool:
-    low = re.sub(r"\s+", " ", (content or "").strip().lower())
-    
-    # Do not treat hypothetical/conditional questions as image lookups
-    if re.search(r"\b(if|when|imagine|suppose|say)\b", low):
-        return False
-        
-    return bool(
-        re.search(r"\b(?:who|what)\s+(?:is|are)\s+(?:this|that|it|these|those)\b", low)
-        or re.search(r"\b(?:who|what)'s\s+(?:this|that|it)\b", low)
-        or re.search(r"\b(?:what|which)\s+(?:game|pokemon|character|anime|show|movie|app|site|website)\s+(?:is|are)\s+(?:this|that|it|these|those)\b", low)
-        or re.search(r"\b(?:who|what)\s+(?:is|are)\s+(?:this|that|it|these|those)\s+(?:pokemon|character|person|game)\b", low)
-    )
 
 
 def _vision_response_missed_image(content: str) -> bool:
