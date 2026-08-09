@@ -482,8 +482,8 @@ class AIClient:
     ) -> bool:
         """Return whether this turn needs Luna's searched/visual lane.
 
-        Grok is the ordinary-conversation model. Anything that needs live search,
-        sourced research, or image understanding stays on Luna.
+        The talking model is the ordinary-conversation model. Anything that needs
+        live search, sourced research, or image understanding stays on Luna.
         """
         return bool(
             has_images
@@ -2690,7 +2690,7 @@ class AIClient:
                             ),
                         )
                         if needs_luna
-                        # Ordinary talking: Grok, text-only, no search tool.
+                        # Ordinary talking: text-only, no search tool.
                         else await self._call_openrouter_chat(
                             api_messages,
                             temperature=plan.temperature,
@@ -2838,8 +2838,8 @@ class AIClient:
                     ):
                         try:
                             # This branch is STANDARD, text-only conversation, so
-                            # it belongs on the Grok talking lane rather than
-                            # Luna's searched lane.
+                            # it belongs on the talking lane rather than Luna's
+                            # searched lane.
                             content = await self._call_openrouter_chat(
                                 api_messages,
                                 temperature=plan.temperature,
