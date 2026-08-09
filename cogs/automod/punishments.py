@@ -65,8 +65,20 @@ class PunishmentManager:
                 case_number = await self._create_case(guild.id, member.id, "Warn", reason_text)
                 notification_sent = await self._notify_appeal(guild, member, "Warn", reason_text, case_number, settings)
                 warning_id, total = await self._add_warning(guild.id, member.id, reason_text)
-                threshold_result = await self._apply_warning_thresholds(guild, member, total, settings)
-                return PunishmentResult(threshold_result or action, case_number=case_number or warning_id, notification_sent=notification_sent)
+                threshold_result, escalation_case = await self._apply_warning_thresholds(
+                    guild, member, total, settings
+                )
+                # When the warn escalates, report the ESCALATION's case number.
+                # This used to return the Warn's case_number alongside the
+                # escalated action, so the AutoMod log embed said e.g. "Ban -
+                # Case #101" while #101 was the warning row.
+                if threshold_result is not None:
+                    return PunishmentResult(
+                        threshold_result,
+                        case_number=escalation_case or case_number or warning_id,
+                        notification_sent=notification_sent,
+                    )
+                return PunishmentResult(action, case_number=case_number or warning_id, notification_sent=notification_sent)
             if action is Action.TIMEOUT:
                 await member.timeout(timeout_delta(duration), reason=reason_text)
                 case_number = await self._create_case(guild.id, member.id, "Mute", reason_text, compact_duration(duration))
@@ -191,10 +203,18 @@ class PunishmentManager:
         member: discord.Member,
         total_warnings: int,
         settings: dict[str, Any],
-    ) -> Optional[Action]:
+    ) -> tuple[Optional[Action], Optional[int]]:
+        """Apply any crossed warning threshold.
+
+        Returns (escalated_action, escalation_case_number). Both are None when
+        no threshold was crossed.
+        """
+        escalation_case: Optional[int] = None
+
         async def create_escalation_case(action: str, reason: str, duration_seconds: Optional[int]) -> None:
+            nonlocal escalation_case
             duration = compact_duration(duration_seconds) if duration_seconds else None
-            await self._create_case(guild.id, member.id, action, reason, duration)
+            escalation_case = await self._create_case(guild.id, member.id, action, reason, duration)
 
         try:
             result = await apply_warning_escalation(
@@ -206,13 +226,20 @@ class PunishmentManager:
                 reason_prefix="AutoMod escalation",
                 ban_delete_days=max(0, min(7, int(settings.get("automod_ban_delete_days", 1)))),
                 create_case=create_escalation_case,
+                # The caller already DM'd the member about the warning itself
+                # (_notify_appeal, just above). Letting this send its own
+                # escalation DM meant one violation produced two DMs.
+                skip_dm=True,
             )
             if result is not None:
-                return {
-                    "timeout": Action.TIMEOUT,
-                    "kick": Action.KICK,
-                    "ban": Action.BAN,
-                }[result.rule.action]
+                return (
+                    {
+                        "timeout": Action.TIMEOUT,
+                        "kick": Action.KICK,
+                        "ban": Action.BAN,
+                    }[result.rule.action],
+                    escalation_case,
+                )
         except (discord.Forbidden, discord.HTTPException, TypeError, ValueError):
-            return None
-        return None
+            return None, None
+        return None, None
