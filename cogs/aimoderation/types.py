@@ -204,7 +204,16 @@ class GuildSettings:
     confirm_timeout_seconds: int = 25
     proactive_chance: float = 0.02
     location_context: str = ""
+    # Screen uploaded images for age-inappropriate content (NSFW / gore).
+    # Off by default: it costs one model call per image posted.
+    image_scan_enabled: bool = False
+    # What to do when an image is flagged: "log" (report only), "delete"
+    # (remove the message and log), or "punish" (delete and run the configured
+    # automod escalation). Defaults to the least destructive option.
+    image_scan_action: str = "log"
     mod_roles: Set[int] = field(default_factory=set)
+
+    IMAGE_SCAN_ACTIONS: ClassVar[Tuple[str, ...]] = ("log", "delete", "punish")
 
     @staticmethod
     def _coerce_bool(raw: Any, default: bool) -> bool:
