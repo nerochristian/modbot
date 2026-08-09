@@ -850,15 +850,27 @@ class ManagementCommands:
             thumbnail_url=guild_icon_url,
         )
         
-        confirmation = ModEmbed.moderation_response(
-            "quarantine",
-            (
-                f"**Quarantine applied to {user.mention}**\n"
-                f"> **Case:** #{case_num}\n"
-                f"> **Duration:** {human_duration}\n"
-                f"> **Reason:** {reason}"
-            ),
-        )
+        # Report what actually happened. This used to render a copy-pasted
+        # quarantine confirmation referencing case_num/human_duration, which are
+        # never bound in this function -- so every massban raised NameError
+        # *after* the bans had already gone through: users banned, moderator
+        # told "application did not respond", no confirmation and no mod-log.
+        summary_lines = [f"**Mass ban complete** ({len(banned)} banned, {len(failed)} failed)"]
+        if banned:
+            summary_lines.append(
+                "> **Banned:** "
+                + ", ".join(banned[:10])
+                + (f"; and {len(banned) - 10} more" if len(banned) > 10 else "")
+            )
+        if failed:
+            summary_lines.append(
+                "> **Failed:** "
+                + ", ".join(failed[:10])
+                + (f"; and {len(failed) - 10} more" if len(failed) > 10 else "")
+            )
+        summary_lines.append(f"> **Reason:** {reason}")
+
+        confirmation = ModEmbed.moderation_response("ban", "\n".join(summary_lines))
         await self._respond(
             source,
             embed=confirmation,
