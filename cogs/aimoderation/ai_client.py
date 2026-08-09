@@ -1833,14 +1833,57 @@ class AIClient(
                         image_context
                         and self._looks_like_image_identification_request(user_content)
                     )
+                    max_tokens = self._turn_max_tokens(plan, signals)
+                    google_evidence = GoogleImageEvidence()
+                    google_candidate: Optional[str] = None
                     # "Who/what is this?" must be verified against a source, and
                     # the answer path below refuses an unsourced identification.
-                    # The vision lane carries no search tool, so identification
-                    # stays on the searched lane: vision describes what it sees
-                    # first (below), then Luna verifies that description.
+                    # Use Google's actual product stack first: Cloud Vision for
+                    # reverse-image/OCR evidence, then Gemini with native Google
+                    # Search grounding. OpenRouter remains the resilient fallback.
                     if image_identification:
                         needs_luna = True
-                    if image_identification:
+                        try:
+                            google_evidence = await self._call_google_web_detection(
+                                image_context,
+                            )
+                        except Exception:
+                            logger.warning(
+                                "Google Cloud Vision evidence pass failed; "
+                                "continuing with grounded vision fallbacks.",
+                                exc_info=True,
+                            )
+
+                        try:
+                            google_candidate = await self._call_google_grounded_vision(
+                                image_context,
+                                user_content=user_content,
+                                evidence=google_evidence,
+                                max_tokens=max_tokens,
+                            )
+                        except Exception:
+                            logger.warning(
+                                "Google grounded image identification failed; "
+                                "continuing with OpenRouter verification.",
+                                exc_info=True,
+                            )
+
+                        if google_candidate and "__BOT_SOURCES__" in google_candidate:
+                            google_candidate = self._postprocess_chat_response(
+                                google_candidate
+                            )
+                            finished = self._finish_turn(
+                                google_candidate,
+                                signals=signals,
+                                author=author,
+                                user_content=user_content,
+                                stored_memory=stored_memory,
+                                research_source_urls=research_source_urls,
+                                strip_sources_from_memory=True,
+                            )
+                            if finished is not None:
+                                return finished
+
                         try:
                             visual_candidates = await self._call_openrouter_visual_candidates(
                                 multimodal_api_messages,
@@ -1851,24 +1894,48 @@ class AIClient(
                                 "OpenRouter visual candidate pass failed; continuing with searched verification.",
                                 exc_info=True,
                             )
+                        evidence_sections: List[str] = []
+                        if google_evidence.context:
+                            evidence_sections.append(
+                                "Official Google Cloud Vision reverse-image and OCR evidence:\n"
+                                + google_evidence.context
+                            )
+                        if google_candidate:
+                            candidate_body = google_candidate.split(
+                                "__BOT_SOURCES__", 1
+                            )[0].strip()
+                            if candidate_body:
+                                evidence_sections.append(
+                                    "Direct Gemini grounded-identification candidate:\n"
+                                    + candidate_body
+                                )
                         if visual_candidates:
+                            evidence_sections.append(
+                                "Independent OCR and visual candidate pass:\n"
+                                + visual_candidates.strip()
+                            )
+                        if evidence_sections:
                             multimodal_api_messages = [
                                 *multimodal_api_messages,
                                 {
                                     "role": "user",
                                     "content": (
-                                        "Independent visual candidate pass:\n"
-                                        f"{visual_candidates.strip()}\n\n"
-                                        "Now use web search to verify the plausible "
-                                        "candidates against reliable visual descriptions or official "
-                                        "reference material. Compare the visible features before naming "
-                                        "the subject. Reject candidates whose defining anatomy does not "
-                                        "match. If the evidence is ambiguous, say that clearly and give "
-                                        "the top candidates instead of making a confident guess."
+                                        "\n\n".join(evidence_sections)
+                                        + "\n\nNow use web search to verify the exact source. "
+                                        "Search any OCR text, watermark, artist signature, or "
+                                        "@username as an exact quoted string before searching "
+                                        "character guesses. Prefer pages containing the same "
+                                        "image over generic visual descriptions. Compare the "
+                                        "visible features before naming the subject and reject "
+                                        "candidates whose anatomy or clothing does not match. "
+                                        "A character wiki proves only what that character looks "
+                                        "like; it does not prove this image depicts them. Clearly "
+                                        "distinguish an original character from a franchise "
+                                        "character. If the evidence is ambiguous, say so instead "
+                                        "of making a confident guess."
                                     ),
                                 },
                             ]
-                    max_tokens = self._turn_max_tokens(plan, signals)
                     # Research with evidence already gathered: Sonar supplied the
                     # sources and they are in the prompt, so synthesis is pure
                     # writing. research_source_urls still flows to the citation
@@ -1939,6 +2006,11 @@ class AIClient(
                             )
                         )
                     if content:
+                        if image_identification and google_evidence.source_urls:
+                            content = self._merge_grounded_sources(
+                                content,
+                                google_evidence.source_urls,
+                            )
                         content = self._postprocess_chat_response(content)
                         if (
                             image_identification
