@@ -633,6 +633,12 @@ class AutoModWizardView:
     def _final_summary(self) -> str:
         s = self.session.state.settings
         modules = [name for name, key in MODULE_SETTING_KEYS.items() if s.get(key, False)]
+        # Computed first: reusing the outer f-string's quote character inside a
+        # nested f-string expression is a SyntaxError before Python 3.12, which
+        # made this module unimportable on 3.11 (Debian bookworm's system
+        # python) and took the whole automod package down with it.
+        log_channel_id = s.get("automod_log_channel")
+        log_channel_text = f"<#{log_channel_id}>" if log_channel_id else "**not set**"
         return (
             f"Profile: **{PROFILE_LABELS.get(self.session.state.profile, self.session.state.profile)}**\n"
             f"Enforcement: **{self.session.state.enforcement}**\n"
@@ -641,7 +647,7 @@ class AutoModWizardView:
             f"Normal action: **{s.get('automod_punishment', 'warn')}**\n"
             f"Security action: **{s.get('automod_security_punishment', 'timeout')}**\n"
             f"Rule policies: **{len(s.get('automod_rule_actions', {}) or {})}**\n"
-            f"Log channel: {f'<#{s.get('automod_log_channel')}>' if s.get('automod_log_channel') else '**not set**'}"
+            f"Log channel: {log_channel_text}"
         )
 
     def _doctor_short(self, report: Any) -> str:
