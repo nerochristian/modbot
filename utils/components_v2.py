@@ -219,11 +219,8 @@ def ensure_layout_view_action_rows(view: discord.ui.LayoutView) -> discord.ui.La
         view.clear_items()
         for item in layout_items:
             view.add_item(item)
-        for row_index in sorted(action_rows.keys()):
-            for start in range(0, len(action_rows[row_index]), 5):
-                view.add_item(
-                    discord.ui.ActionRow(*action_rows[row_index][start : start + 5])
-                )
+        for row in _pack_action_rows(action_rows):
+            view.add_item(row)
 
     # Move ActionRows inside the last container for better appearance
     try:
