@@ -3898,6 +3898,12 @@ class AIClient:
     def _strip_citation_tokens(text: str) -> str:
         text = re.sub(r"\s*\[citation:\d+\]", "", text, flags=re.IGNORECASE)
         text = re.sub(r"\s*\[source:\d+\]", "", text, flags=re.IGNORECASE)
+        # Bare numeric citation markers such as "[1]" or "[2][7][10]". Research
+        # providers emit these even when told not to, and the bot shows verified
+        # links separately, so they are noise in a Discord reply. The negative
+        # lookahead for "(" keeps real markdown links like "[1](https://x)"
+        # intact, and requiring digits-only avoids touching "[WARN]" style text.
+        text = re.sub(r"\s*(?:\[\d{1,3}\])+(?!\()", "", text)
         text = re.sub(r"\s+([,.;:])", r"\1", text)
         return text
 
