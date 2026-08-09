@@ -1710,22 +1710,16 @@ class AIClient(
                             "The HTTP vision route returned a response without receiving the image."
                         )
                     if content:
-                        content = self._postprocess_chat_response(content)
-                        if signals.mode == ConversationMode.RESEARCH:
-                            content = self._finalize_research_response(
-                                content,
-                                research_source_urls,
-                            )
-                            if not content:
-                                return _RESEARCH_UNAVAILABLE
-                        self._schedule_memory_update(
-                            signals,
-                            author,
-                            user_content,
+                        finished = self._finish_turn(
                             content,
-                            stored_memory,
+                            signals=signals,
+                            author=author,
+                            user_content=user_content,
+                            stored_memory=stored_memory,
+                            research_source_urls=research_source_urls,
                         )
-                        return content
+                        if finished is not None:
+                            return finished
                 except Exception:
                     logger.warning(
                         "Primary HTTP conversation failed; trying an eligible fallback.",
@@ -1748,15 +1742,17 @@ class AIClient(
                                 max_tokens=max_tokens,
                             )
                             if content:
-                                content = self._postprocess_chat_response(content)
-                                self._schedule_memory_update(
-                                    signals,
-                                    author,
-                                    user_content,
+                                # Guarded to STANDARD above, so the research gate
+                                # inside _finish_turn is a no-op here.
+                                finished = self._finish_turn(
                                     content,
-                                    stored_memory,
+                                    signals=signals,
+                                    author=author,
+                                    user_content=user_content,
+                                    stored_memory=stored_memory,
                                 )
-                                return content
+                                if finished is not None:
+                                    return finished
                         except Exception:
                             logger.warning(
                                 "OpenRouter chat fallback after AiModel failure also failed.",
