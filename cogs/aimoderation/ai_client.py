@@ -2235,7 +2235,10 @@ class AIClient(
                     self._deepseek_web.vision(
                         prompt,
                         uploads,
-                        search=signals.mode == ConversationMode.RESEARCH,
+                        search=(
+                            signals.mode == ConversationMode.RESEARCH
+                            or image_identification
+                        ),
                         session_key=session_key,
                         session_name=session_name,
                     ),
@@ -2258,7 +2261,17 @@ class AIClient(
                 )
             if not content:
                 return None
+            if image_identification and google_evidence.source_urls:
+                content = self._merge_grounded_sources(
+                    content,
+                    google_evidence.source_urls,
+                )
             content = self._postprocess_chat_response(content)
+            if image_identification and "__BOT_SOURCES__" not in content:
+                return (
+                    "I can inspect the image, but I couldn't verify the identity "
+                    "against a reliable source, so I won't make another confident guess."
+                )
             if signals.mode == ConversationMode.RESEARCH:
                 content = self._finalize_research_response(
                     content,
@@ -2291,6 +2304,11 @@ class AIClient(
             logger.warning("DeepSeek browser session needs renewal: %s", exc)
             if signals.mode == ConversationMode.RESEARCH:
                 return _RESEARCH_UNAVAILABLE
+            if image_identification:
+                return (
+                    "I can inspect the image, but I couldn't verify the identity "
+                    "against a reliable source, so I won't make another confident guess."
+                )
             try:
                 content = await self._conversation_via_http(
                     prompt,
@@ -2310,6 +2328,11 @@ class AIClient(
             logger.warning("DeepSeek browser request failed: %s", exc)
             if signals.mode == ConversationMode.RESEARCH:
                 return _RESEARCH_UNAVAILABLE
+            if image_identification:
+                return (
+                    "I can inspect the image, but I couldn't verify the identity "
+                    "against a reliable source, so I won't make another confident guess."
+                )
             try:
                 content = await self._conversation_via_http(
                     prompt,
