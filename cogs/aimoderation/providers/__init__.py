@@ -13,6 +13,12 @@ test suite's patches -- see ``settings`` for the full explanation, and
 """
 from __future__ import annotations
 
+from .aimodel import AiModelLaneMixin
+from .gateways import GatewayLaneMixin
 from .openrouter import OpenRouterLaneMixin
 
-__all__ = ["OpenRouterLaneMixin"]
+__all__ = [
+    "AiModelLaneMixin",
+    "GatewayLaneMixin",
+    "OpenRouterLaneMixin",
+]

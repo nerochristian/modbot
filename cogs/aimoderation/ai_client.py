@@ -34,7 +34,7 @@ from .prompts import (
     DEEP_RESEARCH_SYSTEM_PROMPT, MOD_GUIDANCE_SYSTEM_PROMPT,
 )
 from .transport import TransportMixin, _exception_summary
-from .providers import OpenRouterLaneMixin
+from .providers import AiModelLaneMixin, GatewayLaneMixin, OpenRouterLaneMixin
 
 logger = logging.getLogger("ModBot.AIModeration.Client")
 
@@ -397,7 +397,12 @@ def _vision_response_missed_image(content: str) -> bool:
     )
 
 
-class AIClient(OpenRouterLaneMixin, TransportMixin):
+class AIClient(
+    OpenRouterLaneMixin,
+    AiModelLaneMixin,
+    GatewayLaneMixin,
+    TransportMixin,
+):
     """Async wrapper around the configured AI provider with rate limiting and memory.
 
     The OpenAI-compatible HTTP wire layer lives in ``TransportMixin``
