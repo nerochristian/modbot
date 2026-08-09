@@ -684,6 +684,47 @@ def _fit_component_budget(
     return containers
 
 
+async def _safe_layout_view_from_embeds(
+    *,
+    content: Any = None,
+    embed: Any = None,
+    embeds: Any = None,
+    existing_view: Optional[discord.ui.BaseView] = None,
+) -> Optional[discord.ui.LayoutView]:
+    """Convert to a LayoutView, or return None if conversion is impossible.
+
+    Returning None lets callers fall back to the original embed + view payload.
+    Without this, a conversion error propagates out of the patched send and the
+    user receives no message at all -- strictly worse than a plain embed.
+    """
+    try:
+        layout = await layout_view_from_embeds(
+            content=content,
+            embed=embed,
+            embeds=embeds,
+            existing_view=existing_view,
+        )
+        return _safe_ensure_action_rows(layout)
+    except Exception:
+        logger.warning(
+            "Components V2 conversion failed; falling back to a classic embed",
+            exc_info=True,
+        )
+        return None
+
+
+def _safe_ensure_action_rows(view: Any) -> Any:
+    """Normalize a LayoutView's rows, returning it unchanged on failure."""
+    try:
+        return ensure_layout_view_action_rows(view)
+    except Exception:
+        logger.warning(
+            "Components V2 row normalization failed; sending the view as-is",
+            exc_info=True,
+        )
+        return view
+
+
 async def layout_view_from_embeds(
     *,
     content: Any = None,
