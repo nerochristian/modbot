@@ -462,21 +462,6 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
                 out.append(attachment)
         return out
 
-    def _image_scan_bypassed(self, message: discord.Message) -> bool:
-        """Reuse AutoMod's bypass rules so staff and ignored channels are skipped."""
-        automod = self.bot.get_cog("AutoMod")
-        engine = getattr(automod, "engine", None)
-        if engine is None or not hasattr(engine, "bypass_reason"):
-            return False
-        try:
-            raw_settings = getattr(automod, "_settings", None)
-            if raw_settings is None:
-                return False
-            return bool(engine.bypass_reason(message, self._automod_settings_cache))
-        except Exception:
-            logger.debug("Image scan bypass check failed", exc_info=True)
-            return False
-
     async def _screen_message_images(
         self,
         message: discord.Message,
