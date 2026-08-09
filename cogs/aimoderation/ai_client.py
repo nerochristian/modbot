@@ -1651,6 +1651,13 @@ class AIClient(
                         image_context
                         and self._looks_like_image_identification_request(user_content)
                     )
+                    # "Who/what is this?" must be verified against a source, and
+                    # the answer path below refuses an unsourced identification.
+                    # The vision lane carries no search tool, so identification
+                    # stays on the searched lane: vision describes what it sees
+                    # first (below), then Luna verifies that description.
+                    if image_identification:
+                        needs_luna = True
                     if image_identification:
                         try:
                             visual_candidates = await self._call_openrouter_visual_candidates(
