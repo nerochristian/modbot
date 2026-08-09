@@ -266,11 +266,15 @@ class OpenRouterLaneMixin:
                 "role": "user",
                 "content": (
                     "Perform an independent visual-identification pass on the attached image. "
-                    "Do not search and do not commit to one answer yet. List 2-4 plausible "
-                    "candidates in confidence order and cite the visible colors, silhouette, "
-                    "anatomy, markings, and distinctive parts that support or contradict each "
-                    "candidate. Nearby captions may describe a previous item, so treat them as "
-                    "context rather than proof. Keep this under 500 words."
+                    "Do not search and do not commit to one answer yet. First inspect every edge "
+                    "and corner and transcribe all visible watermark text, artist signatures, "
+                    "@usernames, logos, captions, and tiny lettering exactly, including uncertain "
+                    "characters. Then list 2-4 plausible candidates in confidence order and cite "
+                    "the visible colors, silhouette, anatomy, markings, clothing, and distinctive "
+                    "parts that support or contradict each candidate. Explicitly consider whether "
+                    "the subject is an original character rather than a franchise character. "
+                    "Nearby captions may describe a previous item, so treat them as context rather "
+                    "than proof. Keep this under 700 words."
                 ),
             },
         ]
@@ -283,7 +287,7 @@ class OpenRouterLaneMixin:
             api_key=settings.setting("_OPENROUTER_API_KEY"),
             model=vision_model,
             temperature=0.1,
-            max_tokens=900,
+            max_tokens=1_200,
             json_mode=False,
             allow_multimodal=True,
             provider_label=f"OpenRouter visual candidates ({vision_model})",

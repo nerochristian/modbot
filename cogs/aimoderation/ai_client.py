@@ -34,7 +34,13 @@ from .prompts import (
     DEEP_RESEARCH_SYSTEM_PROMPT, MOD_GUIDANCE_SYSTEM_PROMPT,
 )
 from .transport import TransportMixin, _exception_summary
-from .providers import AiModelLaneMixin, GatewayLaneMixin, OpenRouterLaneMixin
+from .providers import (
+    AiModelLaneMixin,
+    GatewayLaneMixin,
+    GoogleImageEvidence,
+    GoogleImageSearchLaneMixin,
+    OpenRouterLaneMixin,
+)
 from .research import RESEARCH_UNAVAILABLE, ResearchGatingMixin
 
 logger = logging.getLogger("ModBot.AIModeration.Client")
@@ -169,6 +175,27 @@ _OPENROUTER_BASE_URL: Final[str] = os.getenv(
 ).strip().rstrip("/")
 _OPENROUTER_CHAT_MODEL: Final[str] = _OPENROUTER_TALK_CHAT_MODEL
 
+# Google-native image identification. The consumer Gemini experience combines
+# multimodal understanding with Google Search; Cloud Vision Web Detection adds
+# full/partial reverse-image matches and OCR. Both are confined to explicit
+# image-identification turns.
+_GEMINI_API_KEY: Final[str] = os.getenv("GEMINI_API_KEY", "").strip()
+_GOOGLE_CLOUD_VISION_API_KEY: Final[str] = (
+    os.getenv("GOOGLE_CLOUD_VISION_API_KEY", "").strip() or _GEMINI_API_KEY
+)
+_GOOGLE_IMAGE_SEARCH_MODEL: Final[str] = os.getenv(
+    "GOOGLE_IMAGE_SEARCH_MODEL",
+    "gemini-3.6-flash",
+).strip()
+_GEMINI_GENERATE_CONTENT_BASE_URL: Final[str] = os.getenv(
+    "GEMINI_GENERATE_CONTENT_BASE_URL",
+    "https://generativelanguage.googleapis.com/v1beta",
+).strip().rstrip("/")
+_GOOGLE_CLOUD_VISION_URL: Final[str] = os.getenv(
+    "GOOGLE_CLOUD_VISION_URL",
+    "https://vision.googleapis.com/v1/images:annotate",
+).strip()
+
 _AIMODEL_API_KEY: Final[str] = os.getenv("AIMODEL_API_KEY", "").strip()
 _AIMODEL_CONVERSATION_API_KEY: Final[str] = os.getenv(
     "AIMODEL_CONVERSATION_API_KEY",
@@ -301,6 +328,14 @@ def _aimodel_conversation_enabled() -> bool:
     )
 
 
+def _google_image_search_timeout() -> int:
+    raw = os.getenv("GOOGLE_IMAGE_SEARCH_TIMEOUT", "90").strip()
+    try:
+        return max(20, min(180, int(raw)))
+    except ValueError:
+        return 90
+
+
 def _relayrouter_request_timeout(*, multimodal: bool) -> int:
     """Return a bounded per-model timeout so failover remains responsive."""
     name = "RELAYROUTER_VISION_TIMEOUT" if multimodal else "RELAYROUTER_TIMEOUT"
@@ -418,6 +453,7 @@ def _vision_response_missed_image(content: str) -> bool:
 
 class AIClient(
     ResearchGatingMixin,
+    GoogleImageSearchLaneMixin,
     OpenRouterLaneMixin,
     AiModelLaneMixin,
     GatewayLaneMixin,

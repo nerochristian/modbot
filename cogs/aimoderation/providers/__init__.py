@@ -15,10 +15,13 @@ from __future__ import annotations
 
 from .aimodel import AiModelLaneMixin
 from .gateways import GatewayLaneMixin
+from .google import GoogleImageEvidence, GoogleImageSearchLaneMixin
 from .openrouter import OpenRouterLaneMixin
 
 __all__ = [
     "AiModelLaneMixin",
     "GatewayLaneMixin",
+    "GoogleImageEvidence",
+    "GoogleImageSearchLaneMixin",
     "OpenRouterLaneMixin",
 ]
