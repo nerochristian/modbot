@@ -458,7 +458,18 @@ class MessageParsingMixin:
         )
         if total:
             return total
-        m = re.search(r"\bfor\s+(\d+)\b", text, re.IGNORECASE)
+        # A bare "for <n>" used to be read as <n> minutes. That silently turned
+        # "timeout @user for 3 offenses" into a real 3-minute timeout reported
+        # as success, and "for 5 strikes" into 5 minutes -- a confidently wrong
+        # punishment, which is worse than none. Only accept the bare form when
+        # the number is followed by a duration-ish word or ends the request, so
+        # the caller falls back to timeout_default_seconds instead of guessing.
+        m = re.search(
+            r"\bfor\s+(\d+)\s*(?:more\s+)?"
+            r"(?:mins?|minutes?|m)?\s*$",
+            text,
+            re.IGNORECASE,
+        )
         return int(m.group(1)) * 60 if m else None
 
     def _parse_lookback_seconds(self, text: str) -> Optional[int]:
