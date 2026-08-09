@@ -184,6 +184,39 @@ class OpenRouterLaneMixin:
             include_citations=True,
         )
 
+    async def _call_openrouter_vision(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        temperature: float,
+        max_tokens: int,
+    ) -> Optional[str]:
+        """Call the dedicated vision model for image understanding.
+
+        Luna accepts images but is a search model, and it reads a photo's actual
+        visible subject poorly. The vision lane is natively multimodal, so image
+        turns come here instead. No web-search tool is attached: describing what
+        is in a picture does not need one, and the caller adds a separate
+        searched verification pass when an identity claim has to be checked.
+        """
+        if not settings.call("_openrouter_conversation_enabled"):
+            raise RuntimeError("OpenRouter conversation is missing OPENROUTER_API_KEY.")
+
+        vision_model = settings.setting("_OPENROUTER_VISION_MODEL")
+        return await self._post_chat_completion(
+            messages,
+            base_url=settings.setting("_OPENROUTER_BASE_URL"),
+            api_key=settings.setting("_OPENROUTER_API_KEY"),
+            model=vision_model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            json_mode=False,
+            allow_multimodal=True,
+            provider_label=f"OpenRouter vision ({vision_model})",
+            max_retries=1,
+            request_timeout=settings.call("_openrouter_request_timeout"),
+        )
+
     async def _call_openrouter_visual_candidates(
         self,
         messages: List[Dict[str, Any]],
@@ -203,17 +236,19 @@ class OpenRouterLaneMixin:
                 ),
             },
         ]
-        luna_model = settings.setting("_OPENROUTER_LUNA_MODEL")
+        # This pass is pure looking-at-the-image, so it belongs on the vision
+        # model rather than the search model.
+        vision_model = settings.setting("_OPENROUTER_VISION_MODEL")
         return await self._post_chat_completion(
             candidate_messages,
             base_url=settings.setting("_OPENROUTER_BASE_URL"),
             api_key=settings.setting("_OPENROUTER_API_KEY"),
-            model=luna_model,
+            model=vision_model,
             temperature=0.1,
             max_tokens=900,
             json_mode=False,
             allow_multimodal=True,
-            provider_label=f"OpenRouter visual candidates ({luna_model})",
+            provider_label=f"OpenRouter visual candidates ({vision_model})",
             max_retries=1,
             request_timeout=settings.call("_openrouter_request_timeout"),
         )

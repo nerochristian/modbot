@@ -496,16 +496,31 @@ class AIClient(
         *,
         has_images: bool,
     ) -> bool:
-        """Return whether this turn needs Luna's searched/visual lane.
+        """Return whether this turn needs Luna's searched lane.
 
-        The talking model is the ordinary-conversation model. Anything that needs
-        live search, sourced research, or image understanding stays on Luna.
+        Images alone no longer qualify: image understanding has its own vision
+        lane (see ``_openrouter_lane_needs_vision``). Luna is only for turns that
+        genuinely need live web search or sourced research.
         """
         return bool(
-            has_images
-            or signals.mode == ConversationMode.RESEARCH
+            signals.mode == ConversationMode.RESEARCH
             or signals.requires_web_search
         )
+
+    @staticmethod
+    def _openrouter_lane_needs_vision(
+        signals: ConversationSignals,
+        *,
+        has_images: bool,
+    ) -> bool:
+        """Return whether this turn should use the dedicated vision model.
+
+        Any turn carrying an image needs a model that can actually see it. When
+        the turn ALSO needs search, the caller runs vision first to describe the
+        image and then hands that description to the searched lane, rather than
+        asking one model to do both badly.
+        """
+        return bool(has_images)
 
     @staticmethod
     def _uses_openrouter_conversation_lane(
