@@ -11,6 +11,42 @@ from utils.deepseek_web import DeepSeekWebError
 
 
 class ResearchFormattingTests(unittest.TestCase):
+    def test_bare_numeric_citation_markers_are_stripped(self) -> None:
+        """Research providers emit [1][6] markers; the bot shows links separately."""
+        self.assertEqual(
+            AIClient._strip_citation_tokens("shaping the market. [1][6][7][10]"),
+            "shaping the market.",
+        )
+        self.assertEqual(
+            AIClient._strip_citation_tokens("an incident. [6][10] Next line."),
+            "an incident. Next line.",
+        )
+
+    def test_citation_stripping_preserves_markdown_links(self) -> None:
+        """A real markdown link must survive citation-marker cleanup."""
+        text = "see [1](https://example.com/x) for more"
+        self.assertEqual(AIClient._strip_citation_tokens(text), text)
+        self.assertEqual(
+            AIClient._strip_citation_tokens("log line [WARN] stays"),
+            "log line [WARN] stays",
+        )
+
+    def test_research_sources_reject_fake_placeholder_only_gate(self) -> None:
+        """Research with no verifiable URL must not pass the source gate."""
+        self.assertIsNone(
+            AIClient._finalize_research_response("An answer with no sources at all.")
+        )
+
+    def test_research_uses_supplied_source_urls(self) -> None:
+        """Pre-fetched URLs satisfy the gate when the body intentionally has none."""
+        out = AIClient._finalize_research_response(
+            "# Topic\n\nClean body with no inline URLs.",
+            ["https://example.com/a", "https://example.com/b"],
+        )
+        self.assertIsNotNone(out)
+        self.assertIn("__BOT_SOURCES__", out or "")
+        self.assertIn("https://example.com/a", out or "")
+
     def test_heading_becomes_embed_title(self) -> None:
         embed = AIModeration._build_research_embed(
             None,
