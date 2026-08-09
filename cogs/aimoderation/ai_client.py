@@ -1261,24 +1261,37 @@ class AIClient(
     ) -> Tuple[str, str]:
         """Load the stored user and guild memory, tolerating a database outage.
 
-        Returns (user_memory, guild_memory); both empty when unavailable. A
-        memory read failure must not fail the whole turn, so this degrades to
-        empty strings and logs at debug level.
+        Returns (user_memory, guild_memory); either is empty when unavailable.
+
+        The two reads are guarded independently on purpose. A partial database --
+        one that serves user memory but not guild memory -- must still yield the
+        user memory it does have. Loading both under a single try/except would
+        discard the first value when the second read failed, silently dropping
+        the user's profile from the prompt (and from the memory-update call).
         """
+        db = getattr(self.bot, "db", None)
+        if not db:
+            return "", ""
+
+        user_memory = ""
+        guild_memory = ""
         try:
-            db = getattr(self.bot, "db", None)
-            if db:
-                return (
-                    await db.get_ai_memory(author.id) or "",
-                    await db.get_guild_memory(guild.id) or "",
-                )
+            user_memory = await db.get_ai_memory(author.id) or ""
         except Exception:
             logger.debug(
                 "Failed to load AI memory for user %d",
                 author.id,
                 exc_info=True,
             )
-        return "", ""
+        try:
+            guild_memory = await db.get_guild_memory(guild.id) or ""
+        except Exception:
+            logger.debug(
+                "Failed to load guild memory for guild %d",
+                guild.id,
+                exc_info=True,
+            )
+        return user_memory, guild_memory
 
     @staticmethod
     def _describe_source_channel(source_message: Optional[discord.Message]) -> str:
