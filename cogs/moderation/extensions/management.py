@@ -3,6 +3,7 @@ from discord import app_commands
 from discord.ext import commands
 from datetime import datetime, timezone
 from typing import Optional, Union
+import logging
 import re
 import json
 import asyncio
@@ -17,6 +18,8 @@ from utils.moderation_settings import (
 from utils.time_parser import parse_time
 from utils.async_tasks import fire_and_forget
 from config import Config
+
+logger = logging.getLogger("ModBot.Moderation.Management")
 
 class ManagementCommands:
     _DEFAULT_QUARANTINE_REASON = "No reason provided"
