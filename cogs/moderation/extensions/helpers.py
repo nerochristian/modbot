@@ -434,7 +434,10 @@ class HelperCommands:
         # Check cache first
         if cache_key in self._hierarchy_cache:
             cached_time, level = self._hierarchy_cache[cache_key]
-            if (datetime.now() - cached_time).seconds < 300:  # 5min cache
+            # .seconds is the seconds-of-day component, not the total age, so a
+            # day-old entry whose remainder happened to be under 300 was served
+            # as fresh -- stale permission levels surviving a role change.
+            if (datetime.now() - cached_time).total_seconds() < 300:  # 5min cache
                 return level
         
         # Dot role = HIGHEST level (above all)
