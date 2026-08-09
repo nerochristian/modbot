@@ -33,15 +33,9 @@ from .prompts import (
     ROUTING_SYSTEM_PROMPT, CONVERSATION_SYSTEM_PROMPT,
     DEEP_RESEARCH_SYSTEM_PROMPT, MOD_GUIDANCE_SYSTEM_PROMPT,
 )
-from .transport import TransportMixin
+from .transport import TransportMixin, _exception_summary
 
 logger = logging.getLogger("ModBot.AIModeration.Client")
-
-
-def _exception_summary(exc: BaseException) -> str:
-    """Return a useful one-line label even for message-less timeout errors."""
-    detail = str(exc).strip()
-    return detail if detail else type(exc).__name__
 
 
 _RESEARCH_UNAVAILABLE = (
