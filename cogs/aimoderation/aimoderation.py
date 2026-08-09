@@ -2595,8 +2595,20 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
 
             if self._requires_confirmation(decision):
                 if decision.tool in (ToolType.BAN, ToolType.KICK, ToolType.TIMEOUT, ToolType.WARN):
-                    if not decision.reason or decision.reason.strip().lower() in ("no reason", "none", "unknown", "n/a", ""):
-                        decision.reason = await self._infer_action_reason(message, decision)
+                    # Two bugs used to live here. This checked `decision.reason`,
+                    # but that field carries routing provenance ("rule: ban"),
+                    # not a moderation reason -- it is always truthy on the
+                    # _quick_route path, so the inference never ran. And when it
+                    # did run (model lane), the result was written back to
+                    # `decision.reason`, which no handler reads: every handler
+                    # takes ctx.str_arg("reason") from decision.arguments. So a
+                    # bare "@bot ban @user" made a live model call, discarded the
+                    # answer, and recorded "No reason provided" in the audit log.
+                    if not self._has_usable_action_reason(decision):
+                        inferred = await self._infer_action_reason(message, decision)
+                        if inferred:
+                            decision.arguments["reason"] = inferred
+                            decision.reason = inferred
                 await self._request_confirmation(message, decision, settings)
                 return
 
