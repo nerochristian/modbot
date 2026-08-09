@@ -1619,29 +1619,19 @@ class AIClient(
                                 "I can inspect the image, but I couldn't verify the identity "
                                 "against a reliable source, so I won't make another confident guess."
                             )
-                        if signals.mode == ConversationMode.RESEARCH:
-                            # Pass the pre-fetched URLs through: Luna often omits
-                            # citation annotations, and the research prompt bans
-                            # URLs in the body, so without these a good answer
-                            # would fail the verifiable-source gate.
-                            content = self._finalize_research_response(
-                                content,
-                                research_source_urls,
-                            )
-                            if not content:
-                                return _RESEARCH_UNAVAILABLE
-                        memory_content = content.split(
-                            "\n\n__BOT_SOURCES__\n",
-                            1,
-                        )[0].strip()
-                        self._schedule_memory_update(
-                            signals,
-                            author,
-                            user_content,
-                            memory_content,
-                            stored_memory,
+                        # Already post-processed above for the image-identity
+                        # check; _finish_turn is idempotent on that step.
+                        finished = self._finish_turn(
+                            content,
+                            signals=signals,
+                            author=author,
+                            user_content=user_content,
+                            stored_memory=stored_memory,
+                            research_source_urls=research_source_urls,
+                            strip_sources_from_memory=True,
                         )
-                        return content
+                        if finished is not None:
+                            return finished
                 except Exception:
                     logger.warning(
                         "OpenRouter standard conversation failed; preserving the existing provider fallback.",
