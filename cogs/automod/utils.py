@@ -44,7 +44,12 @@ def keyword_pattern(keyword: str) -> Optional[re.Pattern[str]]:
     characters = [re.escape(char) for char in normalized if char.isalnum()]
     if not characters:
         return None
-    return re.compile(rf"(?<!\w){r'[\W_]*'.join(characters)}(?!\w)", re.IGNORECASE)
+    # The separator is bound to a local first: a backslash inside an f-string
+    # expression is a SyntaxError before Python 3.12, which made this module
+    # unimportable on 3.11 (Debian bookworm's system python) and took the whole
+    # automod package -- plus 9 test modules -- down with it.
+    separator = r"[\W_]*"
+    return re.compile(rf"(?<!\w){separator.join(characters)}(?!\w)", re.IGNORECASE)
 
 
 def unique_strings(values: Iterable[Any]) -> list[str]:
