@@ -1716,6 +1716,20 @@ class AIClient(
                             temperature=plan.temperature,
                             max_tokens=max_tokens,
                         )
+                        if not content:
+                            # Don't waste Sonar's evidence on a writer hiccup:
+                            # fall back to the searched lane for this turn.
+                            logger.warning(
+                                "Research writer returned nothing; falling back to "
+                                "the searched conversation lane."
+                            )
+                            content = await self._call_openrouter_conversation(
+                                multimodal_api_messages,
+                                temperature=plan.temperature,
+                                max_tokens=max_tokens,
+                                allow_multimodal=False,
+                                require_search=False,
+                            )
                     elif needs_vision and not needs_luna:
                         # Pure image understanding: the vision model answers
                         # directly. No search tool, so no citations are expected.
@@ -1724,6 +1738,18 @@ class AIClient(
                             temperature=plan.temperature,
                             max_tokens=max_tokens,
                         )
+                        if not content:
+                            logger.warning(
+                                "Vision lane returned nothing; falling back to the "
+                                "searched conversation lane for this image turn."
+                            )
+                            content = await self._call_openrouter_conversation(
+                                multimodal_api_messages,
+                                temperature=plan.temperature,
+                                max_tokens=max_tokens,
+                                allow_multimodal=True,
+                                require_search=False,
+                            )
                     else:
                         content = (
                             await self._call_openrouter_conversation(
