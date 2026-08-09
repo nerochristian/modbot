@@ -1643,6 +1643,10 @@ class AIClient(
                         signals,
                         has_images=bool(image_context),
                     )
+                    needs_vision = self._openrouter_lane_needs_vision(
+                        signals,
+                        has_images=bool(image_context),
+                    )
                     image_identification = bool(
                         image_context
                         and self._looks_like_image_identification_request(user_content)
@@ -1676,24 +1680,33 @@ class AIClient(
                                 },
                             ]
                     max_tokens = self._turn_max_tokens(plan, signals)
-                    content = (
-                        await self._call_openrouter_conversation(
+                    if needs_vision and not needs_luna:
+                        # Pure image understanding: the vision model answers
+                        # directly. No search tool, so no citations are expected.
+                        content = await self._call_openrouter_vision(
                             multimodal_api_messages,
                             temperature=plan.temperature,
                             max_tokens=max_tokens,
-                            allow_multimodal=bool(image_context),
-                            require_search=(
-                                signals.requires_web_search or image_identification
-                            ),
                         )
-                        if needs_luna
-                        # Ordinary talking: text-only, no search tool.
-                        else await self._call_openrouter_chat(
-                            api_messages,
-                            temperature=plan.temperature,
-                            max_tokens=max_tokens,
+                    else:
+                        content = (
+                            await self._call_openrouter_conversation(
+                                multimodal_api_messages,
+                                temperature=plan.temperature,
+                                max_tokens=max_tokens,
+                                allow_multimodal=bool(image_context),
+                                require_search=(
+                                    signals.requires_web_search or image_identification
+                                ),
+                            )
+                            if needs_luna
+                            # Ordinary talking: text-only, no search tool.
+                            else await self._call_openrouter_chat(
+                                api_messages,
+                                temperature=plan.temperature,
+                                max_tokens=max_tokens,
+                            )
                         )
-                    )
                     if content:
                         content = self._postprocess_chat_response(content)
                         if (
