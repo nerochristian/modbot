@@ -1486,35 +1486,44 @@ class AIClient:
         ]
         return body.strip(), [url for url in urls if url]
 
-    async def _call_openrouter_grok_chat(
+    async def _call_openrouter_chat(
         self,
         messages: List[Dict[str, Any]],
         *,
         temperature: float,
         max_tokens: int,
     ) -> Optional[str]:
-        """Call Grok on OpenRouter for ordinary text conversation only.
+        """Call the talking model on OpenRouter for ordinary text conversation.
 
         This lane is deliberately narrow: no web-search tool, no images, no
         citations. Search, research, vision, moderation, routing, and memory all
-        keep their own dedicated lanes, so making Grok the default chat model
-        cannot silently take over those behaviors.
+        keep their own dedicated lanes, so changing the default chat model cannot
+        silently take over those behaviors.
+
+        Reasoning is turned off here by default. The current talking model (GLM)
+        enables it implicitly, which tripled reply latency and spent billable
+        output tokens on hidden reasoning that a casual chat reply never needs.
         """
         if not _openrouter_conversation_enabled():
             raise RuntimeError("OpenRouter conversation is missing OPENROUTER_API_KEY.")
+
+        extra_payload: Optional[Dict[str, Any]] = None
+        if _OPENROUTER_CHAT_DISABLE_REASONING:
+            extra_payload = {"reasoning": {"enabled": False}}
 
         return await self._post_chat_completion(
             messages,
             base_url=_OPENROUTER_BASE_URL,
             api_key=_OPENROUTER_API_KEY,
-            model=_OPENROUTER_GROK_CHAT_MODEL,
+            model=_OPENROUTER_TALK_CHAT_MODEL,
             temperature=temperature,
             max_tokens=max_tokens,
             json_mode=False,
             allow_multimodal=False,
-            provider_label=f"OpenRouter chat ({_OPENROUTER_GROK_CHAT_MODEL})",
+            provider_label=f"OpenRouter chat ({_OPENROUTER_TALK_CHAT_MODEL})",
             max_retries=1,
             request_timeout=_openrouter_request_timeout(),
+            extra_payload=extra_payload,
         )
 
     async def _call_openrouter_conversation(
@@ -2682,7 +2691,7 @@ class AIClient:
                         )
                         if needs_luna
                         # Ordinary talking: Grok, text-only, no search tool.
-                        else await self._call_openrouter_grok_chat(
+                        else await self._call_openrouter_chat(
                             api_messages,
                             temperature=plan.temperature,
                             max_tokens=max_tokens,
@@ -2831,7 +2840,7 @@ class AIClient:
                             # This branch is STANDARD, text-only conversation, so
                             # it belongs on the Grok talking lane rather than
                             # Luna's searched lane.
-                            content = await self._call_openrouter_grok_chat(
+                            content = await self._call_openrouter_chat(
                                 api_messages,
                                 temperature=plan.temperature,
                                 max_tokens=max_tokens,
