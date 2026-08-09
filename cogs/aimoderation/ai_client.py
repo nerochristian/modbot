@@ -35,14 +35,13 @@ from .prompts import (
 )
 from .transport import TransportMixin, _exception_summary
 from .providers import AiModelLaneMixin, GatewayLaneMixin, OpenRouterLaneMixin
+from .research import RESEARCH_UNAVAILABLE, ResearchGatingMixin
 
 logger = logging.getLogger("ModBot.AIModeration.Client")
 
 
-_RESEARCH_UNAVAILABLE = (
-    "Live search is unavailable right now because no verifiable source links "
-    "were returned. I won't invent a current-events answer. Please try again shortly."
-)
+# Re-exported so the many converse() call sites keep one short name.
+_RESEARCH_UNAVAILABLE = RESEARCH_UNAVAILABLE
 
 # Minimum seconds between identical "AI service blocked" WARNINGs. A persistently
 # exhausted upstream (e.g. an OpenRouter free-tier daily quota) re-blocks on every
@@ -392,6 +391,7 @@ def _vision_response_missed_image(content: str) -> bool:
 
 
 class AIClient(
+    ResearchGatingMixin,
     OpenRouterLaneMixin,
     AiModelLaneMixin,
     GatewayLaneMixin,
@@ -628,49 +628,7 @@ class AIClient(
         """
         return _openrouter_conversation_enabled()
 
-    @staticmethod
-    def _research_source_urls(
-        content: str,
-        source_urls: Optional[List[str]] = None,
-    ) -> List[str]:
-        urls: List[str] = []
-        for url in source_urls or []:
-            clean = str(url or "").strip().rstrip(".,;)>")
-            if clean.startswith(("https://", "http://")) and clean not in urls:
-                urls.append(clean)
-        for url in re.findall(r"https?://[^\s<>]+", content or ""):
-            clean = url.rstrip(".,;)>")
-            if clean not in urls:
-                urls.append(clean)
-        return urls
 
-    @staticmethod
-    def _finalize_research_response(
-        content: str,
-        source_urls: Optional[List[str]] = None,
-    ) -> Optional[str]:
-        """Return research only when it carries verifiable source URLs."""
-        text = (content or "").strip()
-        low = text.lower()
-        if not text or (
-            "search is unavailable in expert mode" in low
-            or "please use instant mode" in low
-        ):
-            return None
-
-        urls = AIClient._research_source_urls(text, source_urls)
-
-        marker = "__BOT_SOURCES__"
-        if marker in text:
-            _, sources = text.split(marker, 1)
-            if re.search(r"https?://", sources):
-                return text
-            text = text.split(marker, 1)[0].rstrip()
-
-        if not urls:
-            return None
-        sources = "\n".join(f"- <{url}>" for url in urls[:8])
-        return f"{text}\n\n{marker}\n{sources}"
 
     async def close(self) -> None:
         await self._deepseek_web.close()
@@ -2783,18 +2741,6 @@ class AIClient(
             return True
         return bool(re.search(r"\b(what time|when is|where is|who is|what is (?:it|that|this|the))\b", low))
 
-    @staticmethod
-    def _strip_citation_tokens(text: str) -> str:
-        text = re.sub(r"\s*\[citation:\d+\]", "", text, flags=re.IGNORECASE)
-        text = re.sub(r"\s*\[source:\d+\]", "", text, flags=re.IGNORECASE)
-        # Bare numeric citation markers such as "[1]" or "[2][7][10]". Research
-        # providers emit these even when told not to, and the bot shows verified
-        # links separately, so they are noise in a Discord reply. The negative
-        # lookahead for "(" keeps real markdown links like "[1](https://x)"
-        # intact, and requiring digits-only avoids touching "[WARN]" style text.
-        text = re.sub(r"\s*(?:\[\d{1,3}\])+(?!\()", "", text)
-        text = re.sub(r"\s+([,.;:])", r"\1", text)
-        return text
 
     @staticmethod
     def _convert_simple_markdown_table(text: str) -> str:
