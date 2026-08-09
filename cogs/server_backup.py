@@ -88,7 +88,11 @@ class ServerBackup(commands.Cog):
             ),
             ephemeral=True,
         )
-        logger.info("Backup #%d created for guild %d by %d", backup_id, guild.id, interaction.user.id)
+        # %d on a None backup_id used to raise TypeError here. The id gap it
+        # came from is fixed (server_backups is now in
+        # _POSTGRES_SERIAL_ID_TABLES), but never let logging break a completed
+        # backup.
+        logger.info("Backup #%s created for guild %d by %d", backup_id, guild.id, interaction.user.id)
 
     @server_backup.command(name="list")
     async def backup_list(self, interaction: discord.Interaction) -> None:

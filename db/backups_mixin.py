@@ -195,12 +195,16 @@ class BackupsMixin:
         """Keep only the most recent N backups for a guild. Returns count removed."""
         async with self._lock:
             async with self.get_connection() as db:
+                # `LIMIT -1 OFFSET ?` is a SQLite-ism: on Postgres it raises
+                # "LIMIT must not be negative", which auto_backup() swallowed --
+                # so pruning silently never happened and backups grew forever.
+                # A large literal limit is valid on both dialects.
                 cursor = await db.execute(
                     """
                     SELECT id FROM server_backups
                     WHERE guild_id = ?
                     ORDER BY created_at DESC
-                    LIMIT -1 OFFSET ?
+                    LIMIT 1000000 OFFSET ?
                     """,
                     (guild_id, keep),
                 )
