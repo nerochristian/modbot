@@ -1456,17 +1456,26 @@ class ManagementCommands:
         # Remove quarantine role
         settings = await self.bot.db.get_settings(source.guild.id)
         quarantine_role_id = settings.get("automod_quarantine_role_id")
+        quarantine_role_error: Optional[str] = None
         if quarantine_role_id:
             role = source.guild.get_role(int(quarantine_role_id))
             if role and role in user.roles:
                 try:
                     await user.remove_roles(role, reason=f"[UNQUARANTINE] {author}: {reason}")
                 except (discord.Forbidden, discord.HTTPException) as e:
-                    logger.warning(f"Failed to remove quarantine role: {e}")
+                    # Only log-and-continue used to happen here, so the command
+                    # went on to announce "Quarantine lifted" while the user was
+                    # still holding the quarantine role -- still silenced, with a
+                    # case row saying otherwise. Remember it and say so below.
+                    quarantine_role_error = str(e)
+                    logger.warning(
+                        "Failed to remove quarantine role %s from %s in guild %s: %s",
+                        role.id, user.id, source.guild.id, e,
+                    )
 
         # DB update
         await self.bot.db.remove_quarantine(source.guild.id, user.id)
-        
+
         case_num = await self.bot.db.create_case(
             source.guild.id,
             user.id,
@@ -1474,14 +1483,20 @@ class ManagementCommands:
             "Unquarantine",
             reason,
         )
+        extra_fields = {"Restored roles": f"{restored} (failed: {failed})"}
+        if quarantine_role_error:
+            extra_fields["Quarantine role"] = (
+                f"NOT removed - {quarantine_role_error}. "
+                "Remove it manually; the user is still restricted."
+            )
         embed = await self.create_mod_embed(
-            title="Quarantine lifted",
+            title="Quarantine lifted" if not quarantine_role_error else "Quarantine partially lifted",
             user=user,
             moderator=author,
             reason=reason,
-            color=Colors.SUCCESS,
+            color=Colors.SUCCESS if not quarantine_role_error else Colors.WARNING,
             case_num=case_num,
-            extra_fields={"Restored roles": f"{restored} (failed: {failed})"},
+            extra_fields=extra_fields,
         )
         
         await self._respond(source, embed=embed)
