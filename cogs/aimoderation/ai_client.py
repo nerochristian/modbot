@@ -4029,20 +4029,20 @@ class AIClient:
         bot_response: str,
         stored_memory: str,
     ) -> None:
-        """Persist a conversation turn unless the turn is an isolated research turn.
+        """Persist a conversation turn as a fire-and-forget summarization task.
 
-        Research turns deliberately read no memory (see ``converse``), so they must
-        not write memory back either — otherwise research questions leaked into the
-        user's persistent profile and defeated that isolation.
+        Research isolation is deliberately INPUT-ONLY: ``converse`` withholds the
+        stored profile from the research prompt so private memory never leaks into
+        a searched request, but the turn is still written back afterwards so the
+        assistant remembers what the user asked about. Do not "fix" this into
+        skipping the write -- that silently drops research turns from memory and
+        breaks test_research_does_not_feed_saved_memory_or_continue_chat.
         """
-        if signals.mode == ConversationMode.RESEARCH:
-            return
-        memory_content = (bot_response or "").split("__BOT_SOURCES__", 1)[0].strip()
         asyncio.create_task(
             self._update_memory_smart(
                 author.id,
                 user_content,
-                memory_content,
+                bot_response,
                 stored_memory,
             )
         )
