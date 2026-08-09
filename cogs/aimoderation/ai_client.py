@@ -1350,6 +1350,62 @@ class AIClient(
         # or the bot would claim sourcing it does not have.
         return web_context, sonar_urls
 
+    @staticmethod
+    def _turn_max_tokens(plan: ConversationPlan, signals: ConversationSignals) -> int:
+        """Token budget for one reply, widened when a long answer was asked for."""
+        if signals.asks_for_long_answer:
+            return max(plan.max_tokens, 4_800)
+        return plan.max_tokens
+
+    def _finish_turn(
+        self,
+        content: Optional[str],
+        *,
+        signals: ConversationSignals,
+        author: Union[discord.Member, discord.User],
+        user_content: str,
+        stored_memory: str,
+        research_source_urls: Optional[List[str]] = None,
+    ) -> Optional[str]:
+        """Post-process a provider reply, gate research, and schedule memory.
+
+        Returns the reply to send, ``_RESEARCH_UNAVAILABLE`` when a research turn
+        cannot be sourced, or ``None`` when the provider produced nothing (so the
+        caller can fall through to the next lane).
+
+        Centralizes the sequence every lane must perform identically. It was
+        duplicated at five call sites, which is how a lane can silently end up
+        skipping the source gate or the memory write.
+        """
+        if not content:
+            return None
+
+        content = self._postprocess_chat_response(content)
+
+        if signals.mode == ConversationMode.RESEARCH:
+            # Pass the pre-fetched URLs through: Luna often omits citation
+            # annotations, and the research prompt bans URLs in the body, so
+            # without these a good answer would fail the verifiable-source gate.
+            content = self._finalize_research_response(
+                content,
+                research_source_urls or [],
+            )
+            if not content:
+                return _RESEARCH_UNAVAILABLE
+
+        # Sources are presented separately, so they must not pollute memory.
+        memory_content = content.split("\n\n__BOT_SOURCES__\n", 1)[0].strip()
+        # Isolation is INPUT-only: research does not READ the saved profile into
+        # the prompt, but the turn IS still written back here.
+        self._schedule_memory_update(
+            signals,
+            author,
+            user_content,
+            memory_content,
+            stored_memory,
+        )
+        return content
+
     async def converse(
         self,
         *,
