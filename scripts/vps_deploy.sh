@@ -7,7 +7,19 @@ REMOTE="${MODBOT_REMOTE:-origin}"
 BRANCH="${MODBOT_BRANCH:-main}"
 SERVICE="${MODBOT_SERVICE:-modbot}"
 BOT_ENTRYPOINT="${MODBOT_ENTRYPOINT:-bot.py}"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+PYTHON_BIN="${PYTHON_BIN:-}"
+# Pin the interpreter used to CREATE the venv. Without this, PYTHON_BIN
+# defaulted to `python3` (the distro interpreter, 3.12 on Ubuntu 24.04), so a
+# recreated venv would silently downgrade the bot off the version it was
+# verified on. Prefer the newest installed python3.14+, else fall back.
+if [[ -z "${PYTHON_BIN}" ]]; then
+  for _candidate in python3.14 python3.13 python3; do
+    if command -v "${_candidate}" >/dev/null 2>&1; then
+      PYTHON_BIN="${_candidate}"
+      break
+    fi
+  done
+fi
 LOCK_FILE="${MODBOT_DEPLOY_LOCK:-/tmp/${SERVICE}-deploy.lock}"
 RESET_DIRTY="${MODBOT_DEPLOY_RESET_DIRTY:-0}"
 
@@ -45,7 +57,21 @@ restart_service() {
 }
 
 install_bot_dependencies() {
+  # Recreate the venv when it was built by an older interpreter than the one
+  # we pin above, so a version upgrade actually takes effect on deploy instead
+  # of leaving the bot on a stale interpreter forever.
+  if [[ -x ".venv/bin/python" ]]; then
+    local venv_version target_version
+    venv_version="$(.venv/bin/python -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null || echo 0.0)"
+    target_version="$("${PYTHON_BIN}" -c 'import sys;print("%d.%d"%sys.version_info[:2])' 2>/dev/null || echo 0.0)"
+    if [[ "${venv_version}" != "${target_version}" ]] \
+       && [[ "$(printf '%s\n%s\n' "${venv_version}" "${target_version}" | sort -V | head -1)" == "${venv_version}" ]]; then
+      log "venv python ${venv_version} is older than ${target_version}; rebuilding venv."
+      rm -rf .venv.old && mv .venv .venv.old
+    fi
+  fi
   if [[ ! -x ".venv/bin/python" ]]; then
+    log "Creating venv with ${PYTHON_BIN} ($("${PYTHON_BIN}" -V 2>&1))."
     "${PYTHON_BIN}" -m venv .venv
   fi
   .venv/bin/python -m pip install --upgrade pip
