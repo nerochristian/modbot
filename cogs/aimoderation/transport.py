@@ -195,8 +195,8 @@ class TransportMixin:
         except Exception:  # never let diagnostics break the request path
             logger.debug("Failed to diagnose empty completion", exc_info=True)
 
-    @staticmethod
-    def _extract_completion_content(data: Any) -> Optional[str]:
+    @classmethod
+    def _extract_completion_content(cls, data: Any) -> Optional[str]:
         if not isinstance(data, dict):
             return None
         choices = data.get("choices") or []
@@ -207,7 +207,13 @@ class TransportMixin:
         if isinstance(content, str):
             return content
         if isinstance(content, list):
-            return AIClient._stringify_web_content(content)
+            # `_stringify_web_content` lives on this very mixin (see below), and
+            # `_extract_sse_completion_content` already calls it as `cls.`.
+            # Qualifying it as `AIClient.` raised NameError -- AIClient is not
+            # imported here -- and the call site only catches ClientError /
+            # TimeoutError, so any provider returning list-shaped content (the
+            # normal shape for citation-annotated replies) killed the request.
+            return cls._stringify_web_content(content)
         return None
 
     @staticmethod
