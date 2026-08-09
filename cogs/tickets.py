@@ -299,6 +299,38 @@ class TicketCloseButton(ui.View):
     
     @ui.button(label="Close Ticket", style=discord.ButtonStyle. danger, emoji="🔒", custom_id="ticket_close")
     async def close_ticket(self, interaction: discord. Interaction, button: ui.Button):
+        # This callback had no authorization check at all, and the view is
+        # registered persistently (Tickets.cog_load -> bot.add_view), so ANY
+        # member who could see a legacy ticket panel could delete the ticket
+        # channel and wipe the conversation. Match the modern panel's rule:
+        # ticket staff, or the person who opened the ticket.
+        cog = interaction.client.get_cog("Tickets")
+        ticket = None
+        try:
+            ticket = await interaction.client.db.get_ticket(interaction.channel.id)
+        except Exception:
+            ticket = None
+
+        is_staff = False
+        if cog is not None and isinstance(interaction.user, discord.Member):
+            try:
+                is_staff = await cog._is_ticket_staff(interaction.user)
+            except Exception:
+                is_staff = False
+        if not is_staff and isinstance(interaction.user, discord.Member):
+            perms = interaction.user.guild_permissions
+            is_staff = perms.manage_channels or perms.manage_guild
+
+        opener_id = (ticket or {}).get("user_id")
+        if not is_staff and interaction.user.id != opener_id:
+            return await interaction.response.send_message(
+                embed=ModEmbed.error(
+                    "Permission Denied",
+                    "Only ticket staff or the ticket creator can close this ticket.",
+                ),
+                ephemeral=True,
+            )
+
         await interaction.response. send_message("Closing ticket in 5 seconds...", ephemeral=True)
         await interaction.channel.send(embed=ModEmbed.warning("Ticket Closing", "This ticket will be closed in 5 seconds... "))
         

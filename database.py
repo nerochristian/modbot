@@ -257,6 +257,11 @@ _POSTGRES_SERIAL_ID_TABLES = {
     "reaction_roles",
     "voice_roles",
     "quarantines",
+    # server_backups was missing, so create_server_backup() returned None on
+    # Postgres (no RETURNING id was appended, leaving cursor.lastrowid unset).
+    # The user saw "Backup #None saved" and the very next logger.info("...#%d")
+    # raised TypeError.
+    "server_backups",
     "dashboard_audit",
     "dashboard_moderation_commands",
     "dashboard_appeals",
