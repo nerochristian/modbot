@@ -1007,36 +1007,43 @@ def patch_components_v2() -> None:
         if has_visual and (
             view in (MISSING, None) or hasattr(view, "children")
         ):
-            layout = await layout_view_from_embeds(
+            layout = await _safe_layout_view_from_embeds(
                 content=content,
                 embed=None if embed is MISSING else embed,
                 embeds=None if embeds is MISSING else embeds,
                 existing_view=None if view is MISSING else view,
             )
-            layout = ensure_layout_view_action_rows(layout)
-            return (MISSING, None, None, layout)
+            if layout is not None:
+                return (MISSING, None, None, layout)
+            # Conversion failed: keep the classic embed payload.
+            return (
+                content,
+                embed if embed is not MISSING else None,
+                embeds if embeds is not MISSING else None,
+                view,
+            )
 
         if isinstance(view, discord.ui.LayoutView) and content is not MISSING:
-            layout = await layout_view_from_embeds(
+            layout = await _safe_layout_view_from_embeds(
                 content=content,
                 embed=None,
                 embeds=None,
                 existing_view=view,
             )
-            layout = ensure_layout_view_action_rows(layout)
-            return (
-                MISSING,
-                None,
-                None,
-                layout,
-            )
+            if layout is not None:
+                return (
+                    MISSING,
+                    None,
+                    None,
+                    layout,
+                )
 
         if isinstance(view, discord.ui.LayoutView):
             return (
                 content,
                 embed if embed is not MISSING else None,
                 embeds if embeds is not MISSING else None,
-                ensure_layout_view_action_rows(view),
+                _safe_ensure_action_rows(view),
             )
 
         return (
@@ -1141,17 +1148,17 @@ def patch_components_v2() -> None:
         has_visual = has_embed or has_embeds
 
         if has_visual and (view is None or hasattr(view, "children")):
-            layout = await layout_view_from_embeds(
+            layout = await _safe_layout_view_from_embeds(
                 content=content,
                 embed=embed,
                 embeds=embeds,
                 existing_view=view,
             )
-            layout = ensure_layout_view_action_rows(layout)
-            kwargs["view"] = layout
-            kwargs.pop("embed", None)
-            kwargs.pop("embeds", None)
-            content = MISSING
+            if layout is not None:
+                kwargs["view"] = layout
+                kwargs.pop("embed", None)
+                kwargs.pop("embeds", None)
+                content = MISSING
         elif isinstance(view, discord.ui.LayoutView) and content is not MISSING:
             layout = await _safe_layout_view_from_embeds(
                 content=content,
