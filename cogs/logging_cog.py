@@ -2043,7 +2043,11 @@ class Logging(commands.Cog):
                 target_id = getattr(getattr(entry, "target", None), "id", None)
                 if target_id != member.id:
                     continue
-                if (datetime.now(timezone.utc) - entry.created_at).seconds < 5:
+                # .seconds is the seconds-of-day component, so a kick entry from
+                # 24h+1s ago reported "1" and read as brand new. That logged a
+                # voluntary leave as a kick and credited it to whichever
+                # moderator last kicked this user. total_seconds() is the age.
+                if (datetime.now(timezone.utc) - entry.created_at).total_seconds() < 5:
                     title = "Member kicked"
                     footer_user = getattr(entry, "user", None)
                     reason = getattr(entry, "reason", None)
