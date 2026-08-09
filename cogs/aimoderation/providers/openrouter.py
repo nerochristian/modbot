@@ -162,10 +162,12 @@ class OpenRouterLaneMixin:
             "max_tool_calls": 1,
         }
 
-        # NOTE: reads _OPENROUTER_CHAT_MODEL, not the Luna constant, because the
-        # suite patches that name to assert this lane honors the configured
-        # conversation model.
-        luna_model = settings.setting("_OPENROUTER_CHAT_MODEL")
+        # Pinned to the Luna constant on purpose: this lane must ignore a stale
+        # _OPENROUTER_CHAT_MODEL override (e.g. left over from a dashboard
+        # setting) so search/research/vision cannot be silently repointed at the
+        # talking model. Asserted by
+        # test_openrouter_conversation_ignores_stale_model_override.
+        luna_model = settings.setting("_OPENROUTER_LUNA_MODEL")
         return await self._post_chat_completion(
             messages,
             base_url=settings.setting("_OPENROUTER_BASE_URL"),
