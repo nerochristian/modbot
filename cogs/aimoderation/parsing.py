@@ -813,7 +813,29 @@ class MessageParsingMixin:
         return raw or None
 
     def _extract_warning_count(self, text: str) -> int:
-        match = self._WARNING_COUNT_RE.search(text or "")
+        # A count is only a count when it sits in the command, next to the verb
+        # or the target -- not anywhere in the sentence. "<n> times" matched
+        # globally, so "warn @user because he did it 3 times" issued THREE
+        # warnings, enough to trip auto-escalation into a mute/kick/ban from a
+        # single message. Narrative text after for/because/reason:, or after a
+        # pronoun/verb describing the offence, is the moderator explaining what
+        # happened rather than asking for repeats.
+        raw_text = text or ""
+        command_part = re.split(
+            r"\b(?:for|because|reason\s*:?|since|as\s+they|after)\b",
+            raw_text,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0]
+        # Drop a trailing narrative clause ("he spammed 5 times in a row"):
+        # a subject pronoun followed by a past-tense verb starts a description.
+        command_part = re.split(
+            r"\b(?:he|she|they|it|this\s+user|the\s+user)\s+\w+ed\b",
+            command_part,
+            maxsplit=1,
+            flags=re.IGNORECASE,
+        )[0]
+        match = self._WARNING_COUNT_RE.search(command_part)
         if not match:
             return 1
         raw = next((group for group in match.groups() if group), "1").lower()
