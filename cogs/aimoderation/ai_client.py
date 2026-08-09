@@ -610,29 +610,26 @@ class AIClient:
 
     @property
     def has_web_search(self) -> bool:
-        return bool(
-            self._brave_search_api_key
-            or self._tavily_api_key
-            or self._serpapi_api_key
-            or self._deepseek_web.enabled
-        )
+        """Whether a live-search backend is available.
+
+        Only the authenticated DeepSeek browser lane is reported here. The
+        standalone Brave/Tavily/SerpAPI clients were deleted along with the
+        unused ``_web_search`` helper, so their keys no longer grant any search
+        capability and must not be advertised as if they did.
+
+        The OpenRouter search/research lane is reported by
+        ``has_openrouter_search`` instead, because callers gate different UI on
+        each (see the research indicator in the cog).
+        """
+        return bool(self._deepseek_web.enabled)
 
     @property
     def has_openrouter_search(self) -> bool:
         """Whether the OpenRouter search/research lane is usable.
 
-        Distinct from ``has_web_search``, which only reports the standalone
-        Brave/Tavily/SerpAPI/DeepSeek-web backends.
+        Distinct from ``has_web_search``, which reports the DeepSeek browser lane.
         """
         return _openrouter_conversation_enabled()
-
-    @property
-    def has_external_web_search(self) -> bool:
-        return bool(
-            self._brave_search_api_key
-            or self._tavily_api_key
-            or self._serpapi_api_key
-        )
 
     @staticmethod
     def _research_source_urls(
