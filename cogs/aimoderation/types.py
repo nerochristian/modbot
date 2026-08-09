@@ -188,9 +188,6 @@ class AIConfig:
     timeout_default_seconds: int = 3_600  # 1 hour
     confirm_timeout_seconds: int = 25
     proactive_chance: float = 0.02
-    confirm_actions: frozenset = field(
-        default_factory=lambda: frozenset({"ban_member", "kick_member", "purge_messages"})
-    )
     target_cache_ttl_minutes: int = 15
 
 
@@ -201,54 +198,16 @@ class GuildSettings:
     chat_enabled: bool = False
     model: Optional[str] = None
     context_messages: int = 100
-    confirm_enabled: bool = True
+    # Every mutating tool requires an explicit button confirmation. That is not
+    # configurable by design -- see AIModeration._requires_confirmation -- so
+    # there is deliberately no confirm_enabled / confirm_actions setting here.
+    # Only the approval window is tunable.
     confirm_timeout_seconds: int = 25
-    confirm_actions: Set[str] = field(
-        default_factory=lambda: {
-            "ban_member",
-            "kick_member",
-            "purge_messages",
-            "delete_channel",
-            "delete_role",
-            "delete_emoji",
-            "edit_guild",
-            "execute_raw_api",
-            "execute_python",
-        }
-    )
     proactive_chance: float = 0.02
     location_context: str = ""
     mod_roles: Set[int] = field(default_factory=set)
 
     _VALID_ACTIONS: ClassVar[Set[str]] = {t.value for t in ToolType}
-    _DEFAULT_CONFIRM_ACTIONS: ClassVar[Set[str]] = {
-        "ban_member",
-        "kick_member",
-        "purge_messages",
-        "delete_channel",
-        "delete_role",
-        "delete_emoji",
-        "edit_guild",
-        "execute_raw_api",
-        "execute_python",
-    }
-
-    @classmethod
-    def _coerce_confirm_actions(cls, raw: Any) -> Set[str]:
-        if raw is None:
-            return set(cls._DEFAULT_CONFIRM_ACTIONS)
-        if isinstance(raw, str):
-            raw = raw.strip()
-            if not raw:
-                return set(cls._DEFAULT_CONFIRM_ACTIONS)
-            try:
-                raw = json.loads(raw)
-            except json.JSONDecodeError:
-                raw = [s.strip() for s in raw.split(",") if s.strip()]
-        if isinstance(raw, (list, tuple, set, frozenset)):
-            result = {str(x).strip() for x in raw if str(x).strip() in cls._VALID_ACTIONS}
-            return result or set(cls._DEFAULT_CONFIRM_ACTIONS)
-        return set(cls._DEFAULT_CONFIRM_ACTIONS)
 
     @staticmethod
     def _coerce_bool(raw: Any, default: bool) -> bool:
@@ -301,13 +260,7 @@ class GuildSettings:
                 minimum=1,
                 maximum=200,
             ),
-            confirm_enabled=cls._coerce_bool(
-                data.get("aimod_confirm_enabled", True), True
-            ),
             confirm_timeout_seconds=cls._coerce_int(data.get("aimod_confirm_timeout_seconds", 25), 25, minimum=1, maximum=300),
-            confirm_actions=cls._coerce_confirm_actions(
-                data.get("aimod_confirm_actions")
-            ),
             proactive_chance=cls._coerce_float(data.get("aimod_proactive_chance", 0.02), 0.02, minimum=0.0, maximum=1.0),
             location_context=str(data.get("aimod_location_context") or data.get("server_location") or "").strip(),
             mod_roles=moderation_id_set(data, "mod_roles"),
