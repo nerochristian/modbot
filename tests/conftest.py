@@ -58,12 +58,34 @@ def _scrub_provider_environment() -> None:
     ]:
         os.environ.pop(name, None)
     os.environ.update(_PINNED_ENV)
-    # config.load_dotenv(override=True) would otherwise re-import the live file
-    # the moment some module touches config. Point it at a path that cannot
-    # exist so the scrub survives.
-    os.environ.setdefault("DOTENV_PATH", "")
 
 
-# Runs at collection time, before test modules (and therefore before the
-# module-level provider constants) are imported.
+def _disable_dotenv_loading() -> None:
+    """Stop ``load_dotenv(override=True)`` from re-importing the deployed .env.
+
+    Scrubbing ``os.environ`` alone is not enough: ``config`` calls
+    ``load_dotenv(override=True)`` at import time, which reads the real file
+    and overwrites the scrub. Verified directly -- without this, the scrubbed
+    ``RELAYROUTER_BASE_URL`` reverted to the live value on import.
+
+    Patching the loader keeps the suite hermetic no matter which module
+    imports ``config`` first, or how many times.
+    """
+    try:
+        import dotenv
+    except ModuleNotFoundError:  # dotenv absent: nothing can load a .env
+        return
+
+    def _noop_load_dotenv(*args, **kwargs) -> bool:
+        return False
+
+    dotenv.load_dotenv = _noop_load_dotenv
+    # config.py does `from dotenv import load_dotenv`, binding its own
+    # reference, so patch the module attribute before config is ever imported.
+    dotenv.main.load_dotenv = _noop_load_dotenv  # type: ignore[attr-defined]
+
+
+# Order matters: neutralize the loader first, then scrub, both at collection
+# time -- before test modules import the provider constants.
+_disable_dotenv_loading()
 _scrub_provider_environment()
