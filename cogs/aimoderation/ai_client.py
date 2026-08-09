@@ -1366,6 +1366,7 @@ class AIClient(
         user_content: str,
         stored_memory: str,
         research_source_urls: Optional[List[str]] = None,
+        strip_sources_from_memory: bool = False,
     ) -> Optional[str]:
         """Post-process a provider reply, gate research, and schedule memory.
 
@@ -1376,6 +1377,14 @@ class AIClient(
         Centralizes the sequence every lane must perform identically. It was
         duplicated at five call sites, which is how a lane can silently end up
         skipping the source gate or the memory write.
+
+        ``strip_sources_from_memory`` reproduces a pre-existing difference between
+        lanes: the OpenRouter lane stored the answer with the ``__BOT_SOURCES__``
+        block removed, while the HTTP/browser lanes stored the raw reply including
+        the block and its URLs. That is almost certainly an oversight -- what gets
+        remembered should not depend on which provider answered -- but unifying it
+        changes what lands in user memory, so it is preserved here and flagged
+        rather than silently "fixed" during a refactor.
         """
         if not content:
             return None
@@ -1393,8 +1402,9 @@ class AIClient(
             if not content:
                 return _RESEARCH_UNAVAILABLE
 
-        # Sources are presented separately, so they must not pollute memory.
-        memory_content = content.split("\n\n__BOT_SOURCES__\n", 1)[0].strip()
+        memory_content = content
+        if strip_sources_from_memory:
+            memory_content = content.split("\n\n__BOT_SOURCES__\n", 1)[0].strip()
         # Isolation is INPUT-only: research does not READ the saved profile into
         # the prompt, but the turn IS still written back here.
         self._schedule_memory_update(
