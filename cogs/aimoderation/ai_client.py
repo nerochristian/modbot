@@ -147,6 +147,13 @@ _OPENROUTER_RESEARCH_WRITER_MODEL: Final[str] = (
 _OPENROUTER_NEMOTRON_MODEL: Final[str] = (
     "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
 )
+# Image screening is an OpenRouter-protected task. Keep it independent from
+# AIMODEL_MODERATION_MODEL so changing the AiModel moderation lane cannot
+# silently repoint automatic NSFW/gore decisions to a different provider model.
+_OPENROUTER_IMAGE_SCREEN_MODEL: Final[str] = os.getenv(
+    "OPENROUTER_IMAGE_SCREEN_MODEL",
+    _OPENROUTER_NEMOTRON_MODEL,
+).strip()
 # The paid Nemotron fallback used when the free lane's daily quota is spent.
 # ``nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`` (the ":free" id minus the
 # suffix) is NOT a real OpenRouter model and always returned HTTP 404
@@ -1200,9 +1207,9 @@ class AIClient(
         None means "unknown", and callers must treat it as "do nothing": a
         screening outage must never delete a message or punish a member.
 
-        Uses the moderation lane rather than the conversation lanes so this never
-        consumes the talking/search quota, and so screening cannot be repointed
-        by a per-guild model override.
+        Uses a dedicated OpenRouter protected-task model rather than the
+        conversation or AiModel moderation lanes. This prevents unrelated model
+        configuration from silently repointing automatic image decisions.
         """
         if not images or not _openrouter_conversation_enabled():
             return None
@@ -1242,13 +1249,13 @@ class AIClient(
                     ],
                     base_url=_OPENROUTER_BASE_URL,
                     api_key=_OPENROUTER_API_KEY,
-                    model=_AIMODEL_MODERATION_MODEL,
+                    model=_OPENROUTER_IMAGE_SCREEN_MODEL,
                     temperature=0.0,
                     max_tokens=80,
                     json_mode=True,
                     allow_multimodal=True,
                     provider_label=(
-                        f"Image age screening ({_AIMODEL_MODERATION_MODEL})"
+                        f"Image age screening ({_OPENROUTER_IMAGE_SCREEN_MODEL})"
                     ),
                     max_retries=0,
                     request_timeout=timeout,
@@ -3553,4 +3560,3 @@ class AIClient(
                 )
 
         return updated
-
