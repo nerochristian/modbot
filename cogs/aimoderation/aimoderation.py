@@ -439,6 +439,221 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
             return False
         return isinstance(fetched, discord.Message) and fetched.author.id == self.bot.user.id
 
+    # ------------------------------------------------------------------
+    # Image age screening
+    # ------------------------------------------------------------------
+
+    _IMAGE_SCAN_EXTENSIONS = (
+        ".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp",
+    )
+
+    def _scannable_attachments(
+        self,
+        message: discord.Message,
+    ) -> List[discord.Attachment]:
+        """Image attachments worth screening, by content type then extension."""
+        out: List[discord.Attachment] = []
+        for attachment in message.attachments or []:
+            content_type = (getattr(attachment, "content_type", "") or "").lower()
+            filename = (getattr(attachment, "filename", "") or "").lower()
+            if content_type.startswith("image/") or filename.endswith(
+                self._IMAGE_SCAN_EXTENSIONS
+            ):
+                out.append(attachment)
+        return out
+
+    def _image_scan_bypassed(self, message: discord.Message) -> bool:
+        """Reuse AutoMod's bypass rules so staff and ignored channels are skipped."""
+        automod = self.bot.get_cog("AutoMod")
+        engine = getattr(automod, "engine", None)
+        if engine is None or not hasattr(engine, "bypass_reason"):
+            return False
+        try:
+            raw_settings = getattr(automod, "_settings", None)
+            if raw_settings is None:
+                return False
+            return bool(engine.bypass_reason(message, self._automod_settings_cache))
+        except Exception:
+            logger.debug("Image scan bypass check failed", exc_info=True)
+            return False
+
+    async def _screen_message_images(
+        self,
+        message: discord.Message,
+        settings: GuildSettings,
+    ) -> None:
+        """Screen uploaded images for age-inappropriate content.
+
+        Runs as a background task, so every failure path must be swallowed: an
+        unhandled exception here would surface as a bare asyncio "Task exception
+        was never retrieved" and screening would silently stop working.
+        """
+        try:
+            channel = message.channel
+            # Age-restricted channels are allowed to carry this content.
+            is_nsfw = getattr(channel, "is_nsfw", None)
+            if callable(is_nsfw):
+                try:
+                    if is_nsfw():
+                        return
+                except Exception:
+                    pass
+
+            attachments = self._scannable_attachments(message)
+            if not attachments:
+                return
+
+            automod = self.bot.get_cog("AutoMod")
+            engine = getattr(automod, "engine", None)
+            if automod is not None and engine is not None:
+                try:
+                    raw = await automod._settings(message.guild.id)
+                    if engine.bypass_reason(message, raw):
+                        return
+                except Exception:
+                    logger.debug(
+                        "Image scan bypass lookup failed; screening anyway",
+                        exc_info=True,
+                    )
+
+            images = await self.ai._collect_image_context(
+                [],
+                source_message=message,
+            )
+            if not images:
+                return
+
+            verdict = await self.ai.screen_images_for_age_rating(images)
+            # None means "unknown" -- a provider outage must never act.
+            if not isinstance(verdict, dict) or verdict.get("safe") is not False:
+                return
+
+            await self._handle_unsafe_image(message, settings, verdict)
+        except Exception:
+            logger.warning("Image age screening task failed", exc_info=True)
+
+    async def _handle_unsafe_image(
+        self,
+        message: discord.Message,
+        settings: GuildSettings,
+        verdict: Dict[str, Any],
+    ) -> None:
+        """Apply the configured response to a flagged image."""
+        action = settings.image_scan_action
+        category = str(verdict.get("category") or "nsfw")
+        confidence = verdict.get("confidence")
+        deleted = False
+
+        if action in {"delete", "punish"}:
+            logging_cog = self.bot.get_cog("Logging")
+            if logging_cog is not None:
+                # Arm suppression BEFORE deleting so the logging cog does not
+                # also emit its own generic delete entry for this message.
+                try:
+                    logging_cog.suppress_message_delete_log(message.channel.id)
+                except Exception:
+                    logger.debug("Could not arm delete suppression", exc_info=True)
+            try:
+                await message.delete()
+                deleted = True
+            except (discord.Forbidden, discord.NotFound, discord.HTTPException):
+                logger.info(
+                    "Could not delete flagged image in #%s",
+                    getattr(message.channel, "name", message.channel.id),
+                )
+
+        await self._log_unsafe_image(
+            message,
+            category=category,
+            confidence=confidence,
+            action=action,
+            deleted=deleted,
+        )
+
+        if action == "punish":
+            await self._punish_unsafe_image(message, category)
+
+    async def _log_unsafe_image(
+        self,
+        message: discord.Message,
+        *,
+        category: str,
+        confidence: Any,
+        action: str,
+        deleted: bool,
+    ) -> None:
+        """Report a flagged image to the moderation log channel."""
+        try:
+            db = getattr(self.bot, "db", None)
+            raw_settings = await db.get_settings(message.guild.id) if db else {}
+            channel_id = (
+                raw_settings.get("automod_log_channel")
+                or raw_settings.get("log_channel_automod")
+                or raw_settings.get("mod_log_channel")
+                or raw_settings.get("log_channel_mod")
+            )
+            if not channel_id:
+                return
+            log_channel = message.guild.get_channel(int(channel_id))
+            if log_channel is None:
+                return
+
+            label = {"nsfw": "Explicit content", "gore": "Graphic content"}.get(
+                category, "Age-inappropriate content"
+            )
+            outcome = (
+                "Message deleted" if deleted
+                else "Left in place" if action == "log"
+                else "Delete failed"
+            )
+            embed = discord.Embed(
+                title="Image flagged by AI screening",
+                description=(
+                    f"**Type:** {label}\n"
+                    f"**Author:** {message.author.mention} (`{message.author.id}`)\n"
+                    f"**Channel:** {message.channel.mention}\n"
+                    f"**Action:** {outcome}"
+                ),
+                color=discord.Color.orange(),
+                timestamp=discord.utils.utcnow(),
+            )
+            if isinstance(confidence, (int, float)):
+                embed.add_field(name="Confidence", value=f"{float(confidence):.0%}")
+            if not deleted:
+                embed.add_field(
+                    name="Message",
+                    value=f"[Jump to message]({message.jump_url})",
+                    inline=False,
+                )
+            embed.set_footer(text="AI image screening")
+            await log_channel.send(embed=embed)
+        except Exception:
+            logger.debug("Could not log flagged image", exc_info=True)
+
+    async def _punish_unsafe_image(
+        self,
+        message: discord.Message,
+        category: str,
+    ) -> None:
+        """Route a flagged image into the existing AutoMod warning escalation."""
+        try:
+            db = getattr(self.bot, "db", None)
+            if db is None or not hasattr(db, "add_warning"):
+                return
+            reason = (
+                "Explicit image" if category == "nsfw"
+                else "Graphic image" if category == "gore"
+                else "Age-inappropriate image"
+            )
+            await db.add_warning(
+                message.guild.id,
+                message.author.id,
+                self.bot.user.id,
+                f"AI image screening: {reason}",
+            )
+        except Exception:
+            logger.warning("Could not record image screening warning", exc_info=True)
+
     async def _message_has_image_context(self, message: discord.Message) -> bool:
         if self._message_record_has_image_context(message):
             return True
