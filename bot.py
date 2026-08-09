@@ -16,20 +16,30 @@ import asyncio
 
 try:
     import uvloop
-    if sys.platform != 'win32':
-        # asyncio.set_event_loop_policy is deprecated in 3.14 and slated for
-        # removal in 3.16. uvloop.run() / Runner(loop_factory=...) is the
-        # supported replacement, but this module hands control to
-        # discord.py's own asyncio.run(), so install the loop via the
-        # documented factory hook when available and fall back to the policy
-        # API on older interpreters.
-        if hasattr(asyncio, "set_event_loop_policy") and sys.version_info < (3, 14):
-            asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-        else:
-            # 3.14+: set the loop factory directly, no policy object involved.
-            asyncio.set_event_loop(uvloop.new_event_loop())
 except ImportError:
-    pass
+    uvloop = None  # type: ignore[assignment]
+
+_USE_UVLOOP = bool(uvloop is not None and sys.platform != 'win32')
+
+if _USE_UVLOOP and sys.version_info < (3, 14):
+    # Pre-3.14: the policy API is the documented way to install uvloop.
+    # It is deprecated in 3.14 and slated for removal in 3.16, so newer
+    # interpreters take the loop_factory path in _run_main() instead.
+    asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
+
+
+def _run_main(coro):
+    """Run the entrypoint on uvloop without the deprecated policy API.
+
+    ``asyncio.set_event_loop()`` is NOT a substitute here: ``asyncio.run()``
+    builds its own loop and discards any preset one. Verified on 3.14.6 --
+    set_event_loop + asyncio.run yielded ``asyncio.unix_events`` (uvloop
+    silently lost), while ``Runner(loop_factory=...)`` yielded ``uvloop``.
+    """
+    if _USE_UVLOOP and sys.version_info >= (3, 14):
+        with asyncio.Runner(loop_factory=uvloop.new_event_loop) as runner:
+            return runner.run(coro)
+    return asyncio.run(coro)
 
 import shlex
 import signal
@@ -2905,7 +2915,7 @@ async def main() -> int:
 
 if __name__ == "__main__":
     try:
-        exit_code = asyncio.run(main())
+        exit_code = _run_main(main())
         sys.exit(exit_code)
     except KeyboardInterrupt:
         logger.info("Shutdown complete")
