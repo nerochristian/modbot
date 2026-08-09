@@ -173,7 +173,7 @@ async def handle_purge(ctx: ToolContext) -> ToolResult:
         lookback_seconds = max(1, min(lookback_seconds, 14 * 24 * 60 * 60))
 
     if all_channels_requested and target_user_id is None:
-        return ToolResult.ok("Tell me whose messages to delete when using all channels.")
+        return ToolResult.clarify("Tell me whose messages to delete when using all channels.")
 
     logging_cog = ctx.cog.bot.get_cog("Logging")
     if logging_cog and not all_channels_requested:
