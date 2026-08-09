@@ -181,6 +181,75 @@ def _view_has_buttons(view: Any) -> bool:
     return False
 
 
+def _is_select_like(item: Any) -> bool:
+    """Return whether an item occupies an entire ActionRow.
+
+    Discord allows 5 buttons per ActionRow but only a single select menu, so
+    selects must be given their own row. Covers Select and every typed
+    variant (RoleSelect, ChannelSelect, UserSelect, MentionableSelect).
+    """
+    if isinstance(item, discord.ui.Select):
+        return True
+    # Subclasses defined in cogs may not inherit discord.ui.Select directly.
+    return "select" in type(item).__name__.lower()
+
+
+def _pack_action_rows(
+    action_rows: dict[int, list[discord.ui.Item[Any]]],
+) -> list[discord.ui.ActionRow]:
+    """Pack interactive items into ActionRows that Discord will accept.
+
+    Buttons stack up to 5 per row; a select takes a row to itself. Rows are
+    capped at 5 -- anything beyond that is dropped with a warning rather than
+    raising, because an over-full panel should still send.
+    """
+    packed: list[list[discord.ui.Item[Any]]] = []
+    current: list[discord.ui.Item[Any]] = []
+
+    for row_index in sorted(action_rows.keys()):
+        for item in action_rows[row_index]:
+            if _is_select_like(item):
+                if current:
+                    packed.append(current)
+                    current = []
+                packed.append([item])
+                continue
+            if len(current) >= _MAX_BUTTONS_PER_ROW:
+                packed.append(current)
+                current = []
+            current.append(item)
+        # A caller-specified row boundary ends the current button run.
+        if current:
+            packed.append(current)
+            current = []
+
+    if current:
+        packed.append(current)
+
+    if len(packed) > _MAX_ACTION_ROWS:
+        dropped = sum(len(group) for group in packed[_MAX_ACTION_ROWS:])
+        logger.warning(
+            "Components V2: %d interactive component(s) dropped; %d rows exceed "
+            "the %d-row limit",
+            dropped,
+            len(packed),
+            _MAX_ACTION_ROWS,
+        )
+        packed = packed[:_MAX_ACTION_ROWS]
+
+    rows: list[discord.ui.ActionRow] = []
+    for group in packed:
+        try:
+            rows.append(discord.ui.ActionRow(*group))
+        except Exception:
+            logger.warning(
+                "Components V2: could not build an ActionRow from %d item(s)",
+                len(group),
+                exc_info=True,
+            )
+    return rows
+
+
 def ensure_layout_view_action_rows(view: discord.ui.LayoutView) -> discord.ui.LayoutView:
     """
     Ensure a Components v2 LayoutView has valid top-level structure.
