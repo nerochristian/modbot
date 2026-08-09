@@ -14,12 +14,20 @@ Features:
 from __future__ import annotations
 
 from datetime import datetime
+import logging
 import re
 import types
 from typing import Any, Optional, Literal
 
 import discord
 
+
+logger = logging.getLogger("ModBot.ComponentsV2")
+
+# Discord hard limits on Components V2 structures.
+_MAX_CONTAINER_CHILDREN = 40
+_MAX_ACTION_ROWS = 5
+_MAX_BUTTONS_PER_ROW = 5
 
 # Component types that can appear at the top level of a LayoutView
 _V2_TOP_LEVEL_TYPES = {1, 9, 10, 12, 13, 14, 17}
