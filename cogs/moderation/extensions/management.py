@@ -1215,7 +1215,9 @@ class ManagementCommands:
             color=int(getattr(role.color, "value", role.color) or Colors.MOD),
             summary_rows=(("Members", len(members)), ("Showing", shown)),
             entries=member_rows,
-            thumbnail_url=getattr(getattr(guild, "icon", None), "url", None),
+            # `guild` is not a local in this function; role.guild is the same
+            # object and does not raise NameError for every non-empty role.
+            thumbnail_url=getattr(getattr(role.guild, "icon", None), "url", None),
             footer_text=f"Showing {shown} of {len(members)} members",
         )
         
