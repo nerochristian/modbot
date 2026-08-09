@@ -1764,6 +1764,13 @@ class AIClient:
                     else:
                         if isinstance(data, dict):
                             content = self._extract_completion_content(data)
+                            if not (content or "").strip():
+                                # A reasoning model can spend the whole output
+                                # budget on hidden reasoning and return empty
+                                # content with finish_reason="length". Name that
+                                # explicitly: the old generic "no assistant
+                                # content" error made it look like an outage.
+                                self._log_empty_completion(data, provider_label)
                             if content and include_citations:
                                 urls = self._extract_openrouter_citation_urls(data)
                                 if urls:
@@ -1814,6 +1821,36 @@ class AIClient:
             if isinstance(content, str):
                 chunks.append(content)
         return "".join(chunks).strip() or None
+
+    @staticmethod
+    def _log_empty_completion(data: Any, provider_label: str) -> None:
+        """Explain an empty assistant reply, which is usually budget exhaustion."""
+        try:
+            choice = ((data.get("choices") or [{}])[0]) or {}
+            finish = choice.get("finish_reason") or choice.get("native_finish_reason")
+            usage = data.get("usage") or {}
+            reasoning_tokens = (
+                (usage.get("completion_tokens_details") or {}).get("reasoning_tokens")
+            )
+            if finish == "length":
+                logger.warning(
+                    "%s returned an EMPTY reply truncated at the output limit "
+                    "(completion_tokens=%s, reasoning_tokens=%s). The model spent "
+                    "the whole max_tokens budget before emitting text; raise "
+                    "AI_MAX_TOKENS_CHAT or disable reasoning for this model.",
+                    provider_label,
+                    usage.get("completion_tokens"),
+                    reasoning_tokens,
+                )
+            else:
+                logger.warning(
+                    "%s returned an empty reply (finish_reason=%s, usage=%s).",
+                    provider_label,
+                    finish,
+                    usage or "unknown",
+                )
+        except Exception:  # never let diagnostics break the request path
+            logger.debug("Failed to diagnose empty completion", exc_info=True)
 
     @staticmethod
     def _extract_completion_content(data: Any) -> Optional[str]:
