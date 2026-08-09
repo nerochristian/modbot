@@ -420,9 +420,6 @@ class AIClient:
         # Throttle state for _set_block's WARNING log (see _set_block).
         self._block_log_at: Optional[datetime] = None
         self._block_log_reason: Optional[str] = None
-        self._brave_search_api_key = os.getenv("BRAVE_SEARCH_API_KEY")
-        self._tavily_api_key = os.getenv("TAVILY_API_KEY")
-        self._serpapi_api_key = os.getenv("SERPAPI_API_KEY")
         self._deepseek_web = DeepSeekWebClient()
 
     @property
