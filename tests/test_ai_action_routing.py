@@ -1713,7 +1713,11 @@ class AIModerationReasonTests(unittest.IsolatedAsyncioTestCase):
         )
         client._call_digitalocean = AsyncMock(return_value="- Likes concise replies")
 
-        with patch.dict(
+        # _summarize_memory returns early unless the client is available, and for
+        # the deepseek-web provider availability requires DO_API_KEY. State that
+        # precondition here: this test used to pass only because a real key
+        # leaked in from the deployed .env, so it failed on any host without one.
+        with patch("cogs.aimoderation.ai_client._DO_API_KEY", "do-test-key"), patch.dict(
             "os.environ",
             {"DO_MEMORY_MODEL": "deepseek-4-flash"},
         ):
