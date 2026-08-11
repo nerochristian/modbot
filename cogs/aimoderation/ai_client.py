@@ -103,12 +103,13 @@ _RELAYROUTER_VISION_MODEL: Final[str] = os.getenv(
 # _call_openrouter_chat sends no tools and refuses multimodal input, so
 # search/research/vision keep using their own lanes.
 #
-# GLM was chosen over Luna/Grok for conversational tone: it opens casually, asks
-# follow-up questions, and does not read like a support widget. Reasoning is
-# disabled on this lane (see _OPENROUTER_CHAT_DISABLE_REASONING) because GLM
-# defaults it on, which measured ~5.1s per reply versus ~0.6-1.4s with it off,
-# and the hidden reasoning tokens are billed and count against max_tokens.
-_OPENROUTER_CHAT_MODEL_DEFAULT: Final[str] = "z-ai/glm-5.2"
+# DeepSeek V4 Flash was chosen over GLM/Grok for conversational tone: it opens
+# casually, answers in the bot's own voice, and does not read like a support
+# widget. Reasoning is disabled on this lane (see
+# _OPENROUTER_CHAT_DISABLE_REASONING) because classes that ship reasoning on by
+# default measured ~5.1s per reply versus ~0.6-1.4s with it off, and the hidden
+# reasoning tokens are billed and count against max_tokens.
+_OPENROUTER_CHAT_MODEL_DEFAULT: Final[str] = "~deepseek/deepseek-v4-flash-latest"
 _OPENROUTER_TALK_CHAT_MODEL: Final[str] = (
     os.getenv("OPENROUTER_CHAT_MODEL_TALKING")
     # Back-compat: this lane used to be Grok-specific.
@@ -207,7 +208,7 @@ _AIMODEL_BASE_URL: Final[str] = os.getenv(
 ).strip().rstrip("/")
 _AIMODEL_CONVERSATION_MODEL: Final[str] = os.getenv(
     "AIMODEL_CONVERSATION_MODEL",
-    "deepseek-v4-flash",
+    "grok-4.5",
 ).strip()
 _AIMODEL_CHAT_MODEL: Final[str] = os.getenv(
     "AIMODEL_CHAT_MODEL",
