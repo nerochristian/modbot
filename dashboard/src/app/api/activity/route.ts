@@ -36,7 +36,7 @@ export async function GET(request: Request) {
       UNION ALL
       SELECT 'automod-' || id::text, 'automod', 'AutoMod', NULL,
         'blocked_' || rule, user_id::text,
-        severity, reason, rule, message_deleted::boolean, NULL, created_at
+        severity, reason, rule, COALESCE(message_deleted, 0) <> 0 AS message_deleted, NULL, created_at
       FROM automod_events WHERE guild_id = $1::bigint
       UNION ALL
       SELECT 'member-' || id::text, 'members', 'Discord', NULL,

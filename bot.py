@@ -2365,7 +2365,7 @@ class ModBot(commands.Bot):
             legacy_default = moderation_bool(
                 settings,
                 "moderation_delete_command_messages",
-                True,
+                False,
             )
             if not moderation_bool(
                 settings,
