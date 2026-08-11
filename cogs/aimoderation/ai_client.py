@@ -518,10 +518,14 @@ class AIClient(
 
     def conversation_model_name(self, override: Optional[str] = None) -> str:
         """Return the model this bot requests, without claiming upstream attestation."""
-        if _aimodel_conversation_enabled():
-            return _AIMODEL_CONVERSATION_MODEL
+        # OpenRouter is the primary talking lane: standard conversation runs
+        # through _call_openrouter_chat whenever a key is configured. Report it
+        # first so "what model are you using" describes the lane that actually
+        # serves ordinary conversation, not the AiModel fallback.
         if _openrouter_conversation_enabled():
             return _OPENROUTER_CHAT_MODEL
+        if _aimodel_conversation_enabled():
+            return _AIMODEL_CONVERSATION_MODEL
         if self.prefers_aimodel:
             # AiModel uses full resource IDs; ignore stale dashboard aliases.
             return _AIMODEL_CHAT_MODEL
@@ -581,11 +585,11 @@ class AIClient(
             if not _aimodel_api_enabled():
                 return "AiModel is missing `AIMODEL_API_KEY`."
             conversation_route = (
-                f"AiModel `{_AIMODEL_CONVERSATION_MODEL}`"
-                if _aimodel_conversation_enabled()
+                f"OpenRouter `{_OPENROUTER_CHAT_MODEL}`"
+                if _openrouter_conversation_enabled()
                 else (
-                    f"OpenRouter `{_OPENROUTER_CHAT_MODEL}`"
-                    if _openrouter_conversation_enabled()
+                    f"AiModel `{_AIMODEL_CONVERSATION_MODEL}`"
+                    if _aimodel_conversation_enabled()
                     else f"AiModel `{_AIMODEL_CHAT_MODEL}`"
                 )
             )
