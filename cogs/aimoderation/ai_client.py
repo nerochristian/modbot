@@ -207,7 +207,7 @@ _AIMODEL_BASE_URL: Final[str] = os.getenv(
 ).strip().rstrip("/")
 _AIMODEL_CONVERSATION_MODEL: Final[str] = os.getenv(
     "AIMODEL_CONVERSATION_MODEL",
-    "grok-4.5",
+    "deepseek-v4-flash",
 ).strip()
 _AIMODEL_CHAT_MODEL: Final[str] = os.getenv(
     "AIMODEL_CHAT_MODEL",
@@ -3191,11 +3191,6 @@ class AIClient(
                 "Check CURRENT THREAD first and answer from it. If it is not there, say you don't see that detail."
             )
 
-        task_instruction += (
-            " Do not use long dash characters to separate clauses. Use normal punctuation instead. "
-            "Hyphens inside compound words are fine."
-        )
-
         return ConversationPlan(
             system_prompt=CONVERSATION_SYSTEM_PROMPT,
             user_prompt=user_content,
@@ -3222,8 +3217,8 @@ class AIClient(
         text = AIClient._convert_simple_markdown_table(text)
 
         # The user requested to stop using long dash separators and use commas instead.
-        text = text.replace(" \u2014 ", ", ").replace("\u2014", ", ")
-        text = text.replace(" \u2013 ", ", ").replace("\u2013", ", ")
+        # Softened: collapse bare "--" (codey artifacts) but leave em/en dashes alone so
+        # natural prose isn't flattened into comma-filled robot-speak.
         text = text.replace(" -- ", ", ").replace("--", ", ")
 
         # Strip meta-commentary the model sometimes prepends
