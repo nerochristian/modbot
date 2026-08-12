@@ -125,7 +125,7 @@ class GeneralSettingsView(BaseSettingsView):
         # ── Channels ──
         channels = (
             f"**Mod Log:** {_c(g, s, 'mod_log_channel')}\n"
-            f"**Forum Alerts:** {_c(g, s, 'forum_alert_channel', '`Using Mod Log`')}\n"
+            f"**Forum Alerts:** {_c(g, s, 'forum_alerts_channel', '`Using Mod Log`')}\n"
             f"**Welcome:** {_c(g, s, 'welcome_channel')}"
         )
         embed.add_field(name="📍 Channels", value=channels, inline=True)
@@ -165,7 +165,7 @@ class GeneralSettingsView(BaseSettingsView):
 
     @discord.ui.select(cls=discord.ui.ChannelSelect, placeholder="🚨 Set Forum Alert Channel", min_values=0, max_values=1, channel_types=[discord.ChannelType.text], row=4)
     async def forum_alerts_select(self, interaction: discord.Interaction, select: discord.ui.ChannelSelect):
-        self.settings["forum_alert_channel"] = select.values[0].id if select.values else None
+        self.settings["forum_alerts_channel"] = select.values[0].id if select.values else None
         await _save(self.cog, self.guild.id, self.settings)
         await interaction.response.edit_message(embed=self.get_embed(), view=self)
 
