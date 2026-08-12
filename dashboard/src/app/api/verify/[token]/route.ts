@@ -16,6 +16,7 @@ const attempts = new Map<string, { count: number; resetAt: number }>()
 type TurnstileResponse = { success: boolean; action?: string; hostname?: string; 'error-codes'?: string[] }
 
 const TURNSTILE_ACTION = 'verify'
+const TURNSTILE_SECRET_ERRORS = new Set(['missing-input-secret', 'invalid-input-secret'])
 const MAX_TURNSTILE_TOKEN_LENGTH = 2_048
 const MAX_REQUEST_BYTES = 16_384
 function clientAddress(request: Request): string {
@@ -46,6 +47,8 @@ async function discord(path: string, init: RequestInit = {}): Promise<Response> 
 
 export async function POST(request: Request, context: { params: Promise<{ token: string }> }) {
   let nonce = ''
+  let reservedNonce = false
+  let rolePatchAccepted = false
   try {
     if (rateLimit(request)) return apiError('Too many verification attempts. Wait a few minutes and try again.', 429)
     const expectedOrigin = new URL(dashboardBaseUrl(request.url)).origin
@@ -84,8 +87,13 @@ export async function POST(request: Request, context: { params: Promise<{ token:
       cache: 'no-store',
       signal: AbortSignal.timeout(8_000),
     })
-    if (!turnstileResponse.ok) throw new Error(`Turnstile validation failed (${turnstileResponse.status})`)
-    const turnstile = await turnstileResponse.json() as TurnstileResponse
+    const turnstile = await turnstileResponse.json().catch(() => null) as TurnstileResponse | null
+    const turnstileErrors = turnstile?.['error-codes'] ?? []
+    if (turnstileErrors.some((code) => TURNSTILE_SECRET_ERRORS.has(code))) {
+      console.error('Website verification Turnstile secret is invalid or missing', { status: turnstileResponse.status, errorCodes: turnstileErrors })
+      return apiError('Website verification is misconfigured. Ask a server admin to refresh Docket Turnstile keys.', 503)
+    }
+    if (!turnstileResponse.ok || !turnstile) throw new Error(`Turnstile validation failed (${turnstileResponse.status})`)
     const expectedHostname = new URL(dashboardBaseUrl(request.url)).hostname
     const actionOk = turnstile.action === TURNSTILE_ACTION
     const hostOk = turnstile.hostname === expectedHostname
@@ -106,6 +114,7 @@ export async function POST(request: Request, context: { params: Promise<{ token:
       [nonce, capability.g, capability.u],
     )
     if (reserved.length === 0) return apiError('This verification link has already been used.', 409)
+    reservedNonce = true
 
     const memberResponse = await discord(`/guilds/${capability.g}/members/${capability.u}`)
     if (!memberResponse.ok) throw new Error(`Discord member lookup failed (${memberResponse.status})`)
@@ -130,7 +139,13 @@ export async function POST(request: Request, context: { params: Promise<{ token:
       body: JSON.stringify({ roles: finalRoles }),
     })
     if (!roleUpdate.ok) throw new Error(`Discord rejected the verification role update (${roleUpdate.status})`)
-    const updatedMember = await roleUpdate.json() as DiscordGuildMember
+    rolePatchAccepted = true
+    const roleUpdateBody = await roleUpdate.json().catch(() => null) as DiscordGuildMember | null
+    let updatedMember = roleUpdateBody
+    if (!updatedMember) {
+      const updatedMemberResponse = await discord(`/guilds/${capability.g}/members/${capability.u}`)
+      updatedMember = await updatedMemberResponse.json() as DiscordGuildMember
+    }
     const updatedRoles = new Set(updatedMember.roles ?? [])
     if (!updatedRoles.has(verifiedRole) || updatedRoles.has(unverifiedRole)) {
       throw new Error('Discord did not persist the final verification role state')
@@ -160,7 +175,7 @@ export async function POST(request: Request, context: { params: Promise<{ token:
     }
     return ok({ verified: true })
   } catch (error) {
-    if (nonce) await botQuery('DELETE FROM web_verification_consumptions WHERE nonce = $1', [nonce]).catch(() => undefined)
+    if (reservedNonce && !rolePatchAccepted) await botQuery('DELETE FROM web_verification_consumptions WHERE nonce = $1', [nonce]).catch(() => undefined)
     if (error instanceof SyntaxError) return apiError('Request body must be valid JSON.', 400)
     const message = error instanceof Error ? error.message : 'Verification failed'
     if (/link|expired|malformed/i.test(message)) return apiError(message, 400)
