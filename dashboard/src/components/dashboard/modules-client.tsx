@@ -8,7 +8,6 @@ import {
   Bot,
   CheckCircle2,
   CircleOff,
-  Globe2,
   ImageIcon,
   KeyRound,
   Loader2,
@@ -84,7 +83,7 @@ const BADGE_LABEL = {
 } as const
 
 type StatusFilter = 'all' | 'enabled' | 'disabled'
-type VerificationMethod = 'website' | 'discord'
+type VerificationMethod = 'discord'
 
 const CATEGORY_ORDER = ['Moderation', 'Access', 'Engagement'] as const
 
@@ -127,7 +126,7 @@ export function ModulesClient() {
   const [editing, setEditing] = useState<Module | null>(null)
   const [pendingWhitelist, setPendingWhitelist] = useState<Module | null>(null)
   const [pendingVerification, setPendingVerification] = useState<Module | null>(null)
-  const [verificationMethod, setVerificationMethod] = useState<VerificationMethod>('website')
+  const [verificationMethod, setVerificationMethod] = useState<VerificationMethod>('discord')
   const [autoSettingVerification, setAutoSettingVerification] = useState(false)
   const verificationSetupInFlight = useRef(false)
 
@@ -191,7 +190,7 @@ export function ModulesClient() {
       return
     }
     if (mod.id === 'verification' && next && !verificationIsConfigured(mod)) {
-      setVerificationMethod('website')
+      setVerificationMethod('discord')
       setPendingVerification(mod)
       return
     }
@@ -200,7 +199,7 @@ export function ModulesClient() {
 
   function requestSettings(mod: Module) {
     if (mod.id === 'verification' && !verificationIsConfigured(mod)) {
-      setVerificationMethod('website')
+      setVerificationMethod('discord')
       setPendingVerification(mod)
       return
     }
@@ -223,7 +222,7 @@ export function ModulesClient() {
       const queuedMembers = Number(body.existingMembersAssigned ?? 0)
       toast.success(
         'Verification is ready',
-        `${verificationMethod === 'website' ? 'Website checkpoint' : 'Discord CAPTCHA'} · ${protectedChannels} channels protected · ${queuedMembers} existing member${queuedMembers === 1 ? '' : 's'} queued · Auto Role disabled.`,
+        `Discord CAPTCHA - ${protectedChannels} channels protected - ${queuedMembers} existing member${queuedMembers === 1 ? '' : 's'} queued - Auto Role disabled.`,
       )
       setPendingVerification(null)
       await refetch()
@@ -383,7 +382,7 @@ export function ModulesClient() {
               Configure manually
             </Button>
             <Button loading={autoSettingVerification} onClick={() => void autoSetupVerification()}>
-              <WandSparkles className="size-4" /> Set up {verificationMethod === 'website' ? 'website' : 'Discord'}
+              <WandSparkles className="size-4" /> Set up Discord
             </Button>
           </>
         }
@@ -392,17 +391,10 @@ export function ModulesClient() {
           <legend className="mb-2 text-xs font-semibold text-foreground">Where should members prove they are human?</legend>
           {([
             {
-              value: 'website' as const,
-              icon: Globe2,
-              title: 'Website checkpoint',
-              badge: 'Recommended',
-              copy: 'Members open a private, single-use link protected by Cloudflare Turnstile.',
-            },
-            {
               value: 'discord' as const,
               icon: MessageSquareText,
               title: 'Discord CAPTCHA',
-              badge: 'In-app',
+              badge: 'Default',
               copy: 'Members solve the image challenge without leaving Discord.',
             },
           ]).map((option) => {
@@ -443,10 +435,8 @@ export function ModulesClient() {
             ['02', 'Protect channels', 'Unverified members only see the verification entry point.'],
             [
               '03',
-              verificationMethod === 'website' ? 'Open the checkpoint' : 'Solve in Discord',
-              verificationMethod === 'website'
-                ? 'The panel issues a private website link protected by Turnstile.'
-                : 'The panel starts the in-Discord image CAPTCHA.',
+              'Solve in Discord',
+              'The panel starts the in-Discord image CAPTCHA.',
             ],
           ].map(([number, title, copy]) => (
             <div key={number} className="rounded-lg border border-border bg-surface-2 p-3">
@@ -1472,7 +1462,7 @@ const OPERATIONAL_SECTIONS: Record<OperationalSpecial, OperationalSectionDefinit
     {
       register: 'METHOD / 01',
       title: 'Human check',
-      description: 'Choose whether members verify inside Discord or through the reCAPTCHA-protected website.',
+      description: 'Members verify inside Discord with Docket\'s image CAPTCHA.',
       keys: ['verification_method'],
     },
     {

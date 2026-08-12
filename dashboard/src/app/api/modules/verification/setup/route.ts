@@ -7,10 +7,11 @@ export async function POST(request: Request) {
     const guard = await requireMutation(request, 'config.write')
     if (guard instanceof Response) return guard
     const body = await request.json().catch(() => ({})) as { method?: unknown }
-    if (body.method !== 'website' && body.method !== 'discord') {
-      return apiError('Choose website or Discord verification.', 400)
+    const method = body.method ?? 'discord'
+    if (method !== 'discord') {
+      return apiError('Website verification is disabled. Use Discord verification.', 400)
     }
-    const result = await automaticallySetupVerification(guard.selectedGuildId!, body.method)
+    const result = await automaticallySetupVerification(guard.selectedGuildId!, method)
     await recordGuildAudit(guard.selectedGuildId!, guard, 'verification.auto_setup', 'verification', result)
     return ok(result)
   } catch (error) {

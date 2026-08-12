@@ -13,7 +13,7 @@ const MAX_DISCORD_ATTEMPTS = 5
 const DISCORD_WRITE_CONCURRENCY = 3
 const BULK_VERIFICATION_AUDIT_REASON = 'Docket verification setup - queue existing member'
 
-export type VerificationMethod = 'website' | 'discord'
+export type VerificationMethod = 'discord'
 
 const STAFF_ROLE_SETTING_KEYS = [
   'owner_role',
@@ -288,13 +288,8 @@ function assertPersistedSetup(
   }
 }
 
-function assertVerificationMethodReady(method: VerificationMethod): void {
-  if (method === 'website' && (
-    !process.env.TURNSTILE_SITE_KEY?.trim()
-    || !process.env.TURNSTILE_SECRET_KEY?.trim()
-  )) {
-    throw new Error('Website verification needs Cloudflare Turnstile keys on the dashboard server')
-  }
+function assertVerificationMethodReady(method: string): void {
+  if (method !== 'discord') throw new Error('Website verification is disabled. Use Discord verification.')
 }
 
 async function automaticallySetupVerificationLocked(
@@ -419,10 +414,10 @@ async function automaticallySetupVerificationLocked(
 
 export async function automaticallySetupVerification(
   guildId: string,
-  method: VerificationMethod,
+  method: string,
 ) {
   if (!/^\d{15,22}$/.test(guildId)) throw new Error('Invalid Discord guild ID')
-  if (method !== 'website' && method !== 'discord') throw new Error('Choose website or Discord verification')
+  if (method !== 'discord') throw new Error('Website verification is disabled. Use Discord verification.')
   return withBotAdvisoryLock(
     `verification-setup:${guildId}`,
     () => automaticallySetupVerificationLocked(guildId, method),

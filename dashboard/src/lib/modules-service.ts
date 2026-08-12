@@ -379,6 +379,13 @@ export async function updateModuleSettings(
   }
   const currentSettings = await getBotGuildSettings(guildId)
   const mergedSettings = { ...currentSettings, ...changes }
+  if (def.id === 'verification' && changes.verification_method === 'website') {
+    throw new ModuleValidationError('Website verification is disabled. Use Discord CAPTCHA verification.')
+  }
+  if (def.id === 'verification' && mergedSettings.verification_method === 'website') {
+    changes.verification_method = 'discord'
+    mergedSettings.verification_method = 'discord'
+  }
   if (def.id === 'antiraid') {
     const quarantineSelected = ['antiraid_action', 'antiraid_raidmode_action']
       .some((key) => mergedSettings[key] === 'quarantine')
@@ -399,11 +406,6 @@ export async function updateModuleSettings(
     if (!isDiscordSnowflake(mergedSettings.waiting_verify_voice_channel)) {
       throw new ModuleValidationError('Select a voice waiting room before enabling voice verification')
     }
-  }
-  if (def.id === 'verification' && mergedSettings.verification_method === 'website' && (
-    !process.env.TURNSTILE_SITE_KEY?.trim() || !process.env.TURNSTILE_SECRET_KEY?.trim()
-  )) {
-    throw new ModuleValidationError('Website verification needs TURNSTILE_SITE_KEY and TURNSTILE_SECRET_KEY on the dashboard server')
   }
   if (
     def.id === 'verification'
@@ -468,11 +470,6 @@ export async function setModuleEnabled(
   )) {
     throw new ModuleValidationError('Set a voice waiting room before enabling voice verification')
   }
-  if (enabled && def.id === 'verification' && settings.verification_method === 'website' && (
-    !process.env.TURNSTILE_SITE_KEY?.trim() || !process.env.TURNSTILE_SECRET_KEY?.trim()
-  )) {
-    throw new ModuleValidationError('Website verification needs Cloudflare Turnstile keys before it can be enabled')
-  }
   if (enabled && def.id === 'tickets' && !hasChannel(settings.ticket_category, [4])) {
     throw new ModuleValidationError('Set a ticket category before enabling tickets')
   }
@@ -500,7 +497,10 @@ export async function setModuleEnabled(
   }
   const changes: Record<string, unknown> = { [def.enableKey]: enabled }
   if (enabled && def.enableAlso) Object.assign(changes, def.enableAlso)
-  if (enabled && def.id === 'verification') changes.autoroles_enabled = false
+  if (enabled && def.id === 'verification') {
+    changes.autoroles_enabled = false
+    changes.verification_method = 'discord'
+  }
   if (enabled && def.id === 'autoroles') changes.verification_enabled = false
   await patchBotGuildSettings(guildId, changes)
   const updatedSettings = await getBotGuildSettings(guildId)

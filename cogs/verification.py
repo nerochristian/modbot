@@ -1132,28 +1132,6 @@ class Verification(commands.Cog):
                     )
                     return
 
-            settings = await self._get_settings(guild.id)
-            if settings.get("verification_method") == "website":
-                website_url = await self._website_verification_url(guild.id, member.id)
-                if not website_url:
-                    await self._send_start_response(
-                        interaction,
-                        embed=ModEmbed.error(
-                            "Website Verification Unavailable",
-                            "The secure website checkpoint is not configured correctly. "
-                            "Ask a server admin to check Docket's dashboard URL and verification secret.",
-                        ),
-                        ephemeral=ephemeral,
-                    )
-                    return
-                view = WebsiteVerificationLayout(guild=guild, url=website_url)
-                await self._send_start_response(
-                    interaction,
-                    view=view,
-                    ephemeral=ephemeral,
-                )
-                return
-
         key = (guild.id, member.id, purpose)
         existing = self._pending.get(key)
         if regenerate or not existing or existing.expired():
