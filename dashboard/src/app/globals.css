@@ -635,6 +635,77 @@ body {
   );
 }
 
+/* Tension exposure bar — swells with threat level as the Live Wire
+   counter climbs, then snaps back to calm once everything is contained.
+   Timed to loop with the Live Wire stream (~4.3s) for an ambient pulse. */
+.swell {
+  background-image: linear-gradient(
+    90deg,
+    var(--threat) 0%,
+    var(--sev-critical) 28%,
+    var(--accent) 72%,
+    var(--brand-cyan) 100%
+  );
+  background-repeat: no-repeat;
+  background-position: left center;
+  transform-origin: left center;
+  animation: docket-swell 8.4s cubic-bezier(0.3, 0, 0.2, 1) infinite;
+}
+
+@keyframes docket-swell {
+  0% {
+    transform: scaleX(0.04);
+    opacity: 0.65;
+  }
+  38% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  56% {
+    transform: scaleX(1);
+  }
+  78%,
+  100% {
+    transform: scaleX(0.04);
+    opacity: 0.65;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swell {
+    animation: none !important;
+    transform: scaleX(0.55);
+    opacity: 0.8;
+  }
+}
+
+/* The quiet-shift timeline marker — a hollow dot on the left axis that
+   fills as the story progresses (midnight → raid → handover). */
+.shift-dot {
+  transition:
+    background-color 320ms ease,
+    border-color 320ms ease,
+    box-shadow 320ms ease;
+}
+.shift-step.is-active .shift-dot {
+  background-color: var(--accent);
+  border-color: var(--accent);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent),
+    0 0 14px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* Case-row hover inside the handover ledger. */
+.docket-ledger-row {
+  transition:
+    background-color 180ms ease,
+    transform 180ms ease;
+}
+.docket-ledger-row:hover {
+  background-color: color-mix(in srgb, var(--surface-2) 85%, transparent);
+  transform: translateX(2px);
+}
+
 /* Incident feed — messages stream up and settle. */
 @keyframes wire-in {
   0% {

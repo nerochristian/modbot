@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { ArrowRight, LockKeyhole, Server, ShieldCheck } from 'lucide-react'
+import { ArrowRight, Fingerprint, Server, ShieldCheck } from 'lucide-react'
 import { buttonVariants } from '@/components/ui/button'
 
 type Mode = 'login' | 'register'
@@ -19,14 +19,14 @@ export function AuthForm({
     <div>
       <div className="mb-7 inline-flex items-center gap-2 rounded-sm border border-border bg-surface px-3 py-1.5 font-mono text-[0.6875rem] font-medium uppercase tracking-[0.12em] text-muted">
         <span className="size-1.5 rounded-full bg-success" />
-        Discord-secured access
+        Shift handover · badge check
       </div>
       <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">
-        {mode === 'login' ? 'Open your caseload.' : 'Connect your Discord account.'}
+        {mode === 'login' ? 'Back on shift.' : 'Join the desk.'}
       </h1>
       <p className="mt-3 text-sm leading-6 text-muted">
-        Sign in with Discord to see every server you can manage, open installed servers, or add
-        Docket where it’s missing.
+        Sign in with the Discord account your servers already trust. The dashboard only lists servers
+        where your live permission is Administrator.
       </p>
 
       {error && (
@@ -48,10 +48,23 @@ export function AuthForm({
         <ArrowRight className="size-4" />
       </Link>
 
-      <div className="mt-7 grid grid-cols-3 gap-2 border-t border-border pt-6 text-center text-[11px] text-muted-2">
-        <span className="flex flex-col items-center gap-2"><LockKeyhole className="size-4 text-muted" />Secure OAuth</span>
-        <span className="flex flex-col items-center gap-2"><Server className="size-4 text-muted" />Multi-server</span>
-        <span className="flex flex-col items-center gap-2"><ShieldCheck className="size-4 text-muted" />Admin-only</span>
+      <p className="mt-3 text-center text-xs leading-5 text-muted-2">
+        We never see or store your Discord password.
+      </p>
+
+      <div className="mt-6 grid grid-cols-3 gap-2 border-t border-border pt-6 text-center text-[11px] text-muted-2">
+        <span className="flex flex-col items-center gap-2">
+          <Fingerprint className="size-4 text-muted" />
+          OAuth only
+        </span>
+        <span className="flex flex-col items-center gap-2">
+          <Server className="size-4 text-muted" />
+          Multi-server
+        </span>
+        <span className="flex flex-col items-center gap-2">
+          <ShieldCheck className="size-4 text-muted" />
+          Admin-gated
+        </span>
       </div>
     </div>
   )
