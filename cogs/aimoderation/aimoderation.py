@@ -2996,9 +2996,6 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
             await self.reply(message, embed=self._build_ai_status_embed(response))
             return
 
-        if not settings.enabled:
-            response += "\n\n-# AI Moderation is disabled. Ask an admin to enable it with `/aimod toggle`."
-
         # Normal delivery
         await self._deliver_response(message, response, signals)
         if signals.mode != ConversationMode.RESEARCH:

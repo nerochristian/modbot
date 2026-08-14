@@ -167,7 +167,7 @@ export const MODERATION_FIELDS: ModuleField[] = [
     label: 'Delete moderation commands after execution',
     type: 'toggle',
     hint: 'Remove successful prefix commands from public channels.',
-    fallback: true,
+    fallback: false,
   },
   {
     key: 'moderation_respond_with_reason',

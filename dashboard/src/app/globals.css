@@ -635,76 +635,108 @@ body {
   );
 }
 
-/* Tension exposure bar — swells with threat level as the Live Wire
-   counter climbs, then snaps back to calm once everything is contained.
-   Timed to loop with the Live Wire stream (~4.3s) for an ambient pulse. */
-.swell {
-  background-image: linear-gradient(
-    90deg,
-    var(--threat) 0%,
-    var(--sev-critical) 28%,
-    var(--accent) 72%,
-    var(--brand-cyan) 100%
-  );
-  background-repeat: no-repeat;
-  background-position: left center;
-  transform-origin: left center;
-  animation: docket-swell 8.4s cubic-bezier(0.3, 0, 0.2, 1) infinite;
+/* ================================================================== */
+/* THE MODERATION FIELD (2026 redesign)                               */
+/*                                                                     */
+/* One canvas, one surface: the hero is a live operation desk. Deep    */
+/* ink, hairline borders, a single electric signal, and one counter-   */
+/* signal for threat. The signature is the ORBITAL GAUGE — the threat  */
+/* level as a measured arc, not a HUD. Auth floats as a command-lock   */
+/* card over the same field instead of a two-pane storefront.          */
+/* ================================================================== */
+
+/* Gauge tick — a hairline that brightens when the threat arc passes it. */
+@keyframes field-tick-up {
+  from { opacity: 0.12; }
+  to { opacity: 1; }
+}
+@keyframes field-arc {
+  0% { stroke-dashoffset: var(--field-arc-from); }
+  100% { stroke-dashoffset: var(--field-arc-to); }
 }
 
-@keyframes docket-swell {
-  0% {
-    transform: scaleX(0.04);
-    opacity: 0.65;
-  }
-  38% {
-    transform: scaleX(1);
-    opacity: 1;
-  }
-  56% {
-    transform: scaleX(1);
-  }
-  78%,
-  100% {
-    transform: scaleX(0.04);
-    opacity: 0.65;
-  }
+/* Field module — a surface with corner brackets instead of card chrome. */
+.field-module {
+  position: relative;
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.field-module::before,
+.field-module::after,
+.field-module > .field-corner::before,
+.field-module > .field-corner::after {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border: 1px solid color-mix(in srgb, var(--foreground) 35%, transparent);
+  transition: border-color 200ms ease;
+  pointer-events: none;
+}
+.field-module::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+.field-module::after { top: -1px; right: -1px; border-left: none; border-bottom: none; }
+.field-module > .field-corner::before { bottom: -1px; left: -1px; border-right: none; border-top: none; }
+.field-module > .field-corner::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+.field-module:hover::before,
+.field-module:hover::after,
+.field-module:hover > .field-corner::before,
+.field-module:hover > .field-corner::after {
+  border-color: var(--accent-line);
+}
+
+/* Ruled baseline threshold that scrolls under a data row — like ticker tape. */
+.field-rule {
+  background-image: repeating-linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--foreground) 8%, transparent) 0 1px,
+    transparent 1px 7px
+  );
+  background-position: 0 100%;
+  background-size: 100% 1px;
+  background-repeat: no-repeat;
+}
+
+/* The containment ledger rows — settle in quietly. */
+@keyframes field-ledger-in {
+  from { opacity: 0; transform: translate3d(0, 6px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+.field-ledger-row {
+  animation: field-ledger-in 500ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+/* Slow ambient drift for single background orbs — quiet, not screensaver. */
+@keyframes field-drift {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  50% { transform: translate3d(0, -18px, 0); }
+}
+.field-drift {
+  animation: field-drift 9s ease-in-out infinite;
+}
+
+/* Grid that fades out toward the edges so the room feels deep, not noisy. */
+.field-grid-fade {
+  -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 40%, #000 40%, transparent 80%);
+  mask-image: radial-gradient(ellipse 90% 70% at 50% 40%, #000 40%, transparent 80%);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .swell {
+  .field-drift,
+  .field-ledger-row,
+  .field-gauge-arc,
+  .field-gauge-tick {
     animation: none !important;
-    transform: scaleX(0.55);
-    opacity: 0.8;
+  }
+  .field-gauge-arc {
+    stroke-dashoffset: var(--field-arc-to) !important;
   }
 }
 
-/* The quiet-shift timeline marker — a hollow dot on the left axis that
-   fills as the story progresses (midnight → raid → handover). */
-.shift-dot {
-  transition:
-    background-color 320ms ease,
-    border-color 320ms ease,
-    box-shadow 320ms ease;
-}
-.shift-step.is-active .shift-dot {
-  background-color: var(--accent);
-  border-color: var(--accent);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--accent) 18%, transparent),
-    0 0 14px color-mix(in srgb, var(--accent) 55%, transparent);
-}
-
-/* Case-row hover inside the handover ledger. */
-.docket-ledger-row {
-  transition:
-    background-color 180ms ease,
-    transform 180ms ease;
-}
-.docket-ledger-row:hover {
-  background-color: color-mix(in srgb, var(--surface-2) 85%, transparent);
-  transform: translateX(2px);
-}
+/* (Old "quiet-shift" heroes removed in the Field redesign — the orbital
+   gauge and .field-* chrome are the current signature. wire-blip and the
+   LEDGER row are still used by FieldDesk / the servers page and stay.) */
 
 /* Incident feed — messages stream up and settle. */
 @keyframes wire-in {

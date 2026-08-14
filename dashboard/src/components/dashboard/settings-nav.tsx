@@ -2,11 +2,10 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { User, ShieldCheck, Palette, Bell, LayoutDashboard, Server } from 'lucide-react'
+import { User, ShieldCheck, Palette, Bell, LayoutDashboard } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const ITEMS = [
-  { label: 'Server', href: '/dashboard/settings/server', icon: Server },
   { label: 'Profile', href: '/dashboard/settings/profile', icon: User },
   { label: 'Security', href: '/dashboard/settings/security', icon: ShieldCheck },
   { label: 'Appearance', href: '/dashboard/settings/appearance', icon: Palette },

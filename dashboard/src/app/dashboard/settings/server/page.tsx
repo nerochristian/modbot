@@ -1,202 +1,245 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { Check } from 'lucide-react'
-import { SettingsCard, SettingRow } from '@/components/dashboard/setting-section'
-import { Input } from '@/components/ui/input'
-import { Switch } from '@/components/ui/switch'
+import { useState } from 'react'
+import { Hash, Shield, AlertTriangle, Save } from 'lucide-react'
+import { SettingsCard } from '@/components/dashboard/setting-section'
 import { Button } from '@/components/ui/button'
-import { Skeleton } from '@/components/ui/skeleton'
-import { ErrorState } from '@/components/ui/empty-state'
+import { Switch } from '@/components/ui/switch'
+import { Input, Field } from '@/components/ui/input'
 import { useToast } from '@/components/ui/toast'
-import { cn } from '@/lib/utils'
+import { useApi } from '@/lib/use-api'
 
 type ServerSettings = {
   prefix: string
   deleteCommandMessages: boolean
-}
-
-const PRESET_PREFIXES = [',', '!', '.', '?', '$', ';', '+', '~']
-
-async function fetchSettings(): Promise<ServerSettings> {
-  const res = await fetch('/api/settings/server', { cache: 'no-store' })
-  const body = await res.json().catch(() => ({}))
-  if (!res.ok || !body.settings) throw new Error(body.error ?? 'Server settings are unavailable.')
-  return body.settings as ServerSettings
-}
-
-function validatePrefix(value: string): string | null {
-  const trimmed = value.trim()
-  if (trimmed.length === 0) return 'Prefix cannot be empty.'
-  if (trimmed.length > 5) return 'Prefix must be 5 characters or fewer.'
-  if (/\s/.test(trimmed)) return 'Prefix cannot contain spaces.'
-  if (/^<[@#&!]/.test(trimmed)) return 'Prefix cannot be a Discord mention or emoji format.'
-  return null
+  warnEnabled: boolean
+  warnMuteAt: number
+  warnKickAt: number
+  warnBanAt: number
+  warnMuteDuration: number
+  dmUsers: boolean
+  respondWithReason: boolean
+  preserveBanMessages: boolean
+  useTimeouts: boolean
 }
 
 export default function ServerSettingsPage() {
   const toast = useToast()
-  const [settings, setSettings] = useState<ServerSettings | null>(null)
-  const [prefixDraft, setPrefixDraft] = useState('')
-  const [deleteDraft, setDeleteDraft] = useState(false)
-  const [loading, setLoading] = useState(true)
-  const [loadError, setLoadError] = useState('')
+  const { data, loading, error, refetch } = useApi<{ settings: ServerSettings }>('/api/settings/server')
   const [busy, setBusy] = useState(false)
-
-  async function load() {
-    setLoading(true)
-    setLoadError('')
-    try {
-      const data = await fetchSettings()
-      setSettings(data)
-      setPrefixDraft(data.prefix)
-      setDeleteDraft(data.deleteCommandMessages)
-    } catch (error) {
-      setLoadError(error instanceof Error ? error.message : 'Server settings are unavailable.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    let cancelled = false
-    void fetchSettings()
-      .then((data) => {
-        if (cancelled) return
-        setSettings(data)
-        setPrefixDraft(data.prefix)
-        setDeleteDraft(data.deleteCommandMessages)
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) setLoadError(error instanceof Error ? error.message : 'Server settings are unavailable.')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  const prefixError = validatePrefix(prefixDraft)
-  const prefixChanged = settings !== null && prefixDraft.trim() !== settings.prefix
-  const deleteChanged = settings !== null && deleteDraft !== settings.deleteCommandMessages
-  const hasChanges = prefixChanged || deleteChanged
-  const canSave = hasChanges && !prefixError && !busy
+  const [draft, setDraft] = useState<ServerSettings | null>(null)
 
   async function save() {
-    if (!canSave) return
+    if (!draft) return
     setBusy(true)
     try {
-      const patch: { prefix?: string; deleteCommandMessages?: boolean } = {}
-      if (prefixChanged) patch.prefix = prefixDraft.trim()
-      if (deleteChanged) patch.deleteCommandMessages = deleteDraft
       const res = await fetch('/api/settings/server', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(patch),
+        body: JSON.stringify({
+          prefix: draft.prefix,
+          deleteCommandMessages: draft.deleteCommandMessages,
+          warnEnabled: draft.warnEnabled,
+          warnMuteAt: draft.warnMuteAt,
+          warnKickAt: draft.warnKickAt,
+          warnBanAt: draft.warnBanAt,
+          warnMuteDuration: draft.warnMuteDuration,
+          dmUsers: draft.dmUsers,
+          respondWithReason: draft.respondWithReason,
+          preserveBanMessages: draft.preserveBanMessages,
+          useTimeouts: draft.useTimeouts,
+        }),
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(body.error ?? 'Could not save server settings.')
-      const next = body.settings as ServerSettings
-      setSettings(next)
-      setPrefixDraft(next.prefix)
-      setDeleteDraft(next.deleteCommandMessages)
-      toast.success('Server settings saved', 'Changes apply within a few minutes.')
-    } catch (error) {
-      toast.error('Could not save settings', error instanceof Error ? error.message : undefined)
+      refetch()
+      toast.success('Server settings saved')
+    } catch (err) {
+      toast.error('Could not save server settings', err instanceof Error ? err.message : 'Try again in a moment.')
     } finally {
       setBusy(false)
     }
   }
 
-  if (loadError && !settings) {
+  if (error && !data) {
     return (
-      <SettingsCard title="Server" description="Core bot configuration for this server.">
-        <ErrorState description={loadError} onRetry={load} />
+      <SettingsCard title="Server settings" description="Manage your server configuration.">
+        <p className="text-sm text-danger">{error}</p>
       </SettingsCard>
     )
   }
 
-  if (loading || !settings) {
+  if (loading || !draft) {
     return (
-      <SettingsCard title="Server" description="Core bot configuration for this server.">
-        <div className="space-y-4">
-          <Skeleton className="h-20 w-full" />
-          <Skeleton className="h-12 w-full" />
+      <SettingsCard title="Server settings" description="Manage your server configuration.">
+        <div className="space-y-3">
+          <div className="h-6 w-48 animate-pulse rounded-md bg-surface-2" />
+          <div className="h-4 w-full animate-pulse rounded-md bg-surface-2" />
+          <div className="h-4 w-3/4 animate-pulse rounded-md bg-surface-2" />
         </div>
       </SettingsCard>
     )
   }
 
   return (
-    <SettingsCard
-      title="Server"
-      description="Core bot configuration for this server. Changes apply within a few minutes."
-      footer={
-        <Button onClick={save} loading={busy} disabled={!canSave}>
-          Save changes
-        </Button>
-      }
-    >
-      <div className="divide-y divide-border">
-        <SettingRow
-          label="Command prefix"
-          description="The character(s) that trigger text commands. Slash commands always work regardless of prefix."
-          htmlFor="prefix-input"
-        >
-          <div className="flex w-full flex-col gap-3 sm:w-auto sm:flex-row sm:items-center">
-            <div className="flex flex-wrap gap-1.5">
-              {PRESET_PREFIXES.map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPrefixDraft(p)}
-                  className={cn(
-                    'focus-ring grid size-9 place-items-center rounded-lg border font-mono text-sm font-semibold transition-colors',
-                    prefixDraft.trim() === p
-                      ? 'border-accent bg-accent-soft text-accent'
-                      : 'border-border bg-surface text-foreground hover:border-border-strong',
-                  )}
-                >
-                  {prefixDraft.trim() === p ? <Check className="size-4" /> : p}
-                </button>
-              ))}
+    <>
+      <SettingsCard
+        title="Server settings"
+        description="Manage your server prefix, moderation behavior, and warning thresholds."
+        footer={
+          <Button onClick={save} loading={busy}>
+            <Save className="size-4" />
+            Save changes
+          </Button>
+        }
+      >
+        <div className="space-y-8">
+          {/* Server prefix */}
+          <section>
+            <div className="flex items-center gap-2 mb-2">
+              <Hash className="size-4 text-muted" />
+              <h3 className="text-sm font-medium text-foreground">Server prefix</h3>
             </div>
-            <Input
-              id="prefix-input"
-              value={prefixDraft}
-              onChange={(e) => setPrefixDraft(e.target.value)}
-              maxLength={5}
-              className="w-28 font-mono"
-              placeholder="custom"
-              aria-label="Custom prefix"
-            />
-          </div>
-        </SettingRow>
+            <p className="text-xs text-muted mb-3">
+              The prefix used to invoke moderation commands. Defaults to &lt;code&gt;,&lt;/code&gt;. Only single-character or short prefixes are recommended.
+            </p>
+            <Field label="Command prefix">
+              <Input
+                value={draft.prefix}
+                onChange={(e) => setDraft({ ...draft, prefix: e.target.value })}
+                placeholder=","
+                maxLength={5}
+              />
+            </Field>
+          </section>
 
-        {prefixError && (
-          <p className="-mt-2 text-xs text-danger">{prefixError}</p>
-        )}
+          {/* Moderation behavior */}
+          <section>
+            <div className="flex items-center gap-2 mb-2">
+              <Shield className="size-4 text-muted" />
+              <h3 className="text-sm font-medium text-foreground">Moderation behavior</h3>
+            </div>
+            <p className="text-xs text-muted mb-4">
+              Control how the bot handles moderation commands and user communication.
+            </p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Delete command messages</p>
+                  <p className="text-xs text-muted">Remove the command message after executing moderation commands.</p>
+                </div>
+                <Switch
+                  checked={draft.deleteCommandMessages}
+                  onChange={(v) => setDraft({ ...draft, deleteCommandMessages: v })}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">DM users on moderation action</p>
+                  <p className="text-xs text-muted">Send a DM to the user when a moderation action is taken.</p>
+                </div>
+                <Switch
+                  checked={draft.dmUsers}
+                  onChange={(v) => setDraft({ ...draft, dmUsers: v })}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Respond with reason</p>
+                  <p className="text-xs text-muted">Include the reason in the bot&apos;s response to moderation commands.</p>
+                </div>
+                <Switch
+                  checked={draft.respondWithReason}
+                  onChange={(v) => setDraft({ ...draft, respondWithReason: v })}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Preserve ban messages</p>
+                  <p className="text-xs text-muted">Keep ban messages visible in the channel after the user is banned.</p>
+                </div>
+                <Switch
+                  checked={draft.preserveBanMessages}
+                  onChange={(v) => setDraft({ ...draft, preserveBanMessages: v })}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Use timeouts</p>
+                  <p className="text-xs text-muted">Use Discord timeouts instead of temporary bans when available.</p>
+                </div>
+                <Switch
+                  checked={draft.useTimeouts}
+                  onChange={(v) => setDraft({ ...draft, useTimeouts: v })}
+                />
+              </div>
+            </div>
+          </section>
 
-        <SettingRow
-          label="Delete command messages"
-          description="When enabled, the bot deletes your message after a moderation command runs. Off by default."
-        >
-          <Switch
-            checked={deleteDraft}
-            onChange={setDeleteDraft}
-            label="Delete command messages"
-          />
-        </SettingRow>
-      </div>
-
-      <div className="mt-6 rounded-xl border border-border bg-surface-2/40 p-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted-2">Preview</p>
-        <p className="mt-2 font-mono text-sm text-foreground">
-          {prefixDraft.trim() || ','}help · {prefixDraft.trim() || ','}ban @user · {prefixDraft.trim() || ','}purge 50
-        </p>
-      </div>
-    </SettingsCard>
+          {/* Warning thresholds */}
+          <section>
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle className="size-4 text-muted" />
+              <h3 className="text-sm font-medium text-foreground">Warning thresholds</h3>
+            </div>
+            <p className="text-xs text-muted mb-4">
+              Automatically escalate moderation actions based on the number of warnings a user has received.
+            </p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Enable warning thresholds</p>
+                  <p className="text-xs text-muted">Turn on automatic escalation based on warning count.</p>
+                </div>
+                <Switch
+                  checked={draft.warnEnabled}
+                  onChange={(v) => setDraft({ ...draft, warnEnabled: v })}
+                />
+              </div>
+              {draft.warnEnabled && (
+                <div className="space-y-4 pl-2 border-l border-border">
+                  <Field label="Mute at" hint="Number of warnings before muting the user">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={draft.warnMuteAt}
+                      onChange={(e) => setDraft({ ...draft, warnMuteAt: Math.max(1, Math.min(20, parseInt(e.target.value) || 1)) })}
+                    />
+                  </Field>
+                  <Field label="Kick at" hint="Number of warnings before kicking the user">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={draft.warnKickAt}
+                      onChange={(e) => setDraft({ ...draft, warnKickAt: Math.max(1, Math.min(20, parseInt(e.target.value) || 1)) })}
+                    />
+                  </Field>
+                  <Field label="Ban at" hint="Number of warnings before banning the user">
+                    <Input
+                      type="number"
+                      min={1}
+                      max={20}
+                      value={draft.warnBanAt}
+                      onChange={(e) => setDraft({ ...draft, warnBanAt: Math.max(1, Math.min(20, parseInt(e.target.value) || 1)) })}
+                    />
+                  </Field>
+                  <Field label="Mute duration (seconds)" hint="How long the mute lasts">
+                    <Input
+                      type="number"
+                      min={60}
+                      max={2592000}
+                      value={draft.warnMuteDuration}
+                      onChange={(e) => setDraft({ ...draft, warnMuteDuration: Math.max(60, Math.min(2592000, parseInt(e.target.value) || 60)) })}
+                    />
+                  </Field>
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      </SettingsCard>
+    </>
   )
 }

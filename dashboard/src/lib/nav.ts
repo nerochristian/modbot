@@ -12,6 +12,7 @@ import {
   Activity,
   Bell,
   Settings,
+  Server,
 } from 'lucide-react'
 import type { Permission } from '@/lib/rbac'
 
@@ -29,6 +30,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: 'Analytics', href: '/dashboard/analytics', icon: LineChart, permission: 'analytics.view', section: 'main' },
   { label: 'Members', href: '/dashboard/members', icon: Users2, permission: 'members.read', section: 'main' },
   { label: 'Cases', href: '/dashboard/cases', icon: Gavel, permission: 'cases.read', section: 'main' },
+  { label: 'Server', href: '/dashboard/server', icon: Server, permission: 'settings.read', section: 'main' },
   { label: 'Automod', href: '/dashboard/automod', icon: ShieldAlert, permission: 'automod.read', section: 'main', badge: 'UPDATE' },
   { label: 'Modules', href: '/dashboard/modules', icon: Blocks, permission: 'settings.read', section: 'main', badge: 'NEW' },
   { label: 'Appeals', href: '/dashboard/appeals', icon: Scale, permission: 'appeals.read', section: 'main' },

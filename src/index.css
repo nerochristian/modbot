@@ -1,15 +1,15 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
-  --font-heading: "Outfit", "Space Grotesk", sans-serif;
-  --font-display: "Space Grotesk", sans-serif;
-  --font-mono: "JetBrains Mono", monospace;
-  
-  --color-[#05070E]: #05070e;
-  --color-[#090D1A]: #090d1a;
-  --color-[#0E1528]: #0e1528;
-  --color-[#162038]: #162038;
+  --font-sans: "DM Sans", "Inter", system-ui, sans-serif;
+  --font-heading: "Newsreader", Georgia, serif;
+  --font-display: "Newsreader", Georgia, serif;
+  --font-mono: "IBM Plex Mono", "JetBrains Mono", monospace;
+
+  --color-[#05070E]: #111310;
+  --color-[#090D1A]: #181b16;
+  --color-[#0E1528]: #20251d;
+  --color-[#162038]: #2a3026;
 }
 
 /* Custom modern scrollbar */
@@ -18,15 +18,15 @@
   height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #05070e;
+  background: #111310;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1e293b;
+  background: #4d5547;
   border-radius: 9999px;
-  border: 2px solid #05070e;
+  border: 2px solid #111310;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #6366f1;
+  background: #d6ff63;
 }
 
 /* Keyframes & Animations */
@@ -73,10 +73,10 @@
 
 /* Glassmorphism & High-End Card Utilities */
 .glass-panel {
-  background: rgba(14, 21, 40, 0.65);
+  background: rgba(28, 33, 25, 0.82);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(233, 239, 220, 0.12);
 }
 
 .glass-panel-hover {

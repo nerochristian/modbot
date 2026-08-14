@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
 
 export default function SettingsIndex() {
-  redirect('/dashboard/settings/server')
+  redirect('/dashboard/settings/profile')
 }

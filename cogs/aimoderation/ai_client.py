@@ -2421,6 +2421,26 @@ class AIClient(
                 parts.append(embed_text)
         return " | ".join(parts)[:limit]
 
+    # Pattern that matches the old "AI Moderation is disabled" status footer
+    # that was appended to every chat reply.  Compiled once for speed.
+    _STATUS_FOOTER_RE = re.compile(
+        r"\s*\n*\s*-#\s*AI Moderation is disabled\. Ask an admin to enable it.*?(?:\n|$)",
+        re.IGNORECASE,
+    )
+
+    def _strip_status_footer(self, content: str) -> str:
+        """Remove the legacy 'AI Moderation is disabled' subtext footer.
+
+        The footer used to be appended to every conversational reply when
+        moderation was disabled.  Old messages in Discord still carry it, so
+        without stripping the model sees it in its own prior turns and starts
+        echoing it — producing duplicate notices.
+        """
+        if not content:
+            return content
+        cleaned = self._STATUS_FOOTER_RE.sub("", content)
+        return cleaned.rstrip()
+
     def _format_conversation_history(
         self, recent_messages: List[discord.Message]
     ) -> str:
@@ -2448,6 +2468,13 @@ class AIClient(
                 author_label = "user"
             name = getattr(m.author, "display_name", None) or str(m.author)
             content = (m.content or "").strip()
+
+            # Strip the old "AI Moderation is disabled" status footer that used
+            # to be appended to every chat reply. Without this, the model sees
+            # the footer in its own prior messages and echoes it, producing
+            # duplicate notices even after the append was removed.
+            if bot_id and m.author.id == bot_id:
+                content = self._strip_status_footer(content)
 
             # Handle attachments and embeds
             extras: List[str] = []
