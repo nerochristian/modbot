@@ -471,55 +471,54 @@ body {
 }
 
 /* ================================================================== */
-/* SITUATION ROOM — the Live Wire marketing front door.               */
-/*                                                                    */
-/* Scoped palette: a deep ink-blue operations surface with exactly    */
-/* two functional signal colors — RED = threat, TEAL = contained.     */
-/* Deliberately NOT the "black + neon glow" cliché: color reads like  */
-/* an air-traffic / SOC instrument, restrained; the drama comes from  */
-/* motion and density, not luminance. Applied to a marketing wrapper  */
-/* only, so the dashboard's calm light identity is untouched.         */
+/* SITUATION ROOM — the marketing + sign-in front door.                */
+/*                                                                     */
+/* Scoped palette for the public site: a dark Discord-native surface   */
+/* built around the logo's cobalt-to-cyan blue, so the front door      */
+/* reads unmistakably as a Discord bot rather than a generic SaaS      */
+/* storefront. Applied to the marketing wrapper and the auth screen    */
+/* only — the dashboard's calm light identity is untouched.            */
 /* ================================================================== */
 .situation {
-  --paper: #070a14;          /* deep navy — matches the logo backdrop */
-  --surface: #0d1220;
-  --surface-2: #141b2c;
-  --card: #0d1220;
-  --overlay: rgba(2, 4, 9, 0.74);
-  --border: #1e263a;
-  --border-strong: #2c3752;
-  --foreground: #eef2fb;
-  --muted: #93a0bc;
-  --muted-2: #5b6884;
+  --paper: #06070d;          /* near-black, matches the logo backdrop */
+  --surface: #0e111c;
+  --surface-2: #151a29;
+  --card: #10131f;
+  --overlay: rgba(3, 4, 9, 0.78);
+  --border: #202538;
+  --border-strong: #2e3552;
+  --foreground: #f1f3fb;
+  --muted: #97a1c2;
+  --muted-2: #5c6486;
 
-  --accent: #1e78ff;         /* brand electric blue — primary signal */
+  --accent: #3161ff;         /* brand cobalt — primary signal, links, CTAs */
   --accent-foreground: #ffffff;
   --accent-soft: color-mix(in srgb, var(--accent) 16%, transparent);
   --accent-line: color-mix(in srgb, var(--accent) 36%, transparent);
   /* Brand gradient sampled from the logo's D stroke + cyan checkmarks. */
-  --brand-from: #005bf3;
-  --brand-to: #0a87fd;
-  --brand-cyan: #33d6ff;
+  --brand-from: #1c4dff;
+  --brand-to: #3f8cff;
+  --brand-cyan: #35d8ff;
 
-  --threat: #ff4d4d;         /* threat / blocked — the counter-signal */
-  --threat-soft: color-mix(in srgb, #ff4d4d 15%, transparent);
+  --threat: #ff5064;         /* ban / critical — the one counter-signal */
+  --threat-soft: color-mix(in srgb, #ff5064 15%, transparent);
 
-  --success: #33d6ff;        /* contained / safe — brand cyan */
-  --success-soft: color-mix(in srgb, #33d6ff 16%, transparent);
+  --success: #2fd66b;        /* online / contained — Discord-style green */
+  --success-soft: color-mix(in srgb, #2fd66b 16%, transparent);
   --mint: var(--success);
   --mint-soft: var(--success-soft);
-  --warning: #e0942e;
-  --warning-soft: color-mix(in srgb, #e0942e 16%, transparent);
-  --danger: #ff4d4d;
-  --danger-soft: color-mix(in srgb, #ff4d4d 15%, transparent);
-  --info: #1e78ff;
-  --info-soft: color-mix(in srgb, #1e78ff 15%, transparent);
+  --warning: #f2a93d;
+  --warning-soft: color-mix(in srgb, #f2a93d 16%, transparent);
+  --danger: #ff5064;
+  --danger-soft: color-mix(in srgb, #ff5064 15%, transparent);
+  --info: #35d8ff;
+  --info-soft: color-mix(in srgb, #35d8ff 15%, transparent);
 
-  --sev-none: #5b6884;
-  --sev-low: #1e78ff;
-  --sev-medium: #e0942e;
-  --sev-high: #ff7a45;
-  --sev-critical: #ff4d4d;
+  --sev-none: #5c6486;
+  --sev-low: #3161ff;
+  --sev-medium: #f2a93d;
+  --sev-high: #ff8a3d;
+  --sev-critical: #ff5064;
 
   color-scheme: dark;
   background: var(--paper);
@@ -635,108 +634,6 @@ body {
   );
 }
 
-/* ================================================================== */
-/* THE MODERATION FIELD (2026 redesign)                               */
-/*                                                                     */
-/* One canvas, one surface: the hero is a live operation desk. Deep    */
-/* ink, hairline borders, a single electric signal, and one counter-   */
-/* signal for threat. The signature is the ORBITAL GAUGE — the threat  */
-/* level as a measured arc, not a HUD. Auth floats as a command-lock   */
-/* card over the same field instead of a two-pane storefront.          */
-/* ================================================================== */
-
-/* Gauge tick — a hairline that brightens when the threat arc passes it. */
-@keyframes field-tick-up {
-  from { opacity: 0.12; }
-  to { opacity: 1; }
-}
-@keyframes field-arc {
-  0% { stroke-dashoffset: var(--field-arc-from); }
-  100% { stroke-dashoffset: var(--field-arc-to); }
-}
-
-/* Field module — a surface with corner brackets instead of card chrome. */
-.field-module {
-  position: relative;
-  background: color-mix(in srgb, var(--surface) 78%, transparent);
-  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-}
-.field-module::before,
-.field-module::after,
-.field-module > .field-corner::before,
-.field-module > .field-corner::after {
-  content: "";
-  position: absolute;
-  width: 10px;
-  height: 10px;
-  border: 1px solid color-mix(in srgb, var(--foreground) 35%, transparent);
-  transition: border-color 200ms ease;
-  pointer-events: none;
-}
-.field-module::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
-.field-module::after { top: -1px; right: -1px; border-left: none; border-bottom: none; }
-.field-module > .field-corner::before { bottom: -1px; left: -1px; border-right: none; border-top: none; }
-.field-module > .field-corner::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
-.field-module:hover::before,
-.field-module:hover::after,
-.field-module:hover > .field-corner::before,
-.field-module:hover > .field-corner::after {
-  border-color: var(--accent-line);
-}
-
-/* Ruled baseline threshold that scrolls under a data row — like ticker tape. */
-.field-rule {
-  background-image: repeating-linear-gradient(
-    90deg,
-    color-mix(in srgb, var(--foreground) 8%, transparent) 0 1px,
-    transparent 1px 7px
-  );
-  background-position: 0 100%;
-  background-size: 100% 1px;
-  background-repeat: no-repeat;
-}
-
-/* The containment ledger rows — settle in quietly. */
-@keyframes field-ledger-in {
-  from { opacity: 0; transform: translate3d(0, 6px, 0); }
-  to { opacity: 1; transform: translate3d(0, 0, 0); }
-}
-.field-ledger-row {
-  animation: field-ledger-in 500ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
-}
-
-/* Slow ambient drift for single background orbs — quiet, not screensaver. */
-@keyframes field-drift {
-  0%, 100% { transform: translate3d(0, 0, 0); }
-  50% { transform: translate3d(0, -18px, 0); }
-}
-.field-drift {
-  animation: field-drift 9s ease-in-out infinite;
-}
-
-/* Grid that fades out toward the edges so the room feels deep, not noisy. */
-.field-grid-fade {
-  -webkit-mask-image: radial-gradient(ellipse 90% 70% at 50% 40%, #000 40%, transparent 80%);
-  mask-image: radial-gradient(ellipse 90% 70% at 50% 40%, #000 40%, transparent 80%);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .field-drift,
-  .field-ledger-row,
-  .field-gauge-arc,
-  .field-gauge-tick {
-    animation: none !important;
-  }
-  .field-gauge-arc {
-    stroke-dashoffset: var(--field-arc-to) !important;
-  }
-}
-
-/* (Old "quiet-shift" heroes removed in the Field redesign — the orbital
-   gauge and .field-* chrome are the current signature. wire-blip and the
-   LEDGER row are still used by FieldDesk / the servers page and stay.) */
 
 /* Incident feed — messages stream up and settle. */
 @keyframes wire-in {

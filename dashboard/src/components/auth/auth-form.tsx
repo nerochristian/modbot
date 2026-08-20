@@ -1,9 +1,9 @@
 import Link from 'next/link'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, Hash } from 'lucide-react'
 
 /**
- * The badge check — the lock on the field. Reads like a terminal prompt:
- * terse, weighted, confident. One decisive action, underwritten by Discord.
+ * The sign-in card. Reads like the Discord OAuth prompt it leads to: a
+ * channel-style header, one plain sentence, one decisive button.
  */
 export function AuthForm({
   mode,
@@ -17,31 +17,29 @@ export function AuthForm({
   const authorizeUrl = `/api/auth/discord/authorize?next=${encodeURIComponent(next)}`
 
   return (
-    <div className="field-module">
-      <span className="field-corner" aria-hidden />
-      <div className="border-b border-border/70 px-6 py-4">
-        <p className="font-mono text-[0.625rem] uppercase tracking-[0.22em] text-muted-2">
-          <span className="text-accent">Docket</span> — desk threshold
-        </p>
+    <div className="glass-panel overflow-hidden rounded-2xl">
+      <div className="flex items-center gap-2 border-b border-border px-6 py-4">
+        <Hash className="size-4 text-muted-2" />
+        <span className="font-mono text-[0.6875rem] uppercase tracking-[0.16em] text-muted-2">sign-in</span>
       </div>
       <div className="px-6 py-7">
-        <h1 className="font-display text-[1.7rem] font-semibold leading-[1.08] tracking-[-0.025em] text-foreground">
-          {mode === 'login' ? 'Take the desk.' : 'Get a key.'}
+        <h1 className="font-display text-[1.6rem] font-semibold leading-[1.1] tracking-[-0.02em] text-foreground">
+          {mode === 'login' ? 'Sign in to Docket.' : 'Get started with Docket.'}
         </h1>
         <p className="mt-3 text-[0.8125rem] leading-6 text-muted">
-          Sign in with the Discord account your servers already trust. The desk only lists servers
+          Use the Discord account your servers already trust. The dashboard only lists servers
           where your live permission is Administrator.
         </p>
 
         {error && (
-          <div className="mt-5 border-l-2 border-threat bg-threat-soft/50 px-4 py-3 text-[0.8125rem] text-threat">
+          <div className="mt-5 rounded-md border-l-2 border-threat bg-threat-soft/50 px-4 py-3 text-[0.8125rem] text-threat">
             {error}
           </div>
         )}
 
         <Link
           href={authorizeUrl}
-          className="focus-ring group mt-7 flex w-full items-center justify-between rounded-md bg-accent px-5 py-3.5 text-[0.9375rem] font-semibold text-accent-foreground shadow-[0_18px_42px_-20px_var(--accent)] transition-all hover:-translate-y-px hover:brightness-110 active:translate-y-0"
+          className="focus-ring group mt-7 flex w-full items-center justify-between rounded-lg bg-accent px-5 py-3.5 text-[0.9375rem] font-semibold text-accent-foreground shadow-[0_18px_42px_-20px_var(--accent)] transition-all hover:-translate-y-px hover:brightness-110 active:translate-y-0"
         >
           <span className="inline-flex items-center gap-2.5">
             <svg viewBox="0 0 24 24" className="size-5" fill="currentColor" aria-hidden>
@@ -53,7 +51,7 @@ export function AuthForm({
         </Link>
 
         <p className="mt-4 text-center font-mono text-[0.5625rem] uppercase tracking-[0.16em] text-muted-2">
-          OAuth only · your password never leaves Discord
+          OAuth only · your password never touches Docket
         </p>
       </div>
     </div>
