@@ -8,8 +8,9 @@ explicit allow-list.
 
 ``google.py`` is the one non-OpenRouter module, and it is not a provider: Cloud
 Vision Web Detection plus a grounded Gemini pass supply the reverse-image and
-OCR evidence that no OpenRouter model can produce, confined to explicit
-image-identification turns.
+OCR evidence that no OpenRouter model can produce. Web Detection runs for every
+conversation image so the answering lane knows what the image actually is; the
+grounded Gemini pass stays confined to explicit image-identification turns.
 
 Lane modules MUST read configuration through
 :mod:`cogs.aimoderation.settings` rather than importing constants from
