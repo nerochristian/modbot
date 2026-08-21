@@ -444,8 +444,14 @@ class MessageParsingMixin:
         )
         route = fallback_route
         confidence = 0.95 if route == "research" else 0.9 if route == "search" else 0.0
+        mod_intent = "action" if mentions_moderation else "none"
 
-        classifier = getattr(self.ai, "classify_research_route", None)
+        classifier = getattr(self.ai, "classify_intent", None) or getattr(
+            self.ai, "classify_research_route", None
+        )
+        # The regex is precise but not complete: when it already says "moderation"
+        # we trust it and skip the network hop, and when it says "no" we let Ling
+        # look again, because that is where the misses are.
         should_classify = bool(
             callable(classifier)
             and not casual_followup
@@ -468,11 +474,20 @@ class MessageParsingMixin:
                         confidence = float(decision.get("confidence", 1.0))
                     except (TypeError, ValueError):
                         confidence = 1.0
+                candidate_mod = str(decision.get("moderation") or "").strip().lower()
+                if candidate_mod in {"action", "lookup", "guidance"}:
+                    # Ling only ever upgrades: it caught phrasing the regex missed.
+                    # It is never allowed to talk the regex out of a match.
+                    mentions_moderation = True
+                    mod_intent = candidate_mod
+                    route = "normal"
 
         research_request = route == "research"
         search_request = route in {"search", "research"}
         mode = (
-            ConversationMode.RESEARCH
+            ConversationMode.MOD_GUIDANCE
+            if mod_intent == "guidance"
+            else ConversationMode.RESEARCH
             if research_request
             else ConversationMode.STANDARD
         )

@@ -21,6 +21,7 @@ from .types import (
 from .prompts import (
     ROUTING_SYSTEM_PROMPT, CONVERSATION_SYSTEM_PROMPT,
     DEEP_RESEARCH_SYSTEM_PROMPT, MOD_GUIDANCE_SYSTEM_PROMPT,
+    LING_INTENT_SYSTEM_PROMPT,
 )
 from .context import ToolResult, ToolContext, action_embed, parse_hex_color
 from .registry import ToolRegistry
@@ -41,6 +42,7 @@ __all__ = [
     "GuildSettings",
     "ImageContext",
     "MAX_MODERATION_REASON_LENGTH",
+    "LING_INTENT_SYSTEM_PROMPT",
     "MOD_GUIDANCE_SYSTEM_PROMPT",
     "MentionInfo",
     "PermissionFlags",

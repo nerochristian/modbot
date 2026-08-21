@@ -36,7 +36,7 @@ from .types import (
 from .prompts import (
     ROUTING_SYSTEM_PROMPT, CONVERSATION_SYSTEM_PROMPT,
     DEEP_RESEARCH_SYSTEM_PROMPT, MOD_GUIDANCE_SYSTEM_PROMPT,
-    CREATOR_USER_ID, CREATOR_NAME,
+    LING_INTENT_SYSTEM_PROMPT, CREATOR_USER_ID, CREATOR_NAME,
 )
 from .transport import TransportMixin
 from .providers import (
@@ -1041,28 +1041,55 @@ class AIClient(
             "confidence": min(1.0, max(0.0, confidence)),
         }
 
-    async def classify_research_route(self, user_content: str) -> Optional[Dict[str, Any]]:
-        """Use Ling to choose normal, searched, or long-form research output."""
+    # Ling returns two labels in one call: how to answer, and whether this is a
+    # moderation request at all.
+    _INTENT_ROUTES: Final = ("normal", "search", "research")
+    _INTENT_MODERATION: Final = ("none", "action", "lookup", "guidance")
+
+    # Small models drift toward near-miss synonyms. Map the common ones back
+    # rather than throwing the whole classification away.
+    _INTENT_ROUTE_ALIASES: Final = {
+        "normal_chat": "normal",
+        "chat": "normal",
+        "casual": "normal",
+        "search_deepthink": "research",
+        "web": "search",
+        "browse": "search",
+        "deep_dive": "research",
+        "deepdive": "research",
+    }
+    _INTENT_MODERATION_ALIASES: Final = {
+        "mod": "action",
+        "moderation": "action",
+        "act": "action",
+        "command": "action",
+        "data": "lookup",
+        "info": "lookup",
+        "query": "lookup",
+        "help": "guidance",
+        "explain": "guidance",
+        "syntax": "guidance",
+        "chat": "none",
+        "normal": "none",
+        "true": "action",
+        "false": "none",
+    }
+
+    async def classify_intent(self, user_content: str) -> Optional[Dict[str, Any]]:
+        """Ask Ling for the answering route AND whether this is a moderation request.
+
+        One call, two labels. Returns None on any failure so callers fall back to
+        their own heuristics: this classifier is an optimization and must never
+        gate the reply it was only trying to label.
+        """
         text = re.sub(r"\s+", " ", user_content or "").strip()
         if not text or not _openrouter_conversation_enabled():
             return None
 
-        system_prompt = (
-            "Classify a Discord assistant request into exactly one route. "
-            "normal: casual conversation, creative or writing tasks, stable timeless "
-            "knowledge, math, coding, local Discord context, or questions answerable "
-            "without current external facts. search: a concise answer needs current, "
-            "recent, changing, externally verified, high-stakes, recommended, niche, or "
-            "explicitly requested web information. Searching does not make the answer "
-            "long. research: the user explicitly asks for research, a deep dive, an "
-            "investigation, a comprehensive report, or substantial multi-source analysis "
-            "or comparison. Current information alone is search, not research. Return "
-            "exactly one JSON object: {\"route\":\"normal|search|research\"}. Do not explain."
-        )
         user_prompt = _sanitize_untrusted_text(text, limit=4_000)
         try:
             messages = [
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": LING_INTENT_SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ]
             raw = await asyncio.wait_for(
@@ -1072,28 +1099,106 @@ class AIClient(
                     api_key=_OPENROUTER_API_KEY,
                     model=_OPENROUTER_LING_ROUTER_MODEL,
                     temperature=0.0,
-                    max_tokens=40,
+                    max_tokens=48,
                     json_mode=True,
                     provider_label=(
                         "OpenRouter conversation router "
                         f"({_OPENROUTER_LING_ROUTER_MODEL})"
                     ),
                     max_retries=0,
-                    request_timeout=2,
-                    # Optional optimization: converse() picks a sane default
-                    # route when this returns None. Its quota must never gate
-                    # the reply it was only trying to classify.
+                    request_timeout=3,
+                    # Its quota must never gate the reply it was classifying.
                     allow_service_block=False,
                 ),
-                timeout=2.0,
+                # Measured: median 0.77s, max 1.78s. 2.0s discarded good answers
+                # that were merely slow; 2.5s keeps the reply snappy either way.
+                timeout=2.5,
             )
-            return self._parse_research_route_payload(raw or "")
+            return self._parse_intent_payload(raw or "")
         except asyncio.TimeoutError:
-            logger.warning("Ling conversation-route classification timed out")
+            logger.warning("Ling intent classification timed out")
             return None
         except Exception:
-            logger.warning("Ling conversation-route classification failed", exc_info=True)
+            logger.warning("Ling intent classification failed", exc_info=True)
             return None
+
+    async def classify_research_route(self, user_content: str) -> Optional[Dict[str, Any]]:
+        """Back-compat name for the route half of :meth:`classify_intent`."""
+        return await self.classify_intent(user_content)
+
+    def _parse_intent_payload(self, raw: str) -> Optional[Dict[str, Any]]:
+        """Parse Ling's two-label JSON, tolerating near-miss vocabulary."""
+        payload = self._extract_json(raw or "")
+        try:
+            data = json.loads(payload)
+        except json.JSONDecodeError:
+            data = self._parse_loose_intent_payload(payload)
+        if not isinstance(data, dict):
+            logger.debug(
+                "Ling intent classifier returned invalid JSON: %r", (raw or "")[:500]
+            )
+            return None
+
+        route = str(data.get("route") or "").strip().lower()
+        route = self._INTENT_ROUTE_ALIASES.get(route, route)
+        if route not in self._INTENT_ROUTES:
+            route = ""
+
+        moderation = str(data.get("moderation") or "").strip().lower()
+        moderation = self._INTENT_MODERATION_ALIASES.get(moderation, moderation)
+        if moderation not in self._INTENT_MODERATION:
+            moderation = ""
+
+        # Neither field survived: nothing usable, let the caller keep its own guess.
+        if not route and not moderation:
+            return None
+
+        # Actions and lookups are answered with Docket's own tools, never the web,
+        # so a model that asks for search on "ban @user" is overruled here.
+        if moderation in {"action", "lookup"}:
+            route = "normal"
+        route = route or "normal"
+        moderation = moderation or "none"
+
+        try:
+            confidence = float(data.get("confidence", 0.0))
+        except (TypeError, ValueError):
+            confidence = 0.0
+
+        return {
+            "route": route,
+            "moderation": moderation,
+            "is_moderation": moderation != "none",
+            "wants_mod_action": moderation in {"action", "lookup"},
+            "confidence": min(1.0, max(0.0, confidence or 1.0)),
+            "current_info": route in {"search", "research"},
+            "reason": str(data.get("reason") or "")[:200],
+        }
+
+    @staticmethod
+    def _parse_loose_intent_payload(payload: str) -> Optional[Dict[str, Any]]:
+        """Recover labels from unfenced or truncated output, without regex."""
+        low = (payload or "").lower()
+        if not low:
+            return None
+
+        def pick(field: str, options: tuple) -> str:
+            marker = low.find(field)
+            if marker < 0:
+                return ""
+            window = low[marker : marker + 60]
+            best, best_at = "", len(window) + 1
+            for option in options:
+                at = window.find(option, len(field))
+                if at >= 0 and at < best_at:
+                    best, best_at = option, at
+            return best
+
+        route = pick("route", ("research", "search", "normal"))
+        moderation = pick("moderation", ("action", "lookup", "guidance", "none"))
+        if not route and not moderation:
+            return None
+        return {"route": route, "moderation": moderation}
 
     def _parse_research_route_payload(self, raw: str) -> Optional[Dict[str, Any]]:
         """Parse Ling's route JSON, with compatibility for older route names."""
