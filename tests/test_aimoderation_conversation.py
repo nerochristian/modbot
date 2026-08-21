@@ -19,7 +19,10 @@ import pytest
 
 import cogs.aimoderation.ai_client as ai_client
 from cogs.aimoderation.ai_client import AIClient
-from cogs.aimoderation.types import AIConfig, ConversationMode, ConversationSignals
+from cogs.aimoderation.providers import GoogleImageEvidence
+from cogs.aimoderation.types import (
+    AIConfig, ConversationMode, ConversationSignals, ImageContext,
+)
 
 
 def run(coro):
@@ -175,6 +178,184 @@ def test_research_with_prefetched_evidence_uses_the_writer(client, guild, author
     assert reply and "the report" in reply
     # The gate must attach the pre-fetched links, or a good answer is refused.
     assert "https://example.com/a" in reply
+
+
+def _with_image(client, monkeypatch, *, api_key="vision-key"):
+    """Give the turn one attached image and a usable Cloud Vision credential."""
+    monkeypatch.setattr(ai_client, "_GOOGLE_CLOUD_VISION_API_KEY", api_key)
+    monkeypatch.setattr(
+        client,
+        "_collect_image_context",
+        AsyncMock(
+            return_value=[
+                ImageContext(
+                    label="attachment",
+                    filename="pic.png",
+                    mime_type="image/png",
+                    data=b"bytes",
+                )
+            ]
+        ),
+    )
+
+
+def _vision_prompt_text(vision_lane) -> str:
+    messages = vision_lane.await_args.args[0]
+    return "\n".join(str(message.get("content")) for message in messages)
+
+
+def test_every_image_turn_is_reverse_searched(client, guild, author, monkeypatch):
+    """Reverse-image evidence is not reserved for "what is this?" turns.
+
+    Cloud Vision's matching pages, web entities and OCR are the only ground
+    truth about what an image actually *is*. A turn that asks something else
+    about the image ("write a caption") needs that just as much as one asking
+    for a name, so the lookup runs for every image and its evidence reaches the
+    lane that answers.
+    """
+    _with_image(client, monkeypatch)
+    lookup = AsyncMock(
+        return_value=GoogleImageEvidence(
+            context="Image 1:\nGoogle best-guess labels: hubble deep field",
+            source_urls=("https://example.com/source",),
+            exact_match=True,
+        )
+    )
+    vision = AsyncMock(return_value="a caption")
+    monkeypatch.setattr(client, "_call_google_web_detection", lookup)
+    monkeypatch.setattr(client, "_call_openrouter_vision", vision)
+
+    reply = converse(
+        client, guild, author, signals=signals_for(), content="write a caption"
+    )
+
+    assert lookup.await_count == 1
+    assert reply and "a caption" in reply
+    assert "hubble deep field" in _vision_prompt_text(vision)
+
+
+def test_reverse_search_evidence_does_not_hijack_an_ordinary_image_turn(
+    client, guild, author, monkeypatch
+):
+    """Grounding an image turn must not convert it into an identity check.
+
+    Identification turns run extra passes and refuse an unsourced answer. Were
+    those applied to every image, "write a caption" would come back as a
+    refusal to identify the subject.
+    """
+    _with_image(client, monkeypatch)
+    monkeypatch.setattr(
+        client,
+        "_call_google_web_detection",
+        AsyncMock(return_value=GoogleImageEvidence(context="Image 1:\nOCR text: hi")),
+    )
+    grounded = AsyncMock(return_value="it is a photo of X")
+    monkeypatch.setattr(client, "_call_google_grounded_vision", grounded)
+    monkeypatch.setattr(
+        client, "_call_openrouter_vision", AsyncMock(return_value="a caption")
+    )
+
+    reply = converse(
+        client, guild, author, signals=signals_for(), content="write a caption"
+    )
+
+    assert grounded.await_count == 0
+    assert reply and "a caption" in reply
+
+
+def test_a_slow_reverse_search_does_not_stall_an_ordinary_image_turn(
+    client, guild, author, monkeypatch
+):
+    """Extra grounding is never worth making the user wait on a wedged lookup."""
+    _with_image(client, monkeypatch)
+    monkeypatch.setattr(ai_client, "_REVERSE_IMAGE_SOFT_BUDGET_SECONDS", 0.05)
+
+    async def never_finishes(*_args, **_kwargs):
+        await asyncio.sleep(30)
+        raise AssertionError("the lookup should have been abandoned")
+
+    monkeypatch.setattr(client, "_call_google_web_detection", never_finishes)
+    vision = AsyncMock(return_value="a caption")
+    monkeypatch.setattr(client, "_call_openrouter_vision", vision)
+
+    reply = converse(
+        client, guild, author, signals=signals_for(), content="write a caption"
+    )
+
+    assert reply and "a caption" in reply
+    assert "Cloud Vision" not in _vision_prompt_text(vision)
+
+
+def test_an_identification_turn_waits_for_the_reverse_search(
+    client, guild, author, monkeypatch
+):
+    """The soft budget must not apply where the lookup *is* the answer."""
+    _with_image(client, monkeypatch)
+    monkeypatch.setattr(ai_client, "_REVERSE_IMAGE_SOFT_BUDGET_SECONDS", 0.05)
+
+    async def slow_lookup(*_args, **_kwargs):
+        await asyncio.sleep(0.2)
+        return GoogleImageEvidence(
+            context="Image 1:\nWeb entities: the subject (0.90)",
+            source_urls=("https://example.com/source",),
+            exact_match=True,
+        )
+
+    monkeypatch.setattr(client, "_call_google_web_detection", slow_lookup)
+    monkeypatch.setattr(
+        client, "_call_google_grounded_vision", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(
+        client, "_call_openrouter_visual_candidates", AsyncMock(return_value=None)
+    )
+    searched = AsyncMock(return_value="that is the subject __BOT_SOURCES__\n- https://example.com/source")
+    monkeypatch.setattr(client, "_call_openrouter_conversation", searched)
+
+    reply = converse(
+        client, guild, author, signals=signals_for(), content="who is this?"
+    )
+
+    assert reply and "the subject" in reply
+    assert "Web entities: the subject" in _vision_prompt_text(searched)
+
+
+def test_a_failed_reverse_search_still_answers_the_image_turn(
+    client, guild, author, monkeypatch
+):
+    _with_image(client, monkeypatch)
+    monkeypatch.setattr(
+        client,
+        "_call_google_web_detection",
+        AsyncMock(side_effect=RuntimeError("vision 503")),
+    )
+    monkeypatch.setattr(
+        client, "_call_openrouter_vision", AsyncMock(return_value="a caption")
+    )
+
+    reply = converse(
+        client, guild, author, signals=signals_for(), content="write a caption"
+    )
+
+    assert reply and "a caption" in reply
+
+
+def test_no_vision_credential_skips_the_reverse_search(
+    client, guild, author, monkeypatch
+):
+    """Without a credential the lookup must not be started at all."""
+    _with_image(client, monkeypatch, api_key="")
+    lookup = AsyncMock(return_value=GoogleImageEvidence())
+    monkeypatch.setattr(client, "_call_google_web_detection", lookup)
+    monkeypatch.setattr(
+        client, "_call_openrouter_vision", AsyncMock(return_value="a caption")
+    )
+
+    reply = converse(
+        client, guild, author, signals=signals_for(), content="write a caption"
+    )
+
+    assert lookup.await_count == 0
+    assert reply and "a caption" in reply
 
 
 def test_no_key_reports_the_outage_rather_than_answering(guild, author, monkeypatch):
