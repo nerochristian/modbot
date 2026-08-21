@@ -32,6 +32,23 @@ def client(monkeypatch):
     return AIClient(bot, AIConfig())
 
 
+@pytest.fixture
+def guild():
+    g = MagicMock()
+    g.id, g.name, g.member_count, g.owner_id = 111, "Test Guild", 50, 999
+    for attr in ("roles", "channels", "categories", "text_channels", "voice_channels", "emojis"):
+        setattr(g, attr, [])
+    return g
+
+
+@pytest.fixture
+def author():
+    a = MagicMock()
+    a.id, a.name, a.display_name, a.bot = 222, "tester", "tester", False
+    a.mention, a.roles = "<@222>", []
+    return a
+
+
 # --- parsing -----------------------------------------------------------------
 
 def test_both_labels_survive_a_clean_response(client):
@@ -157,3 +174,42 @@ def test_search_still_routes_to_search():
 
     assert signals.requires_web_search is True
     assert signals.mentions_moderation is False
+
+
+# --- what a searched turn is allowed to cost -----------------------------
+
+def _plan(client, guild, author, **kw):
+    from cogs.aimoderation.types import ConversationSignals, ConversationMode
+    signals = ConversationSignals(mode=ConversationMode.STANDARD, confidence=1.0)
+    return client._build_conversation_plan(
+        signals=signals, user_content="is levi related to mikasa",
+        guild=guild, author=author, past_memory="u" * 40_000,
+        guild_memory="g" * 40_000, **kw,
+    )
+
+
+def test_a_searched_turn_drops_the_server_map_and_guild_memory(client, guild, author):
+    """The web lane answers from the internet; this server's map cannot help it.
+
+    It was also the bulk of the tokens on the most expensive lane, which is the
+    actual reason this is a test and not a preference.
+    """
+    plan = _plan(client, guild, author, web_context="some results")
+
+    assert "### SERVER MAP ###" not in plan.context_prompt
+    assert "### MEMORY OF THIS SERVER ###" not in plan.context_prompt
+
+
+def test_a_searched_turn_keeps_a_little_user_memory(client, guild, author):
+    """Personal continuity survives; the 16k-char tail does not."""
+    plan = _plan(client, guild, author, web_context="some results")
+
+    assert "### MEMORY OF THIS USER ###" in plan.context_prompt
+    assert plan.context_prompt.count("u") < 6_000
+
+
+def test_an_ordinary_turn_still_gets_everything(client, guild, author):
+    """The trim is scoped to searched turns, not a global downgrade."""
+    plan = _plan(client, guild, author)
+
+    assert "### MEMORY OF THIS SERVER ###" in plan.context_prompt

@@ -353,7 +353,9 @@ How much outside information does ANSWERING need? This is about answering, not a
 "normal" - casual talk, opinions, creative writing, math, coding, stable facts, and anything about this Discord server. Any message whose moderation field is action or lookup is normal, because Docket handles those with its own tools rather than the web.
 
 "search" - a short answer needs current, changing or externally verified facts: news, prices, weather, patch notes, release dates, scores, who currently holds a position, recommendations, or niche claims worth checking. Searching does not make the answer long.
-Opinion and hypothetical debates are not search, even about real franchises: "who is the strongest character in jjk", "who would win", "is x better than y" are asking what you think, and are normal.
+Opinion and hypothetical debates are not search, even about real franchises: "who is the strongest character in jjk", "who would win", "is x better than y", "who is the best duo" are asking what you think, and are normal.
+A checkable fact about a story is the opposite, and it is search. Anyone asking who a character's parent, sibling or creator is, whether two characters are related, what a technique or item is actually called, what canonically happened in a chapter or episode, or whether a specific plot claim is true, is asking something with one right answer that is easy to misremember. Verify it rather than guessing. The giveaway is that the answer could be checked against the source and shown wrong.
+"is x better than y" is opinion, but "is x actually y" is a fact claim. Do not let the two shapes blur together.
 
 "research" - the member explicitly asks for research, a deep dive, an investigation, a comprehensive report, or a substantial multi-source comparison. Needing current facts alone is search, not research.
 
@@ -394,6 +396,11 @@ why is my python loop not breaking -> {"route":"normal","moderation":"none"}
 help me with my bio homework -> {"route":"normal","moderation":"none"}
 who would win goku or saitama -> {"route":"normal","moderation":"none"}
 who is the strongest character in jjk -> {"route":"normal","moderation":"none"}
+who is the best duo in anime -> {"route":"normal","moderation":"none"}
+is pandora actually echidnas mom -> {"route":"search","moderation":"none"}
+is levi related to mikasa -> {"route":"search","moderation":"none"}
+did eren know about the rumbling the whole time -> {"route":"search","moderation":"none"}
+whats gojos technique actually called -> {"route":"search","moderation":"none"}
 i want to do research on my essay topic later -> {"route":"normal","moderation":"none"}
 take action against kai -> {"route":"normal","moderation":"action"}
 whats the latest zzz patch -> {"route":"search","moderation":"none"}

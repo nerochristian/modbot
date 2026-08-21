@@ -21,11 +21,25 @@ module, and a snapshot would silently keep using the real environment.
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from .. import settings
 from ..transport import _exception_summary
+
+def _int_env(name: str, default: int, *, low: int, high: int) -> int:
+    try:
+        return max(low, min(high, int(os.getenv(name, "").strip() or default)))
+    except (TypeError, ValueError):
+        return default
+
+
+_SEARCH_MAX_RESULTS: int = _int_env("OPENROUTER_SEARCH_MAX_RESULTS", 3, low=1, high=10)
+_SEARCH_MAX_TOTAL_RESULTS: int = _int_env(
+    "OPENROUTER_SEARCH_MAX_TOTAL_RESULTS", 5, low=1, high=20
+)
+
 
 logger = logging.getLogger("ModBot.AIModeration.Client")
 
@@ -311,9 +325,13 @@ class OpenRouterLaneMixin:
                     "type": "openrouter:web_search",
                     "parameters": {
                         "engine": "auto",
-                        "max_results": 5,
+                        # Results are billed per result and dominate the cost of
+                        # a searched turn -- far more than the model does. Three
+                        # is enough to answer and cite a Discord question; raise
+                        # OPENROUTER_SEARCH_MAX_RESULTS if answers get thin.
+                        "max_results": _SEARCH_MAX_RESULTS,
                         "max_uses": 1,
-                        "max_total_results": 10,
+                        "max_total_results": _SEARCH_MAX_TOTAL_RESULTS,
                     },
                 }
             ],

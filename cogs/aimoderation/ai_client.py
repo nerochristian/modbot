@@ -138,8 +138,14 @@ _OPENROUTER_CHAT_DISABLE_REASONING: Final[bool] = str(
     os.getenv("OPENROUTER_CHAT_DISABLE_REASONING", "true")
 ).strip().lower() in {"1", "true", "yes", "on"}
 
-# Luna handles conversation turns that need live web search.
-_OPENROUTER_LUNA_MODEL: Final[str] = "openai/gpt-5.6-luna"
+# The searched conversation lane. Overridable because the search model is a
+# straight cost/quality dial: OpenRouter runs the web_search plugin itself, so
+# any tool-capable model can drive it. Defaults to the talking model's family
+# (Gemma 4 31B: $0.10/$0.34 per Mtok) rather than Luna ($0.20/$1.20).
+_OPENROUTER_LUNA_MODEL: Final[str] = os.getenv(
+    "OPENROUTER_SEARCH_MODEL",
+    os.getenv("OPENROUTER_LUNA_MODEL", "google/gemma-4-31b-it"),
+).strip() or "google/gemma-4-31b-it"
 # Research is a two-model pipeline: Sonar gathers live sources (it is a search
 # product, not a writer), then the writer model synthesizes the report from
 # them. The writer is the same family as the talking lane, so long-form research
@@ -154,7 +160,18 @@ _OPENROUTER_RESEARCH_WRITER_MODEL: Final[str] = _env_first(
     default=_OPENROUTER_CHAT_MODEL_DEFAULT,
 )
 # Low-cost conversation route classification (normal / search / research).
-_OPENROUTER_LING_ROUTER_MODEL: Final[str] = "inclusionai/ling-2.6-flash"
+# The intent classifier (route + moderation). Overridable so the lane can be
+# repointed without a deploy. Defaults to the same Gemma the rest of the bot
+# uses: benchmarked at 44/44 on the intent suite, identical to Ling, but slower
+# (median 1.84s vs 0.75s, tail to 5.6s). That tail is why the call is bounded
+# and failure-tolerant -- a slow classification is dropped and the local regex
+# decides instead, which costs recall on a minority of turns and never costs a
+# reply. Set OPENROUTER_INTENT_MODEL=inclusionai/ling-2.6-flash to go back.
+_OPENROUTER_LING_ROUTER_MODEL: Final[str] = _env_first(
+    "OPENROUTER_INTENT_MODEL",
+    "OPENROUTER_LING_ROUTER_MODEL",
+    default="google/gemma-4-31b-it",
+)
 # Conversational vision lane. Luna technically accepts images, but it is a
 # search model: it is weak at reading a photo's actual visible subject, which is
 # why the visual-candidate + web-verification two-pass exists further down.
@@ -1110,8 +1127,11 @@ class AIClient(
                     # Its quota must never gate the reply it was classifying.
                     allow_service_block=False,
                 ),
-                # Measured: median 0.77s, max 1.78s. 2.0s discarded good answers
-                # that were merely slow; 2.5s keeps the reply snappy either way.
+                # Held at 2.5s on purpose. Gemma's median is 1.84s with a tail
+                # past 5s, so a minority of turns will blow this budget -- and
+                # that is the right trade: a dropped classification falls back to
+                # the local regex and costs a little recall, while waiting on the
+                # tail would delay every reply behind it.
                 timeout=2.5,
             )
             return self._parse_intent_payload(raw or "")
@@ -2553,7 +2573,12 @@ class AIClient(
                 "insults, and never take sides against other members for his benefit.\n\n"
             )
 
-        server_map = self._format_server_map(guild)
+        # A web-search turn is answering from the internet, not from this server.
+        # The map and the guild profile cannot contribute to "is x related to y",
+        # and together they were the bulk of a searched turn's input tokens.
+        searched_turn = bool(web_context or uses_native_search)
+
+        server_map = "" if searched_turn else self._format_server_map(guild)
         if server_map:
             full_context += (
                 "### SERVER MAP ###\n"
@@ -2581,6 +2606,9 @@ class AIClient(
             # thing (capped to a sane upper bound for safety).
             trimmed = past_memory.strip()
             memory_limit = max(1_000, int(self.config.user_memory_context_chars))
+            if searched_turn:
+                # Keep enough to stay personal, drop the long tail nobody reads.
+                memory_limit = min(memory_limit, 2_000)
             if len(trimmed) > memory_limit:
                 trimmed = trimmed[:memory_limit].rsplit("\n", 1)[0] or trimmed[:memory_limit]
             full_context += (
@@ -2594,7 +2622,7 @@ class AIClient(
                 f"{trimmed}\n\n"
             )
 
-        if guild_memory.strip():
+        if guild_memory.strip() and not searched_turn:
             trimmed = guild_memory.strip()
             memory_limit = max(1_000, int(self.config.guild_memory_context_chars))
             if len(trimmed) > memory_limit:
