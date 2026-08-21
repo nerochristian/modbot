@@ -966,6 +966,9 @@ class AIClient(
                     base_url=_OPENROUTER_BASE_URL,
                     api_key=_OPENROUTER_API_KEY,
                     model=_OPENROUTER_IMAGE_SCREEN_MODEL,
+                    # A screening outage is already handled by returning None;
+                    # it must not additionally silence conversation.
+                    allow_service_block=False,
                     temperature=0.0,
                     max_tokens=80,
                     json_mode=True,
@@ -1076,6 +1079,10 @@ class AIClient(
                     ),
                     max_retries=0,
                     request_timeout=2,
+                    # Optional optimization: converse() picks a sane default
+                    # route when this returns None. Its quota must never gate
+                    # the reply it was only trying to classify.
+                    allow_service_block=False,
                 ),
                 timeout=2.0,
             )

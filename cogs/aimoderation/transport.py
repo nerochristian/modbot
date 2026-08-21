@@ -22,7 +22,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import aiohttp
 
@@ -55,11 +55,20 @@ class TransportMixin:
         request_timeout: int = 60,
         extra_payload: Optional[Dict[str, Any]] = None,
         include_citations: bool = False,
+        allow_service_block: bool = True,
     ) -> Optional[str]:
         """Shared OpenAI-compatible chat-completions POST with bounded retries.
 
         Used by every OpenRouter lane. Retries only
         transient failures (network errors, 5xx, 429); auth/4xx fail fast.
+
+        ``allow_service_block`` controls whether a 401/403/429 here may trip the
+        CLIENT-WIDE service block, which ``_preflight`` then returns instead of
+        answering anyone. Only lanes that actually serve the user's reply may do
+        that. Pass False from optional and background lanes: each pins its own
+        model, so its quota says nothing about whether the talking lane works,
+        and a rate-limited 2-second route classifier must not silence every
+        conversation in every guild for a minute.
         """
         request_messages = messages if allow_multimodal else self._normalize_text_messages(messages)
         if not request_messages:
@@ -96,9 +105,10 @@ class TransportMixin:
                     if resp.status >= 400:
                         detail = data.get("error", data) if isinstance(data, dict) else raw_body[:500]
                         if resp.status in {401, 403}:
-                            self._set_block(seconds=900, reason=f"{provider_label} authentication or access failed.")
+                            if allow_service_block:
+                                self._set_block(seconds=900, reason=f"{provider_label} authentication or access failed.")
                             raise RuntimeError(f"{provider_label} HTTP {resp.status}: {str(detail)[:500]}")
-                        if resp.status == 429:
+                        if resp.status == 429 and allow_service_block:
                             self._set_block(seconds=60, reason=f"{provider_label} rate limit or quota reached.")
                         # 429 and 5xx are transient — fall through to retry.
                         if resp.status < 500 and resp.status != 429:

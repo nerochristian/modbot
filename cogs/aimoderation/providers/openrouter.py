@@ -146,6 +146,12 @@ class OpenRouterLaneMixin:
                     json_mode=json_mode,
                     allow_multimodal=allow_multimodal,
                     provider_label=f"OpenRouter protected ({candidate})",
+                    # Moderation, routing, and memory each pin their own model
+                    # on this lane. One of them being rate-limited says nothing
+                    # about the talking lane, so it must not trip the
+                    # client-wide block that gates every conversation. This
+                    # lane's own failover already handles a dead candidate.
+                    allow_service_block=False,
                     # Each candidate is itself a retry route. Retrying a dead
                     # route first made multi-model failover take over a minute.
                     max_retries=0 if max_retries is None else max(0, max_retries),
