@@ -164,7 +164,7 @@ class AIConfig:
     provider: str = field(default_factory=_default_ai_provider)
     model: str = field(default_factory=_default_ai_model)
     temperature_routing: float = 0.2
-    temperature_chat: float = 0.85
+    temperature_chat: float = 0.6
     max_tokens_routing: int = 1500
     max_tokens_chat: int = field(default_factory=_default_max_tokens_chat)
     memory_window: int = 200

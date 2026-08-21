@@ -36,6 +36,7 @@ from .types import (
 from .prompts import (
     ROUTING_SYSTEM_PROMPT, CONVERSATION_SYSTEM_PROMPT,
     DEEP_RESEARCH_SYSTEM_PROMPT, MOD_GUIDANCE_SYSTEM_PROMPT,
+    CREATOR_USER_ID, CREATOR_NAME,
 )
 from .transport import TransportMixin
 from .providers import (
@@ -2339,6 +2340,56 @@ class AIClient(
             text = ", ".join(extras) if extras else "non-text message"
         return text[:limit]
 
+    @staticmethod
+    def _describe_standing(
+        guild: discord.Guild,
+        author: Union[discord.Member, discord.User],
+    ) -> str:
+        """Describe the speaker's real authority here, so the model never invents one."""
+        if not isinstance(author, discord.Member):
+            return "regular member, no elevated permissions"
+
+        if author.id == guild.owner_id:
+            return "owner of this server"
+
+        perms = author.guild_permissions
+        titles: List[str] = []
+        if perms.administrator:
+            titles.append("administrator")
+        else:
+            if perms.ban_members or perms.kick_members or perms.moderate_members:
+                titles.append("moderator")
+            if perms.manage_guild:
+                titles.append("manages server settings")
+            if perms.manage_channels:
+                titles.append("manages channels")
+            if perms.manage_roles:
+                titles.append("manages roles")
+        if not titles:
+            return "regular member, no elevated permissions"
+        return ", ".join(titles) + " (not the server owner)"
+
+    @staticmethod
+    def _creator_is_relevant(
+        author: Union[discord.Member, discord.User],
+        user_content: str,
+        thread_context: str,
+    ) -> bool:
+        """True only when Docket's creator is the speaker or is being discussed."""
+        if author.id == CREATOR_USER_ID:
+            return True
+        haystack = user_content + "\n" + thread_context
+        if str(CREATOR_USER_ID) in haystack:
+            return True
+        return bool(
+            re.search(
+                r"who\s+(made|built|created|owns|wrote)\s+you"
+                r"|your\s+(creator|developer|owner|maker|dev)",
+                haystack,
+                re.IGNORECASE,
+            )
+        )
+
     def _build_conversation_plan(
         self,
         *,
@@ -2368,23 +2419,34 @@ class AIClient(
             f"Speaker: {display_name} (@{author.name}){role_snippet}",
             f"Time: {_now().astimezone().strftime('%Y-%m-%d %H:%M %Z')}",
         ]
+        # State the speaker's actual standing in THIS server so the model never has to
+        # guess (and never promotes a familiar user to "server owner").
+        context_parts.append(
+            f"Speaker's standing in this server: {self._describe_standing(guild, author)}"
+        )
         if is_continuation:
             context_parts.append("Context: This is a continuation of an active conversation.")
         if location_context.strip():
             context_parts.append(f"Server location context: {location_context.strip()}")
         if channel_context.strip():
             context_parts.append(f"Current channel: {channel_context.strip()}")
-        
+
         full_context = "### CURRENT STATE & CONTEXT ###\n"
         full_context += "\n".join(context_parts) + "\n\n"
-        
-        # Keep creator identity available in every mode without forcing unnatural replies.
-        full_context += (
-            "### CREATOR CONTEXT ###\n"
-            "Cherry (user ID 1512848256789647560) created and owns Docket. "
-            "Treat Cherry warmly and respectfully, while staying natural and truthful. "
-            "Do not insult or demean Cherry, but do not grovel, worship, or start arguments on their behalf.\n\n"
-        )
+
+        # Creator identity is only relevant when the creator is actually part of the
+        # exchange. Injecting it into every server made the model treat him as that
+        # server's owner and address strangers as if they were him.
+        if self._creator_is_relevant(author, user_content, thread_context):
+            full_context += (
+                "### CREATOR CONTEXT ###\n"
+                f"{CREATOR_NAME} (user ID {CREATOR_USER_ID}) wrote and runs Docket. "
+                "That is ownership of the bot only. It grants no role, rank, or permission "
+                "in this or any server, and this server's own permissions still decide what "
+                f"{CREATOR_NAME} can do here. Never call {CREATOR_NAME} the server owner, an "
+                "admin, or your boss. Talk to him normally: no groveling, no deference, no "
+                "insults, and never take sides against other members for his benefit.\n\n"
+            )
 
         server_map = self._format_server_map(guild)
         if server_map:
