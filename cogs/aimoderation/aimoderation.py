@@ -46,7 +46,7 @@ from .python_runtime import (
     validate_python_code,
 )
 from .registry import ToolRegistry
-from .ai_client import AIClient
+from .ai_client import AIClient, _reason_polish_enabled
 
 logger = logging.getLogger("ModBot.AIModeration")
 
@@ -282,7 +282,7 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
         if self.ai.is_available:
             self._prewarm_task = asyncio.create_task(
                 self._prewarm_ai(),
-                name="deepseek-prewarm",
+                name="ai-prewarm",
             )
 
     async def cog_unload(self) -> None:
@@ -1232,8 +1232,11 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
                 arguments=args or {},
             )
 
-        if self._HELP_RE.search(low):
-            return decision(ToolType.HELP, "help")
+        # Help is deliberately checked AFTER the concrete actions below. A
+        # request naming a real action is an action request even if it also
+        # says "help". Ordering is not the primary fix (_HELP_RE is now scoped
+        # to actual help requests), but it stops a future loosening of that
+        # pattern from silently swallowing moderation commands again.
 
         if self._looks_like_warning_action(low):
             return decision(ToolType.WARN, "warn", self._warning_arguments(message, content))
@@ -1351,6 +1354,13 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
 
         if re.search(r"\b(?:server\s+)?safety\s+(?:check|audit)\b", low):
             return decision(ToolType.SAFETY_CHECK, "server_safety_check")
+
+        # Checked here, after every concrete action above, so a request that
+        # names a real action wins even when it also says "help"
+        # ("help me ban @user"). Still ahead of the execute_python catch-all so
+        # a plain "help" resolves to the menu rather than an arbitrary plan.
+        if self._HELP_RE.search(low):
+            return decision(ToolType.HELP, "help")
 
         if self._looks_like_advanced_action_request(content):
             return decision(ToolType.EXECUTE_PYTHON, "advanced_discord_action")
@@ -1715,6 +1725,12 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
 
         original = self._clean_moderation_reason(decision.arguments.get("reason", ""))
         if not original or original.lower() == "no reason provided":
+            return decision
+
+        # Purely cosmetic: this spends a full upstream call rewording a reason
+        # the moderator already wrote, on every single action. Opt in with
+        # AI_REASON_POLISH=true if the phrasing matters more than the request.
+        if not _reason_polish_enabled():
             return decision
 
         context_str = ""
@@ -2440,22 +2456,17 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
             "</execution_context>"
         )
 
-        planner_model = (
-            None
-            if (
-                getattr(self.ai, "prefers_relayrouter", False)
-                or getattr(self.ai, "prefers_aimodel", False)
-            )
-            else settings.model
-        )
         validation_feedback = ""
         for attempt in range(2):
-            provider_model_override = None
-            if attempt and getattr(self.ai, "prefers_aimodel", False):
-                provider_model_override = os.getenv(
-                    "AIMODEL_EXECUTION_FALLBACK_MODEL",
-                    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
-                ).strip()
+            # The second pass runs on an explicitly configured planner model. It
+            # is the one case allowed to name its own model on the protected
+            # lane, which is why it goes through provider_model_override rather
+            # than `model` -- the lane's allow-list still refuses anything else.
+            provider_model_override = (
+                os.getenv("OPENROUTER_EXECUTION_FALLBACK_MODEL", "").strip() or None
+                if attempt
+                else None
+            )
             raw_response = await self.ai._call(
                 [
                     {"role": "system", "content": system_prompt},
@@ -2463,9 +2474,9 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
                 ],
                 temperature=0.1,
                 max_tokens=6000,
-                # Managed HTTP providers resolve None through their dedicated
-                # moderation model, ignoring stale per-guild model overrides.
-                model=planner_model,
+                # None resolves to the protected lane's own moderation model,
+                # ignoring stale per-guild model overrides.
+                model=None,
                 provider_model_override=provider_model_override,
                 json_mode=True,
             )
@@ -2519,7 +2530,7 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
                 settings=settings,
             )
         except Exception:
-            logger.exception("Generated action planning failed across all configured providers")
+            logger.exception("Generated action planning failed on every configured model")
             return False
         if not plan:
             return False
@@ -2968,7 +2979,6 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
                 author=message.author,
                 recent_messages=recent,
                 source_message=message,
-                model=settings.model,
                 signals=signals,
                 location_context=settings.location_context,
             )
@@ -3043,14 +3053,14 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
             f"- `{mention} ban @User alt account`\n\n"
             "**Settings:**\n"
             "- `/aimod status` - View current settings\n"
-            "- `/aimod doctor` - Diagnose provider/session problems\n"
+            "- `/aimod doctor` - Diagnose provider problems\n"
             "- `/aimod setup` - Apply simple defaults\n"
             "- `/aimod toggle` - Enable or disable AI moderation\n"
             "- `/aimod talking` - Enable or disable casual AI replies"
         )
         title_text = f"You're always on my mind. {guild.name}" if guild else "You're always on my mind."
         embed = discord.Embed(title=title_text, description=desc, color=discord.Color.blurple())
-        embed.set_footer(text="Powered by DeepSeek AI - Answers anything, moderates when needed")
+        embed.set_footer(text="Powered by OpenRouter - Answers anything, moderates when needed")
         return embed
 
     def _can_manage(self, interaction: discord.Interaction) -> bool:
@@ -3187,6 +3197,7 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
                     ("Proactive Chance", f"{settings.proactive_chance * 100:.1f}%"),
                     ("Provider Available", "Yes" if self.ai.is_available else "No"),
                     ("Provider", f"`{self.ai.provider}`"),
+                    ("Talking Model", f"`{self.ai.conversation_model_name()}`"),
                     ("Health", self.ai.availability_message()),
                 ],
                 max_value_length=480,
@@ -3271,7 +3282,14 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
         target = user or interaction.user
         record = await self.bot.db.get_ai_memory_record(target.id)
         if not record or not str(record.get("memory_text") or "").strip():
-            await interaction.followup.send(f"No AI memory is stored for **{target.display_name}**.", ephemeral=True)
+            # display_name is user-controlled. Ephemeral already contains the
+            # blast radius, but every send that interpolates untrusted text
+            # pins mentions so the rule holds without case-by-case reasoning.
+            await interaction.followup.send(
+                f"No AI memory is stored for **{target.display_name}**.",
+                ephemeral=True,
+                allowed_mentions=discord.AllowedMentions.none(),
+            )
             return
 
         memory = str(record["memory_text"])

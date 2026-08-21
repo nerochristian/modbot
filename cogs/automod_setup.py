@@ -7,9 +7,7 @@ new deterministic AutoMod settings schema.
 
 from __future__ import annotations
 
-import asyncio
 import json
-import os
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -264,45 +262,32 @@ def _setup_user_prompt(guild: Any, goal: str, profile: SetupProfile, answers: li
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
 
-async def call_deepseek_json(
+async def call_ai_json(
     cog: Any,
     system_prompt: str,
     user_prompt: str,
     *,
     temperature: float = 0.2,
     max_tokens: int = 1200,
-    session_key: str | None = None,
-    session_name: str | None = None,
 ) -> dict[str, Any]:
+    """Ask the protected AI lane for one JSON object of AutoMod settings.
+
+    Renamed from ``call_deepseek_json``: the DeepSeek lanes are gone and
+    OpenRouter is the only provider, so the old name named a vendor that no
+    longer has any code behind it.
+    """
     ai_cog = cog.bot.get_cog("AIModeration") if getattr(cog, "bot", None) is not None else None
     ai = getattr(ai_cog, "ai", None)
-    messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": user_prompt},
-    ]
-    if ai is not None and hasattr(ai, "_call"):
-        result = await ai._call(
-            messages,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            json_mode=True,
-            session_key=session_key,
-            session_name=session_name,
-        )
-        return _extract_json_object(str(result))
+    if ai is None or not hasattr(ai, "_call"):
+        raise RuntimeError("The AI moderation cog is not loaded, so no provider is available.")
 
-    web = getattr(ai, "_deepseek_web", None)
-    if web is not None and getattr(web, "enabled", False):
-        timeout = float(os.environ.get("DEEPSEEK_WEB_PRIMARY_TIMEOUT", "8"))
-        try:
-            result = await asyncio.wait_for(
-                web.chat(user_prompt, system_prompt=system_prompt, session_key=session_key, session_name=session_name),
-                timeout=timeout,
-            )
-            return _extract_json_object(str(result))
-        except Exception:
-            pass
-    if ai is not None and hasattr(ai, "_call_digitalocean"):
-        result = await ai._call_digitalocean(messages, temperature=temperature, max_tokens=max_tokens, json_mode=True)
-        return _extract_json_object(str(result))
-    raise RuntimeError("No DeepSeek provider is available")
+    result = await ai._call(
+        [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=temperature,
+        max_tokens=max_tokens,
+        json_mode=True,
+    )
+    return _extract_json_object(str(result))

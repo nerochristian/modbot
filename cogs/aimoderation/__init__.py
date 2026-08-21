@@ -6,7 +6,7 @@ Modular files:
 - prompts.py       — System prompts
 - context.py       — ToolContext, ToolResult, embed helpers
 - registry.py      — ToolRegistry with @register decorator
-- ai_client.py     — AIClient (DeepSeek Web + DigitalOcean providers)
+- ai_client.py     — AIClient (OpenRouter: the only provider)
 - aimoderation.py  — AIModeration cog (thin wrapper)
 - bridge.py        — Delegation to Moderation cog
 - handlers/        — Tool handler functions

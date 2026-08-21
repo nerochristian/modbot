@@ -99,8 +99,10 @@ class ResponseRenderingMixin:
         response = cls._compact_research_spacing(response)
         if len(title) > 256:
             title = title[:253].rstrip() + "..."
+        # .strip() matters: _split_response returns [] for blank input, and the
+        # loop below (plus _build_research_embed's [0]) needs at least one chunk.
         chunks = cls._split_response(
-            response or "No research summary was returned.",
+            response.strip() or "No research summary was returned.",
             max_len=3_900,
         )
         embeds: List[discord.Embed] = []
@@ -174,41 +176,79 @@ class ResponseRenderingMixin:
 
         # Very long responses: split into chunks
         chunks = self._split_response(response, max_len=1900)
+        if not chunks:
+            # Long but entirely whitespace. Silence would look like the bot
+            # ignoring the message, so say something instead.
+            await self.reply(
+                message,
+                content="I got an empty response from the AI. Try rephrasing that.",
+            )
+            return
         for index, chunk in enumerate(chunks):
             current_view = view if index == len(chunks) - 1 else None
             sent = await self.reply(message, content=chunk, view=current_view)
             if not sent:
                 break
 
+    _FENCE_RE = re.compile(r"^```([A-Za-z0-9_+-]*)\s*$", re.MULTILINE)
+
     @staticmethod
     def _split_response(text: str, max_len: int = 1900) -> List[str]:
-        """Split a long response into chunks at natural boundaries."""
+        """Split a long response into chunks at natural boundaries.
+
+        Two properties matter beyond the length limit:
+
+        Code fences are re-balanced across the cut. Splitting mid-fence used to
+        emit chunk 1 with an opener and no closer, chunk 2 with neither (so the
+        code rendered as prose), and chunk 3 with a stray closer. Each chunk is
+        now closed at its end and reopened -- with the same language tag -- at
+        the start of the next.
+
+        Blank chunks are dropped. Discord rejects an empty message, so a
+        whitespace-only response longer than max_len used to produce a chunk
+        that could only fail at the API.
+        """
+        if not text.strip():
+            return []
         if len(text) <= max_len:
             return [text]
 
         chunks: List[str] = []
         remaining = text
+        # Language tag of the fence left open by the previous chunk, if any.
+        open_fence: Optional[str] = None
 
         while remaining:
-            if len(remaining) <= max_len:
-                chunks.append(remaining)
-                break
+            prefix = f"```{open_fence}\n" if open_fence is not None else ""
+            # Reserve room for the prefix and a closing fence so a re-balanced
+            # chunk cannot exceed the limit.
+            budget = max_len - len(prefix) - 4
 
-            # Try to split at paragraph boundary
-            split_at = remaining.rfind("\n\n", 0, max_len)
-            if split_at < max_len // 3:
-                # Try single newline
-                split_at = remaining.rfind("\n", 0, max_len)
-            if split_at < max_len // 3:
-                # Try sentence boundary
-                split_at = remaining.rfind(". ", 0, max_len)
-                if split_at > 0:
-                    split_at += 1  # Include the period
-            if split_at < max_len // 3:
-                # Force split at max_len
-                split_at = max_len
+            if len(remaining) + len(prefix) <= max_len:
+                chunk, remaining = prefix + remaining, ""
+            else:
+                split_at = remaining.rfind("\n\n", 0, budget)
+                if split_at < budget // 3:
+                    split_at = remaining.rfind("\n", 0, budget)
+                if split_at < budget // 3:
+                    split_at = remaining.rfind(". ", 0, budget)
+                    if split_at > 0:
+                        split_at += 1  # Include the period
+                if split_at < budget // 3:
+                    split_at = budget
 
-            chunks.append(remaining[:split_at].rstrip())
-            remaining = remaining[split_at:].lstrip()
+                chunk = prefix + remaining[:split_at].rstrip()
+                remaining = remaining[split_at:].lstrip()
+
+            # An odd number of fences means this chunk ends inside a block.
+            fences = ResponseRenderingMixin._FENCE_RE.findall(chunk)
+            if len(fences) % 2:
+                open_fence = fences[-1]
+                chunk += "\n```"
+            else:
+                open_fence = None
+
+            if chunk.strip():
+                chunks.append(chunk)
 
         return chunks

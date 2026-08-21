@@ -1,11 +1,18 @@
-"""OpenRouter lanes: talking, search/vision conversation, and research pre-fetch.
+"""Every OpenRouter lane: talking, search, vision, research, and protected work.
 
-Lane separation is the point of this module. ``_call_openrouter_chat`` is the
-ordinary talking lane and deliberately sends no tools, no images, and no
+OpenRouter is the only provider, so lane separation here is by MODEL rather
+than by vendor, and it is the point of this module. ``_call_openrouter_chat``
+is the ordinary talking lane and deliberately sends no tools, no images, and no
 citations, so changing the chat model cannot quietly take over search,
 research, or vision. Those live on Luna (``_call_openrouter_conversation``,
 ``_call_openrouter_visual_candidates``) and Sonar
 (``_call_research_prefetch``).
+
+``_call_openrouter_protected`` is the separate lane for work that can mute,
+delete, or ban: moderation, action routing, image screening, and memory
+curation. It accepts only the models this deployment configured for those
+tasks, so a caller -- including one steered by a hostile Discord message --
+cannot smuggle in a model of its own choosing.
 
 Configuration is read through :mod:`cogs.aimoderation.settings` at call time,
 never ``from``-imported: the suite patches these names on the ``ai_client``
@@ -13,10 +20,14 @@ module, and a snapshot would silently keep using the real environment.
 """
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from .. import settings
+from ..transport import _exception_summary
+
+logger = logging.getLogger("ModBot.AIModeration.Client")
 
 
 class OpenRouterLaneMixin:
@@ -27,9 +38,153 @@ class OpenRouterLaneMixin:
     ``patch("...ai_client.AIClient._call_openrouter_conversation")``), so they
     must remain bound methods.
 
-    Requires from the composing class: ``self._post_chat_completion`` and
-    ``self.config``.
+    Requires from the composing class: ``self._post_chat_completion``,
+    ``self.config``, and the ``_block_until`` / ``_block_reason`` attributes.
     """
+
+    async def _call_openrouter_protected(
+        self,
+        messages: List[Dict[str, Any]],
+        *,
+        temperature: float,
+        max_tokens: int,
+        model: Optional[str] = None,
+        json_mode: bool = False,
+        allow_multimodal: bool = False,
+        fallback_models: Optional[Tuple[str, ...]] = None,
+        max_retries: Optional[int] = None,
+        request_timeout: Optional[int] = None,
+    ) -> Optional[str]:
+        """Run a protected task with bounded model failover.
+
+        Protected means moderation, action routing, image screening, and memory
+        curation -- the calls whose output can punish a member. The lane runs
+        the models this deployment configured for that work and nothing else:
+        a requested model outside the allow-list is dropped with a warning
+        rather than dialled, so a decision cannot bring its own model along.
+        """
+        if not settings.call("_openrouter_protected_enabled"):
+            raise RuntimeError("The protected AI lane is missing OPENROUTER_API_KEY.")
+
+        selected_model = (model or "").strip()
+        if not selected_model:
+            selected_model = (
+                settings.setting("_OPENROUTER_MODERATION_VISION_MODEL")
+                if allow_multimodal
+                else settings.setting("_OPENROUTER_MODERATION_MODEL")
+            )
+
+        configured_fallbacks = fallback_models
+        if configured_fallbacks is None:
+            configured_fallbacks = (
+                settings.setting("_OPENROUTER_MODERATION_VISION_FALLBACK_MODELS")
+                if allow_multimodal
+                else settings.setting("_OPENROUTER_MODERATION_FALLBACK_MODELS")
+            )
+
+        candidates: List[str] = []
+        for candidate in (selected_model, *configured_fallbacks):
+            normalized = str(candidate or "").strip()
+            if normalized and normalized not in candidates:
+                candidates.append(normalized)
+
+        # Background lanes (memory curation, routing) may deliberately run a
+        # different, cheaper model than the interactive moderation lane -- no
+        # user is waiting on them, so a rate-limited free model is an acceptable
+        # trade there. They are configured explicitly, so they belong in the
+        # allow-list; anything NOT configured is still refused.
+        background = tuple(
+            settings.setting(name, "")
+            for name in ("_OPENROUTER_MEMORY_MODEL", "_OPENROUTER_ROUTER_MODEL")
+        )
+        allowed = [
+            model_id
+            for model_id in (
+                settings.setting("_OPENROUTER_MODERATION_VISION_MODEL")
+                if allow_multimodal
+                else settings.setting("_OPENROUTER_MODERATION_MODEL"),
+                *(
+                    settings.setting("_OPENROUTER_MODERATION_VISION_FALLBACK_MODELS")
+                    if allow_multimodal
+                    else settings.setting("_OPENROUTER_MODERATION_FALLBACK_MODELS")
+                ),
+                *background,
+            )
+            if model_id
+        ]
+        # De-duplicate while preserving the configured order, so the primary is
+        # tried first and a fallback is only reached on failure.
+        seen: set = set()
+        allowed = [m for m in allowed if not (m in seen or seen.add(m))]
+
+        rejected = [c for c in candidates if c not in allowed]
+        if rejected:
+            logger.warning(
+                "Ignored model(s) not configured for the protected lane: %s",
+                ", ".join(rejected),
+            )
+
+        # FILTER the requested candidates rather than replacing them: the
+        # caller's order carries the lane's intent. Replacing it wholesale meant
+        # a background lane asking for its own cheap model still got the
+        # moderation model, because that sits first in the allow-list.
+        permitted = [c for c in candidates if c in allowed]
+        # Append the lane defaults as fallbacks behind whatever was asked for,
+        # so a single rate-limited model still has somewhere to go.
+        candidates = permitted + [m for m in allowed if m not in permitted]
+
+        last_error: Optional[Exception] = None
+        for index, candidate in enumerate(candidates):
+            try:
+                result = await self._post_chat_completion(
+                    messages,
+                    base_url=settings.setting("_OPENROUTER_BASE_URL"),
+                    api_key=settings.setting("_OPENROUTER_API_KEY"),
+                    model=candidate,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    json_mode=json_mode,
+                    allow_multimodal=allow_multimodal,
+                    provider_label=f"OpenRouter protected ({candidate})",
+                    # Each candidate is itself a retry route. Retrying a dead
+                    # route first made multi-model failover take over a minute.
+                    max_retries=0 if max_retries is None else max(0, max_retries),
+                    request_timeout=(
+                        request_timeout
+                        if request_timeout is not None
+                        else settings.call(
+                            "_openrouter_protected_timeout",
+                            multimodal=allow_multimodal,
+                        )
+                    ),
+                )
+                if result:
+                    if index:
+                        logger.info(
+                            "Protected fallback model %s succeeded after %d failed route(s)",
+                            candidate,
+                            index,
+                        )
+                    self._block_until = None
+                    self._block_reason = None
+                    return result
+                last_error = RuntimeError(
+                    f"OpenRouter protected ({candidate}) returned no assistant content."
+                )
+            except Exception as exc:
+                last_error = exc
+                if len(candidates) > 1:
+                    logger.warning(
+                        "Protected model %s failed (%d/%d): %s",
+                        candidate,
+                        index + 1,
+                        len(candidates),
+                        _exception_summary(exc),
+                    )
+
+        if last_error is not None:
+            raise last_error
+        return None
 
     async def _call_research_prefetch(
         self,
@@ -37,10 +192,8 @@ class OpenRouterLaneMixin:
     ) -> Tuple[Optional[str], List[str]]:
         """Fetch live research material plus the URLs that actually back it.
 
-        Perplexity Sonar is served by OpenRouter, not by the RelayRouter-named
-        gateway, so this deliberately does not go through ``_call_relayrouter``:
-        that lane force-pins every request to Nemotron when it points at
-        OpenRouter, and relayrouter.org itself serves no ``perplexity/*`` model.
+        Deliberately not the protected lane: that one only dials the configured
+        moderation models, and Sonar is not one of them.
 
         Returns (content, source_urls). The URLs come from the provider's real
         citations, so an answer with no citations yields no sources and correctly

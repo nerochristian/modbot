@@ -1,7 +1,8 @@
 # Docket moderation bot
 
-Discord moderation bot and dashboard with AI moderation powered by an
-authenticated DeepSeek Web browser session.
+Discord moderation bot and dashboard with AI moderation powered by OpenRouter.
+Talking, live search, vision, research, and the protected moderation lane each
+run on their own OpenRouter model, so retuning one cannot take over another.
 
 ## Run Locally
 

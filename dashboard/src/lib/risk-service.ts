@@ -126,10 +126,16 @@ export async function explainRisk(breakdown: RiskBreakdown): Promise<{ explanati
   const fallback = fallbackExplanation(breakdown)
   let result: { explanation: string; source: 'ai' | 'fallback' } = { explanation: fallback, source: 'fallback' }
 
-  const apiKey = process.env.AIMODEL_API_KEY?.trim()
+  // OpenRouter is the bot's only provider, and this explanation is read by
+  // staff deciding whether to act on a member, so it runs on the same
+  // moderation model the bot's protected lane uses rather than a chat model.
+  const apiKey = process.env.OPENROUTER_API_KEY?.trim()
   if (apiKey) {
-    const baseUrl = (process.env.AIMODEL_BASE_URL?.trim() || 'https://aimodel.lol/v1').replace(/\/+$/, '')
-    const model = process.env.AIMODEL_CHAT_MODEL?.trim() || process.env.AI_MODEL?.trim() || 'accounts/aimodel/models/kimi-k3-fast'
+    const baseUrl = (process.env.OPENROUTER_BASE_URL?.trim() || 'https://openrouter.ai/api/v1').replace(/\/+$/, '')
+    const model = process.env.OPENROUTER_MODERATION_MODEL?.trim()
+      || process.env.RELAYROUTER_MODERATION_MODEL?.trim()
+      || process.env.AI_MODEL?.trim()
+      || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free'
     try {
       const controller = new AbortController()
       const timeout = setTimeout(() => controller.abort(), 20_000)

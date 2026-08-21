@@ -5,6 +5,7 @@ Extracted from cogs/aimoderation.py into cogs/moderation/ai/types.py
 """
 from __future__ import annotations
 
+import logging
 import os
 from dataclasses import dataclass, field
 from enum import Enum
@@ -14,6 +15,8 @@ from utils.moderation_settings import moderation_id_set
 
 if TYPE_CHECKING:
     import discord
+
+logger = logging.getLogger("ModBot.AIModeration.Types")
 
 
 # =============================================================================
@@ -130,39 +133,29 @@ def _default_max_tokens_chat() -> int:
 
 
 def _default_ai_provider() -> str:
-    explicit = (os.getenv("AI_PROVIDER") or "").strip().lower()
-    if explicit:
-        return explicit
-    return "deepseek-web"
+    """The provider name. OpenRouter is the only one, so this is a constant.
+
+    Kept as a function (and as an ``AIConfig`` field) because ``/aimod status``
+    and the dashboard both display it, and because ``AI_PROVIDER`` is still set
+    in deployed .env files -- honouring a stale value there would point the bot
+    at a vendor that no longer has any code behind it.
+    """
+    return "openrouter"
 
 
 def _default_ai_model() -> str:
-    explicit = (os.getenv("AI_MODEL") or "").strip()
-    if explicit:
-        return explicit
-    provider = _default_ai_provider()
-    if provider in {"aimodel", "aimodel.lol"}:
-        return (
-            os.getenv("AIMODEL_MODERATION_MODEL")
-            or os.getenv("AIMODEL_MODEL")
-            or "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
-        ).strip()
-    if provider in {"relay", "relayrouter", "relayrouter.org"}:
-        return (
-            os.getenv("RELAYROUTER_MODERATION_MODEL")
-            or os.getenv("RELAYROUTER_MODEL")
-            or "gpt-5-6-terra"
-        ).strip()
-    if provider == "digitalocean":
-        return (
-            os.getenv("DO_AIMOD_MODEL")
-            or os.getenv("DO_CHAT_MODEL")
-            or os.getenv("DO_AUTOMOD_MODEL")
-            or "deepseek-4-flash"
-        ).strip()
-    if provider in {"deepseek", "deepseek-api", "deepseek-http", "galaxy", "glxy"}:
-        return (os.getenv("DEEPSEEK_MODEL") or "gemini-3-5-flash").strip()
-    return "deepseek-web"
+    """The model shown as this guild's default before any per-guild override.
+
+    This is the moderation-lane model, because the routing/action decisions are
+    what a guild-level model setting is actually able to influence. The
+    conversation lanes name their own models in ``ai_client``.
+    """
+    return (
+        os.getenv("AI_MODEL")
+        or os.getenv("OPENROUTER_MODERATION_MODEL")
+        or os.getenv("RELAYROUTER_MODERATION_MODEL")
+        or "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+    ).strip()
 
 
 @dataclass(frozen=True)
@@ -311,6 +304,30 @@ class GuildSettings:
 # =============================================================================
 
 
+# Bare-verb synonyms for the schema tool names. Models emit "ban" instead of
+# "ban_member" often enough that discarding the decision is the wrong default:
+# the resolved tool still has to clear validate_tool_access before it runs, so
+# accepting an unambiguous synonym costs nothing and recovers a dead command.
+_TOOL_ALIASES: Dict[str, "ToolType"] = {
+    "ban": ToolType.BAN,
+    "unban": ToolType.UNBAN,
+    "kick": ToolType.KICK,
+    "warn": ToolType.WARN,
+    "timeout": ToolType.TIMEOUT,
+    "mute": ToolType.TIMEOUT,
+    "untimeout": ToolType.UNTIMEOUT,
+    "unmute": ToolType.UNTIMEOUT,
+    "purge": ToolType.PURGE,
+    "clear": ToolType.PURGE,
+    "delete_messages": ToolType.PURGE,
+    "warnings": ToolType.GET_WARNINGS,
+    "history": ToolType.GET_HISTORY,
+    "help": ToolType.HELP,
+    "nickname": ToolType.SET_NICKNAME,
+    "dm": ToolType.DM_USER,
+}
+
+
 @dataclass
 class Decision:
     """AI router output."""
@@ -328,13 +345,34 @@ class Decision:
         elif raw_type == "chat":
             dec_type = DecisionType.CHAT
 
-        raw_tool = str(data.get("tool") or "").strip()
+        raw_tool = str(data.get("tool") or "").strip().lower()
         tool = None
         if raw_tool:
             try:
                 tool = ToolType(raw_tool)
             except ValueError:
-                pass
+                tool = _TOOL_ALIASES.get(raw_tool)
+            if tool is None:
+                # A TOOL_CALL carrying an unresolvable tool used to be returned
+                # as-is with tool=None. The dispatcher gates on
+                # `decision.type == TOOL_CALL and decision.tool`, so that object
+                # fell through to the error branch reporting nothing useful --
+                # the command just died silently. Degrade explicitly instead,
+                # naming the value the model actually sent.
+                logger.warning("Model returned unknown tool name: %r", raw_tool)
+                return cls(
+                    type=DecisionType.ERROR,
+                    reason=f"Unknown tool requested by the model: {raw_tool!r}",
+                )
+        elif dec_type is DecisionType.TOOL_CALL:
+            # tool_call with the field absent, empty, or null. Same silent
+            # no-op as an unresolvable name: the dispatcher requires a truthy
+            # tool, so this would reach the error branch with nothing to say.
+            logger.warning("Model returned tool_call with no tool name")
+            return cls(
+                type=DecisionType.ERROR,
+                reason="Model requested a tool call without naming a tool.",
+            )
 
         raw_arguments = data.get("arguments")
         arguments = dict(raw_arguments) if isinstance(raw_arguments, dict) else {}
@@ -371,7 +409,6 @@ class ConversationSignals:
     asks_for_long_answer: bool = False
     mentions_moderation: bool = False
     focus_entities: Tuple[str, ...] = ()
-    use_deepthink: bool = False
     requires_web_search: bool = False
 
     @property

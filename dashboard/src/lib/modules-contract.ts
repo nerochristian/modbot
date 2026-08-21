@@ -302,7 +302,7 @@ export const MODULE_DEFINITIONS: readonly ModuleDefinition[] = [
         ],
       },
       { key: 'aimod_confirm_timeout_seconds', label: 'Confirmation window', type: 'number', min: 5, max: 300, fallback: 25, hint: 'Seconds before a pending confirmation expires. Every action that changes the server always asks for approval first; that cannot be switched off.' },
-      { key: 'aimod_context_messages', label: 'Context window', type: 'number', min: 1, max: 200, fallback: 100, hint: 'Recent messages available to Galaxy. Newest messages are kept within a bounded input budget.' },
+      { key: 'aimod_context_messages', label: 'Context window', type: 'number', min: 1, max: 200, fallback: 100, hint: 'Recent messages available to the AI. Newest messages are kept within a bounded input budget.' },
       { key: 'aimod_location_context', label: 'Server location context', type: 'text', maxLength: 120, placeholder: 'Global community, English speaking', hint: 'Optional regional or community context for better interpretation.' },
       { key: 'aimod_model', label: 'Model override', type: 'text', maxLength: 120, placeholder: 'Use provider default', hint: 'Advanced provider model ID. Leave blank to follow the server default.' },
     ],

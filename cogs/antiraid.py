@@ -1,5 +1,5 @@
 """
-AntiRaid - Advanced raid protection with DeepSeek AI pattern detection
+AntiRaid - Advanced raid protection with AI pattern detection
 
 Features:
 - Automatic raid detection based on join velocity
@@ -25,11 +25,18 @@ from discord.ext import commands, tasks
 
 import aiohttp
 
-# Raid analysis runs on the same aimodel provider as the rest of the bot,
-# pinned to kimi-k3-fast (see AIMODEL_CHAT_MODEL / AI_MODEL in .env).
-_AI_BASE_URL = (os.getenv("AIMODEL_BASE_URL") or "https://aimodel.lol/v1").strip().rstrip("/")
-_AI_API_KEY = os.getenv("AIMODEL_API_KEY", "").strip()
-_AI_MODEL = (os.getenv("AIMODEL_CHAT_MODEL") or os.getenv("AI_MODEL") or "accounts/aimodel/models/kimi-k3-fast").strip()
+# Raid analysis runs on OpenRouter, the bot's only provider. It is a protected
+# task -- a positive verdict mass-kicks or bans -- so it is pinned to the same
+# moderation model the rest of the moderation work uses, and never to the
+# conversation lane.
+_AI_BASE_URL = (os.getenv("OPENROUTER_BASE_URL") or "https://openrouter.ai/api/v1").strip().rstrip("/")
+_AI_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
+_AI_MODEL = (
+    os.getenv("OPENROUTER_MODERATION_MODEL")
+    or os.getenv("RELAYROUTER_MODERATION_MODEL")
+    or os.getenv("AI_MODEL")
+    or "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+).strip()
 
 from utils.embeds import ModEmbed, compact_kv_lines, sapphire_log_embed
 from utils.logging import send_log_embed
@@ -44,7 +51,7 @@ from config import Config
 
 class AIRaidAnalyzer:
     """
-    Uses the bot's aimodel provider (glm-5.2) to detect sophisticated raid
+    Uses the bot's OpenRouter moderation model to detect sophisticated raid
     patterns by analyzing:
     - Username similarity and bot-like patterns
     - Account ages (new accounts are suspicious)
@@ -249,7 +256,7 @@ Guidelines:
             return result
 
         except Exception as e:
-            print(f"[DeepSeek AntiRaid] Error analyzing raid: {e}")
+            print(f"[AntiRaid] Error analyzing raid: {e}")
             return {
                 "is_raid": False,
                 "confidence": 0,
@@ -864,7 +871,7 @@ class AntiRaid(commands.Cog):
         embed = ModEmbed.success(
             "AI Detection Updated",
             (
-                f"DeepSeek AI detection is **{ai_status}**.\n"
+                f"AI detection is **{ai_status}**.\n"
                 f"Min confidence: **{conf}%**\n"
                 f"Override AI action: **{'Yes' if override else 'No'}**"
             ),

@@ -28,7 +28,7 @@ Requires from the composing class: ``self.bot``, ``self.ai``, and
 from __future__ import annotations
 
 import re
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, ClassVar, Dict, Optional
 
 import discord
 
@@ -108,8 +108,25 @@ class MessageParsingMixin:
         r")",
         re.IGNORECASE,
     )
+    # Matches a request FOR help, not the word "help" in passing.
+    #
+    # The old pattern was a bare \b(help|commands)\b, so any message containing
+    # the word routed to the help menu: "thanks for the help", "i need help
+    # understanding this", and -- because _recover_tool_decision tested this
+    # before the action checks -- "help me ban @user", which showed a command
+    # list instead of banning anyone.
     _HELP_RE: ClassVar[re.Pattern] = re.compile(
-        r"\b(help|commands|what can you do|how do i use you)\b",
+        # The whole message is the request: "help", "commands", "help me".
+        r"^(?:help|commands?|cmds)\b[\s!?.]*$"
+        r"|^help\s+me\b[\s!?.]*$"
+        # Explicitly asking to see it.
+        r"|^(?:show|list|send|give|display)\s+(?:me\s+)?(?:the\s+|your\s+)?(?:help|commands?)\b"
+        r"|\bhelp\s+(?:menu|page|command)\b"
+        r"|\bcommand\s+list\b"
+        # Capability questions.
+        r"|\bwhat\s+can\s+you\s+do\b"
+        r"|\bhow\s+do\s+i\s+use\s+you\b"
+        r"|\bhow\s+do\s+you\s+work\b",
         re.IGNORECASE,
     )
     _DURATION_UNITS: ClassVar[Dict[str, int]] = {
@@ -124,9 +141,38 @@ class MessageParsingMixin:
         r"|h|hr|hrs|hour|hours|d|day|days|w|week|weeks)(?![a-z])",
         re.IGNORECASE,
     )
+    # Leading filler that must come off before _MOD_REQUEST_RE, which is
+    # anchored at ^ and therefore only ever sees the first word.
+    #
+    # The previous pattern made the interjection optional but the politeness
+    # clause MANDATORY, so it matched "hey can you ban @user" yet stripped
+    # nothing from "hey ban @user" -- the anchored verb match then failed and
+    # the request was silently handled as chat. 15 of 23 ordinary phrasings
+    # ("yo ban", "ok ban", "just ban", "you should ban", "bro ban") missed that
+    # way. Each alternative below strips independently instead, and the caller
+    # applies this repeatedly to peel stacked prefixes.
+    #
+    # Erring wide is the safe direction here: a false positive still passes
+    # through the model router (which can return CHAT) and validate_tool_access,
+    # while a false negative never reaches the router at all.
     _ACTION_PREFIX_RE: ClassVar[re.Pattern] = re.compile(
-        r"^\s*(?:(?:hey|yo)\s+)?(?:(?:please|pls)\s+)?"
-        r"(?:(?:can|could|would|will)\s+(?:you|u)\s+|(?:please|pls)\s+)",
+        r"^\s*(?:"
+        # Vocatives and discourse markers.
+        r"(?:hey|yo|ok|okay|alright|aight|um|uh|erm|so|now|quick|quickly|just|"
+        r"actually|honestly|seriously|please|pls|plz|bro|bruh|dude|man|mate|"
+        r"guys|admin|admins|mod|mods|staff)\b[\s,]*"
+        # Direct request framing.
+        r"|(?:can|could|would|will|can'?t|cant)\s+(?:you|u|someone|somebody|anyone|we)\b\s*"
+        # Suggestion framing: "you should", "i think you should", "someone needs to".
+        r"|(?:i\s+(?:think|reckon|believe|feel\s+like)\s+)?"
+        r"(?:you|u|someone|somebody|we)\s+"
+        r"(?:should|need\s+to|needs\s+to|gotta|have\s+to|has\s+to|must|ought\s+to)\b\s*"
+        r"|(?:maybe|perhaps|possibly)\b\s*"
+        r"|(?:let'?s|let\s+us)\b\s*"
+        # "help me ban @user" is a ban request. The trailing \s+ is required so
+        # a bare "help me" is left intact for _HELP_RE to claim as the menu.
+        r"|(?:help\s+me)\s+"
+        r")",
         re.IGNORECASE,
     )
     _WARNING_LOOKUP_RE: ClassVar[re.Pattern] = re.compile(
@@ -211,7 +257,7 @@ class MessageParsingMixin:
     def _strip_action_prefix(self, text: str) -> str:
         previous = text or ""
         current = previous
-        for _ in range(3):
+        for _ in range(6):
             current = self._ACTION_PREFIX_RE.sub("", current).strip()
             if current == previous:
                 break
@@ -309,7 +355,11 @@ class MessageParsingMixin:
             routing_low = self._PREVIOUS_MESSAGE_SAFE_GUARD_RE.sub("", low)
 
         broad_scope = re.search(
-            r"\b(?:everyone|everybody|all|each)\b|"
+            # "every" on its own covers "every single user", "every member",
+            # "every account" -- phrasings that mean the whole server but were
+            # missed by the everyone/everybody/all/each set, so a mass action
+            # stayed on the deterministic path instead of going to the model.
+            r"\b(?:everyone|everybody|every|all|each)\b|"
             r"\b(?:members?|users?|accounts?|messages?|threads?|invites?|roles?)\s+"
             r"(?:who|that|with|without|matching|created|joined|pending|playing|holding)\b|"
             r"\bacross\s+(?:the\s+)?(?:server|guild|channels?)\b|"
@@ -427,14 +477,9 @@ class MessageParsingMixin:
             else ConversationMode.STANDARD
         )
 
-        # `has_web_search` only knows about Brave/Tavily/SerpAPI/DeepSeek-web. It
-        # does not know about the OpenRouter search lane (Luna's web_search tool
-        # and the Sonar research pre-fetch), so gating on it alone hid the
-        # "Searching..." indicator on deployments where research actually works.
-        research_capable = bool(
-            getattr(self.ai, "has_web_search", True)
-            or getattr(self.ai, "has_openrouter_search", False)
-        )
+        # Live search is the OpenRouter search lane: Luna's web_search tool and
+        # the Sonar research pre-fetch. Both report through has_web_search.
+        research_capable = bool(getattr(self.ai, "has_web_search", True))
         show_indicator = research_capable and mode == ConversationMode.RESEARCH
 
         return ConversationSignals(
@@ -445,7 +490,6 @@ class MessageParsingMixin:
             asks_for_sources=asks_for_sources,
             asks_for_long_answer=research_request,
             mentions_moderation=mentions_moderation,
-            use_deepthink=research_request,
             requires_web_search=search_request,
         )
 

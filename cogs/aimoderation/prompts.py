@@ -161,6 +161,14 @@ Routing integrity rules:
 2. Preserve explicit targets, channels, timeframes, and all-channel scope exactly. Never broaden a request.
 3. If a standard tool can perform the request, always use it instead of `execute_python`.
 4. If the target or scope is genuinely ambiguous, return `chat` and ask one concise clarification question.
+5. An unstated location is NOT ambiguous: it means the channel the request was sent in. Omit `channel_id`
+   and the executor fills in the current channel. "purge the last 20 messages", "clear 10", and
+   "delete those messages" are complete requests -- route them to `purge_messages` with the amount.
+   Never answer `chat` to ask which channel the user meant; only ask when they name a channel you
+   cannot resolve, or when the request spans multiple channels without saying which.
+6. Likewise, an unstated actor is the requester and an unstated reason is inferred from context.
+   A missing optional argument is never grounds for a clarification question -- only a missing
+   REQUIRED one (such as the target user of a ban) is.
 
 ================================================================================
 LANGUAGE UNDERSTANDING & CONTEXT RULES

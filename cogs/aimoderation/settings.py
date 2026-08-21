@@ -3,12 +3,12 @@
 Why this exists
 ---------------
 Provider configuration lives as module-level constants in ``ai_client``
-(``_OPENROUTER_API_KEY``, ``_RELAYROUTER_BASE_URL``, ...), computed from the
-environment at import time. The test suite reconfigures them by patching that
-module's namespace -- 83 sites across 17 names, e.g.::
+(``_OPENROUTER_API_KEY``, ``_OPENROUTER_MODERATION_MODEL``, ...), computed from
+the environment at import time. The test suite reconfigures them by patching
+that module's namespace, e.g.::
 
     monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", "test-key")
-    patch("cogs.aimoderation.ai_client._DO_API_KEY", "key")
+    patch("cogs.aimoderation.ai_client._OPENROUTER_MODERATION_MODEL", "x/y")
 
 That works only while the *reader* resolves the name through the ``ai_client``
 module object at call time. A module that does ``from .ai_client import
@@ -78,7 +78,7 @@ def call(name: str, *args: Any, **kwargs: Any) -> Any:
     """Invoke a late-bound predicate such as ``_openrouter_conversation_enabled``.
 
     Needed because tests also patch the enablement helpers themselves
-    (e.g. ``patch("...ai_client._deepseek_api_enabled", return_value=False)``),
+    (e.g. ``patch("...ai_client._openrouter_protected_enabled", return_value=False)``),
     so the function object must be looked up at call time too.
     """
     return getattr(_ai_client_module(), name)(*args, **kwargs)

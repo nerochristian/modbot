@@ -1,11 +1,11 @@
 """HTTP transport for the AI moderation client.
 
-This is the provider-agnostic wire layer: it owns the OpenAI-compatible
+This is the lane-agnostic wire layer: it owns the OpenAI-compatible
 chat-completions POST (with retry/backoff and auth-failure blocking), the
 response parsers for both JSON and SSE bodies, OpenRouter citation extraction,
 and message normalization for text-only routes.
 
-Extracted from ai_client.py to separate "how we talk HTTP" from "which provider
+Extracted from ai_client.py to separate "how we talk HTTP" from "which lane
 and model to use" (providers) and "what a conversation turn means" (converse).
 
 Implemented as a mixin rather than a standalone client because these are called
@@ -15,7 +15,7 @@ identical preserves both.
 
 Requires from the composing class:
   - ``self.bot``           for the shared aiohttp session
-  - ``self._set_block``    to trip the provider block on auth failure
+  - ``self._set_block``    to trip the service block on auth failure
 """
 from __future__ import annotations
 
@@ -36,7 +36,7 @@ def _exception_summary(exc: BaseException) -> str:
 
 
 class TransportMixin:
-    """OpenAI-compatible HTTP transport shared by every provider lane."""
+    """OpenAI-compatible HTTP transport shared by every lane."""
 
     async def _post_chat_completion(
         self,
@@ -58,7 +58,7 @@ class TransportMixin:
     ) -> Optional[str]:
         """Shared OpenAI-compatible chat-completions POST with bounded retries.
 
-        Used by both the DigitalOcean and DeepSeek HTTP providers. Retries only
+        Used by every OpenRouter lane. Retries only
         transient failures (network errors, 5xx, 429); auth/4xx fail fast.
         """
         request_messages = messages if allow_multimodal else self._normalize_text_messages(messages)
@@ -143,7 +143,7 @@ class TransportMixin:
 
     @staticmethod
     def _extract_sse_completion_content(raw_body: str) -> Optional[str]:
-        """Extract assistant text from Galaxy/OpenAI-compatible SSE chunks."""
+        """Extract assistant text from OpenAI-compatible SSE chunks."""
         chunks: List[str] = []
         for line in (raw_body or "").splitlines():
             line = line.strip()
