@@ -62,8 +62,8 @@ class FakeSession:
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(ai_client, "_OPENROUTER_API_KEY", "sk-or-v1-real")
-    monkeypatch.setattr(ai_client, "_OPENROUTER_CHAT_MODEL", "vendor/talk")
+    monkeypatch.setattr(ai_client, "_LEGION_API_KEY", "sk-or-v1-real")
+    monkeypatch.setattr(ai_client, "_LEGION_CHAT_MODEL", "vendor/talk")
     session = FakeSession()
     instance = AIClient(_types.SimpleNamespace(user=None, loop=None, session=session), AIConfig())
     instance.fake_session = session
@@ -111,12 +111,15 @@ def test_an_optional_lane_does_not_block_on_auth_failure(client, monkeypatch):
 
 
 def test_a_rate_limited_route_classifier_leaves_conversation_answerable(client):
-    """The exact incident: Ling 429s, and everyone stops getting replies.
+    """The exact incident: the router 429s, and everyone stops getting replies.
 
-    The classifier is allowed to fail -- converse() defaults the route. What it
-    must not do is make _preflight refuse the turn it was classifying.
+    The router is allowed to fail -- the caller defaults to ordinary chat.
+    What it must not do is make _preflight refuse the turn it was routing.
+    This matters more now than it did: the router sits in front of EVERY
+    conversational message, so a lane that could trip the client-wide block
+    would take the whole bot down rather than one turn.
     """
-    route = run(client.classify_research_route("stop what....?"))
+    route = run(client.classify_intent("stop what....?"))
 
     assert route is None, "a 429 classifier must degrade, not raise"
     assert client._get_block_message() is None
@@ -125,12 +128,12 @@ def test_a_rate_limited_route_classifier_leaves_conversation_answerable(client):
 
 def test_a_rate_limited_protected_lane_leaves_conversation_answerable(client, monkeypatch):
     """Moderation and conversation pin different models and fail independently."""
-    monkeypatch.setattr(ai_client, "_OPENROUTER_MODERATION_MODEL", "vendor/moderation")
-    monkeypatch.setattr(ai_client, "_OPENROUTER_MODERATION_FALLBACK_MODELS", ())
+    monkeypatch.setattr(ai_client, "_LEGION_MODERATION_MODEL", "vendor/moderation")
+    monkeypatch.setattr(ai_client, "_LEGION_MODERATION_FALLBACK_MODELS", ())
 
     try:
         run(
-            client._call_openrouter_protected(
+            client._call_legion_protected(
                 [{"role": "user", "content": "hi"}],
                 temperature=0.0,
                 max_tokens=16,

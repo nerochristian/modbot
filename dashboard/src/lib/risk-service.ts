@@ -129,10 +129,10 @@ export async function explainRisk(breakdown: RiskBreakdown): Promise<{ explanati
   // OpenRouter is the bot's only provider, and this explanation is read by
   // staff deciding whether to act on a member, so it runs on the same
   // moderation model the bot's protected lane uses rather than a chat model.
-  const apiKey = process.env.OPENROUTER_API_KEY?.trim()
+  const apiKey = process.env.LEGION_API_KEY?.trim() || process.env.OPENROUTER_API_KEY?.trim()
   if (apiKey) {
-    const baseUrl = (process.env.OPENROUTER_BASE_URL?.trim() || 'https://openrouter.ai/api/v1').replace(/\/+$/, '')
-    const model = process.env.OPENROUTER_MODERATION_MODEL?.trim()
+    const baseUrl = (process.env.LEGION_BASE_URL?.trim() || process.env.OPENROUTER_BASE_URL?.trim() || 'https://inference.legionedge.ai/v1').replace(/\/+$/, '')
+    const model = process.env.LEGION_MODERATION_MODEL?.trim() || process.env.OPENROUTER_MODERATION_MODEL?.trim()
       || process.env.RELAYROUTER_MODERATION_MODEL?.trim()
       || process.env.AI_MODEL?.trim()
       || 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free'

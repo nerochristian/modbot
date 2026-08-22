@@ -27,7 +27,7 @@ def run(coro):
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(ai_client, "_OPENROUTER_API_KEY", "sk-or-v1-real")
+    monkeypatch.setattr(ai_client, "_LEGION_API_KEY", "sk-or-v1-real")
     bot = _types.SimpleNamespace(user=None, loop=None, session=None)
     return AIClient(bot, AIConfig())
 

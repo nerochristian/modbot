@@ -73,6 +73,11 @@ class DecisionType(str, Enum):
 class ConversationMode(str, Enum):
     QUICK = "quick"
     STANDARD = "standard"
+    # A first-class mode rather than a flag on STANDARD. It used to be the
+    # latter, which meant searched turns were built with the ordinary
+    # conversation prompt and no instruction about how to use sources -- the
+    # lane existed but never got told what it was for.
+    SEARCH = "search"
     RESEARCH = "research"
     MOD_GUIDANCE = "mod_guidance"
 
@@ -133,14 +138,14 @@ def _default_max_tokens_chat() -> int:
 
 
 def _default_ai_provider() -> str:
-    """The provider name. OpenRouter is the only one, so this is a constant.
+    """The provider name. Legion Edge is the only one, so this is a constant.
 
     Kept as a function (and as an ``AIConfig`` field) because ``/aimod status``
     and the dashboard both display it, and because ``AI_PROVIDER`` is still set
     in deployed .env files -- honouring a stale value there would point the bot
     at a vendor that no longer has any code behind it.
     """
-    return "openrouter"
+    return "legionedge"
 
 
 def _default_ai_model() -> str:
@@ -152,9 +157,10 @@ def _default_ai_model() -> str:
     """
     return (
         os.getenv("AI_MODEL")
+        or os.getenv("LEGION_MODERATION_MODEL")
         or os.getenv("OPENROUTER_MODERATION_MODEL")
         or os.getenv("RELAYROUTER_MODERATION_MODEL")
-        or "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+        or "deepseek-v4-flash"
     ).strip()
 
 
@@ -441,14 +447,6 @@ class ConversationPlan:
     def show_indicator(self) -> bool:
         """Backward-compatible research-indicator flag."""
         return self.show_research_indicator
-
-
-@dataclass(frozen=True)
-class WebSearchResult:
-    """Search hit from a web search provider."""
-    title: str
-    url: str
-    snippet: str
 
 
 @dataclass(frozen=True)

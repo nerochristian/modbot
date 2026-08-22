@@ -1,5 +1,11 @@
 discord.py>=2.7.0
 python-dotenv>=1.0.0
+# Was only present transitively via discord.py, while transport.py and the
+# search harness both depend on it directly.
+aiohttp>=3.9.0
+# Article extraction for the search harness. Without it the harness falls back
+# to a crude regex strip, which works but produces much noisier source text.
+trafilatura>=1.12.0
 aiosqlite>=0.19.0
 asyncpg>=0.30.0
 humanize>=4.8.0

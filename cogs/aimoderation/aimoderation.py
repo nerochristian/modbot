@@ -2955,21 +2955,29 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
             await self.reply(message, content=quick_reply)
             self._mark_chat_active(message.channel.id)
             return
-        signals = await self._build_conversation_signals(content)
+        # The router reads the thread, not just this message, so that a bare
+        # "and tomorrow?" routes on what it is following up on.
+        signals = await self._build_conversation_signals(
+            content,
+            conversation=self.ai._format_conversation_history(recent),
+        )
 
-        # --- Research indicator ---
+        # --- Research progress ---
         research_msg: Optional[discord.Message] = None
+        progress: Optional[Any] = None
         if signals.show_research_indicator:
             research_embed = discord.Embed(
-                title="Searching...",
-                description=f"Searching the web for: *{content[:100]}{'...' if len(content) > 100 else ''}*",
+                title="Researching...",
+                description=f"*{content[:150]}{'...' if len(content) > 150 else ''}*",
                 color=discord.Color.from_rgb(88, 101, 242),
             )
-            research_embed.set_footer(text="This may take a moment")
+            research_embed.set_footer(text="Planning")
             try:
                 research_msg = await self.reply(message, embed=research_embed)
             except Exception:
                 research_msg = None
+            if research_msg is not None:
+                progress = self._research_progress_callback(research_msg, content)
 
         # --- Get AI response ---
         async with message.channel.typing():
@@ -2981,6 +2989,7 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
                 source_message=message,
                 signals=signals,
                 location_context=settings.location_context,
+                progress=progress,
             )
 
         # --- Deliver response ---
@@ -3010,6 +3019,69 @@ class AIModeration(MessageParsingMixin, ResponseRenderingMixin, commands.Cog):
         await self._deliver_response(message, response, signals)
         if signals.mode != ConversationMode.RESEARCH:
             self._mark_chat_active(message.channel.id)
+
+    def _research_progress_callback(
+        self,
+        research_msg: discord.Message,
+        question: str,
+    ) -> Any:
+        """Build a callback that keeps one embed in step with the research run.
+
+        A research turn takes 25-35 seconds. Thirty seconds of silence reads as
+        a broken bot, so the funnel is shown as it happens: planning, then how
+        many pages were found, then how many are actually being read.
+
+        Edits ONE message rather than posting several, and throttles those
+        edits: Discord rate-limits message edits per channel, and a run emits
+        stages faster than that near the start. A dropped update is not worth
+        an exception, so every failure here is swallowed -- the reply itself
+        must not depend on the progress UI succeeding.
+        """
+        import time as _time
+
+        state: Dict[str, Any] = {"last_edit": 0.0, "found": None}
+        min_interval = 1.0
+
+        async def callback(update: Any) -> None:
+            stage = getattr(update, "stage", "")
+            if getattr(update, "found", None) is not None:
+                state["found"] = update.found
+
+            # "found" and "reading" arrive back to back; the reading line
+            # carries both numbers, so let it win rather than burning an edit
+            # on the intermediate state.
+            now = _time.monotonic()
+            if stage == "found":
+                return
+            if now - float(state["last_edit"]) < min_interval and stage != "writing":
+                return
+            state["last_edit"] = now
+
+            if stage == "reading":
+                found = state["found"]
+                footer = (
+                    f"Found {found} pages -- reading {update.reading}"
+                    if found
+                    else f"Reading {update.reading} pages"
+                )
+            elif stage == "writing":
+                found = state["found"]
+                footer = f"Writing it up{f' from {found} pages found' if found else ''}"
+            else:
+                footer = getattr(update, "detail", "") or stage.title()
+
+            embed = discord.Embed(
+                title="Researching...",
+                description=f"*{question[:150]}{'...' if len(question) > 150 else ''}*",
+                color=discord.Color.from_rgb(88, 101, 242),
+            )
+            embed.set_footer(text=footer)
+            try:
+                await research_msg.edit(embed=embed)
+            except Exception:
+                pass
+
+        return callback
 
     @staticmethod
     def _is_ai_status_message(response: str) -> bool:
