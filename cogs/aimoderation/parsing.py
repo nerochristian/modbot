@@ -404,70 +404,44 @@ class MessageParsingMixin:
             or permission_matrix
         )
 
-    async def _build_conversation_signals(self, content: str) -> ConversationSignals:
-        low = self._normalize_chat_text(content)
+    async def _build_conversation_signals(
+        self,
+        content: str,
+        *,
+        conversation: str = "",
+    ) -> ConversationSignals:
+        """Decide how to answer this turn: chat, search, research, or moderation.
 
-        explicit_research = bool(re.search(
-            r"\b(research|deep\s*(?:dive|research|analysis|think)|investigate|"
-            r"full\s+breakdown|comprehensive|in[-\s]?depth|detailed\s+analysis|"
-            r"compare\s+(?:sources|reports))\b",
-            low,
-        ))
-        explicit_search = bool(re.search(
-            r"\b(fact[\s-]?check|verify|look\s*up|search|browse|check\s+(?:online|the\s+web))\b",
-            low,
-        ))
-        current_hint = bool(
-            re.search(
-                r"\b(latest|current(?:ly)?|right\s+now|today|tonight|yesterday|tomorrow|"
-                r"recent(?:ly)?|newest|upcoming|this\s+(?:week|month|year|season)|"
-                r"version|patch|update|release|price|weather|forecast|news|schedule|"
-                r"president|prime\s+minister|governor|mayor|ceo|owner|officeholder|"
-                r"law|legal|regulation|policy|stock|crypto|exchange\s+rate|"
-                r"available|availability|recommend(?:ed|ation|ations)?)\b",
-                low,
-            )
-            or _LIVE_WORLD_NEWS_RE.search(low)
-        )
-        casual_followup = bool(re.fullmatch(
-            r"(?:what'?s new|what is new|what'?s up|what is the ai thingy|what'?s the ai thingy|what do you mean|what is that|what's that|huh|wdym|hi|hey|hello|yo)\??",
-            low,
-        ))
+        The whole decision is one model call over the recent conversation.
+
+        This replaced a regex layer -- six keyword heuristics that guessed the
+        route, with a tiny classifier allowed to look only when every regex had
+        already come up empty. Those heuristics were doing the job badly in a
+        way that could not be fixed by tuning them: they matched on words
+        rather than intent, so "what's the latest" was always search even in
+        "what's the latest on your homework", "recommend" forced a web lookup
+        on "recommend me a name for my cat", and a bare "and tomorrow?" was
+        unroutable because a single message carries no subject.
+
+        Context fixes the class of problem that keyword matching cannot, so the
+        router now reads the thread and the regexes are gone. The local
+        moderation check survives as a pre-filter only: it is cheap, it is
+        precise on the phrasings that punish people, and it lets an obvious
+        "ban @user" skip the network hop entirely.
+        """
         mentions_moderation = self._looks_like_mod_request(content)
-        asks_for_sources = bool(re.search(r"\b(sources?|citations?|proof|links?)\b", low))
-        fallback_route = (
-            "research"
-            if explicit_research and not casual_followup and not mentions_moderation
-            else "search"
-            if explicit_search or current_hint or asks_for_sources
-            else "normal"
-        )
-        route = fallback_route
-        confidence = 0.95 if route == "research" else 0.9 if route == "search" else 0.0
+        route = "normal"
         mod_intent = "action" if mentions_moderation else "none"
+        confidence = 0.9 if mentions_moderation else 0.0
 
-        classifier = getattr(self.ai, "classify_intent", None) or getattr(
-            self.ai, "classify_research_route", None
-        )
-        # The regex is precise but not complete: when it already says "moderation"
-        # we trust it and skip the network hop, and when it says "no" we let Ling
-        # look again, because that is where the misses are.
-        should_classify = bool(
-            callable(classifier)
-            and not casual_followup
-            and not mentions_moderation
-            and not explicit_research
-            and not explicit_search
-            and not asks_for_sources
-        )
-        if should_classify:
-            decision = await classifier(content)
+        classifier = getattr(self.ai, "classify_intent", None)
+        # A clear moderation request is answered with Docket's own tools and
+        # never touches the web, so there is nothing left for the router to
+        # decide and no reason to pay for the call.
+        if callable(classifier) and not mentions_moderation:
+            decision = await classifier(content, conversation=conversation)
             if isinstance(decision, dict):
                 candidate = str(decision.get("route") or "").strip().lower()
-                candidate = {
-                    "normal_chat": "normal",
-                    "search_deepthink": "research",
-                }.get(candidate, candidate)
                 if candidate in {"normal", "search", "research"}:
                     route = candidate
                     try:
@@ -476,10 +450,11 @@ class MessageParsingMixin:
                         confidence = 1.0
                 candidate_mod = str(decision.get("moderation") or "").strip().lower()
                 if candidate_mod in {"action", "lookup", "guidance"}:
-                    # Ling only ever upgrades: it caught phrasing the regex missed.
-                    # It is never allowed to talk the regex out of a match.
                     mentions_moderation = True
                     mod_intent = candidate_mod
+                    # Belt and braces: the router is instructed to do this
+                    # itself, but moderation work must never reach the web even
+                    # if a future model drifts.
                     route = "normal"
 
         research_request = route == "research"
@@ -489,11 +464,14 @@ class MessageParsingMixin:
             if mod_intent == "guidance"
             else ConversationMode.RESEARCH
             if research_request
+            else ConversationMode.SEARCH
+            if route == "search"
             else ConversationMode.STANDARD
         )
 
-        # Live search is the OpenRouter search lane: Luna's web_search tool and
-        # the Sonar research pre-fetch. Both report through has_web_search.
+        # Whether the harness has a SERP backend that can actually answer. With
+        # Legion Edge this is a property of cogs.aimoderation.search, not of the
+        # model provider -- the provider cannot search at all.
         research_capable = bool(getattr(self.ai, "has_web_search", True))
         show_indicator = research_capable and mode == ConversationMode.RESEARCH
 
@@ -501,8 +479,8 @@ class MessageParsingMixin:
             mode=mode,
             confidence=confidence,
             show_research_indicator=show_indicator,
-            asks_for_current_info=current_hint,
-            asks_for_sources=asks_for_sources,
+            asks_for_current_info=search_request,
+            asks_for_sources=research_request,
             asks_for_long_answer=research_request,
             mentions_moderation=mentions_moderation,
             requires_web_search=search_request,

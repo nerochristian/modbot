@@ -96,7 +96,7 @@ def test_the_protected_lane_answers(client):
     silently, every moderation request in every guild failed with it.
     """
     reply = run(
-        client._call_openrouter_protected(
+        client._call_legion_protected(
             [
                 {"role": "system", "content": "Reply with JSON only."},
                 {"role": "user", "content": 'Return exactly {"ok": true}'},
@@ -141,7 +141,7 @@ def test_the_lane_answers_promptly(client):
 
     started = time.monotonic()
     run(
-        client._call_openrouter_protected(
+        client._call_legion_protected(
             [{"role": "user", "content": "Say OK"}], temperature=0.0, max_tokens=16
         )
     )

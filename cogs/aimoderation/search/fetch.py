@@ -340,10 +340,16 @@ def trim_pages(
             break
         text = page.text
         if len(text) > allowance:
+            # Budget the truncation marker too. Adding it after the cut let
+            # every trimmed page overshoot its allowance, and with a dozen
+            # pages that quietly pushed the bundle past the context budget the
+            # caller asked for.
+            marker = "\n[...]"
+            room = max(0, allowance - len(marker))
             # Cut at a paragraph boundary when one is close, so the writer does
             # not see a sentence sheared in half.
-            cut = text.rfind("\n\n", 0, allowance)
-            text = text[: cut if cut > allowance * 0.6 else allowance].rstrip() + "\n[...]"
+            cut = text.rfind("\n\n", 0, room)
+            text = text[: cut if cut > room * 0.6 else room].rstrip() + marker
         spent += len(text)
         out.append(
             ExtractedPage(

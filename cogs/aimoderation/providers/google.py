@@ -42,6 +42,19 @@ class GoogleImageEvidence:
     def available(self) -> bool:
         return bool(self.context or self.source_urls or self.ocr_text)
 
+    def best_text_query(self, *, limit: int = 120) -> str:
+        """The most identifying string to search the web for.
+
+        OCR text beats a visual description every time: an exact watermark,
+        artist signature, or @username pins down one specific image, whereas
+        "anime girl with white hair" matches a million. Returns "" when the
+        OCR found nothing worth searching.
+        """
+        text = " ".join((self.ocr_text or "").split())
+        if len(text) < 3:
+            return ""
+        return text[:limit].strip()
+
 
 def _clean_text(value: Any, *, limit: int = 2_000) -> str:
     text = html.unescape(str(value or ""))
@@ -191,6 +204,96 @@ class GoogleImageSearchLaneMixin:
             )
         )
         return [source, *detail_views]
+
+    async def _call_gemini_vision(
+        self,
+        messages: Sequence[Dict[str, Any]],
+        *,
+        temperature: float,
+        max_tokens: int,
+        model: Optional[str] = None,
+        block_attribute: str = "_gemini_vision_blocked_until",
+    ) -> Optional[str]:
+        """The conversational vision lane: an ordinary reply about an image.
+
+        This runs on Gemini rather than the text provider for a hard reason,
+        not a preference: every Legion Edge model is text-only, so without
+        this the bot cannot see an image at all. Distinct from
+        ``_call_google_grounded_vision``, which is the heavyweight
+        "who/what is this?" identification pass with reverse-image evidence
+        and search grounding attached.
+
+        Takes OpenAI-shaped ``messages`` (what the rest of the client speaks)
+        and converts them to Gemini's ``generateContent`` shape. Returns None
+        when Google is not configured, so the caller can fall back to a
+        text-only reply rather than losing the turn.
+        """
+        api_key = str(settings.setting("_GEMINI_API_KEY", "") or "").strip()
+        if not api_key or not messages:
+            return None
+
+        system_bits: List[str] = []
+        contents: List[Dict[str, Any]] = []
+        for message in messages:
+            role = str(message.get("role") or "user")
+            content = message.get("content")
+            if role == "system":
+                if isinstance(content, str):
+                    system_bits.append(content)
+                continue
+            parts: List[Dict[str, Any]] = []
+            if isinstance(content, str):
+                if content.strip():
+                    parts.append({"text": content})
+            elif isinstance(content, list):
+                for part in content:
+                    if not isinstance(part, dict):
+                        continue
+                    if part.get("type") == "text" and str(part.get("text") or "").strip():
+                        parts.append({"text": str(part["text"])})
+                    elif part.get("type") == "image_url":
+                        url = str((part.get("image_url") or {}).get("url") or "")
+                        # Only inline data URLs; a remote URL would make Google
+                        # fetch it, which we neither need nor want.
+                        if url.startswith("data:") and "," in url:
+                            header, _, encoded = url.partition(",")
+                            mime = header[5:].split(";", 1)[0] or "image/png"
+                            parts.append(
+                                {"inlineData": {"mimeType": mime, "data": encoded}}
+                            )
+            if parts:
+                contents.append(
+                    {"role": "model" if role == "assistant" else "user", "parts": parts}
+                )
+
+        if not contents:
+            return None
+
+        model = str(
+            model or settings.setting("_GEMINI_VISION_MODEL", "") or "gemini-3.6-flash"
+        )
+        base = str(settings.setting("_GEMINI_GENERATE_CONTENT_BASE_URL", "") or "")
+        payload: Dict[str, Any] = {
+            "contents": contents,
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": max_tokens,
+            },
+        }
+        if system_bits:
+            payload["systemInstruction"] = {
+                "parts": [{"text": "\n\n".join(system_bits)}]
+            }
+
+        data = await self._post_google_json(
+            url=f"{base}/models/{model}:generateContent",
+            api_key=api_key,
+            payload=payload,
+            timeout=settings.call("_google_image_search_timeout"),
+            provider_label=f"Gemini vision ({model})",
+            block_attribute=block_attribute,
+        )
+        return self._parse_google_grounded_response(data)
 
     async def _post_google_json(
         self,

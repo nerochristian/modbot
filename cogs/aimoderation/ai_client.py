@@ -36,7 +36,7 @@ from .types import (
 from .prompts import (
     ROUTING_SYSTEM_PROMPT, CONVERSATION_SYSTEM_PROMPT,
     DEEP_RESEARCH_SYSTEM_PROMPT, MOD_GUIDANCE_SYSTEM_PROMPT,
-    LING_INTENT_SYSTEM_PROMPT, CREATOR_USER_ID, CREATOR_NAME,
+    CONVERSATION_ROUTER_SYSTEM_PROMPT, CREATOR_USER_ID, CREATOR_NAME,
 )
 from .transport import TransportMixin
 from .providers import (
@@ -367,6 +367,50 @@ def _legion_protected_timeout(*, multimodal: bool) -> int:
     return min(90, max(5, configured))
 
 
+def _int_env_value(name: str, default: int) -> int:
+    try:
+        return int((os.getenv(name) or "").strip() or default)
+    except (TypeError, ValueError):
+        return default
+
+
+#: How much of the thread the router sees. The whole point of this lane is
+#: that context resolves follow-ups, so it needs real history -- but the
+#: router runs in front of EVERY conversational message, and latency scales
+#: with input. ~12k characters is roughly 30-40 Discord messages, which covers
+#: any follow-up chain worth resolving without paying for the full 96k budget
+#: the reply itself gets.
+_ROUTER_CONTEXT_CHARS: Final[int] = max(
+    1_000, min(48_000, _int_env_value("ROUTER_CONTEXT_CHARS", 12_000))
+)
+
+
+def _router_request_timeout() -> int:
+    """Per-request cap for the routing call."""
+    return max(3, min(30, _int_env_value("ROUTER_TIMEOUT", 8)))
+
+
+def _router_deadline() -> float:
+    """Outer deadline for routing, after which the turn proceeds unrouted.
+
+    Wider than the 2.5s the old single-message classifier allowed, because
+    this call now decides the lane rather than merely nudging a regex: losing
+    it means a research request gets answered as chat. The router's measured
+    median is 1.76s, so the extra headroom is rarely spent.
+    """
+    return max(3.0, min(30.0, float(_int_env_value("ROUTER_DEADLINE", 10))))
+
+
+def _research_write_timeout() -> int:
+    """Deadline for the research synthesis call.
+
+    Wider than an ordinary turn: the writer is working over a 50k-character
+    source bundle, and a research turn already showed the user a progress
+    embed, so it has permission to take a while.
+    """
+    return max(20, min(180, _int_env_value("RESEARCH_WRITE_TIMEOUT", 90)))
+
+
 def _legion_request_timeout() -> int:
     """Return the bounded timeout for ordinary Legion conversation turns."""
     default = 60
@@ -667,6 +711,8 @@ class AIClient(
         allow_multimodal: bool = False,
         long_answer: bool = False,
         provider_model_override: Optional[str] = None,
+        session_key: Optional[str] = None,
+        session_name: Optional[str] = None,
     ) -> Optional[str]:
         """Run a protected task: moderation, action routing, or memory curation.
 
@@ -674,6 +720,16 @@ class AIClient(
         protected lane and its configured allow-list rather than the
         conversation models. ``long_answer`` widens the token budget for
         curation work that legitimately produces more text.
+
+        ``session_key`` and ``session_name`` are accepted and ignored. Two
+        call sites (``choose_action`` and the moderation reason-polish path)
+        have always passed them, and this signature never took them -- so
+        every call raised TypeError into a bare ``except Exception``, and
+        EVERY AI moderation routing decision silently returned "AI encountered
+        an unexpected error" without ever reaching a model. Accepting them
+        restores the lane; they are kept as parameters rather than deleted at
+        the call sites so a future session-affinity feature has somewhere
+        obvious to land.
         """
         if not _legion_protected_enabled():
             raise RuntimeError("The protected AI lane is missing LEGION_API_KEY.")
@@ -985,11 +1041,17 @@ class AIClient(
         None means "unknown", and callers must treat it as "do nothing": a
         screening outage must never delete a message or punish a member.
 
-        Uses its own GEMINI_IMAGE_SCREEN_MODEL rather than the conversation
-        or text-moderation lanes, so retuning either of those cannot silently
-        repoint automatic NSFW/gore decisions.
+        Runs on Gemini, because it has to actually look at the picture and
+        every Legion Edge model is text-only. Uses its own
+        GEMINI_IMAGE_SCREEN_MODEL rather than the conversational vision lane,
+        so retuning image chat cannot silently repoint automatic NSFW/gore
+        decisions.
+
+        With no Google key configured this returns None -- "unknown" -- which
+        callers already treat as "do nothing". Screening simply stops
+        happening; it never guesses.
         """
-        if not images or not _legion_enabled():
+        if not images or not _GEMINI_API_KEY:
             return None
 
         system_prompt = (
@@ -1020,26 +1082,15 @@ class AIClient(
 
         try:
             raw = await asyncio.wait_for(
-                self._post_chat_completion(
+                self._call_gemini_vision(
                     [
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": parts},
                     ],
-                    base_url=_LEGION_BASE_URL,
-                    api_key=_LEGION_API_KEY,
-                    model=_GEMINI_IMAGE_SCREEN_MODEL,
-                    # A screening outage is already handled by returning None;
-                    # it must not additionally silence conversation.
-                    allow_service_block=False,
                     temperature=0.0,
-                    max_tokens=80,
-                    json_mode=True,
-                    allow_multimodal=True,
-                    provider_label=(
-                        f"Image age screening ({_GEMINI_IMAGE_SCREEN_MODEL})"
-                    ),
-                    max_retries=0,
-                    request_timeout=timeout,
+                    max_tokens=200,
+                    model=_GEMINI_IMAGE_SCREEN_MODEL,
+                    block_attribute="_gemini_image_screen_blocked_until",
                 ),
                 timeout=timeout,
             )
@@ -1102,8 +1153,8 @@ class AIClient(
             "confidence": min(1.0, max(0.0, confidence)),
         }
 
-    # Ling returns two labels in one call: how to answer, and whether this is a
-    # moderation request at all.
+    # The router returns two labels in one call: how to answer, and whether
+    # this is a moderation request at all.
     _INTENT_ROUTES: Final = ("normal", "search", "research")
     _INTENT_MODERATION: Final = ("none", "action", "lookup", "guidance")
 
@@ -1136,62 +1187,95 @@ class AIClient(
         "false": "none",
     }
 
-    async def classify_intent(self, user_content: str) -> Optional[Dict[str, Any]]:
-        """Ask Ling for the answering route AND whether this is a moderation request.
+    #: Strict schema for the router. ``strict: true`` is honoured by every
+    #: Legion model in use, which is what makes the reply safe to parse
+    #: without falling back to a regex.
+    _ROUTER_SCHEMA: Final[Dict[str, Any]] = {
+        "type": "object",
+        "properties": {
+            "route": {"type": "string", "enum": ["normal", "search", "research"]},
+            "moderation": {
+                "type": "string",
+                "enum": ["none", "action", "lookup", "guidance"],
+            },
+        },
+        "required": ["route", "moderation"],
+        "additionalProperties": False,
+    }
 
-        One call, two labels. Returns None on any failure so callers fall back to
-        their own heuristics: this classifier is an optimization and must never
-        gate the reply it was only trying to label.
+    async def classify_intent(
+        self,
+        user_content: str,
+        *,
+        conversation: str = "",
+    ) -> Optional[Dict[str, Any]]:
+        """Route the turn: how to answer it, and whether it is moderation work.
+
+        One call, two labels, over the WHOLE conversation rather than the
+        single message. That change is the point of this lane: a bare "what
+        about tomorrow" is unroutable in isolation and obvious in context, and
+        the old single-message classifier had to be propped up by a regex layer
+        that guessed at exactly the cases context answers directly.
+
+        Sending the thread is affordable because the router model holds its
+        accuracy at length -- it was the only candidate to score 12/12 on the
+        routing eval, at a 1.76s median with a 100k+ window.
+
+        Returns ``None`` on any failure. This must never gate the reply it was
+        only trying to label.
         """
         text = re.sub(r"\s+", " ", user_content or "").strip()
         if not text or not _legion_conversation_enabled():
             return None
 
         user_prompt = _sanitize_untrusted_text(text, limit=4_000)
-        try:
-            messages = [
-                {"role": "system", "content": LING_INTENT_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ]
-            raw = await asyncio.wait_for(
-                self._post_chat_completion(
-                    messages,
-                    base_url=_LEGION_BASE_URL,
-                    api_key=_LEGION_API_KEY,
-                    model=_LEGION_ROUTER_MODEL,
-                    temperature=0.0,
-                    max_tokens=48,
-                    json_mode=True,
-                    provider_label=(
-                        "OpenRouter conversation router "
-                        f"({_LEGION_ROUTER_MODEL})"
-                    ),
-                    max_retries=0,
-                    request_timeout=3,
-                    # Its quota must never gate the reply it was classifying.
-                    allow_service_block=False,
-                ),
-                # Held at 2.5s on purpose. Gemma's median is 1.84s with a tail
-                # past 5s, so a minority of turns will blow this budget -- and
-                # that is the right trade: a dropped classification falls back to
-                # the local regex and costs a little recall, while waiting on the
-                # tail would delay every reply behind it.
-                timeout=2.5,
+        if conversation:
+            # The thread is untrusted data, and a member can forge bot turns
+            # inside it, so it is sanitized and fenced just like the message.
+            history = _sanitize_untrusted_text(conversation, limit=_ROUTER_CONTEXT_CHARS)
+            user_prompt = (
+                f"### RECENT CONVERSATION (context only) ###\n{history}\n\n"
+                f"### NEWEST MESSAGE (label this one) ###\n{user_prompt}"
             )
-            return self._parse_intent_payload(raw or "")
+
+        try:
+            payload = await asyncio.wait_for(
+                self._call_legion_structured(
+                    [
+                        {"role": "system", "content": CONVERSATION_ROUTER_SYSTEM_PROMPT},
+                        {"role": "user", "content": user_prompt},
+                    ],
+                    model=_LEGION_ROUTER_MODEL,
+                    schema_name="conversation_route",
+                    schema=self._ROUTER_SCHEMA,
+                    # Generous because the router reasons before answering: a
+                    # tight cap truncates the JSON rather than the reasoning,
+                    # which is how a "cheap" classifier turns into a silent
+                    # failure on every turn.
+                    max_tokens=1_200,
+                    request_timeout=_router_request_timeout(),
+                    label="conversation router",
+                ),
+                timeout=_router_deadline(),
+            )
         except asyncio.TimeoutError:
-            logger.warning("Ling intent classification timed out")
+            logger.warning("Conversation routing timed out")
             return None
         except Exception:
-            logger.warning("Ling intent classification failed", exc_info=True)
+            logger.warning("Conversation routing failed", exc_info=True)
             return None
 
-    async def classify_research_route(self, user_content: str) -> Optional[Dict[str, Any]]:
-        """Back-compat name for the route half of :meth:`classify_intent`."""
-        return await self.classify_intent(user_content)
+        if not isinstance(payload, dict):
+            return None
+        return self._normalize_intent_labels(payload)
 
     def _parse_intent_payload(self, raw: str) -> Optional[Dict[str, Any]]:
-        """Parse Ling's two-label JSON, tolerating near-miss vocabulary."""
+        """Parse two-label JSON from raw text, tolerating near-miss vocabulary.
+
+        The live router uses a strict json_schema and hands
+        :meth:`_normalize_intent_labels` a parsed object directly. This is the
+        text path, kept for callers that only have raw model output.
+        """
         payload = self._extract_json(raw or "")
         try:
             data = json.loads(payload)
@@ -1199,10 +1283,17 @@ class AIClient(
             data = self._parse_loose_intent_payload(payload)
         if not isinstance(data, dict):
             logger.debug(
-                "Ling intent classifier returned invalid JSON: %r", (raw or "")[:500]
+                "Conversation router returned invalid JSON: %r", (raw or "")[:500]
             )
             return None
+        return self._normalize_intent_labels(data)
 
+    def _normalize_intent_labels(self, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Coerce a router object into the canonical label dict.
+
+        Kept separate from JSON parsing so it can be unit-tested directly, and
+        so the strict-schema path does not pay for a second parse.
+        """
         route = str(data.get("route") or "").strip().lower()
         route = self._INTENT_ROUTE_ALIASES.get(route, route)
         if route not in self._INTENT_ROUTES:
@@ -1264,68 +1355,6 @@ class AIClient(
             return None
         return {"route": route, "moderation": moderation}
 
-    def _parse_research_route_payload(self, raw: str) -> Optional[Dict[str, Any]]:
-        """Parse Ling's route JSON, with compatibility for older route names."""
-        payload = self._extract_json(raw or "")
-        try:
-            data = json.loads(payload)
-        except json.JSONDecodeError:
-            data = self._parse_loose_research_route_payload(payload)
-        if not isinstance(data, dict):
-            logger.debug("Ling conversation-route classifier returned invalid JSON: %r", (raw or "")[:500])
-            return None
-
-        route = str(data.get("route") or "").strip().lower()
-        route = {
-            "normal_chat": "normal",
-            "search_deepthink": "research",
-        }.get(route, route)
-        if route not in {"normal", "search", "research"}:
-            return None
-        try:
-            confidence = float(data.get("confidence", 0.0))
-        except (TypeError, ValueError):
-            confidence = 0.0
-        current_raw = data.get("current_info", route in {"search", "research"})
-        if isinstance(current_raw, bool):
-            current_info = current_raw
-        elif isinstance(current_raw, (int, float)):
-            current_info = bool(current_raw)
-        else:
-            current_info = str(current_raw or "").strip().lower() in {"true", "yes", "1"}
-        return {
-            "route": route,
-            "confidence": min(1.0, max(0.0, confidence or 1.0)),
-            "current_info": current_info,
-            "reason": str(data.get("reason") or "")[:200],
-        }
-
-    @staticmethod
-    def _parse_loose_research_route_payload(payload: str) -> Optional[Dict[str, Any]]:
-        route_match = re.search(
-            r'["\']?route["\']?\s*:\s*["\']?(normal_chat|search_deepthink|normal|research|search)["\']?',
-            payload or "",
-            re.IGNORECASE,
-        )
-        if not route_match:
-            return None
-        confidence_match = re.search(r'["\']?confidence["\']?\s*:\s*([01](?:\.\d+)?)', payload or "", re.IGNORECASE)
-        current_match = re.search(
-            r'["\']?current_info["\']?\s*:\s*(true|false|yes|no|1|0)',
-            payload or "",
-            re.IGNORECASE,
-        )
-        reason_match = re.search(r'["\']?reason["\']?\s*:\s*["\']([^"\']{0,200})', payload or "", re.IGNORECASE)
-        route = {
-            "normal_chat": "normal",
-            "search_deepthink": "research",
-        }.get(route_match.group(1).lower(), route_match.group(1).lower())
-        return {
-            "route": route,
-            "confidence": float(confidence_match.group(1)) if confidence_match else 0.0,
-            "current_info": current_match.group(1).lower() in {"true", "yes", "1"} if current_match else False,
-            "reason": reason_match.group(1) if reason_match else "loose classifier output",
-        }
 
     async def _load_conversation_memory(
         self,
@@ -1384,44 +1413,68 @@ class AIClient(
             channel_context += f" | Topic: {topic[:500]}"
         return channel_context
 
+    async def _gather_web_context(
+        self,
+        user_content: str,
+        *,
+        deep: bool,
+        progress: Optional[Any] = None,
+    ) -> Tuple[str, List[str]]:
+        """Run the harness and return (prompt section, real source URLs).
+
+        Retrieval only. The harness finds, ranks, opens and extracts the pages;
+        the reply itself is written by the ordinary conversation lane from the
+        numbered source block, so the bot answers in its own voice and the turn
+        costs one synthesis call rather than two.
+
+        Every URL returned here is a page that actually responded, which is
+        what makes the verifiable-source gate in ``research.py`` meaningful.
+        The old implementation asked a search-flavoured model for prose and
+        scraped whatever citations it happened to annotate, so a good answer
+        with no annotations was discarded as unsourced.
+
+        Returns ("", []) on failure so the caller can degrade rather than lose
+        the turn.
+        """
+        from .search import gather_research, gather_search, research_chain, search_chain
+
+        try:
+            chain = research_chain() if deep else search_chain()
+            if not chain:
+                logger.warning("No search backend is configured; skipping retrieval.")
+                return "", []
+            gathered = (
+                await gather_research(
+                    self, question=user_content, chain=chain, progress=progress
+                )
+                if deep
+                else await gather_search(question=user_content, chain=chain)
+            )
+        except Exception:
+            logger.warning("Web retrieval failed", exc_info=True)
+            return "", []
+
+        if not gathered.ok:
+            logger.info("Web retrieval produced nothing: %s", gathered.stats)
+            return "", []
+
+        logger.info("Web retrieval: %s", gathered.stats)
+        heading = "LIVE RESEARCH SOURCES" if deep else "LIVE SEARCH SOURCES"
+        web_context = (
+            f"--- {heading} ---\n{gathered.block}\n--- END SOURCES ---\n"
+            "Answer from these sources only. Cite each factual claim with its "
+            "[n]. Where the sources contradict each other, say so and give both "
+            "numbers. Do not put raw URLs in the reply body -- the bot attaches "
+            "the links itself."
+        )
+        return web_context, [source.url for source in gathered.sources]
+
+    # Back-compat alias: the suite and older call sites still reach for this.
     async def _prefetch_research_context(
         self,
         user_content: str,
     ) -> Tuple[str, List[str]]:
-        """Fetch live research evidence and its real source URLs.
-
-        Always runs for research turns, including when OpenRouter is available.
-        Luna answers well but frequently returns no citation annotations, and the
-        research system prompt forbids URLs in the body, so relying on Luna alone
-        made the verifiable-source gate discard good answers and report "live
-        search is unavailable". This pre-fetch supplies both the evidence and the
-        real source URLs; Luna's own search remains the fallback when it returns
-        nothing.
-
-        Returns ("", []) on failure so the caller falls through to native search
-        rather than failing the turn.
-        """
-        try:
-            research_content, sonar_urls = await self._call_research_prefetch(
-                user_content,
-            )
-        except Exception:
-            logger.warning("Live research pre-fetch failed", exc_info=True)
-            return "", []
-
-        if not (research_content and sonar_urls):
-            return "", []
-
-        web_context = (
-            f"--- LIVE RESEARCH DATA ---\n{research_content}\n--- END RESEARCH ---\n"
-            "Format the final response with the clean, topic-appropriate Discord "
-            "structure required by the research system prompt. Keep citations and raw "
-            "source URLs out of the response body."
-        )
-        # Only real cited URLs count as sources. Never synthesize a placeholder
-        # like "https://perplexity.ai/" to satisfy the verifiable-source gate,
-        # or the bot would claim sourcing it does not have.
-        return web_context, sonar_urls
+        return await self._gather_web_context(user_content, deep=True)
 
     @staticmethod
     def _turn_max_tokens(plan: ConversationPlan, signals: ConversationSignals) -> int:
@@ -1494,13 +1547,19 @@ class AIClient(
         source_message: Optional[discord.Message] = None,
         signals: Optional[ConversationSignals] = None,
         location_context: str = "",
+        progress: Optional[Any] = None,
     ) -> Optional[str]:
-        """Answer a conversational turn on the appropriate OpenRouter lane.
+        """Answer a conversational turn on the appropriate lane.
 
         There is deliberately no ``model`` parameter. A guild's configured model
         applies to moderation (see ``_call``), not to conversation: each
         conversation lane pins its own model so a per-guild setting cannot point
-        the searched, vision, or research lane at a model that cannot do the job.
+        the search, vision, or research lane at a model that cannot do the job.
+
+        ``progress`` is an optional async callback receiving
+        :class:`~cogs.aimoderation.search.ProgressUpdate` values during a
+        research run, so the cog can keep a live embed in step with the
+        retrieval funnel.
         """
         if not _legion_conversation_enabled():
             return self.availability_message()
@@ -1540,18 +1599,23 @@ class AIClient(
 
         channel_context = self._describe_source_channel(source_message)
 
+        # Retrieval happens up front for both web lanes, so the reply itself is
+        # a single synthesis call over pages the bot has already read.
         web_context = ""
         research_source_urls: List[str] = []
-        if signals.mode == ConversationMode.RESEARCH:
-            web_context, research_source_urls = await self._prefetch_research_context(
+        if signals.mode in (ConversationMode.RESEARCH, ConversationMode.SEARCH):
+            web_context, research_source_urls = await self._gather_web_context(
                 user_content,
+                deep=signals.mode == ConversationMode.RESEARCH,
+                progress=progress,
             )
 
-        # Sonar's pre-fetch is the preferred research path because it returns
-        # real citations. When it comes back empty, the searched conversation
-        # lane can still do the searching itself, so the turn is only refused
-        # when neither route is available.
-        uses_native_search = bool(
+        # Nothing came back. There is no provider-side search to fall back on
+        # -- Legion Edge has none -- so a research turn has to be refused
+        # rather than answered from memory and dressed up as sourced. A search
+        # turn degrades quietly to ordinary chat, which is the honest outcome
+        # for "who's the CEO of X" when the web is unreachable.
+        retrieval_failed = bool(
             signals.mode == ConversationMode.RESEARCH and not web_context
         )
 
@@ -1567,7 +1631,7 @@ class AIClient(
             location_context=location_context,
             channel_context=channel_context,
             web_context=web_context,
-            uses_native_search=uses_native_search,
+            retrieval_failed=retrieval_failed,
         )
 
         # --- Build message chain with multi-turn context ---
@@ -1659,7 +1723,7 @@ class AIClient(
                         return finished
 
             try:
-                needs_luna = self._openrouter_lane_needs_luna(
+                needs_harness = self._lane_needs_harness(
                     signals,
                     has_images=bool(image_context),
                 )
@@ -1669,20 +1733,34 @@ class AIClient(
                 )
                 # "Who/what is this?" must be verified against a source, and
                 # the answer path below refuses an unsourced identification.
-                # The Google-native lane ran first; OpenRouter remains the
-                # resilient OCR, vision, and searched-verification fallback.
+                # Google's grounded lane ran first; the harness now supplies
+                # the verification pass, searching the OCR text and visual
+                # guesses that Cloud Vision extracted.
                 if image_identification:
-                    needs_luna = True
-                    try:
-                        visual_candidates = await self._call_openrouter_visual_candidates(
-                            multimodal_api_messages,
-                        )
-                    except Exception:
-                        visual_candidates = None
-                        logger.warning(
-                            "OpenRouter visual candidate pass failed; continuing with searched verification.",
-                            exc_info=True,
-                        )
+                    needs_harness = True
+                    visual_candidates = None
+                    if google_evidence.context or google_candidate:
+                        # Search what the image actually says. An exact
+                        # watermark or @username is far more identifying than
+                        # a description of what is in the picture.
+                        probe = " ".join(
+                            part
+                            for part in (
+                                google_evidence.best_text_query(),
+                                (google_candidate or "").split("\n", 1)[0][:120],
+                            )
+                            if part
+                        ).strip()
+                        if probe:
+                            id_context, id_urls = await self._gather_web_context(
+                                probe, deep=False
+                            )
+                            if id_context:
+                                web_context = id_context
+                                research_source_urls = [
+                                    *research_source_urls,
+                                    *[u for u in id_urls if u not in research_source_urls],
+                                ]
                     evidence_sections: List[str] = []
                     if google_evidence.context:
                         evidence_sections.append(
@@ -1710,10 +1788,9 @@ class AIClient(
                                 "role": "user",
                                 "content": (
                                     "\n\n".join(evidence_sections)
-                                    + "\n\nNow use web search to verify the exact source. "
-                                    "Search any OCR text, watermark, artist signature, or "
-                                    "@username as an exact quoted string before searching "
-                                    "character guesses. Prefer pages containing the same "
+                                    + "\n\nNow identify the subject using the WEB SEARCH "
+                                    "RESULTS above, if any were retrieved. "
+                                    "Prefer pages containing the same "
                                     "image over generic visual descriptions. Compare the "
                                     "visible features before naming the subject and reject "
                                     "candidates whose anatomy or clothing does not match. "
@@ -1727,10 +1804,11 @@ class AIClient(
                                 ),
                             },
                         ]
-                # Research with evidence already gathered: Sonar supplied the
-                # sources and they are in the prompt, so synthesis is pure
-                # writing. research_source_urls still flows to the citation
-                # path untouched, so the Sources button is unaffected.
+                # Research and search both arrive here with their sources
+                # already in the prompt, so synthesis is pure writing. The
+                # writer model is used for research because it is measurably
+                # better at working across a dozen sources; search stays on the
+                # fast chat lane to keep the turn feeling like a chat reply.
                 research_synthesis = bool(
                     signals.mode == ConversationMode.RESEARCH
                     and web_context
@@ -1738,29 +1816,34 @@ class AIClient(
                     and not image_context
                 )
                 if research_synthesis:
-                    content = await self._call_openrouter_research_writer(
+                    content = await self._call_legion_writer(
                         api_messages,
+                        model=_LEGION_RESEARCH_WRITER_MODEL,
+                        fallback_models=_LEGION_RESEARCH_WRITER_FALLBACK_MODELS,
                         temperature=plan.temperature,
                         max_tokens=max_tokens,
+                        request_timeout=_research_write_timeout(),
+                        label="research writer",
                     )
                     if not content:
-                        # Don't waste Sonar's evidence on a writer hiccup:
-                        # fall back to the searched lane for this turn.
+                        # Do not waste retrieved sources on a writer hiccup:
+                        # the same prompt still works on the chat lane.
                         logger.warning(
                             "Research writer returned nothing; falling back to "
-                            "the searched conversation lane."
+                            "the chat lane for this turn."
                         )
-                        content = await self._call_openrouter_conversation(
-                            multimodal_api_messages,
+                        content = await self._call_legion_chat(
+                            api_messages,
                             temperature=plan.temperature,
                             max_tokens=max_tokens,
-                            allow_multimodal=False,
-                            require_search=False,
                         )
-                elif needs_vision and not needs_luna:
-                    # Pure image understanding: the vision model answers
-                    # directly. No search tool, so no citations are expected.
-                    content = await self._call_openrouter_vision(
+                elif needs_vision:
+                    # Any turn carrying an image needs a model that can see it,
+                    # and no Legion model can -- they are all text-only. Vision
+                    # is Gemini's lane, with the text lane as the fallback so an
+                    # unset Google key degrades to "answers, but blind" rather
+                    # than to silence.
+                    content = await self._call_gemini_vision(
                         multimodal_api_messages,
                         temperature=plan.temperature,
                         max_tokens=max_tokens,
@@ -1768,33 +1851,21 @@ class AIClient(
                     if not content:
                         logger.warning(
                             "Vision lane returned nothing; falling back to the "
-                            "searched conversation lane for this image turn."
+                            "text lane for this image turn."
                         )
-                        content = await self._call_openrouter_conversation(
-                            multimodal_api_messages,
-                            temperature=plan.temperature,
-                            max_tokens=max_tokens,
-                            allow_multimodal=True,
-                            require_search=False,
-                        )
-                else:
-                    content = (
-                        await self._call_openrouter_conversation(
-                            multimodal_api_messages,
-                            temperature=plan.temperature,
-                            max_tokens=max_tokens,
-                            allow_multimodal=bool(image_context),
-                            require_search=(
-                                signals.requires_web_search or image_identification
-                            ),
-                        )
-                        if needs_luna
-                        # Ordinary talking: text-only, no search tool.
-                        else await self._call_legion_chat(
+                        content = await self._call_legion_chat(
                             api_messages,
                             temperature=plan.temperature,
                             max_tokens=max_tokens,
                         )
+                else:
+                    # Everything else -- ordinary talk and search turns alike --
+                    # is text-only synthesis. A search turn differs only in
+                    # having a source block in its prompt.
+                    content = await self._call_legion_chat(
+                        api_messages,
+                        temperature=plan.temperature,
+                        max_tokens=max_tokens,
                     )
                 if content:
                     if image_identification and google_evidence.source_urls:
@@ -2573,7 +2644,7 @@ class AIClient(
         location_context: str = "",
         channel_context: str = "",
         web_context: str = "",
-        uses_native_search: bool = False,
+        retrieval_failed: bool = False,
     ) -> ConversationPlan:
         display_name = author.display_name if isinstance(author, discord.Member) else str(author)
         role_snippet = ""
@@ -2617,10 +2688,14 @@ class AIClient(
                 "insults, and never take sides against other members for his benefit.\n\n"
             )
 
-        # A web-search turn is answering from the internet, not from this server.
-        # The map and the guild profile cannot contribute to "is x related to y",
+        # A web turn is answering from the internet, not from this server. The
+        # map and the guild profile cannot contribute to "is x related to y",
         # and together they were the bulk of a searched turn's input tokens.
-        searched_turn = bool(web_context or uses_native_search)
+        searched_turn = bool(
+            web_context
+            or retrieval_failed
+            or signals.mode in (ConversationMode.RESEARCH, ConversationMode.SEARCH)
+        )
 
         server_map = "" if searched_turn else self._format_server_map(guild)
         if server_map:
@@ -2641,8 +2716,16 @@ class AIClient(
 
         if web_context:
             full_context += f"### WEB SEARCH RESULTS ###\n{web_context}\n\n"
-        elif uses_native_search:
-            full_context += "### LIVE SEARCH ###\nThe configured provider's live search capability is enabled for this request. Use current search results and include source URLs when available.\n\n"
+        elif retrieval_failed:
+            # There is no provider-side search to fall back on, so the model
+            # must be told the web is unavailable rather than invited to
+            # "search", which it cannot do and would simply hallucinate.
+            full_context += (
+                "### LIVE SEARCH ###\nWeb retrieval FAILED for this request and no "
+                "sources are available. You cannot browse. Say plainly that you could "
+                "not reach the web, and do not present remembered facts as current or "
+                "sourced.\n\n"
+            )
         
         # Memory section — a distilled profile of durable facts about the user.
         if past_memory.strip():
@@ -2689,11 +2772,11 @@ class AIClient(
                     "- Cite result numbers like [1] next to factual claims from search.\n"
                     "- If the search results do not support a claim, say the search results do not confirm it.\n"
                 )
-            elif uses_native_search:
+            elif retrieval_failed:
                 turn_instructions += (
-                    "- Use the provider's live search capability before answering.\n"
-                    "- Include plain source URLs only when available. Do not output raw citation tokens.\n"
-                    "- If search does not verify a claim, say it was not confirmed.\n"
+                    "- Web retrieval failed: you have NO sources for this turn.\n"
+                    "- Say you could not reach the web. Do not answer from memory as "
+                    "though it were researched, and do not invent citations.\n"
                 )
             turn_instructions += (
                 "- Return a Discord-ready answer with a direct topic heading, brief summary, and spaced bold-topic bullets when useful.\n"
@@ -2719,6 +2802,43 @@ class AIClient(
                 temperature=0.35,
                 max_tokens=max(self.config.max_tokens_chat, 4_000),
                 show_research_indicator=signals.show_research_indicator,
+                context_prompt=f"{full_context}{turn_instructions}",
+            )
+
+        # --- SEARCH MODE ---
+        #
+        # A first-class branch, not a flag on STANDARD. Search turns used to
+        # fall through to the ordinary conversation prompt, which says nothing
+        # about sources -- so the bot was handed search results and never told
+        # to cite them, prefer them over memory, or admit when they came back
+        # empty. This is the lane telling the model what it is holding.
+        if signals.mode == ConversationMode.SEARCH:
+            turn_instructions = "### TURN INSTRUCTIONS ###\n"
+            if web_context:
+                turn_instructions += (
+                    "- Answer from the WEB SEARCH RESULTS above, not from memory.\n"
+                    "- Cite each factual claim with its [n].\n"
+                    "- If the sources do not answer it, say so rather than guessing.\n"
+                    "- Mention how current the information is when that matters.\n"
+                )
+            else:
+                turn_instructions += (
+                    "- Web retrieval returned nothing for this turn. Answer from your "
+                    "own knowledge, but say clearly that you could not check it "
+                    "against a live source.\n"
+                )
+            turn_instructions += (
+                "- This is a chat reply, not a report: be brief and direct, usually a "
+                "short paragraph or two. Lead with the answer.\n"
+                "- Keep raw URLs out of the body; the bot attaches the links itself.\n"
+                "- No markdown tables.\n"
+            )
+            return ConversationPlan(
+                system_prompt=CONVERSATION_SYSTEM_PROMPT,
+                user_prompt=user_content,
+                temperature=0.4,
+                max_tokens=min(self.config.max_tokens_chat, 2_000),
+                show_research_indicator=False,
                 context_prompt=f"{full_context}{turn_instructions}",
             )
 

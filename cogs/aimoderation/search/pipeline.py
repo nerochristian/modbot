@@ -26,6 +26,7 @@ import asyncio
 import logging
 import os
 import time
+from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence
 
 from .fetch import PageFetcher, trim_pages
@@ -206,22 +207,39 @@ def parse_plan(payload: Optional[Dict[str, Any]], *, question: str) -> ResearchP
 # --- lanes -----------------------------------------------------------------
 
 
-async def run_search(
-    client: Any,
+@dataclass(slots=True)
+class Gathered:
+    """Retrieval output: the numbered source block, ready to be written from.
+
+    Retrieval and writing are split so ``converse()`` can do the writing
+    itself, in the bot's own voice and system prompt, without paying for a
+    second synthesis pass. :func:`run_search` and :func:`run_research` are the
+    standalone wrappers that add a writer on top.
+    """
+
+    block: str = ""
+    sources: List[Source] = field(default_factory=list)
+    stats: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def ok(self) -> bool:
+        return bool(self.block and self.sources)
+
+
+async def gather_search(
     *,
     question: str,
     chain: Any,
     fetcher: Optional[PageFetcher] = None,
-) -> HarnessResult:
-    """The light lane: one query, a handful of pages, one synthesis call."""
-    from .. import settings
-
+) -> Gathered:
+    """Retrieve for the light lane: one query, a handful of pages."""
     started = time.monotonic()
     pages_wanted = _env_int("SEARCH_PAGES", 4, low=1, high=8)
     results = await chain.search([question], count=_env_int("SEARCH_RESULTS", 6, low=3, high=20))
+    found = sum(len(v) for v in results.values())
     hits = rank_hits(results, limit=pages_wanted, per_domain_cap=1)
     if not hits:
-        return HarnessResult(answer="", stats={"reason": "no search results"})
+        return Gathered(stats={"lane": "search", "reason": "no search results"})
 
     fetcher = fetcher or PageFetcher()
     pages = await fetcher.fetch_many(hits, limit=pages_wanted)
@@ -231,9 +249,36 @@ async def run_search(
         total_chars=_env_int("SEARCH_TOTAL_CHARS", 12_000, low=2_000, high=60_000),
     )
     if not trimmed:
-        return HarnessResult(answer="", stats={"reason": "nothing extractable"})
+        return Gathered(stats={"lane": "search", "reason": "nothing extractable"})
 
     block, sources = build_source_block(trimmed)
+    return Gathered(
+        block=block,
+        sources=sources,
+        stats={
+            "lane": "search",
+            "found": found,
+            "read": sum(1 for p in trimmed if p.via in {"direct", "reader"}),
+            "sources": len(sources),
+            "seconds": round(time.monotonic() - started, 1),
+        },
+    )
+
+
+async def run_search(
+    client: Any,
+    *,
+    question: str,
+    chain: Any,
+    fetcher: Optional[PageFetcher] = None,
+) -> HarnessResult:
+    """The light lane end to end, including synthesis."""
+    from .. import settings
+
+    gathered = await gather_search(question=question, chain=chain, fetcher=fetcher)
+    if not gathered.ok:
+        return HarnessResult(answer="", stats=gathered.stats)
+    block, sources = gathered.block, gathered.sources
     answer = await client._call_legion_writer(
         [
             {"role": "system", "content": _SEARCH_SYSTEM},
@@ -243,28 +288,18 @@ async def run_search(
         max_tokens=min(2_000, client.config.max_tokens_chat),
         label="search",
     )
-    return HarnessResult(
-        answer=answer or "",
-        sources=sources,
-        stats={
-            "lane": "search",
-            "found": sum(len(v) for v in results.values()),
-            "read": sum(1 for p in trimmed if p.via in {"direct", "reader"}),
-            "sources": len(sources),
-            "seconds": round(time.monotonic() - started, 1),
-        },
-    )
+    return HarnessResult(answer=answer or "", sources=sources, stats=gathered.stats)
 
 
-async def run_research(
+async def gather_research(
     client: Any,
     *,
     question: str,
     chain: Any,
     fetcher: Optional[PageFetcher] = None,
     progress: Optional[ProgressCallback] = None,
-) -> HarnessResult:
-    """The ULTRA lane: plan, find wide, read narrow, synthesize with citations."""
+) -> Gathered:
+    """Retrieve for the ULTRA lane: plan, find wide, rank, read narrow."""
     from .. import settings
 
     started = time.monotonic()
@@ -301,7 +336,7 @@ async def run_research(
     )
     found = sum(len(v) for v in results.values())
     if not found:
-        return HarnessResult(answer="", stats={"reason": "no search results", "lane": "research"})
+        return Gathered(stats={"lane": "research", "reason": "no search results"})
 
     # 3 - rank, then read the best
     hits = rank_hits(
@@ -335,21 +370,55 @@ async def run_research(
         total_chars=_env_int("RESEARCH_TOTAL_CHARS", 50_000, low=5_000, high=120_000),
     )
     if not trimmed:
-        return HarnessResult(
-            answer="", stats={"reason": "nothing extractable", "lane": "research"}
-        )
+        return Gathered(stats={"lane": "research", "reason": "nothing extractable"})
 
-    # 4 - synthesize
     await _emit(progress, ProgressUpdate(stage="writing", detail="Writing it up"))
     block, sources = build_source_block(trimmed)
-    outline = "\n".join(f"- {q}" for q in plan.sub_questions)
+    return Gathered(
+        block=block,
+        sources=sources,
+        stats={
+            "lane": "research",
+            "queries": len(plan.queries),
+            "sub_questions": list(plan.sub_questions),
+            "found": found,
+            "shortlisted": len(hits),
+            "read": len(read_ok),
+            "snippet_only": sum(1 for p in trimmed if p.via == "snippet"),
+            "sources": len(sources),
+            "degraded": degraded,
+            "seconds": round(time.monotonic() - started, 1),
+        },
+    )
+
+
+async def run_research(
+    client: Any,
+    *,
+    question: str,
+    chain: Any,
+    fetcher: Optional[PageFetcher] = None,
+    progress: Optional[ProgressCallback] = None,
+) -> HarnessResult:
+    """The ULTRA lane end to end, including synthesis."""
+    from .. import settings
+
+    gathered = await gather_research(
+        client, question=question, chain=chain, fetcher=fetcher, progress=progress
+    )
+    if not gathered.ok:
+        return HarnessResult(answer="", stats=gathered.stats)
+
+    outline = "\n".join(
+        f"- {q}" for q in (gathered.stats.get("sub_questions") or [question])
+    )
     answer = await client._call_legion_writer(
         [
             {"role": "system", "content": _RESEARCH_SYSTEM},
             {
                 "role": "user",
                 "content": (
-                    f"SOURCES:\n\n{block}\n\n"
+                    f"SOURCES:\n\n{gathered.block}\n\n"
                     f"QUESTION: {question}\n\n"
                     f"The report must answer:\n{outline}"
                 ),
@@ -361,19 +430,6 @@ async def run_research(
         request_timeout=_env_int("RESEARCH_WRITE_TIMEOUT", 90, low=20, high=180),
         label="research writer",
     )
-
     return HarnessResult(
-        answer=answer or "",
-        sources=sources,
-        stats={
-            "lane": "research",
-            "queries": len(plan.queries),
-            "found": found,
-            "shortlisted": len(hits),
-            "read": len(read_ok),
-            "snippet_only": sum(1 for p in trimmed if p.via == "snippet"),
-            "sources": len(sources),
-            "degraded": degraded,
-            "seconds": round(time.monotonic() - started, 1),
-        },
+        answer=answer or "", sources=gathered.sources, stats=gathered.stats
     )

@@ -146,7 +146,7 @@ def test_no_source_marker_leaves_text_untouched():
 
 # --- Talking lane configuration --------------------------------------------
 
-def test_openrouter_chat_model_env_var_is_honoured(monkeypatch):
+def test_legion_chat_model_env_var_is_honoured(monkeypatch):
     """OPENROUTER_CHAT_MODEL was read nowhere, so setting it did nothing.
 
     Re-derived here rather than read off the constant, because the constant is
@@ -174,4 +174,4 @@ def test_openrouter_chat_model_env_var_is_honoured(monkeypatch):
 def test_talking_lane_resolves_to_something():
     import cogs.aimoderation.ai_client as ai_client
 
-    assert ai_client._OPENROUTER_CHAT_MODEL.strip()
+    assert ai_client._LEGION_CHAT_MODEL.strip()

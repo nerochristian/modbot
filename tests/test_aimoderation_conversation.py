@@ -2,9 +2,14 @@
 
 These exist because collapsing to a single provider removed every fallback
 that used to sit under ``converse``. That is the point of the change, but it
-also means the OpenRouter lane selection is now the whole conversation path:
-if it picks the wrong lane, or returns ``None`` where it used to fall through,
-there is nothing downstream to paper over it. A user just sees silence.
+also means lane selection is now the whole conversation path: if it picks the
+wrong lane, or returns ``None`` where it used to fall through, there is
+nothing downstream to paper over it. A user just sees silence.
+
+The lane split that matters most here is retrieval. The models cannot browse,
+so ``_gather_web_context`` is the only thing that can produce a source URL --
+which is what makes "research with no sources is refused" enforceable rather
+than aspirational.
 
 Every lane is stubbed, so a failure here is a routing regression, never a
 vendor outage. ``tests/test_aimoderation_live.py`` covers the vendor.
@@ -28,8 +33,8 @@ def run(coro):
 
 @pytest.fixture
 def client(monkeypatch):
-    monkeypatch.setattr(ai_client, "_OPENROUTER_API_KEY", "sk-or-v1-real")
-    monkeypatch.setattr(ai_client, "_OPENROUTER_CHAT_MODEL", "vendor/talk")
+    monkeypatch.setattr(ai_client, "_LEGION_API_KEY", "sk-or-v1-real")
+    monkeypatch.setattr(ai_client, "_LEGION_CHAT_MODEL", "vendor/talk")
     # No db attribute, so memory loads return "" instead of touching a database.
     bot = _types.SimpleNamespace(user=None, loop=None, session=None)
     instance = AIClient(bot, AIConfig())
@@ -82,38 +87,69 @@ def converse(client, guild, author, *, signals, content="hello there"):
     )
 
 
-def test_ordinary_talking_uses_the_talking_lane(client, guild, author, monkeypatch):
-    """Casual chat must not reach the searched lane.
+def test_ordinary_talking_never_reaches_the_web(client, guild, author, monkeypatch):
+    """Casual chat must not trigger retrieval.
 
-    The talking lane sends no tools and no images; routing casual chat through
-    the searched lane instead spends a web search on "hello" and answers in the
-    wrong voice.
+    Search costs a SERP call against a metered free tier and several seconds of
+    page fetching. Spending that on "hello" is both slow and, eventually,
+    expensive.
     """
     talk = AsyncMock(return_value="hey")
-    search = AsyncMock(return_value="searched answer")
-    monkeypatch.setattr(client, "_call_openrouter_chat", talk)
-    monkeypatch.setattr(client, "_call_openrouter_conversation", search)
+    gather = AsyncMock(return_value=("", []))
+    monkeypatch.setattr(client, "_call_legion_chat", talk)
+    monkeypatch.setattr(client, "_gather_web_context", gather)
 
     reply = converse(client, guild, author, signals=signals_for())
 
     assert reply == "hey"
     assert talk.await_count == 1
-    assert search.await_count == 0
+    assert gather.await_count == 0
 
 
-def test_a_turn_needing_current_info_uses_the_searched_lane(client, guild, author, monkeypatch):
-    talk = AsyncMock(return_value="stale answer")
-    search = AsyncMock(return_value="searched answer")
-    monkeypatch.setattr(client, "_call_openrouter_chat", talk)
-    monkeypatch.setattr(client, "_call_openrouter_conversation", search)
+def test_a_search_turn_retrieves_then_answers_from_the_sources(
+    client, guild, author, monkeypatch
+):
+    """The search lane gathers pages first, then writes from them.
+
+    Retrieval and synthesis are separate on purpose: the model never browses,
+    so the only way a source URL exists is that the harness fetched it.
+    """
+    talk = AsyncMock(return_value="answer citing [1]")
+    gather = AsyncMock(return_value=("[1] a page\nURL: https://example.com/a", ["https://example.com/a"]))
+    monkeypatch.setattr(client, "_call_legion_chat", talk)
+    monkeypatch.setattr(client, "_gather_web_context", gather)
 
     reply = converse(
-        client, guild, author, signals=signals_for(requires_web_search=True)
+        client, guild, author, signals=signals_for(ConversationMode.SEARCH)
     )
 
-    assert reply == "searched answer"
-    assert search.await_count == 1
-    assert talk.await_count == 0
+    assert gather.await_count == 1
+    # The light lane, not the deep one.
+    assert gather.await_args.kwargs["deep"] is False
+    assert talk.await_count == 1
+    # The fetched page reached the prompt.
+    prompt = talk.await_args.args[0][-1]["content"]
+    assert "https://example.com/a" in prompt
+    assert reply and "answer citing" in reply
+
+
+def test_a_search_turn_still_answers_when_retrieval_comes_back_empty(
+    client, guild, author, monkeypatch
+):
+    """A dead search backend degrades to chat rather than refusing.
+
+    Unlike research, a search turn is usually a question the model can make a
+    reasonable stab at. The prompt tells it to admit it could not check.
+    """
+    talk = AsyncMock(return_value="best guess, unverified")
+    monkeypatch.setattr(client, "_call_legion_chat", talk)
+    monkeypatch.setattr(client, "_gather_web_context", AsyncMock(return_value=("", [])))
+
+    reply = converse(
+        client, guild, author, signals=signals_for(ConversationMode.SEARCH)
+    )
+
+    assert reply == "best guess, unverified"
 
 
 def test_a_failed_lane_says_so_instead_of_going_silent(client, guild, author, monkeypatch):
@@ -124,7 +160,7 @@ def test_a_failed_lane_says_so_instead_of_going_silent(client, guild, author, mo
     """
     monkeypatch.setattr(
         client,
-        "_call_openrouter_chat",
+        "_call_legion_chat",
         AsyncMock(side_effect=RuntimeError("upstream 500")),
     )
 
@@ -137,15 +173,14 @@ def test_a_failed_lane_says_so_instead_of_going_silent(client, guild, author, mo
 def test_research_without_sources_is_refused_not_answered(client, guild, author, monkeypatch):
     """An unsourced research answer must be refused, not dressed up as sourced.
 
-    The pre-fetch is what supplies verifiable links; when both it and the
-    searched lane come back empty there is nothing to cite.
+    Retrieval is the ONLY thing that produces source links -- the model cannot
+    browse. When it comes back empty there is nothing to cite, and answering
+    from memory while calling it research is the exact failure this gate
+    exists to prevent.
     """
-    monkeypatch.setattr(
-        client, "_prefetch_research_context", AsyncMock(return_value=("", []))
-    )
-    monkeypatch.setattr(
-        client, "_call_openrouter_conversation", AsyncMock(return_value=None)
-    )
+    monkeypatch.setattr(client, "_gather_web_context", AsyncMock(return_value=("", [])))
+    monkeypatch.setattr(client, "_call_legion_chat", AsyncMock(return_value=None))
+    monkeypatch.setattr(client, "_call_legion_writer", AsyncMock(return_value=None))
 
     reply = converse(
         client, guild, author, signals=signals_for(ConversationMode.RESEARCH)
@@ -154,33 +189,64 @@ def test_research_without_sources_is_refused_not_answered(client, guild, author,
     assert reply == ai_client._RESEARCH_UNAVAILABLE
 
 
-def test_research_with_prefetched_evidence_uses_the_writer(client, guild, author, monkeypatch):
-    """Sonar gathers, the writer writes. Sonar is a search product, not a writer."""
+def test_research_with_gathered_sources_uses_the_writer(client, guild, author, monkeypatch):
+    """The harness gathers, the writer writes.
+
+    Research goes to the writer model rather than the chat model because the
+    writer measurably uses more of the sources it is handed -- 8/8 versus 6/8
+    on the same bundle.
+    """
     monkeypatch.setattr(
         client,
-        "_prefetch_research_context",
-        AsyncMock(return_value=("evidence body", ["https://example.com/a"])),
+        "_gather_web_context",
+        AsyncMock(return_value=("[1] evidence\nURL: https://example.com/a", ["https://example.com/a"])),
     )
     writer = AsyncMock(return_value="the report")
-    search = AsyncMock(return_value="search lane answer")
-    monkeypatch.setattr(client, "_call_openrouter_research_writer", writer)
-    monkeypatch.setattr(client, "_call_openrouter_conversation", search)
+    talk = AsyncMock(return_value="chat lane answer")
+    monkeypatch.setattr(client, "_call_legion_writer", writer)
+    monkeypatch.setattr(client, "_call_legion_chat", talk)
 
     reply = converse(
         client, guild, author, signals=signals_for(ConversationMode.RESEARCH)
     )
 
     assert writer.await_count == 1
-    assert search.await_count == 0
+    assert talk.await_count == 0
     assert reply and "the report" in reply
+
+
+def test_research_falls_back_to_chat_when_the_writer_stalls(
+    client, guild, author, monkeypatch
+):
+    """A writer hiccup must not waste sources that were already fetched.
+
+    Retrieval is the slow, metered part of the turn. Throwing it away because
+    one model returned nothing would spend the budget and show the user an
+    error anyway.
+    """
+    monkeypatch.setattr(
+        client,
+        "_gather_web_context",
+        AsyncMock(return_value=("[1] evidence\nURL: https://example.com/a", ["https://example.com/a"])),
+    )
+    monkeypatch.setattr(client, "_call_legion_writer", AsyncMock(return_value=None))
+    talk = AsyncMock(return_value="the report, written by the chat lane")
+    monkeypatch.setattr(client, "_call_legion_chat", talk)
+
+    reply = converse(
+        client, guild, author, signals=signals_for(ConversationMode.RESEARCH)
+    )
+
+    assert talk.await_count == 1
+    assert reply and "chat lane" in reply
     # The gate must attach the pre-fetched links, or a good answer is refused.
     assert "https://example.com/a" in reply
 
 
 def test_no_key_reports_the_outage_rather_than_answering(guild, author, monkeypatch):
-    monkeypatch.setattr(ai_client, "_OPENROUTER_API_KEY", "")
+    monkeypatch.setattr(ai_client, "_LEGION_API_KEY", "")
     client = AIClient(_types.SimpleNamespace(user=None, loop=None), AIConfig())
 
     reply = converse(client, guild, author, signals=signals_for())
 
-    assert "OPENROUTER_API_KEY" in reply
+    assert "LEGION_API_KEY" in reply

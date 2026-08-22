@@ -51,13 +51,14 @@ from .models import (
     normalize_url,
     registrable_domain,
 )
-from .pipeline import run_research, run_search
+from .pipeline import Gathered, gather_research, gather_search, run_research, run_search
 from .rank import authority_tier, rank_hits
 
 logger = logging.getLogger("ModBot.AIModeration.Search")
 
 __all__ = [
     "ExtractedPage",
+    "Gathered",
     "HarnessResult",
     "PageFetcher",
     "ProgressUpdate",
@@ -68,6 +69,8 @@ __all__ = [
     "authority_tier",
     "backend_diagnostics",
     "close_harness",
+    "gather_research",
+    "gather_search",
     "normalize_url",
     "rank_hits",
     "registrable_domain",

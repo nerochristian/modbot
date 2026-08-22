@@ -29,13 +29,20 @@ import aiohttp
 # task -- a positive verdict mass-kicks or bans -- so it is pinned to the same
 # moderation model the rest of the moderation work uses, and never to the
 # conversation lane.
-_AI_BASE_URL = (os.getenv("OPENROUTER_BASE_URL") or "https://openrouter.ai/api/v1").strip().rstrip("/")
-_AI_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
+_AI_BASE_URL = (
+    os.getenv("LEGION_BASE_URL")
+    or os.getenv("OPENROUTER_BASE_URL")
+    or "https://inference.legionedge.ai/v1"
+).strip().rstrip("/")
+_AI_API_KEY = (
+    os.getenv("LEGION_API_KEY") or os.getenv("OPENROUTER_API_KEY", "")
+).strip()
 _AI_MODEL = (
-    os.getenv("OPENROUTER_MODERATION_MODEL")
+    os.getenv("LEGION_MODERATION_MODEL")
+    or os.getenv("OPENROUTER_MODERATION_MODEL")
     or os.getenv("RELAYROUTER_MODERATION_MODEL")
     or os.getenv("AI_MODEL")
-    or "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+    or "deepseek-v4-flash"
 ).strip()
 
 from utils.embeds import ModEmbed, compact_kv_lines, sapphire_log_embed
