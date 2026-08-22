@@ -1,15 +1,22 @@
 """Per-lane API request shapes.
 
-OpenRouter is the only provider, so these modules split work by LANE rather
-than by vendor, and the boundaries are deliberate and enforced by the callers:
-the talking lane sends no tools and no images, search/research/vision stay on
-their own models, and moderation/routing/memory run on the protected lane's
-explicit allow-list.
+Legion Edge is the only text provider, so ``legion.py`` splits work by LANE
+rather than by vendor, and the boundaries are deliberate and enforced by the
+callers: the talking lane sends no tools and no images, structured decisions
+and synthesis stay on their own models, and moderation/routing/memory run on
+the protected lane's explicit allow-list.
 
-``google.py`` is the one non-OpenRouter module, and it is not a provider: Cloud
-Vision Web Detection plus a grounded Gemini pass supply the reverse-image and
-OCR evidence that no OpenRouter model can produce, confined to explicit
-image-identification turns.
+``google.py`` is the one non-Legion module, and it exists out of necessity
+rather than preference: all nine Legion models are text-only, so every lane
+that has to look at a picture -- conversational vision, moderation vision,
+image screening, and reverse-image identification -- runs on Gemini and Cloud
+Vision instead.
+
+Neither module reaches the web for search. Legion Edge has no search
+capability at all (no plugins, no native ``web_search`` tool), so search and
+research sources come from :mod:`cogs.aimoderation.search`, which does its own
+SERP queries and page fetching, and the models here only synthesize what it
+gathered.
 
 Lane modules MUST read configuration through
 :mod:`cogs.aimoderation.settings` rather than importing constants from
@@ -19,10 +26,11 @@ test suite's patches -- see ``settings`` for the full explanation.
 from __future__ import annotations
 
 from .google import GoogleImageEvidence, GoogleImageSearchLaneMixin
-from .openrouter import OpenRouterLaneMixin
+from .legion import LegionLaneMixin, strip_reasoning
 
 __all__ = [
     "GoogleImageEvidence",
     "GoogleImageSearchLaneMixin",
-    "OpenRouterLaneMixin",
+    "LegionLaneMixin",
+    "strip_reasoning",
 ]

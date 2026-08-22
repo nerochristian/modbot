@@ -42,7 +42,7 @@ from .transport import TransportMixin
 from .providers import (
     GoogleImageEvidence,
     GoogleImageSearchLaneMixin,
-    OpenRouterLaneMixin,
+    LegionLaneMixin,
 )
 from .research import RESEARCH_UNAVAILABLE, ResearchGatingMixin
 
@@ -60,14 +60,24 @@ _BLOCK_LOG_COOLDOWN_SECONDS: Final[int] = 300
 # ---------------------------------------------------------------------------
 # Provider configuration.
 #
-# OpenRouter is the ONLY provider. Every lane -- talking, search, research,
-# vision, moderation, routing, and memory -- is an OpenRouter model reached
-# through the same key and base URL. Lane separation is by MODEL, not by vendor:
-# each lane names its own model constant so changing one cannot silently take
-# over another.
+# Legion Edge is the only TEXT provider. Every text lane -- talking, routing,
+# search synthesis, research planning and writing, moderation, and memory -- is
+# a Legion model reached through the same key and base URL. Lane separation is
+# by MODEL, not by vendor: each lane names its own constant so changing one
+# cannot silently take over another.
+#
+# Google stays for VISION only, and not by preference: Legion Edge serves nine
+# models and all nine are text-only. Anything that has to look at a picture
+# (conversation vision, moderation vision, image screening, reverse-image
+# identification) therefore runs on Gemini / Cloud Vision. See providers/google.
+#
+# Legion Edge has no web search of its own either -- no plugins, no native
+# web_search tool, no /v1/responses. Search and research are built in
+# ``cogs/aimoderation/search/`` against real SERP backends and real page
+# fetching, rather than delegated to the provider.
 #
 # These constants are THE patch target for the test suite (e.g.
-# ``monkeypatch.setattr(ai_client_module, "_OPENROUTER_API_KEY", ...)``), so they
+# ``monkeypatch.setattr(ai_client_module, "_LEGION_API_KEY", ...)``), so they
 # must stay defined in THIS module. Provider lanes in ``providers/`` read them
 # late-bound through ``settings.setting("_NAME")`` / ``settings.call("_fn")``.
 #
@@ -78,20 +88,12 @@ _BLOCK_LOG_COOLDOWN_SECONDS: Final[int] = 300
 # Check ``providers/`` for ``settings.setting("<name>")`` first.
 # ---------------------------------------------------------------------------
 
-_OPENROUTER_API_KEY: Final[str] = os.getenv("OPENROUTER_API_KEY", "").strip()
-_OPENROUTER_BASE_URL: Final[str] = os.getenv(
-    "OPENROUTER_BASE_URL",
-    "https://openrouter.ai/api/v1",
-).strip().rstrip("/")
-
-
 def _env_first(*names: str, default: str = "") -> str:
     """Return the first non-empty environment value among ``names``.
 
-    Used for the protected-lane settings, which are still spelled
-    ``RELAYROUTER_*`` in deployed .env files. That gateway now IS OpenRouter, so
-    the constants below are OpenRouter-named, but the legacy spellings keep
-    working rather than silently reverting a live deployment to defaults.
+    Lets a deployed .env keep working across the provider migration: the new
+    ``LEGION_*`` spelling wins, and the legacy name is still honoured rather
+    than silently reverting a live bot to defaults.
     """
     for name in names:
         value = (os.getenv(name) or "").strip()
@@ -109,139 +111,174 @@ def _model_list_env(*names: str, default: str = "") -> Tuple[str, ...]:
     return tuple(values)
 
 
-# --- Conversation lanes ----------------------------------------------------
-#
-# The talking model is deliberately scoped to "talking only":
-# _call_openrouter_chat sends no tools and refuses multimodal input, so
-# search/research/vision keep using their own lanes.
-#
-# DeepSeek V4 Flash was chosen over GLM/Grok for conversational tone: it opens
-# casually, answers in the bot's own voice, and does not read like a support
-# widget. It remains the DEFAULT, but it is not forced: OPENROUTER_CHAT_MODEL
-# lets a deployment pick its own talking model. Reasoning is disabled on this
-# lane (see _OPENROUTER_CHAT_DISABLE_REASONING) because models that ship
-# reasoning on by default measured ~5.1s per reply versus ~0.6-1.4s with it
-# off, and the hidden reasoning tokens are billed and count against max_tokens.
-_OPENROUTER_CHAT_MODEL_DEFAULT: Final[str] = "~deepseek/deepseek-v4-flash-latest"
-_OPENROUTER_TALK_CHAT_MODEL: Final[str] = _env_first(
-    "OPENROUTER_CHAT_MODEL_TALKING",
-    # Back-compat: this lane used to be Grok-specific.
-    "OPENROUTER_GROK_CHAT_MODEL",
-    "OPENROUTER_CHAT_MODEL",
-    default=_OPENROUTER_CHAT_MODEL_DEFAULT,
+_LEGION_API_KEY: Final[str] = _env_first(
+    "LEGION_API_KEY",
+    # Back-compat: deployed .env files still carry the old provider's key name.
+    "OPENROUTER_API_KEY",
 )
-_OPENROUTER_CHAT_MODEL: Final[str] = _OPENROUTER_TALK_CHAT_MODEL
+_LEGION_BASE_URL: Final[str] = os.getenv(
+    "LEGION_BASE_URL",
+    "https://inference.legionedge.ai/v1",
+).strip().rstrip("/")
 
-# Chat models that ship reasoning on by default. On the talking lane this only
-# adds latency and cost, so it is explicitly disabled.
-_OPENROUTER_CHAT_DISABLE_REASONING: Final[bool] = str(
-    os.getenv("OPENROUTER_CHAT_DISABLE_REASONING", "true")
+
+# --- Model lanes -----------------------------------------------------------
+#
+# Model choices below are measured, not assumed. Benchmarked live against this
+# endpoint (12-case routing eval; 8k/30k/90k context probes):
+#
+#   model              ping  route  p50    8k    30k   90k    note
+#   deepseek-v4-flash  1.0s  11/12  1.70s  4.3s  4.3s  4.4s   latency FLAT vs ctx
+#   deepseek-v4-pro    0.7s  11/12  1.09s  9.2s  9.3s  9.4s   prompt caching
+#   kimi-k3            0.9s  12/12  1.76s  3.6s  7.9s  18.5s  only perfect router
+#   qwen3-8-27b        1.3s  11/12  2.72s  4.2s  16.7s 56.1s  blows up on context
+#   glm-5-2            2.6s  11/12  6.05s  5.4s  5.5s  413    ~64k cap
+#   kimi-k3-turbo      4.2s  11/12  3.87s  4.0s  9.4s  413    slower than k3
+#   qwen3-4b-instruct  0.6s   8/12  0.93s  OK    413   413    too weak to route
+#   qwen3-0.6b         1.1s     --     --    --    --   --    leaks <think>
+#   qwen3-6-27b        4.2s     --     --    --    --   --    256 reasoning
+#                                                             tokens on "PONG"
+#
+# All models are free on this account, so lanes are picked on quality and
+# latency alone -- there is no cost dial to trade against.
+_LEGION_CHAT_MODEL_DEFAULT: Final[str] = "deepseek-v4-flash"
+
+# The talking lane, deliberately scoped to talking only: it sends no tools and
+# refuses multimodal input, so search/research/vision keep their own lanes.
+# deepseek-v4-flash because its latency is FLAT against context -- 4.4s at 97k
+# input tokens versus 4.3s at 8k. That is what makes importing the whole
+# conversation on every turn affordable.
+_LEGION_CHAT_MODEL: Final[str] = _env_first(
+    "LEGION_CHAT_MODEL",
+    "OPENROUTER_CHAT_MODEL",
+    default=_LEGION_CHAT_MODEL_DEFAULT,
+)
+
+# Some models ship reasoning on by default. On the talking lane that is pure
+# latency, and the hidden tokens count against max_tokens, so it is disabled.
+_LEGION_CHAT_DISABLE_REASONING: Final[bool] = str(
+    _env_first("LEGION_CHAT_DISABLE_REASONING", "OPENROUTER_CHAT_DISABLE_REASONING",
+               default="true")
 ).strip().lower() in {"1", "true", "yes", "on"}
 
-# The searched conversation lane. Overridable because the search model is a
-# straight cost/quality dial: OpenRouter runs the web_search plugin itself, so
-# any tool-capable model can drive it. Defaults to the talking model's family
-# (Gemma 4 31B: $0.10/$0.34 per Mtok) rather than Luna ($0.20/$1.20).
-_OPENROUTER_LUNA_MODEL: Final[str] = os.getenv(
-    "OPENROUTER_SEARCH_MODEL",
-    os.getenv("OPENROUTER_LUNA_MODEL", "google/gemma-4-31b-it"),
-).strip() or "google/gemma-4-31b-it"
-# Research is a two-model pipeline: Sonar gathers live sources (it is a search
-# product, not a writer), then the writer model synthesizes the report from
-# them. The writer is the same family as the talking lane, so long-form research
-# reads in the bot's normal voice. It is text-only, which is fine: it only ever
-# sees Sonar's gathered text, never images.
-_OPENROUTER_RESEARCH_MODEL: Final[str] = os.getenv(
-    "OPENROUTER_RESEARCH_MODEL",
-    "perplexity/sonar",
-).strip()
-_OPENROUTER_RESEARCH_WRITER_MODEL: Final[str] = _env_first(
-    "OPENROUTER_RESEARCH_WRITER_MODEL",
-    default=_OPENROUTER_CHAT_MODEL_DEFAULT,
+# Search synthesis: writes the answer from pages the harness already fetched.
+# Same flat-latency argument as the talking lane, and it keeps the light lane
+# light.
+_LEGION_SEARCH_MODEL: Final[str] = _env_first(
+    "LEGION_SEARCH_MODEL", "OPENROUTER_SEARCH_MODEL",
+    default=_LEGION_CHAT_MODEL_DEFAULT,
 )
-# Low-cost conversation route classification (normal / search / research).
-# The intent classifier (route + moderation). Overridable so the lane can be
-# repointed without a deploy. Defaults to the same Gemma the rest of the bot
-# uses: benchmarked at 44/44 on the intent suite, identical to Ling, but slower
-# (median 1.84s vs 0.75s, tail to 5.6s). That tail is why the call is bounded
-# and failure-tolerant -- a slow classification is dropped and the local regex
-# decides instead, which costs recall on a minority of turns and never costs a
-# reply. Set OPENROUTER_INTENT_MODEL=inclusionai/ling-2.6-flash to go back.
-_OPENROUTER_LING_ROUTER_MODEL: Final[str] = _env_first(
-    "OPENROUTER_INTENT_MODEL",
-    "OPENROUTER_LING_ROUTER_MODEL",
-    default="google/gemma-4-31b-it",
+
+# Research is a two-model pipeline over the harness: the planner decomposes the
+# question into sub-questions and search queries, the writer synthesizes the
+# report from the fetched pages.
+#
+# The planner is kimi-k3 -- decomposition is the one place reasoning earns its
+# latency, and kimi-k3's reasoning arrives in a separate ``reasoning_content``
+# field so it never leaks into the reply.
+#
+# The writer is deepseek-v4-pro, and that is a MEASURED choice that went
+# against the obvious one. Benchmarked on an identical 33k-char, 8-source
+# bundle, writing the same report:
+#
+#   deepseek-v4-pro     7.9s   3149 chars   cited 8/8 sources
+#   kimi-k3            23.5s   3426 chars   cited 7/8 sources
+#   deepseek-v4-flash   5.9s   2962 chars   cited 6/8 sources
+#   qwen3-8-27b       153.3s   FAILED       spent all 4000 tokens on hidden
+#                                           reasoning, emitted no text
+#
+# The stronger reasoner was three times slower AND used fewer of the sources
+# it was given, which is the opposite of what a research writer should do.
+# deepseek-v4-pro also holds its latency flat to 97k tokens, so a 15-page
+# bundle costs no more than an 8-page one. kimi-k3 stays as the fallback: it
+# writes well, just slowly.
+_LEGION_RESEARCH_PLANNER_MODEL: Final[str] = _env_first(
+    "LEGION_RESEARCH_PLANNER_MODEL", default="kimi-k3",
 )
-# Conversational vision lane. Luna technically accepts images, but it is a
-# search model: it is weak at reading a photo's actual visible subject, which is
-# why the visual-candidate + web-verification two-pass exists further down.
-# Gemini is natively multimodal (text/image/video/audio, 1M context), so image
-# turns route here instead.
-_OPENROUTER_VISION_MODEL: Final[str] = os.getenv(
-    "OPENROUTER_VISION_MODEL",
-    "google/gemini-3.6-flash",
-).strip()
+_LEGION_RESEARCH_WRITER_MODEL: Final[str] = _env_first(
+    "LEGION_RESEARCH_WRITER_MODEL", "OPENROUTER_RESEARCH_WRITER_MODEL",
+    default="deepseek-v4-pro",
+)
+_LEGION_RESEARCH_WRITER_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
+    "LEGION_RESEARCH_WRITER_FALLBACK_MODELS", default="kimi-k3",
+)
+
+# The conversation router: reads the WHOLE thread and returns route +
+# moderation intent. kimi-k3 because it was the only model to score 12/12 on
+# the routing eval; every other candidate missed at least one case, and the
+# fast small models missed four. It sits in front of every conversational
+# message, so its 1.76s median and 100k+ window are both load-bearing.
+_LEGION_ROUTER_MODEL: Final[str] = _env_first(
+    "LEGION_ROUTER_MODEL", "OPENROUTER_INTENT_MODEL",
+    default="kimi-k3",
+)
 
 # --- Protected lanes -------------------------------------------------------
 #
 # Moderation, action routing, image screening, and memory curation. These are
 # the decisions that mute, delete, and ban, so they run on explicitly named
-# models behind an allow-list (see ``_call_openrouter_protected``) rather than
+# models behind an allow-list (see ``_call_legion_protected``) rather than
 # inheriting whatever the conversation lanes happen to be set to.
-_OPENROUTER_NEMOTRON_MODEL: Final[str] = (
-    "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
-)
-_OPENROUTER_MODERATION_MODEL: Final[str] = _env_first(
+_LEGION_MODERATION_MODEL: Final[str] = _env_first(
+    "LEGION_MODERATION_MODEL",
     "OPENROUTER_MODERATION_MODEL",
     "RELAYROUTER_MODERATION_MODEL",
-    default=_OPENROUTER_NEMOTRON_MODEL,
+    default=_LEGION_CHAT_MODEL_DEFAULT,
 )
-# The protected lane's own vision model, used for image-carrying moderation
-# work. Kept separate from _OPENROUTER_VISION_MODEL so retuning conversational
-# image understanding cannot repoint moderation decisions.
-_OPENROUTER_MODERATION_VISION_MODEL: Final[str] = _env_first(
-    "OPENROUTER_MODERATION_VISION_MODEL",
-    "RELAYROUTER_VISION_MODEL",
-    default=_OPENROUTER_MODERATION_MODEL,
-)
-# Background lanes. These run with no user waiting, so they are free to sit on a
-# cheaper, rate-limited model than the interactive moderation lane. They are
-# module constants rather than inline os.getenv reads because the protected
-# lane's allow-list has to recognise them -- an unrecognised model is refused,
-# which is exactly what made an explicit memory-model setting look like it did
-# nothing.
-_OPENROUTER_MEMORY_MODEL: Final[str] = _env_first(
+# Background lanes. No user is waiting on these, but they still run on the
+# same fast model -- there is no cheaper tier to drop to when everything is
+# free. They are module constants rather than inline os.getenv reads because
+# the protected lane's allow-list has to recognise them; an unrecognised model
+# is refused, which is exactly what made an explicit memory-model setting look
+# like it did nothing.
+_LEGION_MEMORY_MODEL: Final[str] = _env_first(
+    "LEGION_MEMORY_MODEL",
     "OPENROUTER_MEMORY_MODEL",
     "RELAYROUTER_MEMORY_MODEL",
-    default=_OPENROUTER_MODERATION_MODEL,
+    default=_LEGION_MODERATION_MODEL,
 )
-_OPENROUTER_ROUTER_MODEL: Final[str] = _env_first(
+_LEGION_ACTION_ROUTER_MODEL: Final[str] = _env_first(
+    "LEGION_ACTION_ROUTER_MODEL",
     "OPENROUTER_ROUTER_MODEL",
     "RELAYROUTER_ROUTER_MODEL",
-    default=_OPENROUTER_MODERATION_MODEL,
+    default=_LEGION_MODERATION_MODEL,
 )
-# Image screening keeps its own setting so changing the text moderation model
-# cannot silently repoint automatic NSFW/gore decisions.
-_OPENROUTER_IMAGE_SCREEN_MODEL: Final[str] = _env_first(
-    "OPENROUTER_IMAGE_SCREEN_MODEL",
-    default=_OPENROUTER_NEMOTRON_MODEL,
-)
-# The paid Nemotron fallback used when the free lane's daily quota is spent.
-# ``nvidia/nemotron-3-nano-omni-30b-a3b-reasoning`` (the ":free" id minus the
-# suffix) is NOT a real OpenRouter model and always returned HTTP 404
-# "No endpoints found", which turned every quota-exhausted profile request into
-# a hard failure. This is the closest real paid Nemotron in the catalog.
-_OPENROUTER_NEMOTRON_PAID_MODEL: Final[str] = "nvidia/nemotron-3-nano-30b-a3b"
-
-_OPENROUTER_MODERATION_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
+_LEGION_MODERATION_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
+    "LEGION_MODERATION_FALLBACK_MODELS",
     "OPENROUTER_MODERATION_FALLBACK_MODELS",
     "RELAYROUTER_FALLBACK_MODELS",
-    default=_OPENROUTER_NEMOTRON_PAID_MODEL,
+    default="deepseek-v4-pro",
 )
-_OPENROUTER_MODERATION_VISION_FALLBACK_MODELS: Final[Tuple[str, ...]] = _model_list_env(
-    "OPENROUTER_MODERATION_VISION_FALLBACK_MODELS",
-    "RELAYROUTER_VISION_FALLBACK_MODELS",
-    default=_OPENROUTER_VISION_MODEL,
+# Behavior profiling (/profile). Long, structured, no user blocking on it, so
+# it takes the stronger reasoner with the fast model as fallback.
+_LEGION_PROFILE_MODEL: Final[str] = _env_first(
+    "LEGION_PROFILE_MODEL", default="kimi-k3",
+)
+_LEGION_PROFILE_FALLBACK_MODEL: Final[str] = _env_first(
+    "LEGION_PROFILE_FALLBACK_MODEL", default=_LEGION_CHAT_MODEL_DEFAULT,
+)
+
+# --- Vision lanes (Google) --------------------------------------------------
+#
+# Every Legion Edge model is text-only, so ANY lane that has to look at a
+# picture runs on Gemini instead. That is a capability constraint, not a
+# preference: without these the bot cannot see images at all.
+_GEMINI_VISION_MODEL: Final[str] = _env_first(
+    "GEMINI_VISION_MODEL", "OPENROUTER_VISION_MODEL",
+    default="gemini-3.6-flash",
+)
+# Image screening keeps its own setting so changing conversational image
+# understanding cannot silently repoint automatic NSFW/gore decisions.
+_GEMINI_IMAGE_SCREEN_MODEL: Final[str] = _env_first(
+    "GEMINI_IMAGE_SCREEN_MODEL", "OPENROUTER_IMAGE_SCREEN_MODEL",
+    default=_GEMINI_VISION_MODEL,
+)
+# The moderation lane's own vision model, kept separate from
+# _GEMINI_VISION_MODEL so retuning conversation cannot repoint moderation.
+_GEMINI_MODERATION_VISION_MODEL: Final[str] = _env_first(
+    "GEMINI_MODERATION_VISION_MODEL", "OPENROUTER_MODERATION_VISION_MODEL",
+    "RELAYROUTER_VISION_MODEL",
+    default=_GEMINI_VISION_MODEL,
 )
 
 # --- Google image identification -------------------------------------------
@@ -283,7 +320,7 @@ def _credential_is_configured(value: str) -> bool:
         marker in normalized
         for marker in (
             "YOUR_API_KEY",
-            "YOUR_OPENROUTER_API_KEY",
+            "YOUR_LEGION_API_KEY",
             "REPLACE_ME",
             "CHANGEME",
             "PLACEHOLDER",
@@ -291,19 +328,19 @@ def _credential_is_configured(value: str) -> bool:
     )
 
 
-def _openrouter_enabled() -> bool:
-    """Whether OpenRouter -- and therefore the bot's AI -- is usable at all."""
-    return _credential_is_configured(_OPENROUTER_API_KEY)
+def _legion_enabled() -> bool:
+    """Whether Legion Edge -- and therefore the bot's AI -- is usable at all."""
+    return _credential_is_configured(_LEGION_API_KEY)
 
 
-def _openrouter_conversation_enabled() -> bool:
-    """Whether the conversation lanes (talk/search/vision/research) are usable."""
-    return bool(_openrouter_enabled() and _OPENROUTER_CHAT_MODEL)
+def _legion_conversation_enabled() -> bool:
+    """Whether the conversation lanes (talk/search/research) are usable."""
+    return bool(_legion_enabled() and _LEGION_CHAT_MODEL)
 
 
-def _openrouter_protected_enabled() -> bool:
+def _legion_protected_enabled() -> bool:
     """Whether the protected moderation/routing/memory lane is usable."""
-    return bool(_openrouter_enabled() and _OPENROUTER_MODERATION_MODEL)
+    return bool(_legion_enabled() and _LEGION_MODERATION_MODEL)
 
 
 def _google_image_search_timeout() -> int:
@@ -314,10 +351,11 @@ def _google_image_search_timeout() -> int:
         return 90
 
 
-def _openrouter_protected_timeout(*, multimodal: bool) -> int:
+def _legion_protected_timeout(*, multimodal: bool) -> int:
     """Return a bounded per-model timeout so failover remains responsive."""
     default = 45 if multimodal else 20
     raw = _env_first(
+        "LEGION_MODERATION_VISION_TIMEOUT" if multimodal else "LEGION_MODERATION_TIMEOUT",
         "OPENROUTER_MODERATION_VISION_TIMEOUT" if multimodal else "OPENROUTER_MODERATION_TIMEOUT",
         "RELAYROUTER_VISION_TIMEOUT" if multimodal else "RELAYROUTER_TIMEOUT",
         default=str(default),
@@ -329,11 +367,13 @@ def _openrouter_protected_timeout(*, multimodal: bool) -> int:
     return min(90, max(5, configured))
 
 
-def _openrouter_request_timeout() -> int:
-    """Return the bounded timeout for ordinary OpenRouter conversation turns."""
+def _legion_request_timeout() -> int:
+    """Return the bounded timeout for ordinary Legion conversation turns."""
     default = 60
     try:
-        configured = int(os.getenv("OPENROUTER_TIMEOUT", str(default)).strip())
+        configured = int(
+            _env_first("LEGION_TIMEOUT", "OPENROUTER_TIMEOUT", default=str(default))
+        )
     except ValueError:
         configured = default
     return min(120, max(5, configured))
@@ -436,14 +476,19 @@ def _vision_response_missed_image(content: str) -> bool:
 class AIClient(
     ResearchGatingMixin,
     GoogleImageSearchLaneMixin,
-    OpenRouterLaneMixin,
+    LegionLaneMixin,
     TransportMixin,
 ):
-    """Async wrapper around OpenRouter with rate limiting and memory.
+    """Async wrapper around Legion Edge with rate limiting and memory.
 
     The OpenAI-compatible HTTP wire layer lives in ``TransportMixin``
     (``transport.py``): ``_post_chat_completion``, the JSON/SSE response parsers,
     citation extraction, and text-only message normalization.
+
+    Legion Edge serves every text lane. Vision runs on Google
+    (``GoogleImageSearchLaneMixin``) because all nine Legion models are
+    text-only, and web search runs in ``cogs/aimoderation/search`` because
+    Legion Edge has no search capability of its own.
     """
 
     _CODE_FENCE_RE: ClassVar[re.Pattern] = re.compile(r"^```[a-zA-Z]*\s*|\s*```$", re.MULTILINE)
@@ -466,39 +511,39 @@ class AIClient(
     @property
     def is_available(self) -> bool:
         """Whether the bot can make any AI request at all."""
-        return _openrouter_enabled()
+        return _legion_enabled()
 
     def conversation_model_name(self, override: Optional[str] = None) -> str:
         """Return the model this bot requests, without claiming upstream attestation."""
-        # Ordinary conversation runs through _call_openrouter_chat, so report
+        # Ordinary conversation runs through _call_legion_chat, so report
         # the talking lane: "what model are you using" must describe the model
         # that actually answers, not whatever a stale per-guild override says.
-        if _openrouter_conversation_enabled():
-            return _OPENROUTER_CHAT_MODEL
+        if _legion_conversation_enabled():
+            return _LEGION_CHAT_MODEL
         selected = str(override or "").strip()
         if selected:
             return selected
-        return str(self.config.model or _OPENROUTER_CHAT_MODEL).strip()
+        return str(self.config.model or _LEGION_CHAT_MODEL).strip()
 
     @staticmethod
-    def _openrouter_lane_needs_luna(
+    def _lane_needs_harness(
         signals: ConversationSignals,
         *,
         has_images: bool,
     ) -> bool:
-        """Return whether this turn needs Luna's searched lane.
+        """Return whether this turn goes through the search/research harness.
 
-        Images alone no longer qualify: image understanding has its own vision
-        lane (see ``_openrouter_lane_needs_vision``). Luna is only for turns that
-        genuinely need live web search or sourced research.
+        Images alone do not qualify: image understanding has its own vision
+        lane (see ``_lane_needs_vision``). The harness is only for turns that
+        genuinely need live web results or sourced research.
         """
         return bool(
-            signals.mode == ConversationMode.RESEARCH
+            signals.mode in (ConversationMode.RESEARCH, ConversationMode.SEARCH)
             or signals.requires_web_search
         )
 
     @staticmethod
-    def _openrouter_lane_needs_vision(
+    def _lane_needs_vision(
         signals: ConversationSignals,
         *,
         has_images: bool,
@@ -513,29 +558,32 @@ class AIClient(
         return bool(has_images)
 
     def availability_message(self) -> str:
-        if not _openrouter_enabled():
-            return "OpenRouter is missing `OPENROUTER_API_KEY`."
+        if not _legion_enabled():
+            return "Legion Edge is missing `LEGION_API_KEY`."
         return (
-            f"OpenRouter is configured: talking `{_OPENROUTER_CHAT_MODEL}`, "
-            f"search `{_OPENROUTER_LUNA_MODEL}`, vision `{_OPENROUTER_VISION_MODEL}`, "
-            f"and moderation `{_OPENROUTER_MODERATION_MODEL}`."
+            f"Legion Edge is configured: talking `{_LEGION_CHAT_MODEL}`, "
+            f"search `{_LEGION_SEARCH_MODEL}`, research `{_LEGION_RESEARCH_WRITER_MODEL}`, "
+            f"and moderation `{_LEGION_MODERATION_MODEL}`."
         )
 
     def diagnostic_lines(self) -> List[str]:
+        from .search import backend_diagnostics
+
         return [
-            "Provider: `OpenRouter`",
-            f"Talking lane: `{_OPENROUTER_CHAT_MODEL}`",
-            f"Search lane: `{_OPENROUTER_LUNA_MODEL}`",
-            f"Vision lane: `{_OPENROUTER_VISION_MODEL}`",
-            f"Research sources: `{_OPENROUTER_RESEARCH_MODEL}`",
-            f"Research writer: `{_OPENROUTER_RESEARCH_WRITER_MODEL}`",
-            f"Route classifier: `{_OPENROUTER_LING_ROUTER_MODEL}`",
-            f"Moderation lane: `{_OPENROUTER_MODERATION_MODEL}`",
-            f"Moderation vision lane: `{_OPENROUTER_MODERATION_VISION_MODEL}`",
-            f"Image screening: `{_OPENROUTER_IMAGE_SCREEN_MODEL}`",
-            f"Memory lane: `{_OPENROUTER_MEMORY_MODEL}`",
+            "Provider: `Legion Edge` (text) + `Google` (vision)",
+            f"Talking lane: `{_LEGION_CHAT_MODEL}`",
+            f"Search synthesis: `{_LEGION_SEARCH_MODEL}`",
+            f"Research planner: `{_LEGION_RESEARCH_PLANNER_MODEL}`",
+            f"Research writer: `{_LEGION_RESEARCH_WRITER_MODEL}`",
+            f"Conversation router: `{_LEGION_ROUTER_MODEL}`",
+            f"Moderation lane: `{_LEGION_MODERATION_MODEL}`",
+            f"Memory lane: `{_LEGION_MEMORY_MODEL}`",
+            f"Vision lane: `{_GEMINI_VISION_MODEL}` (Google -- Legion is text-only)",
+            f"Moderation vision lane: `{_GEMINI_MODERATION_VISION_MODEL}`",
+            f"Image screening: `{_GEMINI_IMAGE_SCREEN_MODEL}`",
             f"Image identification evidence: "
-            f"{'Google Cloud Vision + Gemini' if _GOOGLE_CLOUD_VISION_API_KEY else 'OpenRouter only'}",
+            f"{'Google Cloud Vision + Gemini' if _GOOGLE_CLOUD_VISION_API_KEY else 'unavailable'}",
+            *backend_diagnostics(),
             f"Available now: {'yes' if self.is_available else 'no'}",
             self.availability_message(),
         ]
@@ -544,24 +592,24 @@ class AIClient(
     def has_web_search(self) -> bool:
         """Whether a live-search backend is available.
 
-        The standalone Brave/Tavily/SerpAPI clients were deleted along with the
-        unused ``_web_search`` helper, so their keys no longer grant any search
-        capability and must not be advertised as if they did. Live search is
-        Luna's searched lane and Sonar's research pre-fetch, both on OpenRouter.
+        Legion Edge has no search of its own -- no plugins, no native
+        web_search tool -- so this is not a property of the model provider at
+        all. It asks the harness whether any SERP backend is configured and
+        reachable, which is the thing that actually determines whether a
+        search or research turn can produce sourced output.
         """
-        return _openrouter_conversation_enabled()
+        from .search import any_backend_configured
 
-    # Kept as a distinct name because callers gate different UI on the search
-    # capability (see the research indicator in the cog). Both now describe the
-    # same OpenRouter lane.
-    has_openrouter_search = has_web_search
+        return bool(_legion_conversation_enabled() and any_backend_configured())
 
     async def close(self) -> None:
-        """Release provider resources. OpenRouter is stateless HTTP, so none."""
-        return None
+        """Release provider resources (the harness may hold a browser/session)."""
+        from .search import close_harness
+
+        await close_harness()
 
     async def prewarm(self) -> None:
-        """Warm up provider state. OpenRouter needs no session, so this is a no-op."""
+        """Warm up provider state. Legion needs no session, so this is a no-op."""
         return None
 
     # ------------------------------------------------------------------
@@ -627,15 +675,15 @@ class AIClient(
         conversation models. ``long_answer`` widens the token budget for
         curation work that legitimately produces more text.
         """
-        if not _openrouter_protected_enabled():
-            raise RuntimeError("The protected AI lane is missing OPENROUTER_API_KEY.")
+        if not _legion_protected_enabled():
+            raise RuntimeError("The protected AI lane is missing LEGION_API_KEY.")
 
         # A per-guild override must never be able to pick the model for work
         # that can delete or ban; the lane's allow-list refuses anything it was
         # not configured with. provider_model_override is the deliberate
         # exception: the cog uses it to retry generated-action planning on an
         # explicitly configured second model.
-        return await self._call_openrouter_protected(
+        return await self._call_legion_protected(
             messages,
             temperature=temperature,
             max_tokens=max(max_tokens, 2_400) if long_answer else max_tokens,
@@ -665,10 +713,10 @@ class AIClient(
         request boundary instead of grinding past the outer timeout and
         surfacing a misleading ``TimeoutError``.
         """
-        if not _openrouter_protected_enabled():
+        if not _legion_protected_enabled():
             raise RuntimeError("No AI provider is available for this request.")
 
-        return await self._call_openrouter_protected(
+        return await self._call_legion_protected(
             messages,
             temperature=temperature,
             max_tokens=max_tokens,
@@ -686,38 +734,34 @@ class AIClient(
         request_timeout: int = 60,
         max_retries: int = 0,
     ) -> Optional[str]:
-        """Force-route a completion through OpenRouter Nemotron.
+        """Force-route a completion through the behavior-profiling lane.
 
-        Used by ``/profile`` so behavior profiling always runs on Nemotron.
-        Tries the free Nemotron lane first; if it is rate-limited (the
-        free-tier daily quota can be exhausted), falls back to the paid
-        Nemotron variant on the same OpenRouter key.
+        Used by ``/profile``. The name is historical: this used to pin
+        OpenRouter's Nemotron, which does not exist on Legion Edge. It now runs
+        the profile model with a fallback, keeping the same contract for
+        ``cogs/behavior_profiling.py``.
 
-        The pinned Nemotron variants are reasoning models that stream their
-        chain-of-thought into ``message.content`` instead of the separate
-        ``reasoning`` field, which leaked raw scratchpad into Discord embeds.
-        ``reasoning: {"enabled": false}`` suppresses it at the source; note that
-        ``{"exclude": true}`` only hides the ``reasoning`` field and does NOT
-        stop the inline leak. Each model is attempted with reasoning disabled
-        first, then without the control at all, so a provider that rejects the
-        parameter still yields a profile (the caller strips any residual
-        scratchpad defensively).
+        Reasoning is disabled where the provider honours the control. Several
+        models stream chain-of-thought into ``message.content`` rather than a
+        separate field, which previously leaked raw scratchpad into Discord
+        embeds. Each model is attempted with reasoning disabled first, then
+        without the control at all, so a provider that rejects the parameter
+        still yields a profile (the caller strips residual scratchpad
+        defensively).
         """
-        if not _OPENROUTER_API_KEY:
+        if not _LEGION_API_KEY:
             raise RuntimeError(
-                "Nemotron routing requires OPENROUTER_API_KEY to be set."
+                "Behavior profiling requires LEGION_API_KEY to be set."
             )
 
         no_reasoning: Dict[str, Any] = {"reasoning": {"enabled": False}}
+        primary = _LEGION_PROFILE_MODEL
+        secondary = _LEGION_PROFILE_FALLBACK_MODEL
         candidates = (
-            (_OPENROUTER_NEMOTRON_MODEL, "OpenRouter Nemotron free", no_reasoning),
-            (_OPENROUTER_NEMOTRON_PAID_MODEL, "OpenRouter Nemotron paid", no_reasoning),
-            (_OPENROUTER_NEMOTRON_MODEL, "OpenRouter Nemotron free (default reasoning)", None),
-            (
-                _OPENROUTER_NEMOTRON_PAID_MODEL,
-                "OpenRouter Nemotron paid (default reasoning)",
-                None,
-            ),
+            (primary, "Legion profile", no_reasoning),
+            (secondary, "Legion profile fallback", no_reasoning),
+            (primary, "Legion profile (default reasoning)", None),
+            (secondary, "Legion profile fallback (default reasoning)", None),
         )
 
         last_error: Optional[Exception] = None
@@ -725,8 +769,8 @@ class AIClient(
             try:
                 result = await self._post_chat_completion(
                     messages,
-                    base_url=_OPENROUTER_BASE_URL,
-                    api_key=_OPENROUTER_API_KEY,
+                    base_url=_LEGION_BASE_URL,
+                    api_key=_LEGION_API_KEY,
                     model=model,
                     temperature=temperature,
                     max_tokens=max_tokens,
@@ -941,11 +985,11 @@ class AIClient(
         None means "unknown", and callers must treat it as "do nothing": a
         screening outage must never delete a message or punish a member.
 
-        Uses its own OPENROUTER_IMAGE_SCREEN_MODEL rather than the conversation
+        Uses its own GEMINI_IMAGE_SCREEN_MODEL rather than the conversation
         or text-moderation lanes, so retuning either of those cannot silently
         repoint automatic NSFW/gore decisions.
         """
-        if not images or not _openrouter_enabled():
+        if not images or not _legion_enabled():
             return None
 
         system_prompt = (
@@ -981,9 +1025,9 @@ class AIClient(
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": parts},
                     ],
-                    base_url=_OPENROUTER_BASE_URL,
-                    api_key=_OPENROUTER_API_KEY,
-                    model=_OPENROUTER_IMAGE_SCREEN_MODEL,
+                    base_url=_LEGION_BASE_URL,
+                    api_key=_LEGION_API_KEY,
+                    model=_GEMINI_IMAGE_SCREEN_MODEL,
                     # A screening outage is already handled by returning None;
                     # it must not additionally silence conversation.
                     allow_service_block=False,
@@ -992,7 +1036,7 @@ class AIClient(
                     json_mode=True,
                     allow_multimodal=True,
                     provider_label=(
-                        f"Image age screening ({_OPENROUTER_IMAGE_SCREEN_MODEL})"
+                        f"Image age screening ({_GEMINI_IMAGE_SCREEN_MODEL})"
                     ),
                     max_retries=0,
                     request_timeout=timeout,
@@ -1100,7 +1144,7 @@ class AIClient(
         gate the reply it was only trying to label.
         """
         text = re.sub(r"\s+", " ", user_content or "").strip()
-        if not text or not _openrouter_conversation_enabled():
+        if not text or not _legion_conversation_enabled():
             return None
 
         user_prompt = _sanitize_untrusted_text(text, limit=4_000)
@@ -1112,15 +1156,15 @@ class AIClient(
             raw = await asyncio.wait_for(
                 self._post_chat_completion(
                     messages,
-                    base_url=_OPENROUTER_BASE_URL,
-                    api_key=_OPENROUTER_API_KEY,
-                    model=_OPENROUTER_LING_ROUTER_MODEL,
+                    base_url=_LEGION_BASE_URL,
+                    api_key=_LEGION_API_KEY,
+                    model=_LEGION_ROUTER_MODEL,
                     temperature=0.0,
                     max_tokens=48,
                     json_mode=True,
                     provider_label=(
                         "OpenRouter conversation router "
-                        f"({_OPENROUTER_LING_ROUTER_MODEL})"
+                        f"({_LEGION_ROUTER_MODEL})"
                     ),
                     max_retries=0,
                     request_timeout=3,
@@ -1458,7 +1502,7 @@ class AIClient(
         conversation lane pins its own model so a per-guild setting cannot point
         the searched, vision, or research lane at a model that cannot do the job.
         """
-        if not _openrouter_conversation_enabled():
+        if not _legion_conversation_enabled():
             return self.availability_message()
 
         error = await self._preflight(author.id)
@@ -1619,7 +1663,7 @@ class AIClient(
                     signals,
                     has_images=bool(image_context),
                 )
-                needs_vision = self._openrouter_lane_needs_vision(
+                needs_vision = self._lane_needs_vision(
                     signals,
                     has_images=bool(image_context),
                 )
@@ -1746,7 +1790,7 @@ class AIClient(
                         )
                         if needs_luna
                         # Ordinary talking: text-only, no search tool.
-                        else await self._call_openrouter_chat(
+                        else await self._call_legion_chat(
                             api_messages,
                             temperature=plan.temperature,
                             max_tokens=max_tokens,
@@ -2929,11 +2973,11 @@ class AIClient(
             ]
             # Memory curation is a protected task: it writes the profile that
             # later moderation and conversation turns read back.
-            call = self._call_openrouter_protected(
+            call = self._call_legion_protected(
                 messages,
                 temperature=0.2,
                 max_tokens=800,
-                model=_OPENROUTER_MEMORY_MODEL,
+                model=_LEGION_MEMORY_MODEL,
             )
             content = await asyncio.wait_for(call, timeout=60)
             if content:
@@ -3128,7 +3172,7 @@ class AIClient(
                     messages,
                     temperature=0.2,
                     max_tokens=1000,
-                    model=_OPENROUTER_MEMORY_MODEL,
+                    model=_LEGION_MEMORY_MODEL,
                 ),
                 timeout=_BACKGROUND_CALL_TIMEOUT_SECONDS,
             )
@@ -3189,7 +3233,7 @@ class AIClient(
                         messages,
                         temperature=0.2,
                         max_tokens=800,
-                        model=_OPENROUTER_MEMORY_MODEL,
+                        model=_LEGION_MEMORY_MODEL,
                     ),
                     timeout=_BACKGROUND_CALL_TIMEOUT_SECONDS,
                 )
